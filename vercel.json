@@ -11,7 +11,7 @@
     },
     {
       "path": "/api/cron/order-timeout",
-      "schedule": "0 * * * *"
+      "schedule": "0 9 * * *"
     },
     {
       "path": "/api/cron/review-followup",
