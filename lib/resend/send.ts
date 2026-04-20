@@ -1,6 +1,5 @@
-import "server-only";
 import type { ReactElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { render } from "@react-email/render";
 import { resend } from "./client";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
@@ -13,8 +12,8 @@ interface SendTemplateArgs {
   metadata?: Record<string, unknown>;
 }
 
-export function renderEmail(element: ReactElement): string {
-  return "<!DOCTYPE html>" + renderToStaticMarkup(element);
+export async function renderEmail(element: ReactElement): Promise<string> {
+  return render(element);
 }
 
 // Envoie un email via Resend et log l'envoi dans public.notifications.
@@ -30,7 +29,7 @@ export async function sendTemplate({
 }: SendTemplateArgs): Promise<
   { ok: true; id: string } | { ok: false; error: string }
 > {
-  const html = renderEmail(element);
+  const html = await renderEmail(element);
   const from = process.env.RESEND_FROM_EMAIL ?? "no-reply@terroir.fr";
   const admin = createSupabaseAdminClient();
 
