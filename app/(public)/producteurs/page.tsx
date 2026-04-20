@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Button, ProducerCard } from '@/components/ui';
@@ -45,6 +45,14 @@ const LABEL_OPTIONS: { value: string; label: string }[] = [
 const RADIUS_OPTIONS = [10, 25, 50, 100];
 
 export default function ProducteursPage() {
+  return (
+    <Suspense fallback={<div className="p-10 text-center text-dark/60">Chargement…</div>}>
+      <ProducteursPageContent />
+    </Suspense>
+  );
+}
+
+function ProducteursPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 

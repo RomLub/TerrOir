@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import mapboxgl from 'mapbox-gl';
@@ -50,6 +50,14 @@ const LABEL_OPTIONS: { value: string; label: string }[] = [
 const RADIUS_OPTIONS = [10, 25, 50, 100];
 
 export default function CartePage() {
+  return (
+    <Suspense fallback={<div className="p-10 text-center text-dark/60">Chargement de la carte…</div>}>
+      <CartePageContent />
+    </Suspense>
+  );
+}
+
+function CartePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
