@@ -1,19 +1,22 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, useMemo } from 'react';
-import { OrderStatusBadge, NavbarPublic, Footer } from '@/components/ui';
+import { useEffect, useMemo, useState } from 'react';
+import type { RealtimeChannel } from '@supabase/supabase-js';
+import { OrderStatusBadge, type OrderStatus, NavbarPublic, Footer } from '@/components/ui';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
-type Status = 'pending' | 'confirmed' | 'ready' | 'completed' | 'cancelled';
-type Order = { id: string; date: string; producerName: string; producerSlug: string; total: number; status: Status; itemCount: number };
-
-const ORDERS: Order[] = [
-  { id: 'TRO-7A9K2X', date: '20 avril 2026', producerName: 'Ferme des Chênes', producerSlug: 'ferme-des-chenes', total: 101.55, status: 'confirmed', itemCount: 2 },
-  { id: 'TRO-4M2P8L', date: '12 avril 2026', producerName: 'Élevage de Loué', producerSlug: 'elevage-loue', total: 42.90, status: 'ready', itemCount: 1 },
-  { id: 'TRO-9X3V1B', date: '2 avril 2026', producerName: 'Agneaux de la Forêt', producerSlug: 'agneaux-berce', total: 68.00, status: 'completed', itemCount: 3 },
-  { id: 'TRO-6H4R7D', date: '18 mars 2026', producerName: 'Ferme des Chênes', producerSlug: 'ferme-des-chenes', total: 34.50, status: 'completed', itemCount: 1 },
-  { id: 'TRO-2K9L5F', date: '5 mars 2026', producerName: 'GAEC du Pré Vert', producerSlug: 'gaec-du-pre-vert', total: 89.00, status: 'cancelled', itemCount: 1 },
-];
+type OrderRow = {
+  id: string;
+  code_commande: string | null;
+  created_at: string;
+  statut: OrderStatus;
+  montant_total: number;
+  producer_id: string;
+  producer_name: string;
+  producer_slug: string;
+  item_count: number;
+};
 
 type Filter = 'all' | 'active' | 'done' | 'cancelled';
 const FILTERS: { value: Filter; label: string }[] = [
@@ -23,22 +26,106 @@ const FILTERS: { value: Filter; label: string }[] = [
   { value: 'cancelled', label: 'Annulées' },
 ];
 
+function formatDateFr(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
 export default function CommandesPage() {
   const [filter, setFilter] = useState<Filter>('all');
-  const filtered = useMemo(() => ORDERS.filter((o) => {
+  const [orders, setOrders] = useState<OrderRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const supabase = createSupabaseBrowserClient();
+    let channel: RealtimeChannel | null = null;
+    let active = true;
+
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        if (active) { setLoading(false); setError('Vous devez être connecté.'); }
+        return;
+      }
+
+      const { data, error: fetchError } = await supabase
+        .from('orders')
+        .select(`
+          id, code_commande, created_at, statut, montant_total, producer_id,
+          producers:producer_id ( nom_exploitation, slug ),
+          order_items ( id )
+        `)
+        .eq('consumer_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (!active) return;
+
+      if (fetchError) {
+        setError(fetchError.message);
+        setLoading(false);
+        return;
+      }
+
+      const rows: OrderRow[] = (data ?? []).map((o) => {
+        const prod = Array.isArray(o.producers) ? o.producers[0] : o.producers;
+        const itemsArr = Array.isArray(o.order_items) ? o.order_items : [];
+        return {
+          id: o.id as string,
+          code_commande: (o.code_commande as string | null) ?? null,
+          created_at: o.created_at as string,
+          statut: o.statut as OrderStatus,
+          montant_total: Number(o.montant_total ?? 0),
+          producer_id: o.producer_id as string,
+          producer_name: prod?.nom_exploitation ?? 'Producteur',
+          producer_slug: prod?.slug ?? '',
+          item_count: itemsArr.length,
+        };
+      });
+
+      setOrders(rows);
+      setLoading(false);
+
+      channel = supabase
+        .channel(`orders-consumer-${user.id}`)
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'orders', filter: `consumer_id=eq.${user.id}` },
+          (payload) => {
+            const updated = payload.new as { id: string; statut: OrderStatus };
+            setOrders((prev) => prev.map((o) => (o.id === updated.id ? { ...o, statut: updated.statut } : o)));
+          },
+        )
+        .subscribe();
+    })();
+
+    return () => {
+      active = false;
+      if (channel) {
+        const supabase = createSupabaseBrowserClient();
+        supabase.removeChannel(channel);
+      }
+    };
+  }, []);
+
+  const filtered = useMemo(() => orders.filter((o) => {
     if (filter === 'all') return true;
-    if (filter === 'active') return o.status === 'pending' || o.status === 'confirmed' || o.status === 'ready';
-    if (filter === 'done') return o.status === 'completed';
-    if (filter === 'cancelled') return o.status === 'cancelled';
+    if (filter === 'active') return o.statut === 'pending' || o.statut === 'confirmed' || o.statut === 'ready';
+    if (filter === 'done') return o.statut === 'completed';
+    if (filter === 'cancelled') return o.statut === 'cancelled' || o.statut === 'refunded';
     return true;
-  }), [filter]);
+  }), [orders, filter]);
 
   return (
     <div className="min-h-screen bg-bg">
       <NavbarPublic />
       <section className="max-w-5xl mx-auto px-6 py-10">
         <h1 className="font-serif text-[40px] md:text-[52px] text-green-900 leading-tight">Mes commandes</h1>
-        <p className="text-[14px] text-dark/60 mt-1">{ORDERS.length} commandes au total</p>
+        <p className="text-[14px] text-dark/60 mt-1">
+          {loading ? 'Chargement…' : `${orders.length} commande${orders.length > 1 ? 's' : ''} au total`}
+        </p>
+        {error && <p className="mt-2 text-[13px] text-terra-700">{error}</p>}
 
         <div className="mt-8 flex gap-1.5 flex-wrap border-b border-dark/[0.08]">
           {FILTERS.map((f) => {
@@ -58,37 +145,36 @@ export default function CommandesPage() {
         </div>
 
         <div className="mt-6 space-y-3">
-          {filtered.length === 0 ? (
+          {!loading && filtered.length === 0 ? (
             <div className="bg-white rounded-2xl border border-dark/[0.06] p-10 text-center">
               <h3 className="font-serif text-[22px] text-green-900">Aucune commande</h3>
               <p className="text-[13px] text-dark/60 mt-1">Rien à afficher pour ce filtre.</p>
             </div>
-          ) : (
-            filtered.map((o) => (
-              <Link
-                key={o.id}
-                href={`/compte/commandes/${o.id}`}
-                className="block bg-white rounded-2xl border border-dark/[0.06] shadow-soft hover:shadow-card hover:-translate-y-0.5 transition-all p-5"
-              >
-                <div className="flex items-center justify-between gap-4 flex-wrap">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 text-[12px] mono text-dark/50">
-                      <span>{o.id}</span><span>·</span><span>{o.date}</span>
-                    </div>
-                    <div className="mt-1 font-serif text-[22px] text-green-900 leading-tight">{o.producerName}</div>
-                    <div className="text-[13px] text-dark/60 mt-0.5">{o.itemCount} article{o.itemCount > 1 ? 's' : ''}</div>
+          ) : filtered.map((o) => (
+            <Link
+              key={o.id}
+              href={`/compte/commandes/${o.id}`}
+              className="block bg-white rounded-2xl border border-dark/[0.06] shadow-soft hover:shadow-card hover:-translate-y-0.5 transition-all p-5"
+            >
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 text-[12px] mono text-dark/50">
+                    {o.code_commande && <><span>{o.code_commande}</span><span>·</span></>}
+                    <span>{formatDateFr(o.created_at)}</span>
                   </div>
-                  <div className="flex items-center gap-5">
-                    <OrderStatusBadge status={o.status} />
-                    <div className="text-right">
-                      <div className="font-serif text-[22px] text-green-900 tabular-nums">{o.total.toFixed(2).replace('.', ',')} €</div>
-                    </div>
-                    <span className="text-dark/30 text-xl">›</span>
-                  </div>
+                  <div className="mt-1 font-serif text-[22px] text-green-900 leading-tight">{o.producer_name}</div>
+                  <div className="text-[13px] text-dark/60 mt-0.5">{o.item_count} article{o.item_count > 1 ? 's' : ''}</div>
                 </div>
-              </Link>
-            ))
-          )}
+                <div className="flex items-center gap-5">
+                  <OrderStatusBadge status={o.statut} />
+                  <div className="text-right">
+                    <div className="font-serif text-[22px] text-green-900 tabular-nums">{o.montant_total.toFixed(2).replace('.', ',')} €</div>
+                  </div>
+                  <span className="text-dark/30 text-xl">›</span>
+                </div>
+              </div>
+            </Link>
+          ))}
         </div>
       </section>
       <Footer />

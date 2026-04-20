@@ -1,158 +1,294 @@
-'use client';
-
-import Link from 'next/link';
-import { Button, ProducerBadge } from '@/components/ui';
+import { redirect } from 'next/navigation';
+import { getSessionUser } from '@/lib/auth/session';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import { fetchProducerForUser } from '@/lib/producers/context';
 import { ProducerLayout } from '../_components/ProducerLayout';
+import { DashboardClient, type DashboardData } from './DashboardClient';
 
-const ALERTS = [
-  { kind: 'urgent' as const, text: '2 commandes en attente de confirmation depuis plus de 12 h', href: '/commandes?tab=pending' },
-  { kind: 'warning' as const, text: 'Stock faible : Entrecôte maturée (5 kg restants)', href: '/catalogue' },
-];
+const WEEK_DAYS_LABEL = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 
-const METRICS = [
-  { label: "Commandes aujourd'hui", value: '4', sub: '+1 depuis hier', tone: 'green' as const },
-  { label: 'Revenus cette semaine', value: '1 248 €', sub: '+18% vs semaine passée', tone: 'green' as const },
-  { label: 'Note moyenne', value: '4,8', sub: '127 avis', tone: 'terra' as const },
-  { label: 'Prochain retrait', value: '14h00', sub: 'Marie · TRO-7A9K2X', tone: 'terra' as const },
-];
+function startOfWeek(d: Date): Date {
+  const copy = new Date(d);
+  const day = (copy.getDay() + 6) % 7; // 0 = Monday
+  copy.setHours(0, 0, 0, 0);
+  copy.setDate(copy.getDate() - day);
+  return copy;
+}
 
-const PENDING = [
-  { id: 'TRO-8K2M1P', client: 'Camille', items: '1 colis découverte 5 kg', total: 89.00, slot: 'Samedi 25 avril · 10h–12h', hoursLeft: 4 },
-  { id: 'TRO-3X7V5L', client: 'Thomas', items: '2,5 kg entrecôte · 1 kg bourguignon', total: 106.15, slot: 'Mercredi 29 avril · 17h–19h', hoursLeft: 9 },
-];
+function addDays(d: Date, n: number): Date {
+  const c = new Date(d);
+  c.setDate(c.getDate() + n);
+  return c;
+}
 
-const WEEK_DAYS = ['Lun 21', 'Mar 22', 'Mer 23', 'Jeu 24', 'Ven 25', 'Sam 26', 'Dim 27'];
-const WEEK_SLOTS: Record<string, { time: string; orders: number }[]> = {
-  'Mer 23': [{ time: '17–19h', orders: 2 }],
-  'Ven 25': [{ time: '10–12h', orders: 3 }, { time: '14–17h', orders: 1 }],
-  'Sam 26': [{ time: '10–12h', orders: 4 }],
-};
+function startOfDay(d: Date): Date {
+  const c = new Date(d);
+  c.setHours(0, 0, 0, 0);
+  return c;
+}
 
-const BADGES = [
-  { kind: 'stock' as const, score: 98, tip: 'Excellent. Continuez à actualiser vos stocks après chaque vente.' },
-  { kind: 'response' as const, score: 72, tip: 'Confirmez vos commandes plus rapidement pour atteindre 85+.' },
-  { kind: 'reliability' as const, score: 100, tip: 'Parfait. Aucun désistement sur vos 30 dernières commandes.' },
-];
+function formatTimeRange(start: string | null, end: string | null): string {
+  const fmt = (t: string) => {
+    const [h, m] = t.split(':');
+    return m && m !== '00' ? `${parseInt(h, 10)}h${m}` : `${parseInt(h, 10)}h`;
+  };
+  if (!start) return '—';
+  if (!end) return fmt(start);
+  return `${fmt(start)}–${fmt(end)}`;
+}
 
-export default function ProducerDashboardPage() {
+export default async function ProducerDashboardPage() {
+  const session = await getSessionUser();
+  if (!session) redirect('/connexion');
+
+  const supabase = createSupabaseServerClient();
+  const producer = await fetchProducerForUser(supabase, session.id);
+  if (!producer) redirect('/invitation');
+
+  const admin = createSupabaseAdminClient();
+
+  const now = new Date();
+  const todayStart = startOfDay(now);
+  const yesterdayStart = addDays(todayStart, -1);
+  const tomorrowStart = addDays(todayStart, 1);
+  const weekStart = startOfWeek(now);
+  const weekEnd = addDays(weekStart, 7);
+  const lastWeekStart = addDays(weekStart, -7);
+
+  const { data: user } = await admin
+    .from('users')
+    .select('prenom, nom')
+    .eq('id', session.id)
+    .maybeSingle();
+  const firstName = user?.prenom?.trim() || user?.nom?.trim() || 'Pierre';
+
+  const { count: ordersToday } = await admin
+    .from('orders')
+    .select('id', { count: 'exact', head: true })
+    .eq('producer_id', producer.id)
+    .gte('created_at', todayStart.toISOString())
+    .lt('created_at', tomorrowStart.toISOString());
+
+  const { count: ordersYesterday } = await admin
+    .from('orders')
+    .select('id', { count: 'exact', head: true })
+    .eq('producer_id', producer.id)
+    .gte('created_at', yesterdayStart.toISOString())
+    .lt('created_at', todayStart.toISOString());
+
+  const { data: weekOrders } = await admin
+    .from('orders')
+    .select('id, montant_total, statut')
+    .eq('producer_id', producer.id)
+    .gte('created_at', weekStart.toISOString())
+    .lt('created_at', weekEnd.toISOString());
+
+  const revenueWeek = (weekOrders ?? [])
+    .filter((o) => o.statut !== 'cancelled' && o.statut !== 'refunded')
+    .reduce((s, o) => s + Number(o.montant_total ?? 0), 0);
+
+  const { data: lastWeekOrders } = await admin
+    .from('orders')
+    .select('montant_total, statut')
+    .eq('producer_id', producer.id)
+    .gte('created_at', lastWeekStart.toISOString())
+    .lt('created_at', weekStart.toISOString());
+
+  const revenueLastWeek = (lastWeekOrders ?? [])
+    .filter((o) => o.statut !== 'cancelled' && o.statut !== 'refunded')
+    .reduce((s, o) => s + Number(o.montant_total ?? 0), 0);
+
+  const { data: producerRow } = await admin
+    .from('producers')
+    .select('note_moyenne, nb_avis, badge_stock_score, badge_confirmation_score, badge_annulation_score')
+    .eq('id', producer.id)
+    .maybeSingle();
+
+  const { data: pendingRaw } = await admin
+    .from('orders')
+    .select(`
+      id, code_commande, created_at, montant_total, date_retrait,
+      consumer:consumer_id ( prenom ),
+      slots:slot_id ( heure_debut, heure_fin ),
+      order_items ( products:product_id ( nom ) )
+    `)
+    .eq('producer_id', producer.id)
+    .eq('statut', 'pending')
+    .order('created_at', { ascending: true })
+    .limit(5);
+
+  const pendingOrders = ((pendingRaw ?? []) as unknown as Array<{
+    id: string;
+    code_commande: string | null;
+    created_at: string;
+    montant_total: number | null;
+    date_retrait: string | null;
+    consumer: { prenom: string | null } | Array<{ prenom: string | null }> | null;
+    slots: { heure_debut: string | null; heure_fin: string | null } | Array<{ heure_debut: string | null; heure_fin: string | null }> | null;
+    order_items: Array<{ products: { nom: string } | Array<{ nom: string }> | null }>;
+  }>).map((o) => {
+    const consumer = Array.isArray(o.consumer) ? o.consumer[0] : o.consumer;
+    const slot = Array.isArray(o.slots) ? o.slots[0] : o.slots;
+    const itemNames = (o.order_items ?? []).map((it) => {
+      const p = Array.isArray(it.products) ? it.products[0] : it.products;
+      return p?.nom ?? '';
+    }).filter(Boolean);
+    const itemsSummary = itemNames.slice(0, 3).join(' · ') + (itemNames.length > 3 ? '…' : '');
+    const slotLabel = o.date_retrait
+      ? `${new Date(o.date_retrait + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })} · ${formatTimeRange(slot?.heure_debut ?? null, slot?.heure_fin ?? null)}`
+      : '—';
+    const hoursLeft = Math.max(0, 24 - Math.floor((now.getTime() - new Date(o.created_at).getTime()) / 3_600_000));
+    return {
+      id: o.id,
+      codeCommande: o.code_commande,
+      clientFirstName: consumer?.prenom?.trim() || 'Client',
+      itemsSummary: itemsSummary || '—',
+      total: Number(o.montant_total ?? 0),
+      slotLabel,
+      hoursLeft,
+    };
+  });
+
+  // Next pickup (today or upcoming confirmed/ready)
+  const { data: upcomingRaw } = await admin
+    .from('orders')
+    .select(`
+      id, code_commande, heure_retrait, date_retrait,
+      consumer:consumer_id ( prenom )
+    `)
+    .eq('producer_id', producer.id)
+    .in('statut', ['confirmed', 'ready'])
+    .gte('date_retrait', todayStart.toISOString().slice(0, 10))
+    .order('date_retrait', { ascending: true })
+    .order('heure_retrait', { ascending: true })
+    .limit(1);
+
+  let nextPickup: DashboardData['nextPickup'] = null;
+  if (upcomingRaw && upcomingRaw.length > 0) {
+    const u = upcomingRaw[0] as unknown as {
+      id: string;
+      code_commande: string | null;
+      heure_retrait: string | null;
+      date_retrait: string | null;
+      consumer: { prenom: string | null } | Array<{ prenom: string | null }> | null;
+    };
+    const consumer = Array.isArray(u.consumer) ? u.consumer[0] : u.consumer;
+    const label = formatTimeRange(u.heure_retrait, null);
+    const subDate = u.date_retrait
+      ? new Date(u.date_retrait + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })
+      : '';
+    nextPickup = {
+      label,
+      sub: `${consumer?.prenom ?? 'Client'} · ${u.code_commande ?? ''} · ${subDate}`.trim(),
+    };
+  }
+
+  // Week planning
+  const { data: slots } = await admin
+    .from('slots')
+    .select('id, jour_semaine, heure_debut, heure_fin, actif')
+    .eq('producer_id', producer.id)
+    .eq('actif', true);
+
+  const ordersByDay: Record<string, number> = {};
+  (weekOrders ?? []).forEach((o) => {
+    const id = (o as { id: string }).id;
+    if (!id) return;
+  });
+
+  const { data: weekPickups } = await admin
+    .from('orders')
+    .select('date_retrait, slot_id, statut')
+    .eq('producer_id', producer.id)
+    .gte('date_retrait', weekStart.toISOString().slice(0, 10))
+    .lt('date_retrait', weekEnd.toISOString().slice(0, 10));
+
+  const pickupsBySlotAndDay: Record<string, number> = {};
+  (weekPickups ?? []).forEach((p) => {
+    if (p.statut === 'cancelled' || p.statut === 'refunded') return;
+    if (!p.date_retrait || !p.slot_id) return;
+    const k = `${p.date_retrait}|${p.slot_id}`;
+    pickupsBySlotAndDay[k] = (pickupsBySlotAndDay[k] ?? 0) + 1;
+  });
+
+  const weekPlanning = WEEK_DAYS_LABEL.map((label, i) => {
+    const dayDate = addDays(weekStart, i);
+    const dayIso = dayDate.toISOString().slice(0, 10);
+    const dayOfWeek = dayDate.getDay();
+    const daySlots = (slots ?? [])
+      .filter((s) => s.jour_semaine === dayOfWeek)
+      .map((s) => ({
+        time: formatTimeRange(s.heure_debut, s.heure_fin),
+        orders: pickupsBySlotAndDay[`${dayIso}|${s.id}`] ?? 0,
+      }));
+    return {
+      day: `${label} ${dayDate.getDate()}`,
+      isToday: dayDate.toDateString() === todayStart.toDateString(),
+      slots: daySlots,
+    };
+  });
+
+  const badges: DashboardData['badges'] = [
+    {
+      kind: 'stock',
+      score: Math.round(producerRow?.badge_stock_score ?? 0),
+      tip: (producerRow?.badge_stock_score ?? 0) >= 90
+        ? 'Excellent. Continuez à actualiser vos stocks après chaque vente.'
+        : 'Actualisez vos stocks régulièrement pour éviter les ruptures.',
+    },
+    {
+      kind: 'response',
+      score: Math.round(producerRow?.badge_confirmation_score ?? 0),
+      tip: (producerRow?.badge_confirmation_score ?? 0) >= 85
+        ? 'Très réactif. Vos clients apprécient.'
+        : 'Confirmez vos commandes plus rapidement pour atteindre 85+.',
+    },
+    {
+      kind: 'reliability',
+      score: Math.round(producerRow?.badge_annulation_score ?? 0),
+      tip: (producerRow?.badge_annulation_score ?? 0) >= 95
+        ? 'Parfait. Presque aucun désistement.'
+        : 'Évitez les annulations côté producteur pour améliorer ce score.',
+    },
+  ];
+
+  const { data: lowStockProducts } = await admin
+    .from('products')
+    .select('id, nom, stock_disponible, stock_illimite')
+    .eq('producer_id', producer.id)
+    .eq('actif', true)
+    .eq('stock_illimite', false)
+    .lte('stock_disponible', 5)
+    .gt('stock_disponible', 0)
+    .limit(3);
+
+  const stockAlerts = (lowStockProducts ?? []).map((p) => ({
+    id: p.id as string,
+    nom: p.nom as string,
+    stock: p.stock_disponible as number,
+  }));
+
+  const data: DashboardData = {
+    producerId: producer.id,
+    producerName: producer.nom_exploitation,
+    firstName,
+    ordersToday: ordersToday ?? 0,
+    ordersYesterday: ordersYesterday ?? 0,
+    revenueWeek,
+    revenueLastWeek,
+    rating: Number(producerRow?.note_moyenne ?? 0),
+    reviewCount: producerRow?.nb_avis ?? 0,
+    nextPickup,
+    pendingOrders,
+    weekPlanning,
+    badges,
+    stockAlerts,
+  };
+
   return (
     <ProducerLayout>
-      <div className="max-w-6xl mx-auto px-8 py-10">
-        <header className="mb-8">
-          <div className="text-[11px] uppercase tracking-[0.18em] text-terra-700 font-semibold">Tableau de bord</div>
-          <h1 className="mt-1 font-serif text-[40px] text-green-900 leading-tight">Bonjour Pierre 👋</h1>
-          <p className="text-[14px] text-dark/60 mt-1">Voici ce qu&apos;il se passe à la Ferme des Chênes aujourd&apos;hui.</p>
-        </header>
-
-        {ALERTS.length > 0 && (
-          <div className="mb-8 space-y-2">
-            {ALERTS.map((a, i) => (
-              <Link key={i} href={a.href}
-                className={`flex items-center justify-between gap-4 p-4 rounded-xl border transition-colors ${
-                  a.kind === 'urgent'
-                    ? 'bg-terra-100/60 border-terra-300/60 hover:bg-terra-100'
-                    : 'bg-amber-50 border-amber-200 hover:bg-amber-100/60'
-                }`}>
-                <div className="flex items-center gap-3">
-                  <span className={`w-2 h-2 rounded-full ${a.kind === 'urgent' ? 'bg-terra-700 animate-pulse' : 'bg-amber-500'}`} />
-                  <span className="text-[14px] text-dark font-medium">{a.text}</span>
-                </div>
-                <span className="text-[13px] text-dark/60">Voir →</span>
-              </Link>
-            ))}
-          </div>
-        )}
-
-        <section className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
-          {METRICS.map((m) => (
-            <div key={m.label} className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-5">
-              <div className="text-[11px] uppercase tracking-[0.12em] text-dark/55 font-semibold">{m.label}</div>
-              <div className={`mt-2 font-serif text-[36px] leading-none tabular-nums ${m.tone === 'terra' ? 'text-terra-700' : 'text-green-900'}`}>{m.value}</div>
-              <div className="mt-1.5 text-[12px] text-dark/55 mono">{m.sub}</div>
-            </div>
-          ))}
-        </section>
-
-        <section className="mb-10">
-          <div className="flex items-end justify-between mb-4">
-            <div>
-              <h2 className="font-serif text-[28px] text-green-900 leading-tight">À confirmer</h2>
-              <p className="text-[13px] text-dark/60 mt-0.5">Confirmez dans les 24 h pour ne pas pénaliser votre score de réactivité.</p>
-            </div>
-            <Link href="/commandes" className="text-[13px] text-green-700 font-medium hover:text-green-900">Toutes les commandes →</Link>
-          </div>
-          <div className="space-y-3">
-            {PENDING.map((p) => (
-              <article key={p.id} className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-5">
-                <div className="flex items-center justify-between gap-4 flex-wrap">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 text-[12px] mono text-dark/50">
-                      <span>{p.id}</span><span>·</span><span>{p.slot}</span>
-                    </div>
-                    <div className="mt-1 font-serif text-[20px] text-green-900">{p.client}</div>
-                    <div className="text-[13px] text-dark/70 mt-0.5">{p.items}</div>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="text-right">
-                      <div className="font-serif text-[20px] text-green-900 tabular-nums">{p.total.toFixed(2).replace('.', ',')} €</div>
-                      <div className={`text-[11px] mono mt-0.5 ${p.hoursLeft < 6 ? 'text-terra-700 font-semibold' : 'text-dark/50'}`}>
-                        ⏱ {p.hoursLeft}h restantes
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button variant="ghost" size="sm">Annuler</Button>
-                      <Button size="sm">Confirmer</Button>
-                    </div>
-                  </div>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="mb-10">
-          <h2 className="font-serif text-[28px] text-green-900 leading-tight mb-4">Planning de la semaine</h2>
-          <div className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-5">
-            <div className="grid grid-cols-7 gap-2">
-              {WEEK_DAYS.map((d) => {
-                const slots = WEEK_SLOTS[d] || [];
-                const isToday = d === 'Ven 25';
-                return (
-                  <div key={d} className={`rounded-xl p-3 min-h-[120px] border ${isToday ? 'bg-green-100/60 border-green-500' : 'bg-bg border-dark/[0.06]'}`}>
-                    <div className={`text-[12px] font-semibold uppercase tracking-wider mb-2 ${isToday ? 'text-green-900' : 'text-dark/60'}`}>{d}</div>
-                    <div className="space-y-1.5">
-                      {slots.length === 0 ? (
-                        <div className="text-[11px] text-dark/30 italic">—</div>
-                      ) : slots.map((s, i) => (
-                        <div key={i} className="rounded-md bg-terra-700/10 border border-terra-700/20 p-1.5">
-                          <div className="text-[11px] mono text-terra-700 font-semibold">{s.time}</div>
-                          <div className="text-[11px] text-dark/70 mt-0.5">{s.orders} cmd.</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </section>
-
-        <section>
-          <h2 className="font-serif text-[28px] text-green-900 leading-tight mb-1">Badges de fiabilité</h2>
-          <p className="text-[13px] text-dark/60 mb-5">Ces badges sont affichés publiquement sur votre page.</p>
-          <div className="grid md:grid-cols-3 gap-4">
-            {BADGES.map((b) => (
-              <div key={b.kind} className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-5">
-                <ProducerBadge kind={b.kind} score={b.score} />
-                <div className={`mt-4 font-serif text-[44px] leading-none tabular-nums ${
-                  b.score >= 90 ? 'text-green-700' : 'text-terra-700'
-                }`}>{b.score}<span className="text-[20px] text-dark/40"> / 100</span></div>
-                <p className="mt-3 text-[13px] text-dark/70 leading-relaxed">{b.tip}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-      </div>
+      <DashboardClient data={data} />
     </ProducerLayout>
   );
 }

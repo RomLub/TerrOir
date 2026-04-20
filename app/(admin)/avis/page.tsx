@@ -1,10 +1,9 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { StarRating } from '@/components/ui';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { AdminLayout } from '../_components/AdminLayout';
-
-type ReviewStatus = 'pending' | 'published' | 'rejected';
 
 type Review = {
   id: string;
@@ -13,26 +12,89 @@ type Review = {
   comment: string;
   producer: string;
   producerSlug: string;
-  product?: string;
   date: string;
-  status: ReviewStatus;
 };
 
-const INITIAL: Review[] = [
-  { id: 'r1', author: 'Camille R.', rating: 5, comment: "Viande exceptionnelle, maturation parfaite. On goûte immédiatement la différence avec la grande distribution. Je recommande à 1000%.", producer: 'Ferme des Chênes', producerSlug: 'ferme-des-chenes', product: 'Entrecôte maturée 21 jours', date: '19 avr. 2026', status: 'pending' },
-  { id: 'r2', author: 'Thomas V.', rating: 4, comment: "Très bon produit, livraison au créneau impeccable. Petit bémol sur l'emballage qui pourrait être un peu plus qualitatif pour un cadeau.", producer: 'Domaine Saint-Martin', producerSlug: 'domaine-saint-martin', product: 'Coffret Pinot Noir', date: '18 avr. 2026', status: 'pending' },
-  { id: 'r3', author: 'Marie D.', rating: 5, comment: "Lucie est adorable et ses légumes ont un vrai goût. Le panier de la semaine est devenu un rituel familial.", producer: 'Le Potager de Lucie', producerSlug: 'potager-de-lucie', product: 'Panier de saison', date: '17 avr. 2026', status: 'pending' },
-  { id: 'r4', author: 'Antoine M.', rating: 2, comment: "Déçu, la commande n'était pas prête au créneau annoncé et j'ai dû repasser. Dommage car les produits sont bons.", producer: 'Bergerie du Causse', producerSlug: 'bergerie-du-causse', date: '16 avr. 2026', status: 'pending' },
-  { id: 'r5', author: 'Hélène T.', rating: 5, comment: "Miel de lavande sublime, texture parfaite, goût intense. Devenu mon cadeau préféré.", producer: "La Ruche d'Or", producerSlug: 'ruche-d-or', product: 'Miel de lavande 500g', date: '14 avr. 2026', status: 'pending' },
-  { id: 'r6', author: 'Julien K.', rating: 3, comment: "Correct mais sans plus, le rapport qualité-prix me semble un peu juste sur ce colis.", producer: 'Ferme des Chênes', producerSlug: 'ferme-des-chenes', product: 'Colis découverte 5 kg', date: '12 avr. 2026', status: 'pending' },
-];
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
+}
 
 export default function AdminAvisPage() {
-  const [reviews, setReviews] = useState(INITIAL);
-  const pending = useMemo(() => reviews.filter((r) => r.status === 'pending'), [reviews]);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
 
-  const setStatus = (id: string, status: ReviewStatus) =>
-    setReviews((arr) => arr.map((r) => r.id === id ? { ...r, status } : r));
+  useEffect(() => {
+    let active = true;
+    const supabase = createSupabaseBrowserClient();
+
+    (async () => {
+      const { data, error: fetchError } = await supabase
+        .from('reviews')
+        .select(`
+          id, note, commentaire, created_at,
+          consumer:consumer_id ( prenom, nom ),
+          producer:producer_id ( nom_exploitation, slug )
+        `)
+        .eq('statut', 'pending')
+        .order('created_at', { ascending: false });
+
+      if (!active) return;
+      if (fetchError) { setError(fetchError.message); setLoading(false); return; }
+
+      const rows: Review[] = ((data ?? []) as unknown as Array<{
+        id: string;
+        note: number;
+        commentaire: string | null;
+        created_at: string;
+        consumer: { prenom: string | null; nom: string | null } | Array<{ prenom: string | null; nom: string | null }> | null;
+        producer: { nom_exploitation: string; slug: string } | Array<{ nom_exploitation: string; slug: string }> | null;
+      }>).map((r) => {
+        const consumer = Array.isArray(r.consumer) ? r.consumer[0] : r.consumer;
+        const producer = Array.isArray(r.producer) ? r.producer[0] : r.producer;
+        const author = [consumer?.prenom, consumer?.nom?.[0]].filter(Boolean).join(' ').trim() || 'Anonyme';
+        return {
+          id: r.id,
+          author: author + (consumer?.nom?.[0] ? '.' : ''),
+          rating: r.note,
+          comment: r.commentaire ?? '',
+          producer: producer?.nom_exploitation ?? '—',
+          producerSlug: producer?.slug ?? '',
+          date: formatDate(r.created_at),
+        };
+      });
+
+      setReviews(rows);
+      setLoading(false);
+    })();
+
+    return () => { active = false; };
+  }, []);
+
+  const moderate = async (id: string, action: 'publish' | 'reject') => {
+    setBusy(id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/reviews/${id}/moderate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        setError(body.error ?? 'Modération impossible');
+        return;
+      }
+      setReviews((arr) => arr.filter((r) => r.id !== id));
+    } catch {
+      setError('Erreur de connexion');
+    } finally {
+      setBusy(null);
+    }
+  };
 
   return (
     <AdminLayout>
@@ -42,14 +104,17 @@ export default function AdminAvisPage() {
             <div className="text-[11px] uppercase tracking-[0.18em] text-green-400 font-semibold">Modération</div>
             <h1 className="mt-1 font-serif text-[40px] text-white leading-tight">Avis à modérer</h1>
             <p className="text-[14px] text-white/55 mt-1">Validez chaque avis avant publication sur la page du producteur.</p>
+            {error && <p className="mt-2 text-[13px] text-red-300">{error}</p>}
           </div>
           <div className="bg-black/40 border border-white/[0.08] rounded-xl px-5 py-4 text-center">
             <div className="text-[11px] uppercase tracking-[0.14em] text-green-400 font-semibold">En attente</div>
-            <div className="mt-1 font-serif text-[40px] text-white leading-none tabular-nums">{pending.length}</div>
+            <div className="mt-1 font-serif text-[40px] text-white leading-none tabular-nums">{reviews.length}</div>
           </div>
         </header>
 
-        {pending.length === 0 ? (
+        {loading ? (
+          <div className="bg-black/30 border border-white/[0.06] rounded-2xl p-12 text-center text-white/55">Chargement…</div>
+        ) : reviews.length === 0 ? (
           <div className="bg-black/30 border border-white/[0.06] rounded-2xl p-12 text-center">
             <div className="w-16 h-16 mx-auto rounded-full bg-green-500/15 border-2 border-green-500 flex items-center justify-center">
               <svg width="36" height="36" viewBox="0 0 48 48" className="text-green-400">
@@ -61,7 +126,7 @@ export default function AdminAvisPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            {pending.map((r) => (
+            {reviews.map((r) => (
               <article key={r.id} className="bg-black/30 border border-white/[0.06] rounded-2xl p-6 hover:border-white/[0.12] transition-colors">
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                   <div className="flex-1 min-w-0">
@@ -70,28 +135,24 @@ export default function AdminAvisPage() {
                       <span className="font-serif text-[18px] text-white">{r.author}</span>
                       <span className="text-[12px] text-white/45 font-mono">{r.date}</span>
                     </div>
-                    <p className="mt-3 text-[15px] text-white/85 leading-relaxed italic">« {r.comment} »</p>
+                    <p className="mt-3 text-[15px] text-white/85 leading-relaxed italic">
+                      {r.comment ? `« ${r.comment} »` : 'Pas de commentaire.'}
+                    </p>
                     <div className="mt-3 flex items-center gap-2 flex-wrap text-[12px]">
                       <span className="text-white/45">Pour</span>
                       <span className="text-green-300 font-medium">{r.producer}</span>
-                      {r.product && (
-                        <>
-                          <span className="text-white/30">·</span>
-                          <span className="text-white/65">{r.product}</span>
-                        </>
-                      )}
                     </div>
                   </div>
                 </div>
 
                 <div className="mt-5 pt-5 border-t border-white/[0.06] flex gap-2 justify-end flex-wrap">
-                  <button onClick={() => setStatus(r.id, 'rejected')}
-                    className="px-4 py-2 rounded-md text-[13px] font-medium text-red-300 bg-white/[0.03] hover:bg-red-500/20 transition-colors">
+                  <button onClick={() => moderate(r.id, 'reject')} disabled={busy === r.id}
+                    className="px-4 py-2 rounded-md text-[13px] font-medium text-red-300 bg-white/[0.03] hover:bg-red-500/20 disabled:opacity-60 transition-colors">
                     Rejeter
                   </button>
-                  <button onClick={() => setStatus(r.id, 'published')}
-                    className="px-4 py-2 rounded-md text-[13px] font-semibold text-white bg-green-700 hover:bg-green-600 transition-colors">
-                    Publier
+                  <button onClick={() => moderate(r.id, 'publish')} disabled={busy === r.id}
+                    className="px-4 py-2 rounded-md text-[13px] font-semibold text-white bg-green-700 hover:bg-green-600 disabled:opacity-60 transition-colors">
+                    {busy === r.id ? 'Publication…' : 'Publier'}
                   </button>
                 </div>
               </article>

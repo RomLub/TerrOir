@@ -1,32 +1,22 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { AdminLayout } from '../_components/AdminLayout';
 
-type Status = 'pending' | 'confirmed' | 'ready' | 'completed' | 'cancelled';
+type Status = 'pending' | 'confirmed' | 'ready' | 'completed' | 'cancelled' | 'refunded';
 
 type Order = {
   id: string;
+  code_commande: string | null;
   client: string;
   producer: string;
-  date: string;
-  slot: string;
+  created_at: string;
+  date_retrait: string | null;
+  slot_label: string;
   total: number;
   status: Status;
 };
-
-const ORDERS: Order[] = [
-  { id: 'TRO-8K2M1P', client: 'Camille Rousseau', producer: 'Ferme des Chênes', date: '2026-04-20', slot: '25 avr. 10h–12h', total: 89.00, status: 'pending' },
-  { id: 'TRO-3X7V5L', client: 'Thomas Vignier', producer: 'Domaine Saint-Martin', date: '2026-04-19', slot: '29 avr. 17h–19h', total: 106.15, status: 'pending' },
-  { id: 'TRO-7A9K2X', client: 'Marie Dubois', producer: 'Ferme des Chênes', date: '2026-04-20', slot: '25 avr. 10h–12h', total: 101.55, status: 'confirmed' },
-  { id: 'TRO-5B1N7Q', client: 'Antoine Martin', producer: 'Bergerie du Causse', date: '2026-04-18', slot: '22 avr. 17h–19h', total: 37.00, status: 'ready' },
-  { id: 'TRO-4H2P8M', client: 'Sophie Laurent', producer: 'Le Potager de Lucie', date: '2026-04-20', slot: '24 avr. 15h–17h', total: 28.50, status: 'confirmed' },
-  { id: 'TRO-2K9L5F', client: 'Hélène Tissot', producer: "La Ruche d'Or", date: '2026-04-17', slot: '20 avr. 10h–12h', total: 42.00, status: 'completed' },
-  { id: 'TRO-9X3V1B', client: 'Julien Karim', producer: 'Ferme des Chênes', date: '2026-04-16', slot: '19 avr. 10h–12h', total: 89.00, status: 'completed' },
-  { id: 'TRO-1N8T6Z', client: 'Anne Petit', producer: 'Domaine Saint-Martin', date: '2026-04-15', slot: '18 avr. 17h–19h', total: 64.20, status: 'completed' },
-  { id: 'TRO-6Y4W2C', client: 'Paul Bernard', producer: 'Bergerie du Causse', date: '2026-04-14', slot: '17 avr. 10h–12h', total: 55.00, status: 'cancelled' },
-  { id: 'TRO-8R5G1D', client: 'Lucie Moreau', producer: 'Le Potager de Lucie', date: '2026-04-20', slot: '23 avr. 15h–17h', total: 34.80, status: 'confirmed' },
-];
 
 type Filter = 'all' | Status;
 const FILTERS: { value: Filter; label: string }[] = [
@@ -44,16 +34,37 @@ const STATUS_META: Record<Status, { label: string; dot: string; bg: string; text
   ready: { label: 'Prête', dot: 'bg-green-400', bg: 'bg-green-500/10', text: 'text-green-300' },
   completed: { label: 'Retirée', dot: 'bg-white/40', bg: 'bg-white/[0.06]', text: 'text-white/70' },
   cancelled: { label: 'Annulée', dot: 'bg-red-400', bg: 'bg-red-500/10', text: 'text-red-300' },
+  refunded: { label: 'Remboursée', dot: 'bg-red-400', bg: 'bg-red-500/10', text: 'text-red-300' },
 };
 
-const TODAY = '2026-04-20';
-const WEEK_START = new Date('2026-04-13');
+function startOfWeek(d: Date): Date {
+  const c = new Date(d);
+  const day = (c.getDay() + 6) % 7;
+  c.setHours(0, 0, 0, 0);
+  c.setDate(c.getDate() - day);
+  return c;
+}
+function startOfDay(d: Date): Date { const c = new Date(d); c.setHours(0, 0, 0, 0); return c; }
 
-function formatEuro(n: number) {
-  return n.toFixed(2).replace('.', ',') + ' €';
+function formatEuro(n: number): string { return `${n.toFixed(2).replace('.', ',')} €`; }
+
+function formatDateShort(iso: string | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso + 'T00:00:00');
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
 }
 
-function csvEscape(v: string | number) {
+function formatTimeRange(start: string | null, end: string | null): string {
+  if (!start) return '';
+  const fmt = (t: string) => {
+    const [h, m] = t.split(':');
+    return m && m !== '00' ? `${parseInt(h, 10)}h${m}` : `${parseInt(h, 10)}h`;
+  };
+  return end ? `${fmt(start)}–${fmt(end)}` : fmt(start);
+}
+
+function csvEscape(v: string | number): string {
   const s = String(v);
   return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
@@ -61,38 +72,107 @@ function csvEscape(v: string | number) {
 export default function AdminCommandesPage() {
   const [filter, setFilter] = useState<Filter>('all');
   const [search, setSearch] = useState('');
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const supabase = createSupabaseBrowserClient();
+
+    (async () => {
+      const { data, error: fetchError } = await supabase
+        .from('orders')
+        .select(`
+          id, code_commande, created_at, statut, montant_total, date_retrait, heure_retrait,
+          consumer:consumer_id ( prenom, nom ),
+          producer:producer_id ( nom_exploitation ),
+          slots:slot_id ( heure_debut, heure_fin )
+        `)
+        .order('created_at', { ascending: false })
+        .limit(200);
+
+      if (!active) return;
+      if (fetchError) { setError(fetchError.message); setLoading(false); return; }
+
+      const rows: Order[] = ((data ?? []) as unknown as Array<{
+        id: string;
+        code_commande: string | null;
+        created_at: string;
+        statut: Status;
+        montant_total: number | null;
+        date_retrait: string | null;
+        heure_retrait: string | null;
+        consumer: { prenom: string | null; nom: string | null } | Array<{ prenom: string | null; nom: string | null }> | null;
+        producer: { nom_exploitation: string } | Array<{ nom_exploitation: string }> | null;
+        slots: { heure_debut: string | null; heure_fin: string | null } | Array<{ heure_debut: string | null; heure_fin: string | null }> | null;
+      }>).map((o) => {
+        const consumer = Array.isArray(o.consumer) ? o.consumer[0] : o.consumer;
+        const producer = Array.isArray(o.producer) ? o.producer[0] : o.producer;
+        const slot = Array.isArray(o.slots) ? o.slots[0] : o.slots;
+        const slotTime = formatTimeRange(slot?.heure_debut ?? o.heure_retrait, slot?.heure_fin ?? null);
+        return {
+          id: o.id,
+          code_commande: o.code_commande,
+          client: [consumer?.prenom, consumer?.nom].filter(Boolean).join(' ').trim() || 'Client',
+          producer: producer?.nom_exploitation ?? '—',
+          created_at: o.created_at,
+          date_retrait: o.date_retrait,
+          slot_label: `${formatDateShort(o.date_retrait)}${slotTime ? ' ' + slotTime : ''}`,
+          total: Number(o.montant_total ?? 0),
+          status: o.statut,
+        };
+      });
+
+      setOrders(rows);
+      setLoading(false);
+    })();
+
+    return () => { active = false; };
+  }, []);
 
   const metrics = useMemo(() => {
-    const today = ORDERS.filter((o) => o.date === TODAY).length;
-    const weekOrders = ORDERS.filter((o) => {
-      const d = new Date(o.date);
-      return d >= WEEK_START && o.status !== 'cancelled';
-    });
+    const now = new Date();
+    const todayStart = startOfDay(now).getTime();
+    const weekStart = startOfWeek(now).getTime();
+
+    const today = orders.filter((o) => new Date(o.created_at).getTime() >= todayStart).length;
+    const weekOrders = orders.filter((o) => new Date(o.created_at).getTime() >= weekStart && o.status !== 'cancelled' && o.status !== 'refunded');
     const weekRevenue = weekOrders.reduce((s, o) => s + o.total, 0);
-    const finished = ORDERS.filter((o) => o.status === 'completed').length;
-    const closed = ORDERS.filter((o) => o.status === 'completed' || o.status === 'cancelled').length;
+    const finished = orders.filter((o) => o.status === 'completed').length;
+    const closed = orders.filter((o) => o.status === 'completed' || o.status === 'cancelled' || o.status === 'refunded').length;
     const completion = closed > 0 ? (finished / closed) * 100 : 0;
     return { today, weekRevenue, completion };
-  }, []);
+  }, [orders]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return ORDERS.filter((o) => {
+    return orders.filter((o) => {
       if (filter !== 'all' && o.status !== filter) return false;
       if (!q) return true;
-      return o.id.toLowerCase().includes(q) || o.client.toLowerCase().includes(q) || o.producer.toLowerCase().includes(q);
+      return (o.code_commande ?? '').toLowerCase().includes(q)
+        || o.client.toLowerCase().includes(q)
+        || o.producer.toLowerCase().includes(q);
     });
-  }, [filter, search]);
+  }, [orders, filter, search]);
 
   const exportCsv = () => {
-    const header = ['id', 'client', 'producteur', 'date', 'creneau', 'total_eur', 'statut'];
-    const rows = filtered.map((o) => [o.id, o.client, o.producer, o.date, o.slot, o.total.toFixed(2), o.status]);
+    const header = ['id', 'code_commande', 'client', 'producteur', 'date_creation', 'date_retrait', 'creneau', 'total_eur', 'statut'];
+    const rows = filtered.map((o) => [
+      o.id, o.code_commande ?? '', o.client, o.producer,
+      o.created_at.slice(0, 19).replace('T', ' '),
+      o.date_retrait ?? '',
+      o.slot_label,
+      o.total.toFixed(2),
+      o.status,
+    ]);
     const csv = [header, ...rows].map((r) => r.map(csvEscape).join(',')).join('\n');
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
+    const today = new Date().toISOString().slice(0, 10);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `terroir-commandes-${TODAY}.csv`;
+    a.download = `terroir-commandes-${today}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -104,16 +184,19 @@ export default function AdminCommandesPage() {
           <div>
             <div className="text-[11px] uppercase tracking-[0.18em] text-green-400 font-semibold">Commandes</div>
             <h1 className="mt-1 font-serif text-[40px] text-white leading-tight">Toutes les commandes</h1>
-            <p className="text-[14px] text-white/55 mt-1">Supervisez le flux quotidien et exportez pour la comptabilité.</p>
+            <p className="text-[14px] text-white/55 mt-1">
+              {loading ? 'Chargement…' : `${orders.length} commandes récentes`}
+            </p>
+            {error && <p className="mt-2 text-[13px] text-red-300">{error}</p>}
           </div>
-          <button onClick={exportCsv}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-md bg-white/[0.06] border border-white/10 text-[14px] text-white hover:bg-white/10 transition-colors">
+          <button onClick={exportCsv} disabled={filtered.length === 0}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-md bg-white/[0.06] border border-white/10 text-[14px] text-white hover:bg-white/10 disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
             <span aria-hidden>⬇</span> Export CSV
           </button>
         </header>
 
         <section className="grid sm:grid-cols-3 gap-4 mb-8">
-          <MetricCard label="Commandes aujourd'hui" value={metrics.today.toString()} hint={TODAY} />
+          <MetricCard label="Commandes aujourd'hui" value={String(metrics.today)} hint="Depuis 00h00" />
           <MetricCard label="CA semaine en cours" value={formatEuro(metrics.weekRevenue)} hint="Depuis lundi, hors annulées" />
           <MetricCard label="Taux de complétion" value={`${metrics.completion.toFixed(0)} %`} hint="Retirées / (retirées + annulées)" />
         </section>
@@ -151,18 +234,18 @@ export default function AdminCommandesPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-5 py-10 text-center text-white/55">Aucune commande ne correspond.</td>
-                  </tr>
+                {loading ? (
+                  <tr><td colSpan={6} className="px-5 py-10 text-center text-white/55">Chargement…</td></tr>
+                ) : filtered.length === 0 ? (
+                  <tr><td colSpan={6} className="px-5 py-10 text-center text-white/55">Aucune commande ne correspond.</td></tr>
                 ) : filtered.map((o) => {
                   const meta = STATUS_META[o.status];
                   return (
                     <tr key={o.id} className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02]">
-                      <td className="px-5 py-4 font-mono text-[12px] text-white/80">{o.id}</td>
+                      <td className="px-5 py-4 font-mono text-[12px] text-white/80">{o.code_commande ?? '—'}</td>
                       <td className="px-5 py-4 text-white">{o.client}</td>
                       <td className="px-5 py-4 text-green-300">{o.producer}</td>
-                      <td className="px-5 py-4 text-white/70">{o.slot}</td>
+                      <td className="px-5 py-4 text-white/70">{o.slot_label}</td>
                       <td className="px-5 py-4">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[12px] font-medium ${meta.bg} ${meta.text}`}>
                           <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />

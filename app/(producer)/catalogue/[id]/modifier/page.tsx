@@ -1,125 +1,207 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { Button, Badge, Input, Select, Textarea, ProductCard } from '@/components/ui';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { uploadProducerPhoto } from '@/lib/producers/upload';
 import { ProducerLayout } from '../../../_components/ProducerLayout';
 
-type ProductForm = {
-  name: string;
-  description: string;
-  category: string;
-  price: string;
-  unit: string;
-  weightStep: string;
-  estimatedWeight: string;
-  stock: string;
-  stockUnlimited: boolean;
-  delai: string;
-  active: boolean;
+type Form = {
+  name: string; description: string; category: string; price: string; unit: string;
+  weightStep: string; estimatedWeight: string; stock: string; stockUnlimited: boolean;
+  delai: string; active: boolean;
 };
 
-const PRODUCTS: Record<string, ProductForm> = {
-  entrecote: {
-    name: 'Entrecôte maturée 21 jours',
-    description: "Pièce noble de Charolais, maturée 21 jours sur os pour développer tout son caractère. Idéale poêlée ou grillée.",
-    category: 'Bœuf', price: '34.50', unit: 'kg', weightStep: '0.25', estimatedWeight: '1.2',
-    stock: '5', stockUnlimited: false, delai: '2', active: true,
-  },
-  roti: {
-    name: 'Rôti de bœuf Charolais',
-    description: "Rôti de tranche grasse, ficelé par nos soins. Cuisson au four recommandée.",
-    category: 'Bœuf', price: '24.90', unit: 'kg', weightStep: '0.5', estimatedWeight: '1.5',
-    stock: '12', stockUnlimited: false, delai: '2', active: true,
-  },
-  bourguignon: {
-    name: 'Bourguignon Charolais',
-    description: "Morceaux parés pour mijoté, paleron et macreuse. Fond et mâche garantis.",
-    category: 'Bœuf', price: '19.90', unit: 'kg', weightStep: '0.5', estimatedWeight: '',
-    stock: '22', stockUnlimited: false, delai: '2', active: true,
-  },
-  gigot: {
-    name: "Gigot d'agneau de pré",
-    description: "Agneau de pré-salé, élevage en plein air. Parfait pour un rôti du dimanche.",
-    category: 'Agneau', price: '28.00', unit: 'kg', weightStep: '0.5', estimatedWeight: '2.2',
-    stock: '3', stockUnlimited: false, delai: '3', active: true,
-  },
-  merguez: {
-    name: 'Merguez maison',
-    description: "Recette traditionnelle, pur agneau, épices fraîches broyées chaque semaine.",
-    category: 'Agneau', price: '18.50', unit: 'kg', weightStep: '0.25', estimatedWeight: '',
-    stock: '0', stockUnlimited: false, delai: '2', active: false,
-  },
-  colis: {
-    name: 'Colis découverte 5 kg',
-    description: "5 kg de viande variée : steaks, rôti, bourguignon, saucisses. Idéal pour découvrir la ferme.",
-    category: 'Colis', price: '89.00', unit: 'colis', weightStep: '1', estimatedWeight: '',
-    stock: '8', stockUnlimited: false, delai: '5', active: true,
-  },
-  steak: {
-    name: 'Steak haché frais',
-    description: "Haché du jour 15 % MG, pure viande Charolais.",
-    category: 'Bœuf', price: '16.90', unit: 'kg', weightStep: '0.25', estimatedWeight: '',
-    stock: '0', stockUnlimited: true, delai: '1', active: true,
-  },
-};
-
-const EMPTY: ProductForm = {
+const EMPTY: Form = {
   name: '', description: '', category: 'Bœuf', price: '', unit: 'kg',
   weightStep: '0.25', estimatedWeight: '', stock: '', stockUnlimited: false, delai: '2', active: true,
 };
 
 export default function ProductEditPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const productId = params?.id ?? '';
-  const initial = PRODUCTS[productId] ?? EMPTY;
 
-  const [form, setForm] = useState<ProductForm>(initial);
-  const [photos, setPhotos] = useState<string[]>([]);
+  const [form, setForm] = useState<Form>(EMPTY);
+  const [existingPhotos, setExistingPhotos] = useState<string[]>([]);
+  const [newFiles, setNewFiles] = useState<File[]>([]);
+  const [newPreviews, setNewPreviews] = useState<string[]>([]);
   const [dragging, setDragging] = useState(false);
+  const [producerId, setProducerId] = useState<string | null>(null);
+  const [producerName, setProducerName] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
 
-  const up = (k: keyof ProductForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
+  useEffect(() => {
+    let active = true;
+    const supabase = createSupabaseBrowserClient();
+
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { if (active) { setError('Non connecté.'); setLoading(false); } return; }
+
+      const { data: prod } = await supabase
+        .from('producers')
+        .select('id, nom_exploitation')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (!prod) { if (active) { setError('Profil producteur introuvable.'); setLoading(false); } return; }
+
+      setProducerId(prod.id);
+      setProducerName(prod.nom_exploitation);
+
+      const { data: product, error: fetchError } = await supabase
+        .from('products')
+        .select('id, producer_id, nom, description, prix, unite, poids_estime_kg, stock_disponible, stock_illimite, delai_preparation_jours, actif, photos')
+        .eq('id', productId)
+        .maybeSingle();
+
+      if (!active) return;
+
+      if (fetchError) { setError(fetchError.message); setLoading(false); return; }
+      if (!product || product.producer_id !== prod.id) { setNotFound(true); setLoading(false); return; }
+
+      setForm({
+        name: product.nom ?? '',
+        description: product.description ?? '',
+        category: 'Bœuf',
+        price: product.prix != null ? String(product.prix) : '',
+        unit: product.unite ?? 'kg',
+        weightStep: '0.25',
+        estimatedWeight: product.poids_estime_kg != null ? String(product.poids_estime_kg) : '',
+        stock: product.stock_disponible != null ? String(product.stock_disponible) : '',
+        stockUnlimited: !!product.stock_illimite,
+        delai: product.delai_preparation_jours != null ? String(product.delai_preparation_jours) : '0',
+        active: !!product.actif,
+      });
+      setExistingPhotos(Array.isArray(product.photos) ? product.photos : []);
+      setLoading(false);
+    })();
+
+    return () => { active = false; };
+  }, [productId]);
+
+  useEffect(() => {
+    return () => { newPreviews.forEach((u) => URL.revokeObjectURL(u)); };
+  }, [newPreviews]);
+
+  const up = (k: keyof Form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const handleFiles = (files: FileList | null) => {
     if (!files) return;
-    const urls = Array.from(files).slice(0, 5 - photos.length).map((f) => URL.createObjectURL(f));
-    setPhotos((p) => [...p, ...urls].slice(0, 5));
+    const totalAllowed = 5 - existingPhotos.length - newFiles.length;
+    if (totalAllowed <= 0) return;
+    const accepted = Array.from(files).slice(0, totalAllowed);
+    const urls = accepted.map((f) => URL.createObjectURL(f));
+    setNewFiles((p) => [...p, ...accepted]);
+    setNewPreviews((p) => [...p, ...urls]);
   };
 
+  const removeExisting = (i: number) => setExistingPhotos((p) => p.filter((_, j) => j !== i));
+  const removeNew = (i: number) => {
+    setNewFiles((p) => p.filter((_, j) => j !== i));
+    setNewPreviews((p) => {
+      const removed = p[i];
+      if (removed) URL.revokeObjectURL(removed);
+      return p.filter((_, j) => j !== i);
+    });
+  };
+
+  const allPhotoUrls = [...existingPhotos, ...newPreviews];
+
   const preview = {
-    id: productId || 'preview',
+    id: productId,
     name: form.name || 'Nom du produit',
     category: form.category,
     price: parseFloat(form.price) || 0,
     unit: form.unit,
     stockLeft: form.stockUnlimited ? 999 : parseInt(form.stock) || 0,
-    producer: 'Ferme des Chênes',
+    producer: producerName || 'Votre ferme',
+    image: allPhotoUrls[0] ?? null,
   };
 
-  const notFound = !PRODUCTS[productId];
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!producerId || !productId) return;
+    if (!form.name || !form.price) { setError('Nom et prix requis.'); return; }
+    setSaving(true);
+    setError(null);
+
+    const supabase = createSupabaseBrowserClient();
+
+    try {
+      const uploads = await Promise.all(
+        newFiles.map((f) => uploadProducerPhoto(supabase, 'product-photos', producerId, f)),
+      );
+      const finalPhotos = [...existingPhotos, ...uploads.map((u) => u.url)];
+
+      const { error: updateError } = await supabase
+        .from('products')
+        .update({
+          nom: form.name.trim(),
+          description: form.description.trim() || null,
+          prix: Number(form.price),
+          unite: form.unit,
+          poids_estime_kg: form.estimatedWeight ? Number(form.estimatedWeight) : null,
+          stock_disponible: form.stockUnlimited ? 0 : (parseInt(form.stock) || 0),
+          stock_illimite: form.stockUnlimited,
+          delai_preparation_jours: parseInt(form.delai) || 0,
+          actif: form.active,
+          photos: finalPhotos.length ? finalPhotos : null,
+        })
+        .eq('id', productId);
+
+      if (updateError) throw updateError;
+      router.push('/catalogue');
+    } catch (err) {
+      setError((err as Error).message ?? 'Enregistrement impossible');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <ProducerLayout>
+        <div className="max-w-7xl mx-auto px-8 py-10 text-dark/60">Chargement…</div>
+      </ProducerLayout>
+    );
+  }
+
+  if (notFound) {
+    return (
+      <ProducerLayout>
+        <div className="max-w-3xl mx-auto px-8 py-20 text-center">
+          <h1 className="font-serif text-[36px] text-green-900">Produit introuvable</h1>
+          <p className="mt-2 text-[14px] text-dark/60">Ce produit n&apos;existe pas ou n&apos;est pas le vôtre.</p>
+          <div className="mt-6"><Link href="/catalogue"><Button>Retour au catalogue</Button></Link></div>
+        </div>
+      </ProducerLayout>
+    );
+  }
 
   return (
     <ProducerLayout>
       <div className="max-w-7xl mx-auto px-8 py-10">
         <header className="mb-8">
           <Link href="/catalogue" className="text-[13px] text-dark/60 hover:text-green-900">← Retour au catalogue</Link>
-          <div className="mt-2 flex items-baseline gap-3 flex-wrap">
-            <h1 className="font-serif text-[40px] text-green-900 leading-tight">Modifier le produit</h1>
-            {notFound && <Badge variant="gray">Produit introuvable</Badge>}
-          </div>
+          <h1 className="mt-2 font-serif text-[40px] text-green-900 leading-tight">Modifier le produit</h1>
           <p className="text-[13px] text-dark/55 mt-1 mono">ID : {productId}</p>
+          {error && <p className="mt-2 text-[13px] text-terra-700">{error}</p>}
         </header>
 
         <div className="grid lg:grid-cols-[1fr_380px] gap-10 items-start">
-          <form className="space-y-8">
+          <form onSubmit={save} className="space-y-8">
             <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
               <h2 className="font-serif text-[22px] text-green-900 mb-4">Informations produit</h2>
               <div className="space-y-4">
-                <Input label="Nom du produit *" value={form.name} onChange={up('name')} placeholder="Ex : Entrecôte maturée 21 jours" />
-                <Textarea label="Description" rows={4} value={form.description} onChange={up('description')}
-                  placeholder="Détaillez l'origine, la découpe, les conseils de cuisson…" />
+                <Input label="Nom du produit *" value={form.name} onChange={up('name')} required />
+                <Textarea label="Description" rows={4} value={form.description} onChange={up('description')} />
                 <Select label="Catégorie" value={form.category} onChange={up('category')}>
                   {['Bœuf', 'Veau', 'Porc', 'Agneau', 'Volaille', 'Colis'].map((c) => <option key={c}>{c}</option>)}
                 </Select>
@@ -129,7 +211,7 @@ export default function ProductEditPage() {
             <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
               <h2 className="font-serif text-[22px] text-green-900 mb-4">Prix et conditionnement</h2>
               <div className="grid sm:grid-cols-2 gap-4">
-                <Input label="Prix *" type="number" step="0.01" value={form.price} onChange={up('price')} placeholder="0,00" />
+                <Input label="Prix *" type="number" step="0.01" min="0" value={form.price} onChange={up('price')} required />
                 <Select label="Unité *" value={form.unit} onChange={up('unit')}>
                   <option value="kg">Au kilo (kg)</option>
                   <option value="piece">À la pièce</option>
@@ -143,7 +225,7 @@ export default function ProductEditPage() {
                     <option value="0.5">0,5 kg</option>
                     <option value="1">1 kg</option>
                   </Select>
-                  <Input label="Poids estimé par pièce (optionnel)" value={form.estimatedWeight} onChange={up('estimatedWeight')} placeholder="Ex : 1,2 kg" />
+                  <Input label="Poids estimé par pièce (kg)" type="number" step="0.1" value={form.estimatedWeight} onChange={up('estimatedWeight')} />
                 </div>
               )}
             </section>
@@ -165,14 +247,24 @@ export default function ProductEditPage() {
                   <span className="inline-flex items-center h-10 px-4 rounded-lg bg-green-700 text-white text-[14px] font-semibold cursor-pointer hover:bg-green-900">Choisir des fichiers</span>
                 </label>
               </div>
-              {photos.length > 0 && (
+
+              {allPhotoUrls.length > 0 && (
                 <div className="mt-4 grid grid-cols-5 gap-2">
-                  {photos.map((url, i) => (
-                    <div key={i} className="relative aspect-square rounded-lg overflow-hidden group">
+                  {existingPhotos.map((url, i) => (
+                    <div key={`e-${i}`} className="relative aspect-square rounded-lg overflow-hidden group">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={url} alt="" className="w-full h-full object-cover" />
                       {i === 0 && <div className="absolute bottom-1 left-1"><Badge variant="terra">Principale</Badge></div>}
-                      <button type="button" onClick={() => setPhotos((p) => p.filter((_, j) => j !== i))}
+                      <button type="button" onClick={() => removeExisting(i)}
+                        className="absolute top-1 right-1 w-6 h-6 rounded-full bg-dark/70 text-white text-xs hover:bg-terra-700">×</button>
+                    </div>
+                  ))}
+                  {newPreviews.map((url, i) => (
+                    <div key={`n-${i}`} className="relative aspect-square rounded-lg overflow-hidden group">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={url} alt="" className="w-full h-full object-cover" />
+                      {existingPhotos.length === 0 && i === 0 && <div className="absolute bottom-1 left-1"><Badge variant="terra">Principale</Badge></div>}
+                      <button type="button" onClick={() => removeNew(i)}
                         className="absolute top-1 right-1 w-6 h-6 rounded-full bg-dark/70 text-white text-xs hover:bg-terra-700">×</button>
                     </div>
                   ))}
@@ -191,11 +283,10 @@ export default function ProductEditPage() {
                 <span className="text-[14px] font-medium">Stock illimité</span>
               </label>
               {!form.stockUnlimited && (
-                <Input label={`Quantité en stock (${form.unit})`} type="number" value={form.stock} onChange={up('stock')} placeholder="0" />
+                <Input label={`Quantité en stock (${form.unit})`} type="number" min="0" value={form.stock} onChange={up('stock')} />
               )}
               <div className="mt-4">
-                <Input label="Délai de préparation (en jours)" type="number" value={form.delai} onChange={up('delai')} />
-                <p className="text-[11px] text-dark/50 mt-1">Les clients verront : « Disponible sous {form.delai || 0} jour{parseInt(form.delai) > 1 ? 's' : ''} ».</p>
+                <Input label="Délai de préparation (en jours)" type="number" min="0" value={form.delai} onChange={up('delai')} />
               </div>
             </section>
 
@@ -214,8 +305,10 @@ export default function ProductEditPage() {
             </section>
 
             <div className="flex gap-3 justify-end pt-2">
-              <Link href="/catalogue"><Button variant="ghost" size="lg">Annuler</Button></Link>
-              <Button size="lg">Enregistrer les modifications</Button>
+              <Link href="/catalogue"><Button variant="ghost" size="lg" type="button">Annuler</Button></Link>
+              <Button size="lg" type="submit" disabled={saving}>
+                {saving ? 'Enregistrement…' : 'Enregistrer les modifications'}
+              </Button>
             </div>
           </form>
 

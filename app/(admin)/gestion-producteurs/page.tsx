@@ -1,12 +1,12 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { AdminLayout } from '../_components/AdminLayout';
 
 type Status = 'pending' | 'active' | 'suspended';
-type Plan = 'Découverte' | 'Standard' | 'Pro';
 
 type Producer = {
   id: string;
@@ -14,20 +14,10 @@ type Producer = {
   name: string;
   city: string;
   status: Status;
-  plan: Plan;
+  plan: string;
   joinedAt: string;
   email: string;
 };
-
-const PRODUCERS: Producer[] = [
-  { id: 'p1', slug: 'ferme-des-chenes', name: 'Ferme des Chênes', city: 'Charolles (71)', status: 'active', plan: 'Standard', joinedAt: '12 janv. 2026', email: 'contact@ferme-chenes.fr' },
-  { id: 'p2', slug: 'domaine-saint-martin', name: 'Domaine Saint-Martin', city: 'Beaune (21)', status: 'active', plan: 'Pro', joinedAt: '03 févr. 2026', email: 'hello@saint-martin.fr' },
-  { id: 'p3', slug: 'bergerie-du-causse', name: 'Bergerie du Causse', city: 'Millau (12)', status: 'pending', plan: 'Découverte', joinedAt: '18 avr. 2026', email: 'causse@exemple.fr' },
-  { id: 'p4', slug: 'mareyeurs-de-groix', name: 'Mareyeurs de Groix', city: 'Groix (56)', status: 'pending', plan: 'Standard', joinedAt: '15 avr. 2026', email: 'groix@exemple.fr' },
-  { id: 'p5', slug: 'potager-de-lucie', name: 'Le Potager de Lucie', city: 'Saumur (49)', status: 'active', plan: 'Découverte', joinedAt: '22 mars 2026', email: 'lucie@potager.fr' },
-  { id: 'p6', slug: 'caprins-d-ardeche', name: "Caprins d'Ardèche", city: 'Aubenas (07)', status: 'suspended', plan: 'Standard', joinedAt: '08 déc. 2025', email: 'caprins@exemple.fr' },
-  { id: 'p7', slug: 'ruche-d-or', name: "La Ruche d'Or", city: 'Digne-les-Bains (04)', status: 'active', plan: 'Pro', joinedAt: '14 févr. 2026', email: 'ruche@exemple.fr' },
-];
 
 type Filter = 'all' | Status;
 const FILTERS: { value: Filter; label: string }[] = [
@@ -43,10 +33,71 @@ const STATUS_META: Record<Status, { label: string; dot: string; bg: string; text
   suspended: { label: 'Suspendu', dot: 'bg-red-400', bg: 'bg-red-500/10', text: 'text-red-300' },
 };
 
+const PLAN_LABEL: Record<string, string> = {
+  starter: 'Découverte',
+  pro: 'Pro',
+  premium: 'Premium',
+};
+
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
 export default function AdminProducteursPage() {
   const [filter, setFilter] = useState<Filter>('all');
-  const [producers, setProducers] = useState(PRODUCERS);
+  const [producers, setProducers] = useState<Producer[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
   const [inviting, setInviting] = useState(false);
+
+  const refresh = async () => {
+    const supabase = createSupabaseBrowserClient();
+    const { data, error: fetchError } = await supabase
+      .from('producers')
+      .select('id, slug, nom_exploitation, commune, code_postal, statut, abonnement_niveau, created_at, user:user_id ( email )')
+      .order('created_at', { ascending: false });
+    if (fetchError) { setError(fetchError.message); setLoading(false); return; }
+
+    const rows: Producer[] = ((data ?? []) as unknown as Array<{
+      id: string;
+      slug: string;
+      nom_exploitation: string;
+      commune: string | null;
+      code_postal: string | null;
+      statut: Status;
+      abonnement_niveau: string | null;
+      created_at: string;
+      user: { email: string | null } | Array<{ email: string | null }> | null;
+    }>).map((p) => {
+      const user = Array.isArray(p.user) ? p.user[0] : p.user;
+      const city = [p.commune, p.code_postal ? `(${p.code_postal.slice(0, 2)})` : null].filter(Boolean).join(' ');
+      return {
+        id: p.id,
+        slug: p.slug,
+        name: p.nom_exploitation,
+        city: city || '—',
+        status: p.statut,
+        plan: PLAN_LABEL[p.abonnement_niveau ?? ''] ?? '—',
+        joinedAt: formatDate(p.created_at),
+        email: user?.email ?? '—',
+      };
+    });
+
+    setProducers(rows);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      if (!active) return;
+      await refresh();
+    })();
+    return () => { active = false; };
+  }, []);
 
   const counts = useMemo(() => ({
     all: producers.length,
@@ -57,8 +108,15 @@ export default function AdminProducteursPage() {
 
   const filtered = filter === 'all' ? producers : producers.filter((p) => p.status === filter);
 
-  const setStatus = (id: string, status: Status) =>
-    setProducers((arr) => arr.map((p) => p.id === id ? { ...p, status } : p));
+  const setStatus = async (id: string, status: Status) => {
+    setBusy(id);
+    setError(null);
+    const supabase = createSupabaseBrowserClient();
+    const { error: upError } = await supabase.from('producers').update({ statut: status }).eq('id', id);
+    if (upError) setError(upError.message);
+    else setProducers((arr) => arr.map((p) => p.id === id ? { ...p, status } : p));
+    setBusy(null);
+  };
 
   return (
     <AdminLayout>
@@ -68,6 +126,7 @@ export default function AdminProducteursPage() {
             <div className="text-[11px] uppercase tracking-[0.18em] text-green-400 font-semibold">Producteurs</div>
             <h1 className="mt-1 font-serif text-[40px] text-white leading-tight">Gestion des producteurs</h1>
             <p className="text-[14px] text-white/55 mt-1">{counts.active} actifs · {counts.pending} en attente · {counts.suspended} suspendus</p>
+            {error && <p className="mt-2 text-[13px] text-red-300">{error}</p>}
           </div>
           <Button size="lg" onClick={() => setInviting(true)}>+ Inviter un producteur</Button>
         </header>
@@ -103,12 +162,13 @@ export default function AdminProducteursPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-5 py-10 text-center text-white/55">Aucun producteur.</td>
-                  </tr>
+                {loading ? (
+                  <tr><td colSpan={6} className="px-5 py-10 text-center text-white/55">Chargement…</td></tr>
+                ) : filtered.length === 0 ? (
+                  <tr><td colSpan={6} className="px-5 py-10 text-center text-white/55">Aucun producteur.</td></tr>
                 ) : filtered.map((p) => {
                   const meta = STATUS_META[p.status];
+                  const disabled = busy === p.id;
                   return (
                     <tr key={p.id} className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02]">
                       <td className="px-5 py-4">
@@ -127,20 +187,20 @@ export default function AdminProducteursPage() {
                       <td className="px-5 py-4">
                         <div className="flex items-center justify-end gap-2 flex-wrap">
                           {p.status === 'pending' && (
-                            <button onClick={() => setStatus(p.id, 'active')}
-                              className="px-3 py-1.5 rounded-md bg-green-700 text-white text-[12px] font-semibold hover:bg-green-600 transition-colors">
+                            <button onClick={() => setStatus(p.id, 'active')} disabled={disabled}
+                              className="px-3 py-1.5 rounded-md bg-green-700 text-white text-[12px] font-semibold hover:bg-green-600 disabled:opacity-60 transition-colors">
                               Valider
                             </button>
                           )}
                           {p.status === 'active' && (
-                            <button onClick={() => setStatus(p.id, 'suspended')}
-                              className="px-3 py-1.5 rounded-md bg-white/5 text-red-300 text-[12px] font-medium hover:bg-red-500/20 transition-colors">
+                            <button onClick={() => setStatus(p.id, 'suspended')} disabled={disabled}
+                              className="px-3 py-1.5 rounded-md bg-white/5 text-red-300 text-[12px] font-medium hover:bg-red-500/20 disabled:opacity-60 transition-colors">
                               Suspendre
                             </button>
                           )}
                           {p.status === 'suspended' && (
-                            <button onClick={() => setStatus(p.id, 'active')}
-                              className="px-3 py-1.5 rounded-md bg-white/5 text-green-300 text-[12px] font-medium hover:bg-green-500/20 transition-colors">
+                            <button onClick={() => setStatus(p.id, 'active')} disabled={disabled}
+                              className="px-3 py-1.5 rounded-md bg-white/5 text-green-300 text-[12px] font-medium hover:bg-green-500/20 disabled:opacity-60 transition-colors">
                               Réactiver
                             </button>
                           )}
@@ -159,21 +219,43 @@ export default function AdminProducteursPage() {
         </div>
       </div>
 
-      {inviting && <InviteModal onClose={() => setInviting(false)} />}
+      {inviting && <InviteModal onClose={() => setInviting(false)} onSuccess={() => { refresh(); }} />}
     </AdminLayout>
   );
 }
 
-function InviteModal({ onClose }: { onClose: () => void }) {
+function InviteModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
   const [email, setEmail] = useState('');
-  const [message, setMessage] = useState('Bonjour, nous serions ravis de vous accueillir sur TerrOir, une place de marché dédiée aux producteurs français. Créez votre page en quelques minutes.');
+  const [message, setMessage] = useState('');
   const [sent, setSent] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.includes('@')) return;
-    setSent(true);
-    setTimeout(onClose, 1400);
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      const res = await fetch('/api/admin/producers/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), message: message.trim() || undefined }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        setError(body.error ?? 'Invitation impossible');
+        return;
+      }
+      setSent(true);
+      onSuccess();
+      setTimeout(onClose, 1400);
+    } catch {
+      setError('Erreur de connexion');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -205,8 +287,10 @@ function InviteModal({ onClose }: { onClose: () => void }) {
               <div>
                 <label className="block text-[12px] font-medium text-white/80 mb-1.5">Message personnalisé</label>
                 <textarea rows={5} value={message} onChange={(e) => setMessage(e.target.value)}
+                  placeholder="Quelques mots pour personnaliser l'invitation (optionnel)"
                   className="w-full rounded-md bg-black/40 border border-white/10 px-3 py-2.5 text-[14px] text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 resize-none" />
               </div>
+              {error && <p className="text-[13px] text-red-300">{error}</p>}
             </div>
 
             <div className="mt-6 flex gap-2 justify-end">
@@ -214,9 +298,9 @@ function InviteModal({ onClose }: { onClose: () => void }) {
                 className="px-4 py-2 rounded-md text-[14px] text-white/70 hover:bg-white/5 hover:text-white transition-colors">
                 Annuler
               </button>
-              <button type="submit" disabled={!email.includes('@')}
+              <button type="submit" disabled={!email.includes('@') || submitting}
                 className="px-4 py-2 rounded-md bg-green-700 text-white text-[14px] font-semibold hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-                Envoyer l&apos;invitation
+                {submitting ? 'Envoi…' : 'Envoyer l\'invitation'}
               </button>
             </div>
           </form>

@@ -1,34 +1,58 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button, Badge, NavbarPublic, Footer } from '@/components/ui';
+import { useCartStore, type CartItem } from '@/lib/store/cart';
 
-type Item = { id: string; producerSlug: string; producerName: string; name: string; price: number; unit: string; qty: number; slot: string };
-
-const INITIAL: Item[] = [
-  { id: 'entrecote', producerSlug: 'ferme-des-chenes', producerName: 'Ferme des Chênes', name: 'Entrecôte maturée 21 jours', price: 34.5, unit: 'kg', qty: 1.5, slot: 'Samedi 25 avril · 10h–12h' },
-  { id: 'roti', producerSlug: 'ferme-des-chenes', producerName: 'Ferme des Chênes', name: 'Rôti de bœuf Charolais', price: 24.9, unit: 'kg', qty: 2, slot: 'Samedi 25 avril · 10h–12h' },
-  { id: 'gigot', producerSlug: 'agneaux-berce', producerName: 'Agneaux de la Forêt', name: "Gigot d'agneau de pré", price: 28, unit: 'kg', qty: 1.75, slot: 'Mercredi 29 avril · 17h–19h' },
-];
+function formatDateFr(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(iso + 'T00:00:00');
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+}
 
 export default function PanierPage() {
-  const [items, setItems] = useState<Item[]>(INITIAL);
+  const items = useCartStore((s) => s.items);
+  const updateQuantity = useCartStore((s) => s.updateQuantity);
+  const removeItem = useCartStore((s) => s.removeItem);
+
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
 
   const byProducer = useMemo(() => {
-    const map: Record<string, { name: string; slug: string; items: Item[] }> = {};
+    const map: Record<string, { name: string; slug: string; producerId: string; items: CartItem[] }> = {};
     items.forEach((i) => {
-      if (!map[i.producerSlug]) map[i.producerSlug] = { name: i.producerName, slug: i.producerSlug, items: [] };
-      map[i.producerSlug].items.push(i);
+      if (!map[i.producerId]) {
+        map[i.producerId] = {
+          name: i.producerName ?? 'Producteur',
+          slug: i.slug,
+          producerId: i.producerId,
+          items: [],
+        };
+      }
+      map[i.producerId].items.push(i);
     });
     return Object.values(map);
   }, [items]);
 
-  const subtotal = items.reduce((s, i) => s + i.price * i.qty, 0);
+  const subtotal = items.reduce((s, i) => s + i.prix * i.quantite, 0);
 
-  const updateQty = (id: string, delta: number) =>
-    setItems((arr) => arr.map((i) => i.id === id ? { ...i, qty: Math.max(0.25, Number((i.qty + delta).toFixed(2))) } : i));
-  const remove = (id: string) => setItems((arr) => arr.filter((i) => i.id !== id));
+  const step = (unite: string) => (unite === 'kg' ? 0.25 : 1);
+
+  if (!hydrated) {
+    return (
+      <div className="min-h-screen bg-bg">
+        <NavbarPublic />
+        <section className="max-w-2xl mx-auto px-6 py-32 text-center text-dark/50">
+          Chargement du panier…
+        </section>
+        <Footer />
+      </div>
+    );
+  }
 
   if (items.length === 0) {
     return (
@@ -54,7 +78,7 @@ export default function PanierPage() {
         <div className="mt-10 grid lg:grid-cols-[1fr_380px] gap-10 items-start">
           <div className="space-y-6">
             {byProducer.map((p) => (
-              <section key={p.slug} className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft overflow-hidden">
+              <section key={p.producerId} className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft overflow-hidden">
                 <header className="px-5 py-4 border-b border-dark/[0.06] flex items-center justify-between gap-3">
                   <div>
                     <div className="text-[11px] uppercase tracking-[0.14em] text-terra-700 font-semibold">Commande chez</div>
@@ -63,28 +87,45 @@ export default function PanierPage() {
                   <Badge>{p.items.length} article{p.items.length > 1 ? 's' : ''}</Badge>
                 </header>
                 <ul className="divide-y divide-dark/[0.06]">
-                  {p.items.map((it) => (
-                    <li key={it.id} className="p-5 flex items-start gap-4">
-                      <div className="w-20 h-20 rounded-xl flex-shrink-0 flex items-center justify-center text-green-900/30 font-mono text-[9px] uppercase"
-                           style={{ backgroundImage: 'repeating-linear-gradient(45deg, #D8F3DC 0 10px, #C9EAD0 10px 20px)' }}>Photo</div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-serif text-[18px] text-green-900 leading-tight">{it.name}</h3>
-                        <div className="text-[12px] text-dark/60 mt-0.5 mono">Retrait · {it.slot}</div>
-                        <div className="mt-3 flex items-center gap-3 flex-wrap">
-                          <div className="inline-flex items-stretch rounded-lg border border-dark/10 bg-white">
-                            <button onClick={() => updateQty(it.id, -0.25)} className="w-9 h-9 text-green-900 hover:bg-green-100">−</button>
-                            <div className="w-16 h-9 flex items-center justify-center text-[13px] font-semibold tabular-nums border-x border-dark/10">{it.qty.toFixed(2)} {it.unit}</div>
-                            <button onClick={() => updateQty(it.id, 0.25)} className="w-9 h-9 text-green-900 hover:bg-green-100">+</button>
-                          </div>
-                          <button onClick={() => remove(it.id)} className="text-[13px] text-dark/50 hover:text-terra-700 underline">Retirer</button>
+                  {p.items.map((it) => {
+                    const key = { productId: it.productId, creneauId: it.creneauId, dateRetrait: it.dateRetrait };
+                    const s = step(it.unite);
+                    return (
+                      <li key={`${it.productId}-${it.creneauId}-${it.dateRetrait}`} className="p-5 flex items-start gap-4">
+                        <div className="w-20 h-20 rounded-xl flex-shrink-0 overflow-hidden"
+                             style={!it.image ? { backgroundImage: 'repeating-linear-gradient(45deg, #D8F3DC 0 10px, #C9EAD0 10px 20px)' } : undefined}>
+                          {it.image && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={it.image} alt="" className="w-full h-full object-cover" />
+                          )}
                         </div>
-                      </div>
-                      <div className="text-right flex-shrink-0">
-                        <div className="font-serif text-[20px] text-green-900 tabular-nums">{(it.price * it.qty).toFixed(2).replace('.', ',')} €</div>
-                        <div className="text-[12px] text-dark/50 mono">{it.price.toFixed(2).replace('.', ',')} € / {it.unit}</div>
-                      </div>
-                    </li>
-                  ))}
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-serif text-[18px] text-green-900 leading-tight">{it.nom}</h3>
+                          <div className="text-[12px] text-dark/60 mt-0.5 mono">Retrait · {formatDateFr(it.dateRetrait)}</div>
+                          <div className="mt-3 flex items-center gap-3 flex-wrap">
+                            <div className="inline-flex items-stretch rounded-lg border border-dark/10 bg-white">
+                              <button type="button"
+                                onClick={() => updateQuantity(key, Number((it.quantite - s).toFixed(2)))}
+                                className="w-9 h-9 text-green-900 hover:bg-green-100 disabled:opacity-30"
+                                disabled={it.quantite <= s}>−</button>
+                              <div className="w-20 h-9 flex items-center justify-center text-[13px] font-semibold tabular-nums border-x border-dark/10">
+                                {it.quantite.toFixed(2).replace('.', ',')} {it.unite}
+                              </div>
+                              <button type="button"
+                                onClick={() => updateQuantity(key, Number((it.quantite + s).toFixed(2)))}
+                                className="w-9 h-9 text-green-900 hover:bg-green-100">+</button>
+                            </div>
+                            <button type="button" onClick={() => removeItem(key)}
+                              className="text-[13px] text-dark/50 hover:text-terra-700 underline">Retirer</button>
+                          </div>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <div className="font-serif text-[20px] text-green-900 tabular-nums">{(it.prix * it.quantite).toFixed(2).replace('.', ',')} €</div>
+                          <div className="text-[12px] text-dark/50 mono">{it.prix.toFixed(2).replace('.', ',')} € / {it.unite}</div>
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               </section>
             ))}

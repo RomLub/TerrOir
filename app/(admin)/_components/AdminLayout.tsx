@@ -6,7 +6,7 @@ import { Logo } from '@/components/ui';
 
 const NAV = [
   { href: '/dashboard', label: 'Vue d\'ensemble', icon: '▦' },
-  { href: '/producteurs', label: 'Producteurs', icon: '◉' },
+  { href: '/gestion-producteurs', label: 'Producteurs', icon: '◉' },
   { href: '/commandes', label: 'Commandes', icon: '⎙' },
   { href: '/avis', label: 'Avis', icon: '★' },
 ];

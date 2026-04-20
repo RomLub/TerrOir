@@ -1,0 +1,223 @@
+'use client';
+
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import type { RealtimeChannel } from '@supabase/supabase-js';
+import { Button, ProducerBadge } from '@/components/ui';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+
+type PendingOrder = {
+  id: string;
+  codeCommande: string | null;
+  clientFirstName: string;
+  itemsSummary: string;
+  total: number;
+  slotLabel: string;
+  hoursLeft: number;
+};
+
+export type DashboardData = {
+  producerId: string;
+  producerName: string;
+  firstName: string;
+  ordersToday: number;
+  ordersYesterday: number;
+  revenueWeek: number;
+  revenueLastWeek: number;
+  rating: number;
+  reviewCount: number;
+  nextPickup: { label: string; sub: string } | null;
+  pendingOrders: PendingOrder[];
+  weekPlanning: { day: string; isToday: boolean; slots: { time: string; orders: number }[] }[];
+  badges: { kind: 'stock' | 'response' | 'reliability'; score: number; tip: string }[];
+  stockAlerts: { id: string; nom: string; stock: number }[];
+};
+
+function euros(n: number): string {
+  return `${n.toFixed(2).replace('.', ',')} €`;
+}
+
+export function DashboardClient({ data: initial }: { data: DashboardData }) {
+  const [data, setData] = useState(initial);
+
+  useEffect(() => {
+    const supabase = createSupabaseBrowserClient();
+    let channel: RealtimeChannel | null = null;
+
+    channel = supabase
+      .channel(`producer-dashboard-${initial.producerId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'orders',
+          filter: `producer_id=eq.${initial.producerId}`,
+        },
+        () => {
+          setData((d) => ({ ...d, ordersToday: d.ordersToday + 1 }));
+        },
+      )
+      .subscribe();
+
+    return () => {
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, [initial.producerId]);
+
+  const revenueDelta = data.revenueLastWeek > 0
+    ? Math.round(((data.revenueWeek - data.revenueLastWeek) / data.revenueLastWeek) * 100)
+    : null;
+
+  const metrics = [
+    {
+      label: "Commandes aujourd'hui",
+      value: String(data.ordersToday),
+      sub: `${data.ordersToday >= data.ordersYesterday ? '+' : ''}${data.ordersToday - data.ordersYesterday} depuis hier`,
+      tone: 'green' as const,
+    },
+    {
+      label: 'Revenus cette semaine',
+      value: euros(data.revenueWeek),
+      sub: revenueDelta === null ? '—' : `${revenueDelta >= 0 ? '+' : ''}${revenueDelta}% vs semaine passée`,
+      tone: 'green' as const,
+    },
+    {
+      label: 'Note moyenne',
+      value: data.reviewCount ? data.rating.toFixed(1).replace('.', ',') : '—',
+      sub: `${data.reviewCount} avis`,
+      tone: 'terra' as const,
+    },
+    {
+      label: 'Prochain retrait',
+      value: data.nextPickup?.label ?? '—',
+      sub: data.nextPickup?.sub ?? 'Aucune commande à retirer',
+      tone: 'terra' as const,
+    },
+  ];
+
+  return (
+    <div className="max-w-6xl mx-auto px-8 py-10">
+      <header className="mb-8">
+        <div className="text-[11px] uppercase tracking-[0.18em] text-terra-700 font-semibold">Tableau de bord</div>
+        <h1 className="mt-1 font-serif text-[40px] text-green-900 leading-tight">Bonjour {data.firstName} 👋</h1>
+        <p className="text-[14px] text-dark/60 mt-1">Voici ce qu&apos;il se passe à {data.producerName} aujourd&apos;hui.</p>
+      </header>
+
+      {(data.pendingOrders.length > 0 || data.stockAlerts.length > 0) && (
+        <div className="mb-8 space-y-2">
+          {data.pendingOrders.length > 0 && (
+            <Link href="/commandes"
+              className="flex items-center justify-between gap-4 p-4 rounded-xl border bg-terra-100/60 border-terra-300/60 hover:bg-terra-100 transition-colors">
+              <div className="flex items-center gap-3">
+                <span className="w-2 h-2 rounded-full bg-terra-700 animate-pulse" />
+                <span className="text-[14px] text-dark font-medium">
+                  {data.pendingOrders.length} commande{data.pendingOrders.length > 1 ? 's' : ''} en attente de confirmation
+                </span>
+              </div>
+              <span className="text-[13px] text-dark/60">Voir →</span>
+            </Link>
+          )}
+          {data.stockAlerts.map((a) => (
+            <Link key={a.id} href="/catalogue"
+              className="flex items-center justify-between gap-4 p-4 rounded-xl border bg-amber-50 border-amber-200 hover:bg-amber-100/60 transition-colors">
+              <div className="flex items-center gap-3">
+                <span className="w-2 h-2 rounded-full bg-amber-500" />
+                <span className="text-[14px] text-dark font-medium">Stock faible : {a.nom} ({a.stock} restants)</span>
+              </div>
+              <span className="text-[13px] text-dark/60">Voir →</span>
+            </Link>
+          ))}
+        </div>
+      )}
+
+      <section className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
+        {metrics.map((m) => (
+          <div key={m.label} className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-5">
+            <div className="text-[11px] uppercase tracking-[0.12em] text-dark/55 font-semibold">{m.label}</div>
+            <div className={`mt-2 font-serif text-[36px] leading-none tabular-nums ${m.tone === 'terra' ? 'text-terra-700' : 'text-green-900'}`}>{m.value}</div>
+            <div className="mt-1.5 text-[12px] text-dark/55 mono">{m.sub}</div>
+          </div>
+        ))}
+      </section>
+
+      <section className="mb-10">
+        <div className="flex items-end justify-between mb-4">
+          <div>
+            <h2 className="font-serif text-[28px] text-green-900 leading-tight">À confirmer</h2>
+            <p className="text-[13px] text-dark/60 mt-0.5">Confirmez dans les 24 h pour ne pas pénaliser votre score de réactivité.</p>
+          </div>
+          <Link href="/commandes" className="text-[13px] text-green-700 font-medium hover:text-green-900">Toutes les commandes →</Link>
+        </div>
+        <div className="space-y-3">
+          {data.pendingOrders.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6 text-[14px] text-dark/60">
+              Aucune commande en attente.
+            </div>
+          ) : data.pendingOrders.map((p) => (
+            <article key={p.id} className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-5">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 text-[12px] mono text-dark/50">
+                    {p.codeCommande && <><span>{p.codeCommande}</span><span>·</span></>}
+                    <span>{p.slotLabel}</span>
+                  </div>
+                  <div className="mt-1 font-serif text-[20px] text-green-900">{p.clientFirstName}</div>
+                  <div className="text-[13px] text-dark/70 mt-0.5">{p.itemsSummary}</div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="text-right">
+                    <div className="font-serif text-[20px] text-green-900 tabular-nums">{euros(p.total)}</div>
+                    <div className={`text-[11px] mono mt-0.5 ${p.hoursLeft < 6 ? 'text-terra-700 font-semibold' : 'text-dark/50'}`}>
+                      ⏱ {p.hoursLeft}h restantes
+                    </div>
+                  </div>
+                  <Link href={`/commandes/${p.id}`}><Button size="sm">Voir</Button></Link>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="mb-10">
+        <h2 className="font-serif text-[28px] text-green-900 leading-tight mb-4">Planning de la semaine</h2>
+        <div className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-5">
+          <div className="grid grid-cols-7 gap-2">
+            {data.weekPlanning.map((d) => (
+              <div key={d.day} className={`rounded-xl p-3 min-h-[120px] border ${d.isToday ? 'bg-green-100/60 border-green-500' : 'bg-bg border-dark/[0.06]'}`}>
+                <div className={`text-[12px] font-semibold uppercase tracking-wider mb-2 ${d.isToday ? 'text-green-900' : 'text-dark/60'}`}>{d.day}</div>
+                <div className="space-y-1.5">
+                  {d.slots.length === 0 ? (
+                    <div className="text-[11px] text-dark/30 italic">—</div>
+                  ) : d.slots.map((s, i) => (
+                    <div key={i} className="rounded-md bg-terra-700/10 border border-terra-700/20 p-1.5">
+                      <div className="text-[11px] mono text-terra-700 font-semibold">{s.time}</div>
+                      <div className="text-[11px] text-dark/70 mt-0.5">{s.orders} cmd.</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2 className="font-serif text-[28px] text-green-900 leading-tight mb-1">Badges de fiabilité</h2>
+        <p className="text-[13px] text-dark/60 mb-5">Ces badges sont affichés publiquement sur votre page.</p>
+        <div className="grid md:grid-cols-3 gap-4">
+          {data.badges.map((b) => (
+            <div key={b.kind} className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-5">
+              <ProducerBadge kind={b.kind} score={b.score} />
+              <div className={`mt-4 font-serif text-[44px] leading-none tabular-nums ${
+                b.score >= 90 ? 'text-green-700' : 'text-terra-700'
+              }`}>{b.score}<span className="text-[20px] text-dark/40"> / 100</span></div>
+              <p className="mt-3 text-[13px] text-dark/70 leading-relaxed">{b.tip}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}

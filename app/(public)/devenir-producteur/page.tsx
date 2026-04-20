@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Button, Input, Select, Textarea } from '@/components/ui';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
 const SPECIES_OPTIONS = ['Bœuf', 'Veau', 'Porc', 'Agneau', 'Volaille', 'Plusieurs espèces'];
 
@@ -15,18 +16,37 @@ export default function DevenirProducteurPage() {
   const [form, setForm] = useState({ name: '', email: '', phone: '', exploitation: '', commune: '', species: '', message: '' });
   const [sent, setSent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const update = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const valid = form.name && form.email && form.phone && form.exploitation && form.commune && form.species;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!valid) return;
     setSubmitting(true);
-    // TODO: POST /api/producer-application
-    setTimeout(() => { setSubmitting(false); setSent(true); }, 800);
+    setError(null);
+
+    const supabase = createSupabaseBrowserClient();
+    const { error: insertError } = await supabase.from('producer_interests').insert({
+      nom: form.name.trim(),
+      email: form.email.trim().toLowerCase(),
+      telephone: form.phone.trim(),
+      nom_exploitation: form.exploitation.trim(),
+      commune: form.commune.trim(),
+      especes: form.species ? [form.species] : null,
+      message: form.message.trim() || null,
+      statut: 'new',
+    });
+
+    setSubmitting(false);
+    if (insertError) {
+      setError('Impossible d\'envoyer votre candidature. Merci de réessayer.');
+      return;
+    }
+    setSent(true);
   };
 
   if (sent) {
@@ -116,6 +136,9 @@ export default function DevenirProducteurPage() {
               <Button type="submit" size="lg" className="w-full" disabled={!valid || submitting}>
                 {submitting ? 'Envoi…' : 'Envoyer ma demande →'}
               </Button>
+              {error && (
+                <p className="text-[13px] text-terra-700 text-center mt-3">{error}</p>
+              )}
               <p className="text-[12px] text-dark/55 text-center mt-3">
                 En envoyant ce formulaire, vous acceptez d&apos;être recontacté par l&apos;équipe TerrOir.
               </p>

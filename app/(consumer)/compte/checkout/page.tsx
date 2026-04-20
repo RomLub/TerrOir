@@ -1,35 +1,142 @@
 'use client';
 
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
 import Link from 'next/link';
+import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { Button, NavbarPublic, Footer } from '@/components/ui';
+import { getStripe } from '@/lib/stripe/client';
+import { useCartStore, type CartItem } from '@/lib/store/cart';
 
-const ORDER = {
-  items: [
-    { name: 'Entrecôte maturée 21 jours', qty: '1,50 kg', price: 51.75 },
-    { name: 'Rôti de bœuf Charolais', qty: '2,00 kg', price: 49.80 },
-  ],
-  producerName: 'Ferme des Chênes',
-  producerAddress: "Route de la Vallée, 72250 Parigné-l'Évêque",
-  slot: 'Samedi 25 avril 2026 · 10h00 – 12h00',
-  total: 101.55,
+type OrderCreated = {
+  order_id: string;
+  code_commande: string;
+  montant_total: number;
+  commission: number;
+  montant_net: number;
 };
 
+type CheckoutGroup = {
+  producerId: string;
+  slug: string;
+  producerName: string;
+  slotId: string;
+  dateRetrait: string;
+  items: CartItem[];
+};
+
+function groupByOrder(items: CartItem[]): CheckoutGroup[] {
+  const map: Record<string, CheckoutGroup> = {};
+  items.forEach((it) => {
+    const key = `${it.producerId}|${it.creneauId}|${it.dateRetrait}`;
+    if (!map[key]) {
+      map[key] = {
+        producerId: it.producerId,
+        slug: it.slug,
+        producerName: it.producerName ?? 'Producteur',
+        slotId: it.creneauId,
+        dateRetrait: it.dateRetrait,
+        items: [],
+      };
+    }
+    map[key].items.push(it);
+  });
+  return Object.values(map);
+}
+
+function formatDateFr(iso: string): string {
+  const d = new Date(iso + 'T00:00:00');
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+}
+
 export default function CheckoutPage() {
-  const router = useRouter();
-  const [card, setCard] = useState({ number: '', exp: '', cvc: '', name: '' });
-  const [processing, setProcessing] = useState(false);
+  const items = useCartStore((s) => s.items);
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => setHydrated(true), []);
 
-  const format = (v: string) => v.replace(/\D/g, '').replace(/(.{4})/g, '$1 ').trim().slice(0, 19);
-  const valid = card.number.replace(/\s/g, '').length >= 16 && card.exp.length >= 5 && card.cvc.length >= 3 && card.name;
+  const groups = useMemo(() => groupByOrder(items), [items]);
+  const group = groups[0] ?? null;
+  const multipleGroups = groups.length > 1;
 
-  const handlePay = (e: React.SyntheticEvent) => {
-    e.preventDefault();
-    if (!valid) return;
-    setProcessing(true);
-    setTimeout(() => router.push('/compte/confirmation/TRO-7A9K2X'), 1200);
-  };
+  const [order, setOrder] = useState<OrderCreated | null>(null);
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [initError, setInitError] = useState<string | null>(null);
+  const [preparing, setPreparing] = useState(false);
+
+  const subtotal = group ? group.items.reduce((s, i) => s + i.prix * i.quantite, 0) : 0;
+
+  useEffect(() => {
+    if (!hydrated || !group || order || preparing) return;
+    setPreparing(true);
+    setInitError(null);
+
+    (async () => {
+      try {
+        const orderRes = await fetch('/api/orders/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            producer_id: group.producerId,
+            slot_id: group.slotId,
+            date_retrait: group.dateRetrait,
+            items: group.items.map((it) => ({
+              product_id: it.productId,
+              quantite: it.quantite,
+            })),
+          }),
+        });
+        const orderData = await orderRes.json();
+        if (!orderRes.ok) {
+          setInitError(orderData.error ?? 'Impossible de créer la commande');
+          return;
+        }
+        const created = orderData as OrderCreated;
+        setOrder(created);
+
+        const piRes = await fetch('/api/stripe/create-payment-intent', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ order_id: created.order_id }),
+        });
+        const piData = await piRes.json();
+        if (!piRes.ok || !piData.client_secret) {
+          setInitError(piData.error ?? 'Impossible d\'initialiser le paiement');
+          return;
+        }
+        setClientSecret(piData.client_secret as string);
+      } catch {
+        setInitError('Erreur de connexion au serveur');
+      } finally {
+        setPreparing(false);
+      }
+    })();
+  }, [hydrated, group, order, preparing]);
+
+  if (!hydrated) {
+    return (
+      <div className="min-h-screen bg-bg">
+        <NavbarPublic />
+        <section className="max-w-2xl mx-auto px-6 py-32 text-center text-dark/50">
+          Préparation du paiement…
+        </section>
+        <Footer />
+      </div>
+    );
+  }
+
+  if (!group) {
+    return (
+      <div className="min-h-screen bg-bg">
+        <NavbarPublic />
+        <section className="max-w-2xl mx-auto px-6 py-32 text-center">
+          <h1 className="font-serif text-[36px] text-green-900">Votre panier est vide</h1>
+          <div className="mt-6"><Link href="/carte"><Button size="lg">Trouver un producteur →</Button></Link></div>
+        </section>
+        <Footer />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-bg">
@@ -38,18 +145,26 @@ export default function CheckoutPage() {
         <Link href="/compte/panier" className="text-[13px] text-dark/60 hover:text-green-900">← Retour au panier</Link>
         <h1 className="mt-3 font-serif text-[40px] md:text-[52px] text-green-900 leading-tight">Finaliser la commande</h1>
 
-        <div className="mt-10 grid lg:grid-cols-[1fr_380px] gap-10 items-start">
+        {multipleGroups && (
+          <div className="mt-4 p-4 rounded-xl bg-terra-100/60 border border-terra-300/40 text-[13px] text-terra-900">
+            Votre panier contient plusieurs producteurs ou créneaux. Seule la première commande est traitée ici — les autres restent dans votre panier.
+          </div>
+        )}
+
+        <div className="mt-8 grid lg:grid-cols-[1fr_380px] gap-10 items-start">
           <div className="space-y-6">
             <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
               <div className="text-[11px] uppercase tracking-[0.14em] text-terra-700 font-semibold mb-3">Votre commande</div>
               <ul className="divide-y divide-dark/[0.06]">
-                {ORDER.items.map((it) => (
-                  <li key={it.name} className="py-3 flex items-center justify-between gap-4">
+                {group.items.map((it) => (
+                  <li key={`${it.productId}-${it.creneauId}-${it.dateRetrait}`} className="py-3 flex items-center justify-between gap-4">
                     <div>
-                      <div className="text-[15px] text-dark font-medium">{it.name}</div>
-                      <div className="text-[12px] text-dark/50 mono">{it.qty}</div>
+                      <div className="text-[15px] text-dark font-medium">{it.nom}</div>
+                      <div className="text-[12px] text-dark/50 mono">{it.quantite.toFixed(2).replace('.', ',')} {it.unite}</div>
                     </div>
-                    <div className="font-serif text-[18px] text-green-900 tabular-nums">{it.price.toFixed(2).replace('.', ',')} €</div>
+                    <div className="font-serif text-[18px] text-green-900 tabular-nums">
+                      {(it.prix * it.quantite).toFixed(2).replace('.', ',')} €
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -57,72 +172,33 @@ export default function CheckoutPage() {
 
             <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
               <div className="text-[11px] uppercase tracking-[0.14em] text-terra-700 font-semibold mb-3">Retrait à la ferme</div>
-              <div className="flex items-start gap-4">
-                <div className="flex-1">
-                  <div className="font-serif text-[20px] text-green-900">{ORDER.producerName}</div>
-                  <div className="text-[13px] text-dark/60 mt-0.5">{ORDER.producerAddress}</div>
-                  <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-green-100 text-green-900 text-[13px] font-medium">
-                    🕐 {ORDER.slot}
-                  </div>
-                </div>
-                <div className="w-32 h-32 rounded-xl overflow-hidden flex-shrink-0">
-                  <svg viewBox="0 0 120 120" className="w-full h-full">
-                    <rect width="120" height="120" fill="#D8F3DC"/>
-                    <path d="M0 60 Q 40 50 70 62 T 120 55" stroke="#fff" strokeWidth="4" fill="none"/>
-                    <circle cx="60" cy="60" r="8" fill="#2D6A4F" stroke="#fff" strokeWidth="2"/>
-                  </svg>
-                </div>
+              <div className="font-serif text-[20px] text-green-900">{group.producerName}</div>
+              <div className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-green-100 text-green-900 text-[13px] font-medium">
+                🕐 {formatDateFr(group.dateRetrait)}
               </div>
             </section>
 
-            <form onSubmit={handlePay} className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
+            <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
               <div className="flex items-center justify-between mb-4">
                 <div className="text-[11px] uppercase tracking-[0.14em] text-terra-700 font-semibold">Paiement</div>
                 <span className="text-[11px] mono text-dark/50">🔒 Stripe · SSL</span>
               </div>
-              <div className="space-y-3">
-                <label className="block">
-                  <span className="text-[12px] text-dark/70 font-medium">Numéro de carte</span>
-                  <input
-                    value={card.number}
-                    onChange={(e) => setCard({ ...card, number: format(e.target.value) })}
-                    placeholder="4242 4242 4242 4242"
-                    className="mt-1 w-full h-11 px-3 rounded-xl border border-dark/10 bg-white text-[15px] mono focus:border-green-700 focus:ring-2 focus:ring-green-700/15 outline-none"
-                  />
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                  <label className="block">
-                    <span className="text-[12px] text-dark/70 font-medium">Expiration</span>
-                    <input
-                      value={card.exp}
-                      onChange={(e) => {
-                        const v = e.target.value.replace(/\D/g, '').slice(0, 4);
-                        setCard({ ...card, exp: v.length >= 3 ? v.slice(0, 2) + '/' + v.slice(2) : v });
-                      }}
-                      placeholder="MM / AA"
-                      className="mt-1 w-full h-11 px-3 rounded-xl border border-dark/10 bg-white text-[15px] mono focus:border-green-700 focus:ring-2 focus:ring-green-700/15 outline-none"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-[12px] text-dark/70 font-medium">Cryptogramme</span>
-                    <input
-                      value={card.cvc}
-                      onChange={(e) => setCard({ ...card, cvc: e.target.value.replace(/\D/g, '').slice(0, 4) })}
-                      placeholder="123"
-                      className="mt-1 w-full h-11 px-3 rounded-xl border border-dark/10 bg-white text-[15px] mono focus:border-green-700 focus:ring-2 focus:ring-green-700/15 outline-none"
-                    />
-                  </label>
-                </div>
-                <label className="block">
-                  <span className="text-[12px] text-dark/70 font-medium">Nom sur la carte</span>
-                  <input
-                    value={card.name}
-                    onChange={(e) => setCard({ ...card, name: e.target.value })}
-                    placeholder="Jean Dupont"
-                    className="mt-1 w-full h-11 px-3 rounded-xl border border-dark/10 bg-white text-[15px] focus:border-green-700 focus:ring-2 focus:ring-green-700/15 outline-none"
-                  />
-                </label>
-              </div>
+
+              {initError && (
+                <div className="p-4 rounded-xl bg-terra-100/60 border border-terra-300/40 text-[13px] text-terra-900">{initError}</div>
+              )}
+
+              {!initError && !clientSecret && (
+                <p className="text-[13px] text-dark/60">Initialisation du paiement…</p>
+              )}
+
+              {clientSecret && order && (
+                <StripeElementsForm
+                  clientSecret={clientSecret}
+                  orderId={order.order_id}
+                  amountLabel={Number(order.montant_total).toFixed(2).replace('.', ',')}
+                />
+              )}
 
               <div className="mt-5 flex items-start gap-3 p-3 rounded-xl bg-green-100/60 border border-green-300/40">
                 <span className="text-xl">🛡️</span>
@@ -130,23 +206,88 @@ export default function CheckoutPage() {
                   <span className="font-semibold text-green-900">Paiement 100% sécurisé.</span> Remboursement garanti si le producteur annule la commande.
                 </p>
               </div>
-            </form>
+            </section>
           </div>
 
           <aside className="lg:sticky lg:top-24 bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
             <h2 className="font-serif text-[24px] text-green-900">À régler</h2>
             <div className="mt-4 flex items-baseline justify-between">
               <span className="text-[14px] text-dark/60">Total TTC</span>
-              <span className="font-serif text-[38px] text-green-900 tabular-nums">{ORDER.total.toFixed(2).replace('.', ',')} €</span>
+              <span className="font-serif text-[38px] text-green-900 tabular-nums">
+                {(order ? Number(order.montant_total) : subtotal).toFixed(2).replace('.', ',')} €
+              </span>
             </div>
-            <Button type="button" size="lg" className="w-full mt-6" disabled={!valid || processing} onClick={handlePay}>
-              {processing ? 'Traitement…' : `Payer ${ORDER.total.toFixed(2).replace('.', ',')} €`}
-            </Button>
             <p className="text-[11px] text-dark/50 text-center mt-3">Vous recevrez un code de commande à présenter au retrait.</p>
           </aside>
         </div>
       </section>
       <Footer />
     </div>
+  );
+}
+
+function StripeElementsForm({
+  clientSecret,
+  orderId,
+  amountLabel,
+}: {
+  clientSecret: string;
+  orderId: string;
+  amountLabel: string;
+}) {
+  return (
+    <Elements stripe={getStripe()} options={{ clientSecret, locale: 'fr', appearance: { theme: 'stripe' } }}>
+      <CheckoutForm orderId={orderId} amountLabel={amountLabel} />
+    </Elements>
+  );
+}
+
+function CheckoutForm({ orderId, amountLabel }: { orderId: string; amountLabel: string }) {
+  const router = useRouter();
+  const stripe = useStripe();
+  const elements = useElements();
+  const clear = useCartStore((s) => s.clear);
+
+  const [processing, setProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!stripe || !elements) return;
+    setProcessing(true);
+    setError(null);
+
+    const { error: payError, paymentIntent } = await stripe.confirmPayment({
+      elements,
+      confirmParams: {
+        return_url: `${window.location.origin}/compte/confirmation/${orderId}`,
+      },
+      redirect: 'if_required',
+    });
+
+    if (payError) {
+      setError(payError.message ?? 'Le paiement a échoué.');
+      setProcessing(false);
+      return;
+    }
+
+    if (paymentIntent?.status === 'succeeded') {
+      clear();
+      router.push(`/compte/confirmation/${orderId}`);
+    } else {
+      setProcessing(false);
+    }
+  };
+
+  return (
+    <form onSubmit={onSubmit} className="space-y-4">
+      <PaymentElement options={{ layout: 'tabs' }} />
+      {error && (
+        <div className="p-3 rounded-lg bg-terra-100/60 border border-terra-300/40 text-[13px] text-terra-900">{error}</div>
+      )}
+      <Button type="submit" size="lg" className="w-full" disabled={!stripe || !elements || processing}>
+        {processing ? 'Traitement…' : `Payer ${amountLabel} €`}
+      </Button>
+    </form>
   );
 }
