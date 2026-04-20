@@ -14,24 +14,15 @@ const defaultColumns: FooterColumn[] = [
     title: "Découvrir",
     links: [
       { href: "/producteurs", label: "Producteurs" },
-      { href: "/produits", label: "Produits" },
-      { href: "/regions", label: "Régions" },
+      { href: "/carte", label: "Carte" },
+      { href: "/comment-ca-marche", label: "Comment ça marche" },
     ],
   },
   {
     title: "TerrOir",
     links: [
       { href: "/a-propos", label: "À propos" },
-      { href: "/contact", label: "Contact" },
-      { href: "/producteur/inscription", label: "Devenir producteur" },
-    ],
-  },
-  {
-    title: "Légal",
-    links: [
-      { href: "/mentions-legales", label: "Mentions légales" },
-      { href: "/cgv", label: "CGV" },
-      { href: "/confidentialite", label: "Confidentialité" },
+      { href: "/devenir-producteur", label: "Devenir producteur" },
     ],
   },
 ];
@@ -42,7 +33,7 @@ export function Footer({ columns = defaultColumns, className = "" }: FooterProps
     <footer
       className={`mt-16 border-t border-terroir-border bg-white ${className}`}
     >
-      <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 md:grid-cols-4">
+      <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 md:grid-cols-3">
         <div className="md:col-span-1">
           <Logo size="md" withTagline />
         </div>

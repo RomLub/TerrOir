@@ -9,14 +9,7 @@ export {
   type ProducerBadgeProps,
   type ProducerBadgeKind,
 } from "./producer-badge";
-export {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardBody,
-  CardFooter,
-  type CardProps,
-} from "./card";
+export { Card, type CardProps } from "./card";
 export { Input, type InputProps } from "./input";
 export {
   Select,
@@ -47,11 +40,6 @@ export {
   type NavbarPublicProps,
   type NavLink,
 } from "./navbar-public";
-export {
-  NavbarProducer,
-  type NavbarProducerProps,
-  type ProducerNavLink,
-} from "./navbar-producer";
 export {
   Footer,
   type FooterProps,
