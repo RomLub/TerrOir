@@ -28,6 +28,7 @@ type SearchResult = {
   distance_km: number;
   note_moyenne: number | null;
   nb_avis: number | null;
+  product_count: number | null;
 };
 
 type ApiResponse = { count: number; results: SearchResult[] } | { error: string };
@@ -256,7 +257,7 @@ function CartePageContent() {
       },
       rating: Number(r.note_moyenne ?? 0),
       reviewCount: r.nb_avis ?? 0,
-      productCount: 0,
+      productCount: r.product_count ?? 0,
       photo: r.photo_principale ?? null,
     },
   })), [results]);
