@@ -18,7 +18,7 @@ export default function OrderTimeoutCancelled(props: Props) {
       <p>
         Nous sommes désolés : votre commande{" "}
         <strong>{props.codeCommande}</strong> chez{" "}
-        <strong>{props.exploitation}</strong> n'a pas été confirmée dans les 24h.
+        <strong>{props.exploitation}</strong> n&apos;a pas été confirmée dans les 24h.
       </p>
       <p>
         Elle a été automatiquement annulée et un remboursement intégral de{" "}
@@ -27,7 +27,7 @@ export default function OrderTimeoutCancelled(props: Props) {
         apparaître.
       </p>
       <p>
-        N'hésitez pas à passer commande chez un autre producteur TerrOir.
+        N&apos;hésitez pas à passer commande chez un autre producteur TerrOir.
       </p>
     </EmailLayout>
   );

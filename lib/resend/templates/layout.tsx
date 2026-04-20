@@ -11,18 +11,18 @@ export const emailTheme = {
 };
 
 export function EmailLayout({
-  title,
+  // title est conservé dans la signature pour compat avec les templates,
+  // mais n'est pas rendu : les clients email ignorent <title> et la balise
+  // native <head> déclenche @next/next/no-head-element au build Next.
+  title: _title,
   children,
 }: {
   title: string;
   children: ReactNode;
 }) {
+  void _title;
   return (
     <html lang="fr">
-      <head>
-        <meta charSet="utf-8" />
-        <title>{title}</title>
-      </head>
       <body
         style={{
           margin: 0,
