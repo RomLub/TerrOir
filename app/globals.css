@@ -1,0 +1,16 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-terroir-green: #2d6a4f;
+  --color-terroir-green-light: #d8f3dc;
+  --color-terroir-terracotta: #a0522d;
+  --color-terroir-bg: #f7f4ef;
+}
+
+html,
+body {
+  background-color: var(--color-terroir-bg);
+  color: #1a1a1a;
+}

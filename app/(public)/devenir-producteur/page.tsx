@@ -1,0 +1,128 @@
+'use client';
+
+import { useState } from 'react';
+import { Button, Input, Select, Textarea } from '@/components/ui';
+
+const SPECIES_OPTIONS = ['Bœuf', 'Veau', 'Porc', 'Agneau', 'Volaille', 'Plusieurs espèces'];
+
+const ADVANTAGES = [
+  { n: '6%', title: 'Commission unique', text: "Pas d'abonnement, pas de frais cachés. Vous payez 6% uniquement sur les commandes finalisées." },
+  { n: '01', title: 'Une page dédiée à votre ferme', text: "Racontez votre histoire, mettez en avant vos labels et vos pratiques. Une vitrine que vous contrôlez." },
+  { n: '✓', title: 'Paiement garanti', text: "Le client paie au retrait. Pas d'impayés, pas de relances : la commande est validée avant le passage à la ferme." },
+];
+
+export default function DevenirProducteurPage() {
+  const [form, setForm] = useState({ name: '', email: '', phone: '', exploitation: '', commune: '', species: '', message: '' });
+  const [sent, setSent] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const update = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
+    setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const valid = form.name && form.email && form.phone && form.exploitation && form.commune && form.species;
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!valid) return;
+    setSubmitting(true);
+    // TODO: POST /api/producer-application
+    setTimeout(() => { setSubmitting(false); setSent(true); }, 800);
+  };
+
+  if (sent) {
+    return (
+      <div className="bg-bg">
+        <section className="max-w-2xl mx-auto px-6 py-32 text-center">
+          <div className="w-20 h-20 mx-auto rounded-full bg-green-100 border-2 border-green-700 flex items-center justify-center text-green-700 text-4xl">✓</div>
+          <h1 className="mt-6 font-serif text-[44px] text-green-900 leading-tight">Merci, c&apos;est noté.</h1>
+          <p className="mt-4 text-[16px] text-dark/70 leading-relaxed">
+            Nous avons bien reçu votre demande. Un membre de l&apos;équipe TerrOir va vous appeler dans les 48 heures pour échanger sur votre exploitation et vous présenter la plateforme.
+          </p>
+        </section>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-bg">
+      <section className="bg-terra-700 text-white">
+        <div className="max-w-7xl mx-auto px-6 py-20 md:py-28 grid md:grid-cols-[6fr_5fr] gap-10 items-center">
+          <div>
+            <span className="text-[11px] uppercase tracking-[0.2em] text-terra-100 font-semibold">Pour les éleveurs sarthois</span>
+            <h1 className="mt-3 font-serif text-[44px] md:text-[68px] leading-[1.02] tracking-tight">
+              Reprenez la main<br/>sur votre prix.
+            </h1>
+            <p className="mt-6 text-[17px] text-terra-100/90 max-w-lg leading-relaxed">
+              TerrOir vous met en contact direct avec les consommateurs sarthois. Vous fixez vos prix, vos créneaux, vos quantités. Nous nous occupons du reste.
+            </p>
+            <div className="mt-8 flex items-center gap-6 flex-wrap">
+              <a href="#formulaire">
+                <Button size="lg" className="bg-white text-terra-700 hover:bg-terra-100">Déposer ma candidature →</Button>
+              </a>
+              <span className="text-[13px] text-terra-100/80">Réponse sous 48h · Entretien téléphonique</span>
+            </div>
+          </div>
+          <div className="aspect-[4/5] rounded-2xl hidden md:flex items-center justify-center text-white/40 font-mono text-[11px] uppercase tracking-wider"
+               style={{ backgroundImage: 'repeating-linear-gradient(45deg, rgba(255,255,255,0.08) 0 14px, rgba(255,255,255,0.04) 14px 28px)' }}>
+            Photo éleveur en pré
+          </div>
+        </div>
+      </section>
+
+      <section className="max-w-7xl mx-auto px-6 py-20 md:py-24">
+        <div className="text-center mb-12">
+          <span className="text-[11px] uppercase tracking-[0.18em] text-terra-700 font-semibold">Pourquoi TerrOir</span>
+          <h2 className="mt-2 font-serif text-[36px] md:text-[44px] text-green-900 leading-tight">Trois engagements, pour vous.</h2>
+        </div>
+        <div className="grid md:grid-cols-3 gap-6">
+          {ADVANTAGES.map((a) => (
+            <article key={a.title} className="bg-white rounded-2xl p-7 border border-dark/[0.06] shadow-soft">
+              <div className="font-serif text-[56px] text-terra-700 tabular-nums leading-none">{a.n}</div>
+              <h3 className="mt-4 font-serif text-[24px] text-green-900 leading-tight">{a.title}</h3>
+              <p className="mt-3 text-[14px] text-dark/75 leading-relaxed">{a.text}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section id="formulaire" className="bg-green-100/40 border-y border-dark/[0.04] scroll-mt-20">
+        <div className="max-w-3xl mx-auto px-6 py-20 md:py-24">
+          <div className="text-center mb-10">
+            <span className="text-[11px] uppercase tracking-[0.18em] text-terra-700 font-semibold">Candidature</span>
+            <h2 className="mt-2 font-serif text-[36px] md:text-[44px] text-green-900 leading-tight">Parlez-nous de votre exploitation.</h2>
+            <p className="mt-3 text-[15px] text-dark/70">Nous vous rappelons sous 48h pour faire connaissance.</p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-6 md:p-10 border border-dark/[0.06] shadow-soft space-y-5">
+            <div className="grid sm:grid-cols-2 gap-4">
+              <Input label="Nom et prénom" value={form.name} onChange={update('name')} required />
+              <Input label="Email" type="email" value={form.email} onChange={update('email')} required />
+            </div>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <Input label="Téléphone" type="tel" value={form.phone} onChange={update('phone')} required />
+              <Input label="Nom de l'exploitation" value={form.exploitation} onChange={update('exploitation')} required />
+            </div>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <Input label="Commune" value={form.commune} onChange={update('commune')} required />
+              <Select label="Espèces élevées" value={form.species} onChange={update('species')} required>
+                <option value="">Sélectionner…</option>
+                {SPECIES_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+              </Select>
+            </div>
+            <Textarea label="Votre message (optionnel)" rows={5} value={form.message} onChange={update('message')}
+                      placeholder="Parlez-nous de votre activité, vos labels, vos volumes…" />
+
+            <div className="pt-2">
+              <Button type="submit" size="lg" className="w-full" disabled={!valid || submitting}>
+                {submitting ? 'Envoi…' : 'Envoyer ma demande →'}
+              </Button>
+              <p className="text-[12px] text-dark/55 text-center mt-3">
+                En envoyant ce formulaire, vous acceptez d&apos;être recontacté par l&apos;équipe TerrOir.
+              </p>
+            </div>
+          </form>
+        </div>
+      </section>
+    </div>
+  );
+}

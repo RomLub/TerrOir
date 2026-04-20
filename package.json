@@ -1,0 +1,48 @@
+{
+  "name": "terroir",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit",
+    "db:push": "supabase db push",
+    "db:pull": "supabase db pull",
+    "db:diff": "supabase db diff",
+    "db:reset": "supabase db reset",
+    "db:new": "supabase migration new",
+    "db:status": "supabase migration list"
+  },
+  "dependencies": {
+    "@stripe/stripe-js": "^4.8.0",
+    "@supabase/ssr": "^0.5.2",
+    "@supabase/supabase-js": "^2.45.4",
+    "date-fns": "^4.1.0",
+    "mapbox-gl": "^3.7.0",
+    "next": "14.2.15",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-map-gl": "^7.1.7",
+    "resend": "^4.0.0",
+    "stripe": "^17.2.0",
+    "twilio": "^5.3.3",
+    "zod": "^3.23.8",
+    "zustand": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/mapbox-gl": "^3.4.1",
+    "@types/node": "^22.7.5",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.0",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "14.2.15",
+    "postcss": "^8.4.47",
+    "sharp": "^0.34.5",
+    "supabase": "^2.92.1",
+    "tailwindcss": "^3.4.13",
+    "typescript": "^5.6.3"
+  }
+}
