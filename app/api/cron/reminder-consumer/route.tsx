@@ -79,3 +79,5 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ target: targetDate, sent, failures });
 }
+
+export const GET = POST;

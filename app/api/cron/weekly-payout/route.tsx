@@ -72,3 +72,5 @@ export async function POST(request: Request) {
     end: end.toISOString(),
   });
 }
+
+export const GET = POST;

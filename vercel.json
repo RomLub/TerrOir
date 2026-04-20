@@ -1,0 +1,37 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/cron/reminder-consumer",
+      "schedule": "0 18 * * *"
+    },
+    {
+      "path": "/api/cron/reminder-sms",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/order-timeout",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/review-followup",
+      "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/cron/weekly-payout",
+      "schedule": "0 8 * * 1"
+    },
+    {
+      "path": "/api/cron/weekly-badges",
+      "schedule": "0 9 * * 1"
+    }
+  ],
+  "functions": {
+    "app/api/cron/order-timeout/route.tsx": { "maxDuration": 60 },
+    "app/api/cron/reminder-consumer/route.tsx": { "maxDuration": 60 },
+    "app/api/cron/reminder-sms/route.ts": { "maxDuration": 60 },
+    "app/api/cron/review-followup/route.tsx": { "maxDuration": 60 },
+    "app/api/cron/weekly-badges/route.ts": { "maxDuration": 120 },
+    "app/api/cron/weekly-payout/route.tsx": { "maxDuration": 300 }
+  }
+}

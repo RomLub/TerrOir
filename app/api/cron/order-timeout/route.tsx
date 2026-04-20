@@ -102,3 +102,5 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ processed: results.length, results });
 }
+
+export const GET = POST;

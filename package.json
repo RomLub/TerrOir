@@ -13,7 +13,8 @@
     "db:diff": "supabase db diff",
     "db:reset": "supabase db reset",
     "db:new": "supabase migration new",
-    "db:status": "supabase migration list"
+    "db:status": "supabase migration list",
+    "db:seed": "npx tsx scripts/seed.ts"
   },
   "dependencies": {
     "@stripe/react-stripe-js": "^2.9.0",

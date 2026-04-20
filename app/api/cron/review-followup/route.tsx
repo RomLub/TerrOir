@@ -79,3 +79,5 @@ export async function POST(request: Request) {
   const [d2, d7] = await Promise.all([sendBatch(2), sendBatch(7)]);
   return NextResponse.json({ j2: d2.sent, j7: d7.sent });
 }
+
+export const GET = POST;

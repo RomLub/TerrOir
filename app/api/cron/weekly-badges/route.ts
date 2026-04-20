@@ -49,3 +49,5 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ processed, errors });
 }
+
+export const GET = POST;
