@@ -10,3 +10,5 @@ build/
 .vercel
 next-env.d.ts.bak
 .turbo
+
+.vercel
