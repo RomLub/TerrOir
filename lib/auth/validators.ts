@@ -25,11 +25,6 @@ export const inviteProducerSchema = z.object({
   email: z.string().trim().email("Email invalide"),
 });
 
-export const acceptInvitationSchema = z.object({
-  token: z.string().min(16, "Token invalide"),
-  password: z.string().min(8, "Mot de passe : 8 caractères minimum"),
-});
-
 // --- Onboarding multi-étapes (Chantier 2 Phase 3) -----------------------------
 
 export const invitationCreateAccountSchema = z
@@ -104,6 +99,5 @@ export const invitationBusinessInfoSchema = z
 
 export type SignupInput = z.infer<typeof signupSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
-export type AcceptInvitationInput = z.infer<typeof acceptInvitationSchema>;
 export type FormeJuridique = z.infer<typeof formeJuridiqueEnum>;
 export type TypeProduction = z.infer<typeof typeProductionEnum>;
