@@ -113,7 +113,7 @@ export default function ProfilPage() {
 
   return (
     <div className="min-h-screen bg-terroir-bg">
-      <NavbarPublic isAuthenticated />
+      <NavbarPublic />
       <main className="mx-auto max-w-2xl px-6 py-12">
         <header className="mb-8">
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-terroir-terra-700">

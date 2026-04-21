@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Logo } from "@/components/ui/logo";
+import { Badge } from "@/components/ui/badge";
+import { useUserContext } from "@/components/providers/user-provider";
 
 export type NavLink = { href: string; label: string };
 
 export type NavbarPublicProps = {
   links?: NavLink[];
-  isAuthenticated?: boolean;
   className?: string;
 };
 
@@ -24,12 +25,38 @@ function isActive(pathname: string | null, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+function truncateEmail(email: string, max = 15): string {
+  if (email.length <= max) return email;
+  return `${email.slice(0, max)}…`;
+}
+
+function UserIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+      <circle cx="12" cy="7" r="4" />
+    </svg>
+  );
+}
+
 export function NavbarPublic({
   links = defaultLinks,
-  isAuthenticated = false,
   className = "",
 }: NavbarPublicProps) {
   const pathname = usePathname();
+  const { user, isAdmin, loading } = useUserContext();
+
+  const prenom = user?.user_metadata?.prenom as string | undefined;
+  const label = prenom || (user?.email ? truncateEmail(user.email) : "");
 
   return (
     <header
@@ -60,13 +87,19 @@ export function NavbarPublic({
           })}
         </nav>
         <div className="flex items-center gap-2">
-          {isAuthenticated ? (
-            <Link
-              href="/compte"
-              className="text-sm font-medium text-terroir-green-700 hover:underline"
-            >
-              Mon compte
-            </Link>
+          {loading ? (
+            <div className="h-8 w-24" aria-hidden="true" />
+          ) : user ? (
+            <>
+              <Link
+                href="/compte"
+                className="inline-flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-terroir-ink transition-colors hover:bg-terroir-green-100 hover:text-terroir-green-700"
+              >
+                <UserIcon className="h-5 w-5 text-terroir-green-700" />
+                <span className="font-medium">{label}</span>
+              </Link>
+              {isAdmin ? <Badge variant="green">Admin</Badge> : null}
+            </>
           ) : (
             <>
               <Link
