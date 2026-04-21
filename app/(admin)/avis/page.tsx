@@ -97,65 +97,65 @@ export default function AdminAvisPage() {
 
   return (
     <div>
-      <header className="mb-8 flex items-end justify-between gap-4 flex-wrap">
-          <div>
-            <div className="text-[11px] uppercase tracking-[0.18em] text-green-400 font-semibold">Modération</div>
-            <h1 className="mt-1 font-serif text-[40px] text-white leading-tight">Avis à modérer</h1>
-            <p className="text-[14px] text-white/55 mt-1">Validez chaque avis avant publication sur la page du producteur.</p>
-            {error && <p className="mt-2 text-[13px] text-red-300">{error}</p>}
-          </div>
-          <div className="bg-black/40 border border-white/[0.08] rounded-xl px-5 py-4 text-center">
-            <div className="text-[11px] uppercase tracking-[0.14em] text-green-400 font-semibold">En attente</div>
-            <div className="mt-1 font-serif text-[40px] text-white leading-none tabular-nums">{reviews.length}</div>
-          </div>
-        </header>
+      <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-terroir-green-700">Modération</div>
+          <h1 className="mt-1 font-serif text-[40px] leading-tight text-gray-900">Avis à modérer</h1>
+          <p className="mt-1 text-[14px] text-gray-500">Validez chaque avis avant publication sur la page du producteur.</p>
+          {error && <p className="mt-2 text-[13px] text-red-700">{error}</p>}
+        </div>
+        <div className="rounded-md border border-gray-200 bg-white px-5 py-4 text-center shadow-sm">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-terroir-green-700">En attente</div>
+          <div className="mt-1 font-serif text-[40px] leading-none tabular-nums text-gray-900">{reviews.length}</div>
+        </div>
+      </header>
 
-        {loading ? (
-          <div className="bg-black/30 border border-white/[0.06] rounded-2xl p-12 text-center text-white/55">Chargement…</div>
-        ) : reviews.length === 0 ? (
-          <div className="bg-black/30 border border-white/[0.06] rounded-2xl p-12 text-center">
-            <div className="w-16 h-16 mx-auto rounded-full bg-green-500/15 border-2 border-green-500 flex items-center justify-center">
-              <svg width="36" height="36" viewBox="0 0 48 48" className="text-green-400">
-                <path d="M12 24 L20 32 L36 16" stroke="currentColor" strokeWidth="4" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
-            <h3 className="mt-4 font-serif text-[24px] text-white">Tout est à jour</h3>
-            <p className="text-[14px] text-white/55 mt-1">Aucun avis en attente de modération.</p>
+      {loading ? (
+        <div className="rounded-md border border-gray-200 bg-white p-12 text-center text-gray-500 shadow-sm">Chargement…</div>
+      ) : reviews.length === 0 ? (
+        <div className="rounded-md border border-gray-200 bg-white p-12 text-center shadow-sm">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border-2 border-terroir-green-700 bg-terroir-green-100">
+            <svg width="36" height="36" viewBox="0 0 48 48" className="text-terroir-green-700">
+              <path d="M12 24 L20 32 L36 16" stroke="currentColor" strokeWidth="4" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
           </div>
-        ) : (
-          <div className="space-y-4">
-            {reviews.map((r) => (
-              <article key={r.id} className="bg-black/30 border border-white/[0.06] rounded-2xl p-6 hover:border-white/[0.12] transition-colors">
-                <div className="flex items-start justify-between gap-4 flex-wrap">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <StarRating value={r.rating} readOnly size="md" />
-                      <span className="font-serif text-[18px] text-white">{r.author}</span>
-                      <span className="text-[12px] text-white/45 font-mono">{r.date}</span>
-                    </div>
-                    <p className="mt-3 text-[15px] text-white/85 leading-relaxed italic">
-                      {r.comment ? `« ${r.comment} »` : 'Pas de commentaire.'}
-                    </p>
-                    <div className="mt-3 flex items-center gap-2 flex-wrap text-[12px]">
-                      <span className="text-white/45">Pour</span>
-                      <span className="text-green-300 font-medium">{r.producer}</span>
-                    </div>
+          <h3 className="mt-4 font-serif text-[24px] text-gray-900">Tout est à jour</h3>
+          <p className="mt-1 text-[14px] text-gray-500">Aucun avis en attente de modération.</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {reviews.map((r) => (
+            <article key={r.id} className="rounded-md border border-gray-200 bg-white p-6 shadow-sm transition-colors hover:border-gray-300">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <StarRating value={r.rating} readOnly size="md" />
+                    <span className="font-serif text-[18px] text-gray-900">{r.author}</span>
+                    <span className="font-mono text-[12px] text-gray-500">{r.date}</span>
+                  </div>
+                  <p className="mt-3 text-[15px] italic leading-relaxed text-gray-700">
+                    {r.comment ? `« ${r.comment} »` : 'Pas de commentaire.'}
+                  </p>
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px]">
+                    <span className="text-gray-500">Pour</span>
+                    <span className="font-medium text-terroir-green-700">{r.producer}</span>
                   </div>
                 </div>
+              </div>
 
-                <div className="mt-5 pt-5 border-t border-white/[0.06] flex gap-2 justify-end flex-wrap">
-                  <button onClick={() => moderate(r.id, 'reject')} disabled={busy === r.id}
-                    className="px-4 py-2 rounded-md text-[13px] font-medium text-red-300 bg-white/[0.03] hover:bg-red-500/20 disabled:opacity-60 transition-colors">
-                    Rejeter
-                  </button>
-                  <button onClick={() => moderate(r.id, 'publish')} disabled={busy === r.id}
-                    className="px-4 py-2 rounded-md text-[13px] font-semibold text-white bg-green-700 hover:bg-green-600 disabled:opacity-60 transition-colors">
-                    {busy === r.id ? 'Publication…' : 'Publier'}
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
+              <div className="mt-5 flex flex-wrap justify-end gap-2 border-t border-gray-200 pt-5">
+                <button onClick={() => moderate(r.id, 'reject')} disabled={busy === r.id}
+                  className="rounded-md px-4 py-2 text-[13px] font-medium text-red-700 transition-colors hover:bg-red-50 disabled:opacity-60">
+                  Rejeter
+                </button>
+                <button onClick={() => moderate(r.id, 'publish')} disabled={busy === r.id}
+                  className="rounded-md bg-terroir-green-700 px-4 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-terroir-green-700/90 disabled:opacity-60">
+                  {busy === r.id ? 'Publication…' : 'Publier'}
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
       )}
     </div>
   );

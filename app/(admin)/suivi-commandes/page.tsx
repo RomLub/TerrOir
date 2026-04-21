@@ -28,12 +28,12 @@ const FILTERS: { value: Filter; label: string }[] = [
 ];
 
 const STATUS_META: Record<Status, { label: string; dot: string; bg: string; text: string }> = {
-  pending: { label: 'En attente', dot: 'bg-amber-400', bg: 'bg-amber-500/10', text: 'text-amber-300' },
-  confirmed: { label: 'Confirmée', dot: 'bg-blue-400', bg: 'bg-blue-500/10', text: 'text-blue-300' },
-  ready: { label: 'Prête', dot: 'bg-green-400', bg: 'bg-green-500/10', text: 'text-green-300' },
-  completed: { label: 'Retirée', dot: 'bg-white/40', bg: 'bg-white/[0.06]', text: 'text-white/70' },
-  cancelled: { label: 'Annulée', dot: 'bg-red-400', bg: 'bg-red-500/10', text: 'text-red-300' },
-  refunded: { label: 'Remboursée', dot: 'bg-red-400', bg: 'bg-red-500/10', text: 'text-red-300' },
+  pending:   { label: 'En attente', dot: 'bg-amber-500',         bg: 'bg-amber-50',          text: 'text-amber-800' },
+  confirmed: { label: 'Confirmée',  dot: 'bg-amber-600',         bg: 'bg-amber-100',         text: 'text-amber-900' },
+  ready:     { label: 'Prête',      dot: 'bg-terroir-green-700', bg: 'bg-terroir-green-100', text: 'text-terroir-green-700' },
+  completed: { label: 'Retirée',    dot: 'bg-terroir-green-700', bg: 'bg-terroir-green-100', text: 'text-terroir-green-700' },
+  cancelled: { label: 'Annulée',    dot: 'bg-red-500',           bg: 'bg-red-100',           text: 'text-red-700' },
+  refunded:  { label: 'Remboursée', dot: 'bg-red-500',           bg: 'bg-red-100',           text: 'text-red-700' },
 };
 
 function startOfWeek(d: Date): Date {
@@ -166,7 +166,7 @@ export default function AdminCommandesPage() {
       o.status,
     ]);
     const csv = [header, ...rows].map((r) => r.map(csvEscape).join(',')).join('\n');
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const today = new Date().toISOString().slice(0, 10);
     const a = document.createElement('a');
@@ -178,92 +178,92 @@ export default function AdminCommandesPage() {
 
   return (
     <div>
-      <header className="mb-8 flex items-end justify-between gap-4 flex-wrap">
-          <div>
-            <div className="text-[11px] uppercase tracking-[0.18em] text-green-400 font-semibold">Commandes</div>
-            <h1 className="mt-1 font-serif text-[40px] text-white leading-tight">Toutes les commandes</h1>
-            <p className="text-[14px] text-white/55 mt-1">
-              {loading ? 'Chargement…' : `${orders.length} commandes récentes`}
-            </p>
-            {error && <p className="mt-2 text-[13px] text-red-300">{error}</p>}
+      <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-terroir-green-700">Commandes</div>
+          <h1 className="mt-1 font-serif text-[40px] leading-tight text-gray-900">Toutes les commandes</h1>
+          <p className="mt-1 text-[14px] text-gray-500">
+            {loading ? 'Chargement…' : `${orders.length} commandes récentes`}
+          </p>
+          {error && <p className="mt-2 text-[13px] text-red-700">{error}</p>}
+        </div>
+        <button onClick={exportCsv} disabled={filtered.length === 0}
+          className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2.5 text-[14px] text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60">
+          <span aria-hidden>⬇</span> Export CSV
+        </button>
+      </header>
+
+      <section className="mb-8 grid gap-4 sm:grid-cols-3">
+        <MetricCard label="Commandes aujourd'hui" value={String(metrics.today)} hint="Depuis 00h00" />
+        <MetricCard label="CA semaine en cours" value={formatEuro(metrics.weekRevenue)} hint="Depuis lundi, hors annulées" />
+        <MetricCard label="Taux de complétion" value={`${metrics.completion.toFixed(0)} %`} hint="Retirées / (retirées + annulées)" />
+      </section>
+
+      <section className="overflow-hidden rounded-md border border-gray-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-gray-200 p-4">
+          <div className="flex flex-wrap gap-1">
+            {FILTERS.map((f) => {
+              const active = filter === f.value;
+              return (
+                <button key={f.value} onClick={() => setFilter(f.value)}
+                  className={`rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors ${
+                    active ? 'bg-terroir-green-700 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}>
+                  {f.label}
+                </button>
+              );
+            })}
           </div>
-          <button onClick={exportCsv} disabled={filtered.length === 0}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-md bg-white/[0.06] border border-white/10 text-[14px] text-white hover:bg-white/10 disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
-            <span aria-hidden>⬇</span> Export CSV
-          </button>
-        </header>
+          <input type="search" value={search} onChange={(e) => setSearch(e.target.value)}
+            placeholder="Rechercher ID, client, producteur…"
+            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-[13px] text-gray-900 placeholder:text-gray-400 focus:border-terroir-green-700 focus:outline-none focus:ring-2 focus:ring-terroir-green-700 sm:w-80" />
+        </div>
 
-        <section className="grid sm:grid-cols-3 gap-4 mb-8">
-          <MetricCard label="Commandes aujourd'hui" value={String(metrics.today)} hint="Depuis 00h00" />
-          <MetricCard label="CA semaine en cours" value={formatEuro(metrics.weekRevenue)} hint="Depuis lundi, hors annulées" />
-          <MetricCard label="Taux de complétion" value={`${metrics.completion.toFixed(0)} %`} hint="Retirées / (retirées + annulées)" />
-        </section>
-
-        <section className="bg-black/30 border border-white/[0.06] rounded-2xl overflow-hidden">
-          <div className="flex items-center justify-between gap-4 p-4 border-b border-white/[0.06] flex-wrap">
-            <div className="flex gap-1 flex-wrap">
-              {FILTERS.map((f) => {
-                const active = filter === f.value;
+        <div className="overflow-x-auto">
+          <table className="w-full text-[14px]">
+            <thead>
+              <tr className="border-b border-gray-200 bg-gray-100 text-left text-[11px] uppercase tracking-[0.14em] text-gray-600">
+                <th className="px-5 py-3 font-semibold">N°</th>
+                <th className="px-5 py-3 font-semibold">Client</th>
+                <th className="px-5 py-3 font-semibold">Producteur</th>
+                <th className="px-5 py-3 font-semibold">Créneau</th>
+                <th className="px-5 py-3 font-semibold">Statut</th>
+                <th className="px-5 py-3 text-right font-semibold">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={6} className="px-5 py-10 text-center text-gray-500">Chargement…</td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan={6} className="px-5 py-10 text-center text-gray-500">Aucune commande ne correspond.</td></tr>
+              ) : filtered.map((o) => {
+                const meta = STATUS_META[o.status];
                 return (
-                  <button key={f.value} onClick={() => setFilter(f.value)}
-                    className={`px-3 py-1.5 rounded-md text-[13px] font-medium transition-colors ${
-                      active ? 'bg-green-700 text-white' : 'bg-white/[0.03] text-white/65 hover:bg-white/[0.08] hover:text-white'
-                    }`}>
-                    {f.label}
-                  </button>
+                  <tr key={o.id} className="border-b border-gray-200 last:border-0 hover:bg-gray-50">
+                    <td className="px-5 py-4 font-mono text-[12px] text-gray-700">{o.code_commande ?? '—'}</td>
+                    <td className="px-5 py-4 text-gray-900">{o.client}</td>
+                    <td className="px-5 py-4 text-terroir-green-700">{o.producer}</td>
+                    <td className="px-5 py-4 text-gray-700">{o.slot_label}</td>
+                    <td className="px-5 py-4">
+                      <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-medium ${meta.bg} ${meta.text}`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} />
+                        {meta.label}
+                      </span>
+                    </td>
+                    <td className="px-5 py-4 text-right font-serif text-[17px] tabular-nums text-gray-900">{formatEuro(o.total)}</td>
+                  </tr>
                 );
               })}
-            </div>
-            <input type="search" value={search} onChange={(e) => setSearch(e.target.value)}
-              placeholder="Rechercher ID, client, producteur…"
-              className="w-full sm:w-80 rounded-md bg-black/40 border border-white/10 px-3 py-2 text-[13px] text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500" />
-          </div>
+            </tbody>
+          </table>
+        </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-[14px]">
-              <thead>
-                <tr className="text-left text-[11px] uppercase tracking-[0.14em] text-white/50 bg-white/[0.02] border-b border-white/[0.06]">
-                  <th className="px-5 py-3 font-semibold">N°</th>
-                  <th className="px-5 py-3 font-semibold">Client</th>
-                  <th className="px-5 py-3 font-semibold">Producteur</th>
-                  <th className="px-5 py-3 font-semibold">Créneau</th>
-                  <th className="px-5 py-3 font-semibold">Statut</th>
-                  <th className="px-5 py-3 font-semibold text-right">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr><td colSpan={6} className="px-5 py-10 text-center text-white/55">Chargement…</td></tr>
-                ) : filtered.length === 0 ? (
-                  <tr><td colSpan={6} className="px-5 py-10 text-center text-white/55">Aucune commande ne correspond.</td></tr>
-                ) : filtered.map((o) => {
-                  const meta = STATUS_META[o.status];
-                  return (
-                    <tr key={o.id} className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02]">
-                      <td className="px-5 py-4 font-mono text-[12px] text-white/80">{o.code_commande ?? '—'}</td>
-                      <td className="px-5 py-4 text-white">{o.client}</td>
-                      <td className="px-5 py-4 text-green-300">{o.producer}</td>
-                      <td className="px-5 py-4 text-white/70">{o.slot_label}</td>
-                      <td className="px-5 py-4">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[12px] font-medium ${meta.bg} ${meta.text}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
-                          {meta.label}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4 text-right font-serif text-[17px] text-white tabular-nums">{formatEuro(o.total)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="px-5 py-3 border-t border-white/[0.06] flex items-center justify-between text-[12px] text-white/55">
-            <span>{filtered.length} commande{filtered.length > 1 ? 's' : ''}</span>
-            <span className="font-mono">
-              Total filtré : <span className="text-white">{formatEuro(filtered.reduce((s, o) => s + o.total, 0))}</span>
-            </span>
-          </div>
+        <div className="flex items-center justify-between border-t border-gray-200 px-5 py-3 text-[12px] text-gray-500">
+          <span>{filtered.length} commande{filtered.length > 1 ? 's' : ''}</span>
+          <span className="font-mono">
+            Total filtré : <span className="text-gray-900">{formatEuro(filtered.reduce((s, o) => s + o.total, 0))}</span>
+          </span>
+        </div>
       </section>
     </div>
   );
@@ -271,10 +271,10 @@ export default function AdminCommandesPage() {
 
 function MetricCard({ label, value, hint }: { label: string; value: string; hint: string }) {
   return (
-    <div className="bg-black/30 border border-white/[0.06] rounded-2xl p-6">
-      <div className="text-[11px] uppercase tracking-[0.18em] text-green-400 font-semibold">{label}</div>
-      <div className="mt-2 font-serif text-[36px] text-white leading-none tabular-nums">{value}</div>
-      <div className="mt-2 text-[12px] text-white/50">{hint}</div>
+    <div className="rounded-md border border-gray-200 bg-white p-6 shadow-sm">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-terroir-green-700">{label}</div>
+      <div className="mt-2 font-serif text-[36px] leading-none tabular-nums text-gray-900">{value}</div>
+      <div className="mt-2 text-[12px] text-gray-500">{hint}</div>
     </div>
   );
 }
