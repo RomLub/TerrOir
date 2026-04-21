@@ -26,24 +26,15 @@ export async function loginAction(
     return { error: "Identifiants invalides" };
   }
 
-  // Lookup parallèle users + admin_users — mutuellement exclusifs.
-  const [{ data: profile }, { data: adminRow }] = await Promise.all([
-    supabase
-      .from("users")
-      .select("roles")
-      .eq("id", data.user.id)
-      .maybeSingle(),
-    supabase
-      .from("admin_users")
-      .select("id")
-      .eq("id", data.user.id)
-      .maybeSingle(),
-  ]);
+  // Seul l'admin a une destination dédiée. Tous les autres users atterrissent
+  // sur /compte par défaut ; les producteurs basculent ensuite vers leur
+  // espace pro via le switcher de la nav.
+  const { data: adminRow } = await supabase
+    .from("admin_users")
+    .select("id")
+    .eq("id", data.user.id)
+    .maybeSingle();
 
-  const roles = (profile?.roles as string[] | undefined) ?? [];
-  const isAdmin = !!adminRow;
-
-  if (isAdmin) redirect("/tableau-de-bord");
-  if (roles.includes("producer")) redirect("/dashboard");
+  if (adminRow) redirect("/tableau-de-bord");
   redirect("/compte");
 }
