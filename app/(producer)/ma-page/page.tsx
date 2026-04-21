@@ -1,11 +1,40 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Button, Badge, Input, Textarea, ProducerCard } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { uploadProducerPhoto } from '@/lib/producers/upload';
 import { labelEspece, labelLabel } from '@/lib/producers/labels';
 import { ProducerLayout } from '../_components/ProducerLayout';
+
+function OnboardedBanner() {
+  const searchParams = useSearchParams();
+  const [dismissed, setDismissed] = useState(false);
+  if (dismissed || searchParams.get('onboarded') !== '1') return null;
+  return (
+    <div
+      role="status"
+      className="mb-6 flex items-start justify-between gap-4 rounded-md border border-terroir-green-700/30 bg-terroir-green-100 px-4 py-3 text-sm text-terroir-green-700"
+    >
+      <div>
+        <p className="font-semibold">Demande enregistrée</p>
+        <p className="mt-0.5 text-terroir-green-700/85">
+          Votre demande est en cours de validation par l&apos;équipe TerrOir.
+          Vous recevrez un email dès qu&apos;elle sera acceptée.
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={() => setDismissed(true)}
+        className="shrink-0 rounded p-1 text-terroir-green-700/70 hover:bg-terroir-green-700/10 hover:text-terroir-green-700"
+        aria-label="Fermer"
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
 
 const ESPECE_OPTIONS = [
   { value: 'bovin', label: 'Bœuf' },
@@ -221,6 +250,9 @@ export default function MaPagePage() {
   return (
     <ProducerLayout>
       <div className="max-w-6xl mx-auto px-8 py-10">
+        <Suspense fallback={null}>
+          <OnboardedBanner />
+        </Suspense>
         <header className="mb-6">
           <div className="text-[11px] uppercase tracking-[0.18em] text-terra-700 font-semibold">Ma page</div>
           <h1 className="mt-1 font-serif text-[40px] text-green-900 leading-tight">Ma page publique</h1>
