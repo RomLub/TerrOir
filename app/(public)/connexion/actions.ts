@@ -43,7 +43,7 @@ export async function loginAction(
   const roles = (profile?.roles as string[] | undefined) ?? [];
   const isAdmin = !!adminRow;
 
-  if (isAdmin) redirect("/dashboard");
+  if (isAdmin) redirect("/tableau-de-bord");
   if (roles.includes("producer")) redirect("/dashboard");
   redirect("/compte");
 }

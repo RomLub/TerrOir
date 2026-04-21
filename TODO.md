@@ -17,14 +17,14 @@
 - Middleware : `/reset-password` et `/auth/callback` ajoutés aux public paths
 - Site URL Supabase corrigée (`www.terroir-local.fr`)
 - Nettoyage Redirect URLs Supabase (3 URLs `terroir-local.fr`)
+- **Chantier 1 (refactor rôles) déployé en prod** : migration `20260421100000_cumulative_roles_admin_users.sql` — table `public.admin_users`, `users.roles text[]` cumulables, triggers d'exclusion mutuelle `users ↔ admin_users`, fonction `is_admin()` refactorée sur `admin_users`
+- **Fix GRANT `supabase_auth_admin`** : migration `20260421200000_grant_auth_admin_on_public.sql` (USAGE schema + ALL PRIVILEGES sur `public.*`) — nécessaire après chaque migration qui modifie des FK vers `auth.users`, sinon GoTrue renvoie « Database error querying schema »
+- **Fix tokens auth NULL → ''** : les users créés par INSERT SQL direct dans `auth.users` doivent avoir les colonnes `confirmation_token`, `email_change`, `email_change_token_new`, `email_change_token_current`, `recovery_token`, `phone_change`, `phone_change_token`, `reauthentication_token` en string vide (pas NULL), sinon GoTrue plante avec « error finding user: sql: Scan error on column … converting NULL to string »
+- **Compte admin créé** : `admin@terroir-local.fr` dans `auth.users` + `admin_users` (id `478d643a-9d2a-485d-aedf-438ca2eda246`, Romain LUBIN), password `TerrOirAdmin2026!` — **à changer dès première connexion réussie**
 
 ## 🟠 En cours
 
-- Refonte du modèle de rôles users (Chantier 1 en cours, CC)
-  - Pattern B : `users.roles text[]` (consumer + producer cumulables)
-  - Option Y : table `public.admin_users` isolée
-  - Wipe des users existants (pré-prod, aucune donnée réelle)
-  - Nouveau compte admin à créer sur `admin@terroir-local.fr`
+- Post-login admin : redirection vers `/invitation` au lieu d'un espace admin dédié — diagnostic en cours
 
 ## 🔴 À faire (bloquants lancement)
 
@@ -33,7 +33,6 @@
 - Chantier 4 : cookies refait proprement — cookies `.terroir-local.fr` UNIQUEMENT pour `www` et `pro`, cookies isolés sur `admin.terroir-local.fr`
 - Chantier 5 : middleware adapté au nouveau modèle rôles (laisser producteur accéder à `/compte`, utiliser `admin_users` pour auth admin)
 - Chantier 6 : interface de switch consumer/producer dans le profil producteur
-- Créer le compte admin dédié avec email `admin@terroir-local.fr` (dans `auth.users` + `admin_users`)
 - Onboarder Julien (GAEC du Rheu) — après validation test end-to-end
 - Basculer Stripe en mode Live (aujourd'hui en Test)
 - Mettre à jour le webhook Stripe vers `www.terroir-local.fr` (actuellement pointe sur `terr-oir-21cl.vercel.app`)
@@ -59,3 +58,8 @@
 - Export comptable consommateurs + producteurs
 - Gestion des litiges (retrait non effectué, marchandise abîmée)
 - Stats publiques sur la home (nb commandes, nb producteurs actifs)
+
+## ⚠️ Leçons apprises / Known pitfalls
+
+- **Toute migration future qui référence `auth.users` via FK dans `public.*` DOIT inclure les GRANT sur `supabase_auth_admin`** (USAGE sur le schema + privilèges sur les tables concernées). Sans ça, GoTrue renvoie « Database error querying schema » sur `/token` et `/recover`. Ne pas recommencer le debug d'1h.
+- **Création de users via SQL direct sur `auth.users`** : toujours initialiser à `''` (pas NULL) les 8 colonnes token : `confirmation_token`, `email_change`, `email_change_token_new`, `email_change_token_current`, `recovery_token`, `phone_change`, `phone_change_token`, `reauthentication_token`. Sinon GoTrue plante au scan (`converting NULL to string`).
