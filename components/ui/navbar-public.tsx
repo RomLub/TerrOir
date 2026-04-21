@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Logo } from "@/components/ui/logo";
 import { Badge } from "@/components/ui/badge";
 import { useUserContext } from "@/components/providers/user-provider";
+import { logoutAction } from "@/app/(public)/connexion/logout-action";
 
 export type NavLink = { href: string; label: string };
 
@@ -92,13 +93,21 @@ export function NavbarPublic({
           ) : user ? (
             <>
               <Link
-                href="/compte"
+                href={isAdmin ? "/tableau-de-bord" : "/compte"}
                 className="inline-flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-terroir-ink transition-colors hover:bg-terroir-green-100 hover:text-terroir-green-700"
               >
                 <UserIcon className="h-5 w-5 text-terroir-green-700" />
                 <span className="font-medium">{label}</span>
               </Link>
               {isAdmin ? <Badge variant="green">Admin</Badge> : null}
+              <form action={logoutAction}>
+                <button
+                  type="submit"
+                  className="text-xs text-terroir-muted transition-colors hover:text-terroir-green-700 hover:underline"
+                >
+                  Déconnexion
+                </button>
+              </form>
             </>
           ) : (
             <>
