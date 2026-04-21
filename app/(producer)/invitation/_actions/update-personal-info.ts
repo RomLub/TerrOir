@@ -24,20 +24,37 @@ export async function updatePersonalInfoAction(
   }
 
   const admin = createSupabaseAdminClient();
+  const token = parsed.data.token?.trim();
 
-  const { data: invitation } = await admin
-    .from("producer_invitations")
-    .select("email, expires_at, used_at")
-    .eq("token", parsed.data.token)
-    .maybeSingle();
+  if (token) {
+    // Flux invitation classique : légitimité prouvée par le token.
+    const { data: invitation } = await admin
+      .from("producer_invitations")
+      .select("email, expires_at, used_at")
+      .eq("token", token)
+      .maybeSingle();
 
-  if (!invitation) return { error: "Invitation introuvable" };
-  if (invitation.used_at) return { error: "Invitation déjà utilisée" };
-  if (new Date(invitation.expires_at) < new Date())
-    return { error: "Invitation expirée" };
+    if (!invitation) return { error: "Invitation introuvable" };
+    if (invitation.used_at) return { error: "Invitation déjà utilisée" };
+    if (new Date(invitation.expires_at) < new Date())
+      return { error: "Invitation expirée" };
 
-  if (session.email !== invitation.email) {
-    return { error: "Email de session ne correspond pas à l'invitation" };
+    if (session.email !== invitation.email) {
+      return { error: "Email de session ne correspond pas à l'invitation" };
+    }
+  } else {
+    // Flux reprise (Phase 4) : légitimité prouvée par la session + un
+    // producer draft appartenant à l'utilisateur.
+    const { data: producer } = await admin
+      .from("producers")
+      .select("statut")
+      .eq("user_id", session.id)
+      .maybeSingle();
+
+    if (!producer) return { error: "Aucun profil producteur à compléter" };
+    if (producer.statut !== "draft") {
+      return { error: "Profil producteur déjà finalisé" };
+    }
   }
 
   const { error: updateError } = await admin

@@ -118,6 +118,42 @@ export async function middleware(request: NextRequest) {
         process.env.NEXT_PUBLIC_PRODUCER_URL ?? "http://pro.localhost:3000";
       return NextResponse.redirect(new URL("/", producerBase));
     }
+
+    // 3c. Producer avec statut='draft' sur pro.* : redirige vers /onboarding
+    //     (Phase 4). Exemptions : /onboarding lui-même et /invitation/* pour
+    //     éviter toute boucle. Admins bypass complet.
+    //     Inversement, si l'utilisateur atterrit sur /onboarding sans draft
+    //     à reprendre, on le renvoie vers /ma-page.
+    if (isProducerHost && !isAdmin && roles.includes("producer")) {
+      const isOnboardingPath = pathname === "/onboarding";
+      const isInvitationPath = pathname.startsWith("/invitation");
+
+      if (!isInvitationPath) {
+        const { data: producerRow, error: producerError } = await supabase
+          .from("producers")
+          .select("statut")
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        // Fail-open : si la query plante (soucis transient, RLS inattendue),
+        // on laisse passer plutôt que de bloquer un producteur légitime.
+        if (!producerError) {
+          const isDraft = producerRow?.statut === "draft";
+          if (isDraft && !isOnboardingPath) {
+            const redirectUrl = request.nextUrl.clone();
+            redirectUrl.pathname = "/onboarding";
+            redirectUrl.search = "";
+            return NextResponse.redirect(redirectUrl);
+          }
+          if (!isDraft && isOnboardingPath) {
+            const redirectUrl = request.nextUrl.clone();
+            redirectUrl.pathname = "/ma-page";
+            redirectUrl.search = "";
+            return NextResponse.redirect(redirectUrl);
+          }
+        }
+      }
+    }
   }
 
   return response;

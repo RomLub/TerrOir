@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth/session";
 import { OnboardingWizard, type WizardCase } from "./_components/OnboardingWizard";
@@ -124,6 +125,22 @@ export default async function InvitationPage({ searchParams }: PageProps) {
 
   const session = await getSessionUser();
   const isLoggedInAsInvitee = session?.email === email;
+
+  // Phase 4 : si l'invitee est déjà loggé, a le rôle producer en DB et
+  // un producer en draft, on centralise la reprise dans /onboarding —
+  // pas besoin du token, la session suffit. La double vérification
+  // (rôle + draft) garantit qu'aucun auto-upgrade n'est nécessaire à
+  // ce stade. Les autres cas (pas loggé, loggé autre compte, producer
+  // inexistant, rôle pas encore ajouté) gardent le flux classique
+  // ci-dessous qui fait l'auto-upgrade puis affiche le wizard.
+  if (
+    isLoggedInAsInvitee &&
+    existingRoles.includes("producer") &&
+    existingProducer &&
+    existingProducer.statut === "draft"
+  ) {
+    redirect("/onboarding");
+  }
 
   // Détermination du cas + préparation des valeurs initiales
   let caseKind: WizardCase;

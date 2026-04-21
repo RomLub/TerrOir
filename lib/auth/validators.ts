@@ -43,8 +43,12 @@ export const invitationLoginAndUpgradeSchema = z.object({
   password: z.string().min(1, "Mot de passe requis"),
 });
 
+// Le token est optionnel ici : absent en mode reprise d'onboarding (Phase 4)
+// où la légitimité de la requête vient de la session + du producer draft
+// existant, pas d'une invitation valide. Si un token est fourni, l'action
+// le validera quand même (flux invitation classique).
 export const invitationPersonalInfoSchema = z.object({
-  token: z.string().min(16, "Token invalide"),
+  token: z.string().optional(),
   prenom: z.string().trim().min(1, "Prénom requis"),
   nom: z.string().trim().min(1, "Nom requis"),
   telephone: z.string().trim().min(1, "Téléphone requis"),
@@ -73,7 +77,9 @@ export const typeProductionEnum = z.enum([
 
 export const invitationBusinessInfoSchema = z
   .object({
-    token: z.string().min(16, "Token invalide"),
+    // Voir note sur invitationPersonalInfoSchema : optionnel pour le flux
+    // de reprise (Phase 4), contrôlé par la session côté action.
+    token: z.string().optional(),
     nom_exploitation: z.string().trim().min(1, "Nom de l'exploitation requis"),
     forme_juridique: formeJuridiqueEnum,
     siret: z.string().trim().regex(/^\d{14}$/, "SIRET : 14 chiffres requis"),

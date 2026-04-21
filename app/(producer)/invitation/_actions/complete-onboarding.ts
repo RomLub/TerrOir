@@ -31,20 +31,39 @@ export async function completeOnboardingAction(
   }
 
   const admin = createSupabaseAdminClient();
+  const token = parsed.data.token?.trim();
 
-  const { data: invitation } = await admin
-    .from("producer_invitations")
-    .select("id, email, expires_at, used_at")
-    .eq("token", parsed.data.token)
-    .maybeSingle();
+  // On retient l'invitation à marquer used_at SI on est en flux classique
+  // (token présent). En flux reprise (Phase 4), pas d'invitation à marquer.
+  let invitationId: string | null = null;
 
-  if (!invitation) return { error: "Invitation introuvable" };
-  if (invitation.used_at) return { error: "Invitation déjà utilisée" };
-  if (new Date(invitation.expires_at) < new Date())
-    return { error: "Invitation expirée" };
+  if (token) {
+    const { data: invitation } = await admin
+      .from("producer_invitations")
+      .select("id, email, expires_at, used_at")
+      .eq("token", token)
+      .maybeSingle();
 
-  if (session.email !== invitation.email) {
-    return { error: "Email de session ne correspond pas à l'invitation" };
+    if (!invitation) return { error: "Invitation introuvable" };
+    if (invitation.used_at) return { error: "Invitation déjà utilisée" };
+    if (new Date(invitation.expires_at) < new Date())
+      return { error: "Invitation expirée" };
+
+    if (session.email !== invitation.email) {
+      return { error: "Email de session ne correspond pas à l'invitation" };
+    }
+    invitationId = invitation.id as string;
+  } else {
+    const { data: producer } = await admin
+      .from("producers")
+      .select("statut")
+      .eq("user_id", session.id)
+      .maybeSingle();
+
+    if (!producer) return { error: "Aucun profil producteur à compléter" };
+    if (producer.statut !== "draft") {
+      return { error: "Profil producteur déjà finalisé" };
+    }
   }
 
   const { error: producerError } = await admin
@@ -69,13 +88,15 @@ export async function completeOnboardingAction(
     return { error: `Finalisation échouée : ${producerError.message}` };
   }
 
-  // On marque used_at SEULEMENT maintenant (pas au créateAccount/login). Cela
+  // On marque used_at SEULEMENT maintenant (pas au createAccount/login). Cela
   // permet à un utilisateur qui abandonne à l'étape 2 ou 3 de recliquer sur
   // le lien email dans les 7 jours de validité de l'invitation pour reprendre.
-  await admin
-    .from("producer_invitations")
-    .update({ used_at: new Date().toISOString() })
-    .eq("id", invitation.id);
+  if (invitationId) {
+    await admin
+      .from("producer_invitations")
+      .update({ used_at: new Date().toISOString() })
+      .eq("id", invitationId);
+  }
 
   redirect("/ma-page?onboarded=1");
 }
