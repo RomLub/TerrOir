@@ -7,7 +7,6 @@ import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
 // Statuts producers visibles côté admin. 'draft' est exclu au fetch —
 // formulaire d'onboarding incomplet, pas de sens à afficher en admin.
-// 'public' partage la palette d'active pour l'instant (Phase 5 affinera).
 type Status = 'pending' | 'active' | 'public' | 'suspended';
 
 type Producer = {
@@ -31,13 +30,13 @@ const FILTERS: { value: Filter; label: string }[] = [
 
 const STATUS_META: Record<Status, { label: string; dot: string; bg: string; text: string }> = {
   pending:   { label: 'En attente', dot: 'bg-amber-500',         bg: 'bg-amber-50',          text: 'text-amber-800' },
-  active:    { label: 'Actif',      dot: 'bg-terroir-green-700', bg: 'bg-terroir-green-100', text: 'text-terroir-green-700' },
+  active:    { label: 'Validé',     dot: 'bg-amber-600',         bg: 'bg-amber-100',         text: 'text-amber-900' },
   public:    { label: 'Public',     dot: 'bg-terroir-green-700', bg: 'bg-terroir-green-100', text: 'text-terroir-green-700' },
   suspended: { label: 'Suspendu',   dot: 'bg-red-500',           bg: 'bg-red-100',           text: 'text-red-700' },
 };
 
-// Le filtre "Actifs" agrège les producteurs actifs et publics (tous deux
-// visibles/semi-visibles côté public) — Phase 5 scindera si besoin.
+// Le filtre "Actifs" agrège 'active' (validé, pas encore vitrine) et 'public'
+// (visible publiquement) — les deux sont considérés comme « en activité ».
 function matchesFilter(status: Status, filter: Filter): boolean {
   if (filter === 'all') return true;
   if (filter === 'active') return status === 'active' || status === 'public';
@@ -63,6 +62,7 @@ export default function AdminProducteursPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [inviting, setInviting] = useState(false);
+  const [validating, setValidating] = useState<Producer | null>(null);
 
   const refresh = async () => {
     const supabase = createSupabaseBrowserClient();
@@ -199,7 +199,7 @@ export default function AdminProducteursPage() {
                       <td className="px-5 py-4">
                         <div className="flex flex-wrap items-center justify-end gap-2">
                           {p.status === 'pending' && (
-                            <button onClick={() => setStatus(p.id, 'active')} disabled={disabled}
+                            <button onClick={() => setValidating(p)} disabled={disabled}
                               className="rounded-md bg-terroir-green-700 px-3 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-terroir-green-700/90 disabled:opacity-60">
                               Valider
                             </button>
@@ -216,10 +216,12 @@ export default function AdminProducteursPage() {
                               Réactiver
                             </button>
                           )}
-                          <Link href={`/producteurs/${p.slug}`} target="_blank"
-                            className="rounded-md px-3 py-1.5 text-[12px] font-medium text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900">
-                            Voir page publique ↗
-                          </Link>
+                          {p.status === 'public' && (
+                            <Link href={`/producteurs/${p.slug}`} target="_blank"
+                              className="rounded-md px-3 py-1.5 text-[12px] font-medium text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900">
+                              Voir page publique ↗
+                            </Link>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -232,7 +234,49 @@ export default function AdminProducteursPage() {
       </div>
 
       {inviting && <InviteModal onClose={() => setInviting(false)} onSuccess={() => { refresh(); }} />}
+      {validating && (
+        <ConfirmValidateModal
+          producer={validating}
+          busy={busy === validating.id}
+          onClose={() => setValidating(null)}
+          onConfirm={async () => {
+            await setStatus(validating.id, 'active');
+            setValidating(null);
+          }}
+        />
+      )}
     </>
+  );
+}
+
+function ConfirmValidateModal({
+  producer, busy, onClose, onConfirm,
+}: {
+  producer: Producer;
+  busy: boolean;
+  onClose: () => void;
+  onConfirm: () => void | Promise<void>;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-full max-w-md rounded-md border border-gray-200 bg-white p-8 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-terroir-green-700">Validation</div>
+        <h2 className="mt-1 font-serif text-[24px] leading-tight text-gray-900">Valider ce producteur ?</h2>
+        <p className="mt-3 text-[14px] leading-relaxed text-gray-700">
+          Le producteur <span className="font-semibold text-gray-900">{producer.name}</span> passera en statut validé et pourra publier ses produits.
+        </p>
+        <div className="mt-6 flex justify-end gap-2">
+          <button type="button" onClick={onClose} disabled={busy}
+            className="rounded-md px-4 py-2 text-[14px] text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900 disabled:opacity-60">
+            Annuler
+          </button>
+          <button type="button" onClick={onConfirm} disabled={busy}
+            className="rounded-md bg-terroir-green-700 px-4 py-2 text-[14px] font-semibold text-white transition-colors hover:bg-terroir-green-700/90 disabled:cursor-not-allowed disabled:opacity-60">
+            {busy ? 'Validation…' : 'Valider'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
