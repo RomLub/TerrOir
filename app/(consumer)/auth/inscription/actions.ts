@@ -27,10 +27,14 @@ export async function signupAction(
   const { prenom, nom, email, password, telephone, sms_optin } = parsed.data;
 
   const supabase = createSupabaseServerClient();
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: { prenom, nom } },
+    options: {
+      data: { prenom, nom },
+      emailRedirectTo: `${appUrl}/auth/callback?next=/compte/commandes`,
+    },
   });
 
   if (error || !data.user) {

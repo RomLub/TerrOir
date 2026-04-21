@@ -13,6 +13,7 @@ const PUBLIC_PATHS = new Set<string>([
   "/inscription",
   "/invitation",
   "/auth/inscription",
+  "/reset-password",
 ]);
 
 function isPublicPath(pathname: string): boolean {
