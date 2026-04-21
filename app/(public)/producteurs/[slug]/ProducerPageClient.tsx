@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import {
   Button,
@@ -9,6 +10,22 @@ import {
   ProductCard,
   StarRating,
 } from '@/components/ui';
+
+// Visuels Unsplash de secours tant que le producteur n'a pas uploadé ses propres photos.
+const DEFAULT_HERO_PHOTO =
+  'https://images.unsplash.com/photo-1500595046743-cd271d694d30?w=1600';
+const PRODUCT_PHOTOS = {
+  beef: 'https://images.unsplash.com/photo-1558030006-450675393462?w=800',
+  pork: 'https://images.unsplash.com/photo-1607623814075-e51df1bdc82f?w=800',
+  lamb: 'https://images.unsplash.com/photo-1548550023-2bdb3c5beed7?w=800',
+} as const;
+
+function pickProductImage(name: string): string {
+  const n = name.toLowerCase();
+  if (/porc|saucisson|lard|jambon|charcut/.test(n)) return PRODUCT_PHOTOS.pork;
+  if (/agneau|mouton|gigot|brebis/.test(n)) return PRODUCT_PHOTOS.lamb;
+  return PRODUCT_PHOTOS.beef;
+}
 
 export type ProducerData = {
   slug: string;
@@ -67,6 +84,12 @@ export function ProducerPageClient({
   const visibleReviews = reviews.slice(0, page * REVIEWS_PER_PAGE);
   const canLoadMore = reviews.length > visibleReviews.length;
 
+  const productsWithImage = useMemo(
+    () => products.map((p) => ({ ...p, image: p.image ?? pickProductImage(p.name) })),
+    [products],
+  );
+  const heroPhoto = producer.heroPhoto ?? DEFAULT_HERO_PHOTO;
+
   const scrollToProducts = () => {
     document.getElementById('produits')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
@@ -76,12 +99,14 @@ export function ProducerPageClient({
   return (
     <div className="min-h-screen bg-bg pb-24 lg:pb-0">
       <section className="relative h-[400px] overflow-hidden">
-        {producer.heroPhoto ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={producer.heroPhoto} alt="" className="absolute inset-0 w-full h-full object-cover" />
-        ) : (
-          <PhotoPlaceholder label="Photo principale — ambiance ferme" className="absolute inset-0 w-full h-full" />
-        )}
+        <Image
+          src={heroPhoto}
+          alt=""
+          fill
+          priority
+          sizes="100vw"
+          className="object-cover"
+        />
         <div className="absolute inset-0 bg-gradient-to-t from-green-900/90 via-green-900/50 to-transparent" />
         <div className="relative max-w-7xl mx-auto px-6 h-full flex flex-col justify-end pb-8">
           <div className="flex items-center gap-2 mb-3">
@@ -185,7 +210,7 @@ export function ProducerPageClient({
             </div>
           ) : (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-              {products.map((prod) => (
+              {productsWithImage.map((prod) => (
                 <Link key={prod.id} href={`/producteurs/${producer.slug}/produits/${prod.id}`}>
                   <ProductCard product={prod} onClick={() => {}} />
                 </Link>

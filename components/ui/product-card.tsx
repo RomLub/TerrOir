@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { Badge } from "./badge";
 
 export type ProductCardData = {
@@ -43,19 +44,16 @@ export function ProductCard({
         onClick ? "cursor-pointer" : ""
       } ${className}`}
     >
-      <div
-        className="relative aspect-[4/3] w-full bg-terroir-green-100"
-        aria-hidden
-        style={
-          product.image
-            ? {
-                backgroundImage: `url(${product.image})`,
-                backgroundSize: "cover",
-                backgroundPosition: "center",
-              }
-            : undefined
-        }
-      >
+      <div className="relative aspect-[4/3] w-full overflow-hidden bg-terroir-green-100">
+        {product.image ? (
+          <Image
+            src={product.image}
+            alt={product.name}
+            fill
+            sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+            className="object-cover"
+          />
+        ) : null}
         {product.category ? (
           <div className="absolute left-2 top-2">
             <Badge variant="neutral">{product.category}</Badge>

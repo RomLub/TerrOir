@@ -1,5 +1,10 @@
+import Image from "next/image";
 import { Badge } from "./badge";
 import { StarRating } from "./star-rating";
+
+// Visuel de secours tant qu'aucune photo n'a été uploadée — ferme générique Unsplash.
+const DEFAULT_PRODUCER_PHOTO =
+  "https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=400";
 
 export type ProducerCardData = {
   name: string;
@@ -31,23 +36,21 @@ export function ProducerCard({ producer, className = "" }: ProducerCardProps) {
     productCount,
   } = producer;
 
+  const photo = producer.photo ?? DEFAULT_PRODUCER_PHOTO;
+
   return (
     <article
       className={`flex gap-4 rounded-2xl border border-terroir-border bg-white p-4 shadow-sm transition hover:shadow-md ${className}`}
     >
-      <div
-        className="h-20 w-20 shrink-0 rounded-xl bg-terroir-green-100"
-        aria-hidden
-        style={
-          producer.photo
-            ? {
-                backgroundImage: `url(${producer.photo})`,
-                backgroundSize: "cover",
-                backgroundPosition: "center",
-              }
-            : undefined
-        }
-      />
+      <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-terroir-green-100">
+        <Image
+          src={photo}
+          alt=""
+          fill
+          sizes="80px"
+          className="object-cover"
+        />
+      </div>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
