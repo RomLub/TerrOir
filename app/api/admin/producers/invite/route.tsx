@@ -36,7 +36,42 @@ export async function POST(request: Request) {
 
   const admin = createSupabaseAdminClient();
 
-  // 1. Invitation (token + expiry gérés par la table)
+  // 1. Pré-checks : refuser admin et producteur déjà inscrit
+  const { data: existingAdmin, error: adminCheckError } = await admin
+    .from("admin_users")
+    .select("id")
+    .eq("email", input.email)
+    .maybeSingle();
+  if (adminCheckError) {
+    return NextResponse.json({ error: adminCheckError.message }, { status: 500 });
+  }
+  if (existingAdmin) {
+    return NextResponse.json(
+      { error: "Impossible d'inviter un administrateur comme producteur" },
+      { status: 409 },
+    );
+  }
+
+  const { data: existingUser, error: userCheckError } = await admin
+    .from("users")
+    .select("id, roles")
+    .eq("email", input.email)
+    .maybeSingle();
+  if (userCheckError) {
+    return NextResponse.json({ error: userCheckError.message }, { status: 500 });
+  }
+  if (
+    existingUser &&
+    Array.isArray(existingUser.roles) &&
+    existingUser.roles.includes("producer")
+  ) {
+    return NextResponse.json(
+      { error: "Ce producteur est déjà inscrit" },
+      { status: 409 },
+    );
+  }
+
+  // 2. Invitation (token + expiry gérés par la table)
   const token = randomBytes(32).toString("hex");
   const { data: invitation, error: invitationError } = await admin
     .from("producer_invitations")
@@ -58,7 +93,7 @@ export async function POST(request: Request) {
     process.env.NEXT_PUBLIC_PRODUCER_URL ?? "http://pro.localhost:3000";
   const invitationUrl = `${producerBase}/invitation?token=${invitation.token}`;
 
-  // 2. Email via Resend
+  // 3. Email via Resend
   const emailResult = await sendTemplate({
     to: input.email,
     userId: null,
@@ -68,7 +103,7 @@ export async function POST(request: Request) {
     metadata: { token_prefix: token.slice(0, 8), email: input.email },
   });
 
-  // 3. Trace dans producer_interests avec statut='contacted'
+  // 4. Trace dans producer_interests avec statut='contacted'
   const { error: interestError } = await admin
     .from("producer_interests")
     .insert({
