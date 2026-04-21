@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import { sharedCookieOptions } from "@/lib/supabase/cookie-options";
 
 const PRODUCER_HOST = "pro.terroir-local.fr";
 const ADMIN_HOST = "admin.terroir-local.fr";
@@ -35,6 +36,7 @@ export async function middleware(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      cookieOptions: sharedCookieOptions,
       cookies: {
         getAll: () => request.cookies.getAll(),
         setAll: (
