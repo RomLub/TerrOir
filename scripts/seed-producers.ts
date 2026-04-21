@@ -61,7 +61,7 @@ type ProducerSeed = {
   generations: number;
   especes: string[];
   labels: string[];
-  coverKeywords: string;
+  coverPhotoId: string;
   produits: Array<{
     nom: string;
     description: string;
@@ -69,7 +69,7 @@ type ProducerSeed = {
     unite: Unite;
     poids_estime_kg: number | null;
     stock_disponible: number;
-    photoKeywords: string;
+    photoId: string;
   }>;
 };
 
@@ -95,7 +95,7 @@ const PRODUCERS: ProducerSeed[] = [
     generations: 3,
     especes: [],
     labels: ["bio"],
-    coverKeywords: "orchard,apple",
+    coverPhotoId: "photo-1537811465496-6c38a51d2d81",
     produits: [
       {
         nom: "Pommes Reine des Reinettes — colis 5 kg",
@@ -105,7 +105,7 @@ const PRODUCERS: ProducerSeed[] = [
         unite: "colis",
         poids_estime_kg: 5,
         stock_disponible: 30,
-        photoKeywords: "apple,harvest",
+        photoId: "photo-1560806887-1e4cd0b6cbd6",
       },
       {
         nom: "Poires Conférence — colis 3 kg",
@@ -115,7 +115,7 @@ const PRODUCERS: ProducerSeed[] = [
         unite: "colis",
         poids_estime_kg: 3,
         stock_disponible: 25,
-        photoKeywords: "pear,fruit",
+        photoId: "photo-1615484477778-ca3b77940c25",
       },
       {
         nom: "Jus de pomme artisanal — bouteille 1 L",
@@ -125,7 +125,7 @@ const PRODUCERS: ProducerSeed[] = [
         unite: "piece",
         poids_estime_kg: 1,
         stock_disponible: 80,
-        photoKeywords: "applejuice,bottle",
+        photoId: "photo-1567306226416-28f0efdc88ce",
       },
     ],
   },
@@ -150,7 +150,7 @@ const PRODUCERS: ProducerSeed[] = [
     generations: 2,
     especes: ["bovin"],
     labels: ["label_rouge"],
-    coverKeywords: "cow,farm",
+    coverPhotoId: "photo-1636998980792-63f27ddea4e3",
     produits: [
       {
         nom: "Côte de bœuf Limousine — 1 kg",
@@ -160,7 +160,7 @@ const PRODUCERS: ProducerSeed[] = [
         unite: "kg",
         poids_estime_kg: 1,
         stock_disponible: 12,
-        photoKeywords: "beef,steak",
+        photoId: "photo-1588168333986-5078d3ae3976",
       },
       {
         nom: "Rôti de bœuf — 1,5 kg",
@@ -170,7 +170,7 @@ const PRODUCERS: ProducerSeed[] = [
         unite: "colis",
         poids_estime_kg: 1.5,
         stock_disponible: 10,
-        photoKeywords: "roastbeef,meat",
+        photoId: "photo-1608877907149-a206d75ba011",
       },
       {
         nom: "Lait fermier cru — bouteille 1 L",
@@ -180,7 +180,7 @@ const PRODUCERS: ProducerSeed[] = [
         unite: "piece",
         poids_estime_kg: 1,
         stock_disponible: 40,
-        photoKeywords: "milk,bottle",
+        photoId: "photo-1768850418251-17480117ac9b",
       },
     ],
   },
@@ -205,7 +205,7 @@ const PRODUCERS: ProducerSeed[] = [
     generations: 1,
     especes: [],
     labels: ["bio"],
-    coverKeywords: "vegetables,garden",
+    coverPhotoId: "photo-1515150144380-bca9f1650ed9",
     produits: [
       {
         nom: "Panier légumes de saison — 5 kg",
@@ -215,7 +215,7 @@ const PRODUCERS: ProducerSeed[] = [
         unite: "colis",
         poids_estime_kg: 5,
         stock_disponible: 20,
-        photoKeywords: "vegetables,basket",
+        photoId: "photo-1594144972490-a4177d70593a",
       },
       {
         nom: "Tomates anciennes — colis 2 kg",
@@ -225,7 +225,7 @@ const PRODUCERS: ProducerSeed[] = [
         unite: "colis",
         poids_estime_kg: 2,
         stock_disponible: 18,
-        photoKeywords: "tomatoes,heirloom",
+        photoId: "photo-1567375698463-b8dabb1319cf",
       },
       {
         nom: "Salade mesclun — sachet 300 g",
@@ -235,7 +235,7 @@ const PRODUCERS: ProducerSeed[] = [
         unite: "piece",
         poids_estime_kg: 0.3,
         stock_disponible: 50,
-        photoKeywords: "salad,greens",
+        photoId: "photo-1607532941433-304659e8198a",
       },
     ],
   },
@@ -260,7 +260,7 @@ const PRODUCERS: ProducerSeed[] = [
     generations: 1,
     especes: [],
     labels: [],
-    coverKeywords: "beehive,apiary",
+    coverPhotoId: "photo-1647427062468-74ff21e8934f",
     produits: [
       {
         nom: "Miel de fleurs — pot 500 g",
@@ -270,7 +270,7 @@ const PRODUCERS: ProducerSeed[] = [
         unite: "piece",
         poids_estime_kg: 0.5,
         stock_disponible: 60,
-        photoKeywords: "honey,jar",
+        photoId: "photo-1679941279735-b3b35e8bc476",
       },
       {
         nom: "Miel de châtaignier — pot 500 g",
@@ -280,7 +280,7 @@ const PRODUCERS: ProducerSeed[] = [
         unite: "piece",
         poids_estime_kg: 0.5,
         stock_disponible: 45,
-        photoKeywords: "honey,chestnut",
+        photoId: "photo-1587049352851-8d4e89133924",
       },
       {
         nom: "Pain d'épices artisanal — 400 g",
@@ -290,7 +290,7 @@ const PRODUCERS: ProducerSeed[] = [
         unite: "piece",
         poids_estime_kg: 0.4,
         stock_disponible: 25,
-        photoKeywords: "gingerbread,spice",
+        photoId: "photo-1608563794211-e06ae1e58c1b",
       },
     ],
   },
@@ -315,7 +315,7 @@ const PRODUCERS: ProducerSeed[] = [
     generations: 1,
     especes: [],
     labels: ["bio"],
-    coverKeywords: "bakery,bread",
+    coverPhotoId: "photo-1711672284661-bd70e38f31b2",
     produits: [
       {
         nom: "Pain de campagne au levain — 800 g",
@@ -325,7 +325,7 @@ const PRODUCERS: ProducerSeed[] = [
         unite: "piece",
         poids_estime_kg: 0.8,
         stock_disponible: 35,
-        photoKeywords: "bread,sourdough",
+        photoId: "photo-1549413468-cd78edb7e75c",
       },
       {
         nom: "Farine T80 bio — sac 1 kg",
@@ -335,7 +335,7 @@ const PRODUCERS: ProducerSeed[] = [
         unite: "piece",
         poids_estime_kg: 1,
         stock_disponible: 50,
-        photoKeywords: "flour,bag",
+        photoId: "photo-1610725664285-7c57e6eeac3f",
       },
       {
         nom: "Brioche au beurre — 400 g",
@@ -345,22 +345,23 @@ const PRODUCERS: ProducerSeed[] = [
         unite: "piece",
         poids_estime_kg: 0.4,
         stock_disponible: 20,
-        photoKeywords: "brioche,butter",
+        photoId: "photo-1532250327408-9bd6e0ce2c49",
       },
     ],
   },
 ];
 
-// Photos thématiques via loremflickr (remplace source.unsplash.com
-// déprécié depuis 2023). ?lock={n} en query string garantit une
-// image stable pour (keywords, lock). Attention : le path /lock/{n}
-// renvoie 404, il faut bien passer par le query param.
-function coverUrl(keywords: string, lock: number): string {
-  return `https://loremflickr.com/1200/600/${keywords}?lock=${lock}`;
+// Photos thématiques via images.unsplash.com — photoId curé à la main
+// pour chaque producteur/produit (voir scripts/seed-producers-photos.md
+// si ajout futur). Format photoId : "photo-{timestamp}-{hash}". Loremflickr
+// a été abandonné (pool de tags Flickr trop bruité), source.unsplash.com
+// est mort depuis 2023.
+function coverUrl(photoId: string): string {
+  return `https://images.unsplash.com/${photoId}?w=1200&h=600&fit=crop&q=80`;
 }
 
-function productPhotoUrl(keywords: string, lock: number): string {
-  return `https://loremflickr.com/800/600/${keywords}?lock=${lock}`;
+function productPhotoUrl(photoId: string): string {
+  return `https://images.unsplash.com/${photoId}?w=800&h=600&fit=crop&q=80`;
 }
 
 function productSlug(nom: string): string {
@@ -477,8 +478,8 @@ async function ensureAuthAndUser(p: ProducerSeed): Promise<string> {
   return userId!;
 }
 
-async function ensureProducer(p: ProducerSeed, userId: string, producerIndex: number): Promise<string> {
-  const coverLock = producerIndex + 1;
+async function ensureProducer(p: ProducerSeed, userId: string): Promise<string> {
+  const cover = coverUrl(p.coverPhotoId);
   const base = {
     user_id: userId,
     slug: p.slug,
@@ -491,8 +492,8 @@ async function ensureProducer(p: ProducerSeed, userId: string, producerIndex: nu
     longitude: p.longitude,
     description: p.description,
     histoire: p.histoire,
-    photo_principale: coverUrl(p.coverKeywords, coverLock),
-    photos: [coverUrl(p.coverKeywords, coverLock)],
+    photo_principale: cover,
+    photos: [cover],
     annee_creation: p.annee_creation,
     generations: p.generations,
     especes: p.especes,
@@ -524,19 +525,15 @@ async function ensureProducer(p: ProducerSeed, userId: string, producerIndex: nu
   return data.id as string;
 }
 
-async function ensureProducts(p: ProducerSeed, producerId: string, producerIndex: number): Promise<number> {
+async function ensureProducts(p: ProducerSeed, producerId: string): Promise<number> {
   let count = 0;
-  for (let j = 0; j < p.produits.length; j++) {
-    const prod = p.produits[j];
+  for (const prod of p.produits) {
     const pslug = productSlug(prod.nom);
-    // lock distinct par (producer, product) pour que deux produits avec
-    // les mêmes keywords (miel/miel) n'aient pas la même photo
-    const lock = (producerIndex + 1) * 10 + j + 1;
     const payload = {
       producer_id: producerId,
       nom: prod.nom,
       description: prod.description,
-      photos: [productPhotoUrl(prod.photoKeywords, lock)],
+      photos: [productPhotoUrl(prod.photoId)],
       prix: prod.prix,
       unite: prod.unite,
       poids_estime_kg: prod.poids_estime_kg,
@@ -601,12 +598,11 @@ async function main(): Promise<void> {
   let producersCount = 0;
   let productsCount = 0;
 
-  for (let i = 0; i < PRODUCERS.length; i++) {
-    const p = PRODUCERS[i];
+  for (const p of PRODUCERS) {
     console.log(`\n─── ${p.nom_exploitation} (${p.slug}) ───`);
     const userId = await ensureAuthAndUser(p);
-    const producerId = await ensureProducer(p, userId, i);
-    const n = await ensureProducts(p, producerId, i);
+    const producerId = await ensureProducer(p, userId);
+    const n = await ensureProducts(p, producerId);
     producersCount++;
     productsCount += n;
   }
