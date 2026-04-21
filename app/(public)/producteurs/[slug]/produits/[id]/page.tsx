@@ -48,7 +48,7 @@ export default async function ProductPage({ params }: { params: { slug: string; 
     .from('producers')
     .select('id, slug, nom_exploitation, commune, code_postal, adresse, latitude, longitude')
     .eq('id', productRow.producer_id)
-    .eq('statut', 'active')
+    .eq('statut', 'public')
     .maybeSingle();
 
   if (!producerRow || producerRow.slug !== params.slug) notFound();

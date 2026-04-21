@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { Button, Badge } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { promoteProducerToPublicIfActive } from '@/lib/producers/promote-to-public';
 import { ProducerLayout } from '../_components/ProducerLayout';
 
 type Product = {
@@ -19,6 +20,7 @@ type Product = {
 
 export default function ProducerCataloguePage() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [producerId, setProducerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
@@ -37,6 +39,7 @@ export default function ProducerCataloguePage() {
         .eq('user_id', user.id)
         .maybeSingle();
       if (!prod) { if (active) { setError('Profil producteur introuvable.'); setLoading(false); } return; }
+      if (active) setProducerId(prod.id);
 
       const { data, error: fetchError } = await supabase
         .from('products')
@@ -77,6 +80,9 @@ export default function ProducerCataloguePage() {
       .eq('id', id);
     if (!upError) {
       setProducts((arr) => arr.map((p) => p.id === id ? { ...p, active: next } : p));
+      if (next === true && producerId) {
+        await promoteProducerToPublicIfActive(supabase, producerId);
+      }
     } else {
       setError(upError.message);
     }

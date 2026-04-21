@@ -34,7 +34,7 @@ export default async function ProducteurPage({ params }: { params: { slug: strin
     .from('producers')
     .select('id, slug, nom_exploitation, commune, code_postal, photo_principale, photos, description, histoire, annee_creation, generations, especes, labels, badge_stock_score, badge_confirmation_score, badge_annulation_score, note_moyenne, nb_avis')
     .eq('slug', params.slug)
-    .eq('statut', 'active')
+    .eq('statut', 'public')
     .maybeSingle();
 
   if (!producer) {

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Button, Badge, Input, Select, Textarea, ProductCard } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { uploadProducerPhoto } from '@/lib/producers/upload';
+import { promoteProducerToPublicIfActive } from '@/lib/producers/promote-to-public';
 import { ProducerLayout } from '../../_components/ProducerLayout';
 
 type Form = {
@@ -114,6 +115,9 @@ export default function ProductNewPage() {
         .single();
 
       if (insertError || !inserted) throw insertError ?? new Error('Insertion impossible');
+      if (form.active === true) {
+        await promoteProducerToPublicIfActive(supabase, producerId);
+      }
       router.push('/catalogue');
     } catch (err) {
       setError((err as Error).message ?? 'Enregistrement impossible');

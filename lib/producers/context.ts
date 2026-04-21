@@ -5,7 +5,7 @@ export type ProducerRecord = {
   user_id: string;
   slug: string;
   nom_exploitation: string;
-  statut: 'pending' | 'active' | 'suspended';
+  statut: 'draft' | 'pending' | 'active' | 'public' | 'suspended';
 };
 
 export async function fetchProducerForUser(
