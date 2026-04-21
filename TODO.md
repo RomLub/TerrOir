@@ -67,6 +67,7 @@
 - Remplacer images Unsplash provisoires par vraies photos producteurs
 - Nettoyer duplication `UserRole` type (`lib/auth/session.ts` + `user-provider.tsx`)
 - Flux invitation : cas "email déjà en base" à détecter proprement côté UX (au-delà de la correction fonctionnelle du Chantier 2)
+- Switcher consumer/producer cassé : depuis l'espace producteur, le lien vers le profil consommateur retourne 404. À fixer avec le Chantier 6 (switcher nav bidirectionnel).
 
 ## 🔵 Idées / améliorations
 
