@@ -38,7 +38,7 @@ export default function HomePage() {
             auprès de producteurs passionnés partout en France.
           </p>
           <div className="flex flex-wrap gap-3">
-            <Link href="/produits">
+            <Link href="/carte">
               <Button variant="primary">Explorer les produits</Button>
             </Link>
             <Link href="/producteurs">
