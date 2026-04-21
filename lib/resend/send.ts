@@ -30,7 +30,7 @@ export async function sendTemplate({
   { ok: true; id: string } | { ok: false; error: string }
 > {
   const html = await renderEmail(element);
-  const from = process.env.RESEND_FROM_EMAIL ?? "no-reply@terroir.fr";
+  const from = process.env.RESEND_FROM_EMAIL ?? "no-reply@terroir-local.fr";
   const admin = createSupabaseAdminClient();
 
   try {

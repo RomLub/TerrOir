@@ -85,7 +85,7 @@ export async function sendNewOrderProducerSms(args: {
 }) {
   const body =
     `TerrOir : Nouvelle commande de ${args.customerPrenom} pour ${args.dateRetrait}. ` +
-    `Connectez-vous pour confirmer sous 24h : pro.terroir.fr`;
+    `Connectez-vous pour confirmer sous 24h : pro.terroir-local.fr`;
   return sendSms({
     to: args.to,
     userId: args.userId,

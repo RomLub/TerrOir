@@ -20,7 +20,7 @@ export function ConfirmationClient({ orderId, codeCommande, items, producer, slo
   const icsUrl = () => {
     const ics = [
       'BEGIN:VCALENDAR', 'VERSION:2.0', 'BEGIN:VEVENT',
-      `UID:${codeCommande}@terroir.fr`,
+      `UID:${codeCommande}@terroir-local.fr`,
       `DTSTART:${slot.startISO}`, `DTEND:${slot.endISO}`,
       `SUMMARY:Retrait TerrOir — ${producer.name}`,
       `LOCATION:${producer.address}`,

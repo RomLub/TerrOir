@@ -1,8 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 
-const PRODUCER_HOST = "pro.terroir.fr";
-const ADMIN_HOST = "admin.terroir.fr";
+const PRODUCER_HOST = "pro.terroir-local.fr";
+const ADMIN_HOST = "admin.terroir-local.fr";
 const CONSUMER_PROTECTED_PREFIX = "/compte";
 const LOGIN_PATH = "/connexion";
 
@@ -94,14 +94,14 @@ export async function middleware(request: NextRequest) {
       .maybeSingle();
     const role = profile?.role as "consumer" | "producer" | "admin" | undefined;
 
-    // 3a. admin.terroir.fr : admin uniquement.
+    // 3a. admin.terroir-local.fr : admin uniquement.
     if (isAdminHost && role !== "admin") {
       const redirectUrl = request.nextUrl.clone();
       redirectUrl.pathname = LOGIN_PATH;
       return NextResponse.redirect(redirectUrl);
     }
 
-    // 3b. /compte accédé par un producteur → redirige vers pro.terroir.fr.
+    // 3b. /compte accédé par un producteur → redirige vers pro.terroir-local.fr.
     if (isConsumerProtected && role === "producer") {
       const producerBase =
         process.env.NEXT_PUBLIC_PRODUCER_URL ?? "http://pro.localhost:3000";
