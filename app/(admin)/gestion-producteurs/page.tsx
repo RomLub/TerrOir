@@ -5,7 +5,10 @@ import Link from 'next/link';
 import { Button } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
-type Status = 'pending' | 'active' | 'suspended';
+// Statuts producers visibles côté admin. 'draft' est exclu au fetch —
+// formulaire d'onboarding incomplet, pas de sens à afficher en admin.
+// 'public' partage la palette d'active pour l'instant (Phase 5 affinera).
+type Status = 'pending' | 'active' | 'public' | 'suspended';
 
 type Producer = {
   id: string;
@@ -18,7 +21,7 @@ type Producer = {
   email: string;
 };
 
-type Filter = 'all' | Status;
+type Filter = 'all' | 'pending' | 'active' | 'suspended';
 const FILTERS: { value: Filter; label: string }[] = [
   { value: 'all', label: 'Tous' },
   { value: 'pending', label: 'À valider' },
@@ -29,8 +32,17 @@ const FILTERS: { value: Filter; label: string }[] = [
 const STATUS_META: Record<Status, { label: string; dot: string; bg: string; text: string }> = {
   pending:   { label: 'En attente', dot: 'bg-amber-500',         bg: 'bg-amber-50',          text: 'text-amber-800' },
   active:    { label: 'Actif',      dot: 'bg-terroir-green-700', bg: 'bg-terroir-green-100', text: 'text-terroir-green-700' },
+  public:    { label: 'Public',     dot: 'bg-terroir-green-700', bg: 'bg-terroir-green-100', text: 'text-terroir-green-700' },
   suspended: { label: 'Suspendu',   dot: 'bg-red-500',           bg: 'bg-red-100',           text: 'text-red-700' },
 };
+
+// Le filtre "Actifs" agrège les producteurs actifs et publics (tous deux
+// visibles/semi-visibles côté public) — Phase 5 scindera si besoin.
+function matchesFilter(status: Status, filter: Filter): boolean {
+  if (filter === 'all') return true;
+  if (filter === 'active') return status === 'active' || status === 'public';
+  return status === filter;
+}
 
 const PLAN_LABEL: Record<string, string> = {
   starter: 'Découverte',
@@ -57,6 +69,7 @@ export default function AdminProducteursPage() {
     const { data, error: fetchError } = await supabase
       .from('producers')
       .select('id, slug, nom_exploitation, commune, code_postal, statut, abonnement_niveau, created_at, user:user_id ( email )')
+      .neq('statut', 'draft')
       .order('created_at', { ascending: false });
     if (fetchError) { setError(fetchError.message); setLoading(false); return; }
 
@@ -101,11 +114,11 @@ export default function AdminProducteursPage() {
   const counts = useMemo(() => ({
     all: producers.length,
     pending: producers.filter((p) => p.status === 'pending').length,
-    active: producers.filter((p) => p.status === 'active').length,
+    active: producers.filter((p) => p.status === 'active' || p.status === 'public').length,
     suspended: producers.filter((p) => p.status === 'suspended').length,
   }), [producers]);
 
-  const filtered = filter === 'all' ? producers : producers.filter((p) => p.status === filter);
+  const filtered = producers.filter((p) => matchesFilter(p.status, filter));
 
   const setStatus = async (id: string, status: Status) => {
     setBusy(id);
@@ -191,7 +204,7 @@ export default function AdminProducteursPage() {
                               Valider
                             </button>
                           )}
-                          {p.status === 'active' && (
+                          {(p.status === 'active' || p.status === 'public') && (
                             <button onClick={() => setStatus(p.id, 'suspended')} disabled={disabled}
                               className="rounded-md px-3 py-1.5 text-[12px] font-medium text-red-700 transition-colors hover:bg-red-50 disabled:opacity-60">
                               Suspendre
