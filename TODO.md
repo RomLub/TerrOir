@@ -37,10 +37,28 @@
 - **Décisions validées ce soir** :
   - Un seul écran de connexion pour `www` + `pro` (session partagée), écran admin distinct sobre/corporate
   - Un user `consumer+producer` atterrit sur `/compte` par défaut, switcher vers `/dashboard` via nav (Chantier 6)
+- **Reskin admin light theme** (commit `a6f2c92`) : 3 pages admin (`gestion-producteurs`, `suivi-commandes`, `avis`) unwrappées d'`AdminLayout` + re-skin light/corporate cohérent avec le nouveau layout admin
+- **Padding admin content area** (commit `ae5c8f0`) : espacement uniforme dans la zone de contenu admin
+- **Seed 5 producteurs Sarthe fictifs** : photos Unsplash curées (commits `f4be9ca` + `91559cb`). Scripts `scripts/seed-producers.ts` + `scripts/cleanup-seed.ts` (cleanup via email `@seed.terroir-local.fr`)
+
+## Chantier 2 — Flux invitation producteur
+
+### État post-soirée (21/04/2026)
+
+- ✅ **Phase 1** : statuts `draft` + `public` ajoutés en DB (migration `20260421300000`, apply prod OK)
+- ✅ **Phase 2** : blocages admin invitation (admin + producteur déjà inscrit) — commits `2f7b8e4` + `8a33027`, tests prod validés
+- ✅ **Phase 3** : formulaire onboarding 3 étapes + upgrade consumer → producer
+  - commits : `b776421` (formulaire) + `23a2b31` (fix draft) + `52d8e4e` (fix RLS admin) + `4268b20` (cleanup legacy)
+  - migration `20260421400000` (`forme_juridique` + `type_production`, apply prod OK)
+  - Test 1 (cas A — nouveau user) validé en prod
+  - Tests 2, 3, 4 pas encore effectués
+- 🟠 **Phase 4** : reprise d'onboarding (redirect middleware vers le bon step si `statut='draft'`)
+- 🟠 **Phase 5** : bouton « Valider » admin (`pending` → `active`) + `STATUS_META` front refait avec mapping final (amber pour `active`, vert pour `public`)
+- 🟠 **Phase 6** : auto-transition `active` → `public` au 1er produit publié + filtrage RPC publiques sur `statut='public'` au lieu de `'active'`
 
 ## 🟠 En cours
 
-- 🔴 Forward fix 3 pages admin : unwrap `AdminLayout` + re-skin light theme (`gestion-producteurs`, `suivi-commandes`, `avis`)
+_(rien en cours — Chantier 2 en pause après Phase 3, reprise ultérieure pour phases 4-6)_
 
 ## 🔴 À faire (bloquants lancement)
 
@@ -48,7 +66,6 @@
 - **Décision produit en attente** : moyens de paiement Stripe customer pour MVP, ou reporter post-launch ?
 - **RGPD** : suppression de compte (obligation légale avant ouverture publique)
 - REVERT du commit `38b46ff` (cookies partagés `.terroir-local.fr`) — à faire après Chantier 1, avant Chantier 4
-- Chantier 2 : flux d'invitation producteur (gérer upgrade consumer → consumer+producer au lieu de plantage si email existe déjà)
 - Chantier 4 : cookies refait proprement — cookies `.terroir-local.fr` UNIQUEMENT pour `www` et `pro`, cookies isolés sur `admin.terroir-local.fr`
 - Chantier 5 : middleware adapté au nouveau modèle rôles (laisser producteur accéder à `/compte`, utiliser `admin_users` pour auth admin)
 - Chantier 6 : interface de switch consumer/producer dans le profil producteur
@@ -89,3 +106,5 @@
 - **`UserProvider` doit `.catch` `getSession()`** sinon en cas de rejet Supabase (réseau down, 429, etc.) le `loading` reste `true` indéfiniment et toute l'app reste bloquée sur le placeholder.
 - **Supprimer un composant partagé : toujours `grep -rn "ComponentName" app/ components/` AVANT `git rm`**. Ne jamais se fier à un « je crois que c'est orphelin » sans vérification. Incident du 21/04 : suppression d'`AdminLayout` qui était encore importé par `gestion-producteurs` et `suivi-commandes` → build Vercel cassé en prod.
 - **`npm run build` (pas `npx tsc --noEmit`) est obligatoire avant push quand un refactor supprime, déplace ou renomme un fichier.** `tsc` ne reproduit pas la résolution de modules webpack et laisse passer les imports vers des fichiers inexistants.
+- **Les RLS policies peuvent filtrer silencieusement des données avant même que le code applicatif les lise.** Quand un bug de type « la donnée existe en DB mais n'apparaît nulle part dans l'UI », toujours vérifier les policies RLS sur la table concernée : `SELECT polname, pg_get_expr(polqual, polrelid) FROM pg_policy WHERE polrelid = 'table'::regclass;`. Incident du 21/04 : les producteurs `pending` étaient invisibles côté admin à cause d'une policy qui filtrait sur `statut='active'` (fix commit `52d8e4e`).
+- **Next.js re-render SSR après mutation de cookies** (ex: `signInWithPassword`) peut déclencher une défense en profondeur avant que le client ne puisse avancer. Dans les flows multi-étapes, penser à vérifier que les conditions de blocage distinguent bien les états légitimes (`draft`) des états problématiques (`pending`/`active`/`public`). Incident du 21/04 : le middleware bloquait les users `draft` en pleine onboarding parce qu'il ne les distinguait pas des `pending` (fix commit `23a2b31`).
