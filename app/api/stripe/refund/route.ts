@@ -38,9 +38,9 @@ export async function POST(request: Request) {
 
   if (!authorized) {
     const session = await getSessionUser();
-    if (session?.role === "admin") {
+    if (session?.isAdmin) {
       authorized = true;
-    } else if (session?.role === "producer") {
+    } else if (session?.roles.includes("producer")) {
       const { data: producer } = await admin
         .from("producers")
         .select("id")

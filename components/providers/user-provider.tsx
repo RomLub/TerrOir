@@ -9,8 +9,7 @@ import {
 } from "react";
 import type { User } from "@supabase/supabase-js";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-
-export type UserRole = "consumer" | "producer" | "admin";
+import type { UserRole } from "@/lib/auth/roles";
 
 export interface ProducerLite {
   id: string;
@@ -22,21 +21,24 @@ export interface ProducerLite {
 export interface UserContextValue {
   user: User | null;
   producer: ProducerLite | null;
-  role: UserRole | null;
+  roles: UserRole[];
+  isAdmin: boolean;
   loading: boolean;
 }
 
 const UserContext = createContext<UserContextValue>({
   user: null,
   producer: null,
-  role: null,
+  roles: [],
+  isAdmin: false,
   loading: true,
 });
 
 export function UserProvider({ children }: { children: React.ReactNode }) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [user, setUser] = useState<User | null>(null);
-  const [role, setRole] = useState<UserRole | null>(null);
+  const [roles, setRoles] = useState<UserRole[]>([]);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [producer, setProducer] = useState<ProducerLite | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -46,16 +48,22 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     async function loadProfile(currentUser: User | null) {
       if (!currentUser) {
         if (!cancelled) {
-          setRole(null);
+          setRoles([]);
+          setIsAdmin(false);
           setProducer(null);
         }
         return;
       }
 
-      const [{ data: profile }, { data: producerRow }] = await Promise.all([
+      const [userRes, adminRes, producerRes] = await Promise.all([
         supabase
           .from("users")
-          .select("role")
+          .select("roles")
+          .eq("id", currentUser.id)
+          .maybeSingle(),
+        supabase
+          .from("admin_users")
+          .select("id")
           .eq("id", currentUser.id)
           .maybeSingle(),
         supabase
@@ -66,8 +74,9 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       ]);
 
       if (cancelled) return;
-      setRole((profile?.role as UserRole | undefined) ?? null);
-      setProducer((producerRow as ProducerLite | null) ?? null);
+      setRoles((userRes.data?.roles as UserRole[] | undefined) ?? []);
+      setIsAdmin(!!adminRes.data);
+      setProducer((producerRes.data as ProducerLite | null) ?? null);
     }
 
     supabase.auth.getSession().then(({ data }) => {
@@ -94,8 +103,8 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   }, [supabase]);
 
   const value: UserContextValue = useMemo(
-    () => ({ user, producer, role, loading }),
-    [user, producer, role, loading],
+    () => ({ user, producer, roles, isAdmin, loading }),
+    [user, producer, roles, isAdmin, loading],
   );
 
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;

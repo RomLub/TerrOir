@@ -88,24 +88,32 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(redirectUrl);
   }
 
-  // 3. Rôle nécessaire : lookup unique en DB.
+  // 3. Rôle nécessaire : lookup parallèle sur users + admin_users.
+  //    Les deux tables sont mutuellement exclusives (trigger DB), donc au
+  //    plus l'une des deux renvoie une ligne.
   if (needsAuth && user) {
-    const { data: profile } = await supabase
-      .from("users")
-      .select("role")
-      .eq("id", user.id)
-      .maybeSingle();
-    const role = profile?.role as "consumer" | "producer" | "admin" | undefined;
+    const [{ data: profile }, { data: adminRow }] = await Promise.all([
+      supabase.from("users").select("roles").eq("id", user.id).maybeSingle(),
+      supabase
+        .from("admin_users")
+        .select("id")
+        .eq("id", user.id)
+        .maybeSingle(),
+    ]);
+    const roles = (profile?.roles as string[] | undefined) ?? [];
+    const isAdmin = !!adminRow;
 
     // 3a. admin.terroir-local.fr : admin uniquement.
-    if (isAdminHost && role !== "admin") {
+    if (isAdminHost && !isAdmin) {
       const redirectUrl = request.nextUrl.clone();
       redirectUrl.pathname = LOGIN_PATH;
       return NextResponse.redirect(redirectUrl);
     }
 
     // 3b. /compte accédé par un producteur → redirige vers pro.terroir-local.fr.
-    if (isConsumerProtected && role === "producer") {
+    //     (Chantier 5 assouplira ce comportement pour laisser les producteurs
+    //      utiliser leur double casquette consumer+producer.)
+    if (isConsumerProtected && roles.includes("producer")) {
       const producerBase =
         process.env.NEXT_PUBLIC_PRODUCER_URL ?? "http://pro.localhost:3000";
       return NextResponse.redirect(new URL("/", producerBase));

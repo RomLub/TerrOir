@@ -179,11 +179,14 @@ async function ensureAuthUser(
     email,
     email_confirm: true,
     password: `seed-${Math.random().toString(36).slice(2, 18)}`,
-    user_metadata: { role, prenom, nom },
+    user_metadata: { prenom, nom },
   });
   if (createError || !created.user) {
     throw new Error(`createUser(${email}) : ${createError?.message ?? "no user returned"}`);
   }
+
+  // Rôles cumulables : tout producteur est aussi consumer par défaut.
+  const roles = role === "producer" ? ["consumer", "producer"] : ["consumer"];
 
   const { error: upsertError } = await admin
     .from("users")
@@ -191,7 +194,7 @@ async function ensureAuthUser(
       {
         id: created.user.id,
         email,
-        role,
+        roles,
         prenom,
         nom,
         telephone: telephone ?? null,

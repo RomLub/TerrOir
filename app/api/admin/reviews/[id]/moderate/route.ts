@@ -13,7 +13,7 @@ interface RouteContext {
 
 export async function POST(request: Request, { params }: RouteContext) {
   const session = await getSessionUser();
-  if (!session || session.role !== "admin") {
+  if (!session || !session.isAdmin) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

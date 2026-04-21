@@ -7,7 +7,7 @@ import { stripe } from "@/lib/stripe/server";
 // Crée le compte Express si aucun n'existe encore et persiste le stripe_account_id.
 export async function POST() {
   const session = await getSessionUser();
-  if (!session || (session.role !== "producer" && session.role !== "admin")) {
+  if (!session || (!session.roles.includes("producer") && !session.isAdmin)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

@@ -62,9 +62,9 @@ export async function POST(request: Request, { params }: RouteContext) {
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (session.role === "admin") {
+    if (session.isAdmin) {
       // OK
-    } else if (session.role === "producer") {
+    } else if (session.roles.includes("producer")) {
       if (!(await userOwnsProducer(admin, session.id, order.producer_id))) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
@@ -150,9 +150,8 @@ export async function POST(request: Request, { params }: RouteContext) {
 
     if ((count ?? 0) >= 2) {
       const { data: admins } = await admin
-        .from("users")
-        .select("id")
-        .eq("role", "admin");
+        .from("admin_users")
+        .select("id");
       if (admins) {
         await admin.from("notifications").insert(
           admins.map((a) => ({

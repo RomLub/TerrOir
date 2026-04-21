@@ -60,10 +60,11 @@ export async function acceptInvitationAction(
   const userId = created.user.id;
 
   // 3. Insérer profil users + producers (row vide à compléter sur /ma-page)
+  //    Le producteur est aussi consumer par défaut — rôles cumulables.
   const { error: profileError } = await admin.from("users").insert({
     id: userId,
     email: invitation.email,
-    role: "producer",
+    roles: ["consumer", "producer"],
   });
   if (profileError) {
     return { error: `Profil non créé : ${profileError.message}` };

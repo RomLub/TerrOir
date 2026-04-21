@@ -26,19 +26,24 @@ export async function loginAction(
     return { error: "Identifiants invalides" };
   }
 
-  const { data: profile } = await supabase
-    .from("users")
-    .select("role")
-    .eq("id", data.user.id)
-    .maybeSingle();
+  // Lookup parallèle users + admin_users — mutuellement exclusifs.
+  const [{ data: profile }, { data: adminRow }] = await Promise.all([
+    supabase
+      .from("users")
+      .select("roles")
+      .eq("id", data.user.id)
+      .maybeSingle(),
+    supabase
+      .from("admin_users")
+      .select("id")
+      .eq("id", data.user.id)
+      .maybeSingle(),
+  ]);
 
-  const role = profile?.role ?? "consumer";
+  const roles = (profile?.roles as string[] | undefined) ?? [];
+  const isAdmin = !!adminRow;
 
-  if (role === "producer") {
-    redirect("/dashboard");
-  }
-  if (role === "admin") {
-    redirect("/dashboard");
-  }
+  if (isAdmin) redirect("/dashboard");
+  if (roles.includes("producer")) redirect("/dashboard");
   redirect("/compte");
 }

@@ -1,25 +1,15 @@
 import "server-only";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import type { UserRole } from "./roles";
 
-export type UserRole = "consumer" | "producer" | "admin";
+export type { UserRole } from "./roles";
 
 export interface SessionUser {
   id: string;
   email: string | null;
-  role: UserRole | null;
-}
-
-async function fetchRole(
-  supabase: SupabaseClient,
-  userId: string,
-): Promise<UserRole | null> {
-  const { data } = await supabase
-    .from("users")
-    .select("role")
-    .eq("id", userId)
-    .maybeSingle();
-  return (data?.role as UserRole | undefined) ?? null;
+  roles: UserRole[];
+  isAdmin: boolean;
 }
 
 export async function getSessionUser(): Promise<SessionUser | null> {
@@ -30,6 +20,33 @@ export async function getSessionUser(): Promise<SessionUser | null> {
 
   if (!user) return null;
 
-  const role = await fetchRole(supabase, user.id);
-  return { id: user.id, email: user.email ?? null, role };
+  // Lookup parallèle : un même auth.users.id ne peut pas être simultanément
+  // dans public.users et public.admin_users (cf. trigger d'exclusion mutuelle),
+  // donc au plus une des deux requêtes renvoie une ligne.
+  const [userRes, adminRes] = await Promise.all([
+    supabase.from("users").select("roles").eq("id", user.id).maybeSingle(),
+    supabase.from("admin_users").select("id").eq("id", user.id).maybeSingle(),
+  ]);
+
+  const roles = (userRes.data?.roles as UserRole[] | undefined) ?? [];
+  const isAdmin = !!adminRes.data;
+
+  return {
+    id: user.id,
+    email: user.email ?? null,
+    roles,
+    isAdmin,
+  };
+}
+
+// Helper serveur pour vérifier l'admin par userId sans session complète.
+// Utilise le client admin (service_role) pour contourner la RLS.
+export async function isAdmin(userId: string): Promise<boolean> {
+  const admin = createSupabaseAdminClient();
+  const { data } = await admin
+    .from("admin_users")
+    .select("id")
+    .eq("id", userId)
+    .maybeSingle();
+  return !!data;
 }

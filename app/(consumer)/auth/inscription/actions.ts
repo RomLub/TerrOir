@@ -48,7 +48,7 @@ export async function signupAction(
   const { error: profileError } = await admin.from("users").insert({
     id: data.user.id,
     email,
-    role: "consumer",
+    roles: ["consumer"],
     prenom,
     nom,
     telephone: telephone ?? null,

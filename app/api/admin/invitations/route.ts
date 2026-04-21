@@ -7,7 +7,7 @@ import { inviteProducerSchema } from "@/lib/auth/validators";
 // POST body: { email: string } → { token, url, expires_at }
 export async function POST(request: Request) {
   const session = await getSessionUser();
-  if (!session || session.role !== "admin") {
+  if (!session || !session.isAdmin) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

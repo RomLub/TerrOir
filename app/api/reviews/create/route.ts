@@ -77,9 +77,8 @@ export async function POST(request: Request) {
 
   // Notifier tous les admins pour modération
   const { data: admins } = await admin
-    .from("users")
-    .select("id")
-    .eq("role", "admin");
+    .from("admin_users")
+    .select("id");
   if (admins && admins.length > 0) {
     await admin.from("notifications").insert(
       admins.map((a) => ({
