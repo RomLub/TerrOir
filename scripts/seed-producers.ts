@@ -352,15 +352,15 @@ const PRODUCERS: ProducerSeed[] = [
 ];
 
 // Photos thématiques via loremflickr (remplace source.unsplash.com
-// déprécié depuis 2023). /lock/{n} garantit une image stable pour
-// une même combinaison (keywords + lock), donc le seed est
-// déterministe et idempotent côté URL.
+// déprécié depuis 2023). ?lock={n} en query string garantit une
+// image stable pour (keywords, lock). Attention : le path /lock/{n}
+// renvoie 404, il faut bien passer par le query param.
 function coverUrl(keywords: string, lock: number): string {
-  return `https://loremflickr.com/1200/600/${keywords}/lock/${lock}`;
+  return `https://loremflickr.com/1200/600/${keywords}?lock=${lock}`;
 }
 
 function productPhotoUrl(keywords: string, lock: number): string {
-  return `https://loremflickr.com/800/600/${keywords}/lock/${lock}`;
+  return `https://loremflickr.com/800/600/${keywords}?lock=${lock}`;
 }
 
 function productSlug(nom: string): string {
