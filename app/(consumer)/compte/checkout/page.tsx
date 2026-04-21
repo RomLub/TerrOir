@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
-import { Button, NavbarPublic, Footer } from '@/components/ui';
+import { Button } from '@/components/ui';
 import { getStripe } from '@/lib/stripe/client';
 import { useCartStore, type CartItem } from '@/lib/store/cart';
 
@@ -115,34 +115,24 @@ export default function CheckoutPage() {
 
   if (!hydrated) {
     return (
-      <div className="min-h-screen bg-bg">
-        <NavbarPublic />
-        <section className="max-w-2xl mx-auto px-6 py-32 text-center text-dark/50">
-          Préparation du paiement…
-        </section>
-        <Footer />
-      </div>
+      <section className="py-24 text-center text-dark/50">
+        Préparation du paiement…
+      </section>
     );
   }
 
   if (!group) {
     return (
-      <div className="min-h-screen bg-bg">
-        <NavbarPublic />
-        <section className="max-w-2xl mx-auto px-6 py-32 text-center">
-          <h1 className="font-serif text-[36px] text-green-900">Votre panier est vide</h1>
-          <div className="mt-6"><Link href="/carte"><Button size="lg">Trouver un producteur →</Button></Link></div>
-        </section>
-        <Footer />
-      </div>
+      <section className="py-24 text-center">
+        <h1 className="font-serif text-[36px] text-green-900">Votre panier est vide</h1>
+        <div className="mt-6"><Link href="/carte"><Button size="lg">Trouver un producteur →</Button></Link></div>
+      </section>
     );
   }
 
   return (
-    <div className="min-h-screen bg-bg">
-      <NavbarPublic />
-      <section className="max-w-6xl mx-auto px-6 py-10">
-        <Link href="/compte/panier" className="text-[13px] text-dark/60 hover:text-green-900">← Retour au panier</Link>
+    <section>
+      <Link href="/compte/panier" className="text-[13px] text-dark/60 hover:text-green-900">← Retour au panier</Link>
         <h1 className="mt-3 font-serif text-[40px] md:text-[52px] text-green-900 leading-tight">Finaliser la commande</h1>
 
         {multipleGroups && (
@@ -220,9 +210,7 @@ export default function CheckoutPage() {
             <p className="text-[11px] text-dark/50 text-center mt-3">Vous recevrez un code de commande à présenter au retrait.</p>
           </aside>
         </div>
-      </section>
-      <Footer />
-    </div>
+    </section>
   );
 }
 

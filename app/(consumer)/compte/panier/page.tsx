@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Badge, NavbarPublic, Footer } from '@/components/ui';
+import { Button, Badge } from '@/components/ui';
 import { useCartStore, type CartItem } from '@/lib/store/cart';
 
 function formatDateFr(iso: string): string {
@@ -44,35 +44,25 @@ export default function PanierPage() {
 
   if (!hydrated) {
     return (
-      <div className="min-h-screen bg-bg">
-        <NavbarPublic />
-        <section className="max-w-2xl mx-auto px-6 py-32 text-center text-dark/50">
-          Chargement du panier…
-        </section>
-        <Footer />
-      </div>
+      <section className="py-24 text-center text-dark/50">
+        Chargement du panier…
+      </section>
     );
   }
 
   if (items.length === 0) {
     return (
-      <div className="min-h-screen bg-bg">
-        <NavbarPublic />
-        <section className="max-w-2xl mx-auto px-6 py-32 text-center">
-          <h1 className="font-serif text-[44px] text-green-900">Votre panier est vide</h1>
-          <p className="mt-3 text-[16px] text-dark/70">Découvrez les éleveurs sarthois près de chez vous.</p>
-          <div className="mt-8"><Link href="/carte"><Button size="lg">Trouver un producteur →</Button></Link></div>
-        </section>
-        <Footer />
-      </div>
+      <section className="py-24 text-center">
+        <h1 className="font-serif text-[44px] text-green-900">Votre panier est vide</h1>
+        <p className="mt-3 text-[16px] text-dark/70">Découvrez les éleveurs sarthois près de chez vous.</p>
+        <div className="mt-8"><Link href="/carte"><Button size="lg">Trouver un producteur →</Button></Link></div>
+      </section>
     );
   }
 
   return (
-    <div className="min-h-screen bg-bg">
-      <NavbarPublic />
-      <section className="max-w-7xl mx-auto px-6 py-10">
-        <h1 className="font-serif text-[40px] md:text-[52px] text-green-900 leading-tight">Votre panier</h1>
+    <section>
+      <h1 className="font-serif text-[40px] md:text-[52px] text-green-900 leading-tight">Votre panier</h1>
         <p className="text-[14px] text-dark/60 mt-1">{items.length} article{items.length > 1 ? 's' : ''} chez {byProducer.length} producteur{byProducer.length > 1 ? 's' : ''}</p>
 
         <div className="mt-10 grid lg:grid-cols-[1fr_380px] gap-10 items-start">
@@ -146,8 +136,6 @@ export default function PanierPage() {
             <p className="text-[11px] text-dark/50 text-center mt-3">Paiement sécurisé · Remboursement garanti</p>
           </aside>
         </div>
-      </section>
-      <Footer />
-    </div>
+    </section>
   );
 }

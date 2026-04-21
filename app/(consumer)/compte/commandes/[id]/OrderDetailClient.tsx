@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { Button, CodeCommande, OrderStatusBadge, type OrderStatus, StarRating, Textarea, NavbarPublic, Footer } from '@/components/ui';
+import { Button, CodeCommande, OrderStatusBadge, type OrderStatus, StarRating, Textarea } from '@/components/ui';
 
 export type OrderDetailData = {
   id: string;
@@ -68,10 +68,8 @@ export function OrderDetailClient({ data }: { data: OrderDetailData }) {
     : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(o.producer.address)}`;
 
   return (
-    <div className="min-h-screen bg-bg">
-      <NavbarPublic />
-      <section className="max-w-4xl mx-auto px-6 py-10">
-        <Link href="/compte/commandes" className="text-[13px] text-dark/60 hover:text-green-900">← Mes commandes</Link>
+    <section className="max-w-4xl">
+      <Link href="/compte/commandes" className="text-[13px] text-dark/60 hover:text-green-900">← Mes commandes</Link>
         <div className="mt-3 flex items-start justify-between gap-4 flex-wrap">
           <div>
             {o.codeCommande && <div className="text-[12px] mono text-dark/50">{o.codeCommande}</div>}
@@ -187,8 +185,6 @@ export function OrderDetailClient({ data }: { data: OrderDetailData }) {
             Merci, votre avis a déjà été enregistré.
           </section>
         )}
-      </section>
-      <Footer />
-    </div>
+    </section>
   );
 }

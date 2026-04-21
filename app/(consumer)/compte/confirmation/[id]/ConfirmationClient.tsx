@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { Button, CodeCommande, NavbarPublic, Footer } from '@/components/ui';
+import { Button, CodeCommande } from '@/components/ui';
 
 export type ConfirmationProps = {
   orderId: string;
@@ -31,9 +31,7 @@ export function ConfirmationClient({ orderId, codeCommande, items, producer, slo
   };
 
   return (
-    <div className="min-h-screen bg-bg">
-      <NavbarPublic />
-      <section className="max-w-3xl mx-auto px-6 py-16 text-center">
+    <section className="max-w-3xl mx-auto py-8 text-center">
         <div className="w-24 h-24 mx-auto rounded-full bg-green-100 border-2 border-green-700 flex items-center justify-center">
           <svg width="48" height="48" viewBox="0 0 48 48" className="text-green-700">
             <path
@@ -94,8 +92,6 @@ export function ConfirmationClient({ orderId, codeCommande, items, producer, slo
           </a>
           <Link href={`/compte/commandes/${orderId}`}><Button size="lg">Voir ma commande →</Button></Link>
         </div>
-      </section>
-      <Footer />
-    </div>
+    </section>
   );
 }

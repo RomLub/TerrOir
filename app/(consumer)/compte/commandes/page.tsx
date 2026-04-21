@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
-import { OrderStatusBadge, type OrderStatus, NavbarPublic, Footer } from '@/components/ui';
+import { OrderStatusBadge, type OrderStatus } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
 type OrderRow = {
@@ -118,10 +118,8 @@ export default function CommandesPage() {
   }), [orders, filter]);
 
   return (
-    <div className="min-h-screen bg-bg">
-      <NavbarPublic />
-      <section className="max-w-5xl mx-auto px-6 py-10">
-        <h1 className="font-serif text-[40px] md:text-[52px] text-green-900 leading-tight">Mes commandes</h1>
+    <section>
+      <h1 className="font-serif text-[40px] md:text-[52px] text-green-900 leading-tight">Mes commandes</h1>
         <p className="text-[14px] text-dark/60 mt-1">
           {loading ? 'Chargement…' : `${orders.length} commande${orders.length > 1 ? 's' : ''} au total`}
         </p>
@@ -176,8 +174,6 @@ export default function CommandesPage() {
             </Link>
           ))}
         </div>
-      </section>
-      <Footer />
-    </div>
+    </section>
   );
 }

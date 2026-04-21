@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { Button, Footer, Input, NavbarPublic } from "@/components/ui";
+import { Button, Input } from "@/components/ui";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type Profil = {
@@ -112,10 +112,8 @@ export default function ProfilPage() {
   };
 
   return (
-    <div className="min-h-screen bg-terroir-bg">
-      <NavbarPublic />
-      <main className="mx-auto max-w-2xl px-6 py-12">
-        <header className="mb-8">
+    <main className="mx-auto max-w-2xl">
+      <header className="mb-8">
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-terroir-terra-700">
             Mon compte
           </p>
@@ -224,8 +222,6 @@ export default function ProfilPage() {
             </div>
           </form>
         )}
-      </main>
-      <Footer />
-    </div>
+    </main>
   );
 }
