@@ -79,14 +79,20 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       setProducer((producerRes.data as ProducerLite | null) ?? null);
     }
 
-    supabase.auth.getSession().then(({ data }) => {
-      if (cancelled) return;
-      const current = data.session?.user ?? null;
-      setUser(current);
-      loadProfile(current).finally(() => {
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (cancelled) return;
+        const current = data.session?.user ?? null;
+        setUser(current);
+        loadProfile(current).finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+      })
+      .catch((err) => {
+        console.error("[UserProvider] getSession failed:", err);
         if (!cancelled) setLoading(false);
       });
-    });
 
     const { data: listener } = supabase.auth.onAuthStateChange(
       (_event, session) => {
