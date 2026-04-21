@@ -61,6 +61,7 @@ type ProducerSeed = {
   generations: number;
   especes: string[];
   labels: string[];
+  coverKeywords: string;
   produits: Array<{
     nom: string;
     description: string;
@@ -68,6 +69,7 @@ type ProducerSeed = {
     unite: Unite;
     poids_estime_kg: number | null;
     stock_disponible: number;
+    photoKeywords: string;
   }>;
 };
 
@@ -93,6 +95,7 @@ const PRODUCERS: ProducerSeed[] = [
     generations: 3,
     especes: [],
     labels: ["bio"],
+    coverKeywords: "orchard,apple",
     produits: [
       {
         nom: "Pommes Reine des Reinettes — colis 5 kg",
@@ -102,6 +105,7 @@ const PRODUCERS: ProducerSeed[] = [
         unite: "colis",
         poids_estime_kg: 5,
         stock_disponible: 30,
+        photoKeywords: "apple,harvest",
       },
       {
         nom: "Poires Conférence — colis 3 kg",
@@ -111,6 +115,7 @@ const PRODUCERS: ProducerSeed[] = [
         unite: "colis",
         poids_estime_kg: 3,
         stock_disponible: 25,
+        photoKeywords: "pear,fruit",
       },
       {
         nom: "Jus de pomme artisanal — bouteille 1 L",
@@ -120,6 +125,7 @@ const PRODUCERS: ProducerSeed[] = [
         unite: "piece",
         poids_estime_kg: 1,
         stock_disponible: 80,
+        photoKeywords: "applejuice,bottle",
       },
     ],
   },
@@ -144,6 +150,7 @@ const PRODUCERS: ProducerSeed[] = [
     generations: 2,
     especes: ["bovin"],
     labels: ["label_rouge"],
+    coverKeywords: "cow,farm",
     produits: [
       {
         nom: "Côte de bœuf Limousine — 1 kg",
@@ -153,6 +160,7 @@ const PRODUCERS: ProducerSeed[] = [
         unite: "kg",
         poids_estime_kg: 1,
         stock_disponible: 12,
+        photoKeywords: "beef,steak",
       },
       {
         nom: "Rôti de bœuf — 1,5 kg",
@@ -162,6 +170,7 @@ const PRODUCERS: ProducerSeed[] = [
         unite: "colis",
         poids_estime_kg: 1.5,
         stock_disponible: 10,
+        photoKeywords: "roastbeef,meat",
       },
       {
         nom: "Lait fermier cru — bouteille 1 L",
@@ -171,6 +180,7 @@ const PRODUCERS: ProducerSeed[] = [
         unite: "piece",
         poids_estime_kg: 1,
         stock_disponible: 40,
+        photoKeywords: "milk,bottle",
       },
     ],
   },
@@ -195,6 +205,7 @@ const PRODUCERS: ProducerSeed[] = [
     generations: 1,
     especes: [],
     labels: ["bio"],
+    coverKeywords: "vegetables,garden",
     produits: [
       {
         nom: "Panier légumes de saison — 5 kg",
@@ -204,6 +215,7 @@ const PRODUCERS: ProducerSeed[] = [
         unite: "colis",
         poids_estime_kg: 5,
         stock_disponible: 20,
+        photoKeywords: "vegetables,basket",
       },
       {
         nom: "Tomates anciennes — colis 2 kg",
@@ -213,6 +225,7 @@ const PRODUCERS: ProducerSeed[] = [
         unite: "colis",
         poids_estime_kg: 2,
         stock_disponible: 18,
+        photoKeywords: "tomatoes,heirloom",
       },
       {
         nom: "Salade mesclun — sachet 300 g",
@@ -222,6 +235,7 @@ const PRODUCERS: ProducerSeed[] = [
         unite: "piece",
         poids_estime_kg: 0.3,
         stock_disponible: 50,
+        photoKeywords: "salad,greens",
       },
     ],
   },
@@ -246,6 +260,7 @@ const PRODUCERS: ProducerSeed[] = [
     generations: 1,
     especes: [],
     labels: [],
+    coverKeywords: "beehive,apiary",
     produits: [
       {
         nom: "Miel de fleurs — pot 500 g",
@@ -255,6 +270,7 @@ const PRODUCERS: ProducerSeed[] = [
         unite: "piece",
         poids_estime_kg: 0.5,
         stock_disponible: 60,
+        photoKeywords: "honey,jar",
       },
       {
         nom: "Miel de châtaignier — pot 500 g",
@@ -264,6 +280,7 @@ const PRODUCERS: ProducerSeed[] = [
         unite: "piece",
         poids_estime_kg: 0.5,
         stock_disponible: 45,
+        photoKeywords: "honey,chestnut",
       },
       {
         nom: "Pain d'épices artisanal — 400 g",
@@ -273,6 +290,7 @@ const PRODUCERS: ProducerSeed[] = [
         unite: "piece",
         poids_estime_kg: 0.4,
         stock_disponible: 25,
+        photoKeywords: "gingerbread,spice",
       },
     ],
   },
@@ -297,6 +315,7 @@ const PRODUCERS: ProducerSeed[] = [
     generations: 1,
     especes: [],
     labels: ["bio"],
+    coverKeywords: "bakery,bread",
     produits: [
       {
         nom: "Pain de campagne au levain — 800 g",
@@ -306,6 +325,7 @@ const PRODUCERS: ProducerSeed[] = [
         unite: "piece",
         poids_estime_kg: 0.8,
         stock_disponible: 35,
+        photoKeywords: "bread,sourdough",
       },
       {
         nom: "Farine T80 bio — sac 1 kg",
@@ -315,6 +335,7 @@ const PRODUCERS: ProducerSeed[] = [
         unite: "piece",
         poids_estime_kg: 1,
         stock_disponible: 50,
+        photoKeywords: "flour,bag",
       },
       {
         nom: "Brioche au beurre — 400 g",
@@ -324,17 +345,22 @@ const PRODUCERS: ProducerSeed[] = [
         unite: "piece",
         poids_estime_kg: 0.4,
         stock_disponible: 20,
+        photoKeywords: "brioche,butter",
       },
     ],
   },
 ];
 
-function coverUrl(slug: string): string {
-  return `https://picsum.photos/seed/terroir-${slug}/1200/600`;
+// Photos thématiques via loremflickr (remplace source.unsplash.com
+// déprécié depuis 2023). /lock/{n} garantit une image stable pour
+// une même combinaison (keywords + lock), donc le seed est
+// déterministe et idempotent côté URL.
+function coverUrl(keywords: string, lock: number): string {
+  return `https://loremflickr.com/1200/600/${keywords}/lock/${lock}`;
 }
 
-function productPhotoUrl(slug: string, productSlug: string): string {
-  return `https://picsum.photos/seed/terroir-${slug}-${productSlug}/800/600`;
+function productPhotoUrl(keywords: string, lock: number): string {
+  return `https://loremflickr.com/800/600/${keywords}/lock/${lock}`;
 }
 
 function productSlug(nom: string): string {
@@ -451,7 +477,8 @@ async function ensureAuthAndUser(p: ProducerSeed): Promise<string> {
   return userId!;
 }
 
-async function ensureProducer(p: ProducerSeed, userId: string): Promise<string> {
+async function ensureProducer(p: ProducerSeed, userId: string, producerIndex: number): Promise<string> {
+  const coverLock = producerIndex + 1;
   const base = {
     user_id: userId,
     slug: p.slug,
@@ -464,8 +491,8 @@ async function ensureProducer(p: ProducerSeed, userId: string): Promise<string> 
     longitude: p.longitude,
     description: p.description,
     histoire: p.histoire,
-    photo_principale: coverUrl(p.slug),
-    photos: [coverUrl(p.slug)],
+    photo_principale: coverUrl(p.coverKeywords, coverLock),
+    photos: [coverUrl(p.coverKeywords, coverLock)],
     annee_creation: p.annee_creation,
     generations: p.generations,
     especes: p.especes,
@@ -497,15 +524,19 @@ async function ensureProducer(p: ProducerSeed, userId: string): Promise<string> 
   return data.id as string;
 }
 
-async function ensureProducts(p: ProducerSeed, producerId: string): Promise<number> {
+async function ensureProducts(p: ProducerSeed, producerId: string, producerIndex: number): Promise<number> {
   let count = 0;
-  for (const prod of p.produits) {
+  for (let j = 0; j < p.produits.length; j++) {
+    const prod = p.produits[j];
     const pslug = productSlug(prod.nom);
+    // lock distinct par (producer, product) pour que deux produits avec
+    // les mêmes keywords (miel/miel) n'aient pas la même photo
+    const lock = (producerIndex + 1) * 10 + j + 1;
     const payload = {
       producer_id: producerId,
       nom: prod.nom,
       description: prod.description,
-      photos: [productPhotoUrl(p.slug, pslug)],
+      photos: [productPhotoUrl(prod.photoKeywords, lock)],
       prix: prod.prix,
       unite: prod.unite,
       poids_estime_kg: prod.poids_estime_kg,
@@ -570,11 +601,12 @@ async function main(): Promise<void> {
   let producersCount = 0;
   let productsCount = 0;
 
-  for (const p of PRODUCERS) {
+  for (let i = 0; i < PRODUCERS.length; i++) {
+    const p = PRODUCERS[i];
     console.log(`\n─── ${p.nom_exploitation} (${p.slug}) ───`);
     const userId = await ensureAuthAndUser(p);
-    const producerId = await ensureProducer(p, userId);
-    const n = await ensureProducts(p, producerId);
+    const producerId = await ensureProducer(p, userId, i);
+    const n = await ensureProducts(p, producerId, i);
     producersCount++;
     productsCount += n;
   }
