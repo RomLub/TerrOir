@@ -5,9 +5,17 @@
 -- "N produits disponibles" par producteur. Sans ce champ dans le RPC,
 -- le front tombait systématiquement sur 0. On ajoute un sous-select
 -- qui compte les produits actifs du producteur.
+--
+-- NB : on DROP avant de recréer car on modifie la colonne de sortie
+-- (ajout de product_count). Postgres refuse un `create or replace`
+-- qui change la signature du `returns table`.
 -- =============================================================================
 
-create or replace function public.search_producers(
+drop function if exists public.search_producers(
+  double precision, double precision, double precision, text[], text[]
+);
+
+create function public.search_producers(
   p_lat        double precision,
   p_lng        double precision,
   p_radius_km  double precision,
