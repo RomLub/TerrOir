@@ -11,18 +11,30 @@
 - Nettoyage `STRIPE_CONNECT_CLIENT_ID` (code mort, flux Express + Account Links n'en a pas besoin)
 - Lien "Explorer les produits" corrigé sur la home (pointe vers `/carte`)
 - Nettoyage Redirect URLs Supabase Auth (suppression `terroir.fr` obsolètes, ajout `terroir-local.fr`)
+- Boîte email `admin@terroir-local.fr` créée (Zimbra/OVH)
+- Template Supabase Magic Link fixé (`type=magiclink` en dur, `{{ .TokenHash }}` validé)
+- Route `/auth/callback` créée + page `/reset-password` (commit 49265bc)
+- Middleware : `/reset-password` et `/auth/callback` ajoutés aux public paths
+- Site URL Supabase corrigée (`www.terroir-local.fr`)
+- Nettoyage Redirect URLs Supabase (3 URLs `terroir-local.fr`)
 
 ## 🟠 En cours
 
-- Test end-to-end du flux d'onboarding producteur (cobaye : lubin.rom.ad@gmail.com)
-  - Attente reset mot de passe admin via Supabase → Resend
-  - Puis : envoi invitation → création compte → Stripe Connect → retour onboarded
+- Refonte du modèle de rôles users (Chantier 1 en cours, CC)
+  - Pattern B : `users.roles text[]` (consumer + producer cumulables)
+  - Option Y : table `public.admin_users` isolée
+  - Wipe des users existants (pré-prod, aucune donnée réelle)
+  - Nouveau compte admin à créer sur `admin@terroir-local.fr`
 
 ## 🔴 À faire (bloquants lancement)
 
-- Flux de reset password fonctionnel côté app (route `/reset-password` qui capte le token Supabase et permet de définir un nouveau mot de passe — actuellement le lien email renvoie vers la home publique)
-- Corriger la Site URL Supabase Auth (actuellement pointe vers `localhost:3000` → lien de reset cassé)
-- Onboarder Julien (GAEC du Rheu) — après validation du test end-to-end
+- REVERT du commit `38b46ff` (cookies partagés `.terroir-local.fr`) — à faire après Chantier 1, avant Chantier 4
+- Chantier 2 : flux d'invitation producteur (gérer upgrade consumer → consumer+producer au lieu de plantage si email existe déjà)
+- Chantier 4 : cookies refait proprement — cookies `.terroir-local.fr` UNIQUEMENT pour `www` et `pro`, cookies isolés sur `admin.terroir-local.fr`
+- Chantier 5 : middleware adapté au nouveau modèle rôles (laisser producteur accéder à `/compte`, utiliser `admin_users` pour auth admin)
+- Chantier 6 : interface de switch consumer/producer dans le profil producteur
+- Créer le compte admin dédié avec email `admin@terroir-local.fr` (dans `auth.users` + `admin_users`)
+- Onboarder Julien (GAEC du Rheu) — après validation test end-to-end
 - Basculer Stripe en mode Live (aujourd'hui en Test)
 - Mettre à jour le webhook Stripe vers `www.terroir-local.fr` (actuellement pointe sur `terr-oir-21cl.vercel.app`)
 
@@ -35,9 +47,15 @@
 - Supprimer `/api/stripe/payouts` legacy (remplacé par `/api/cron/weekly-payout`)
 - Nettoyer les `.tsx` résiduels dans `/api/cron/` (route.tsx → route.ts)
 - Remplacer images Unsplash provisoires par vraies photos producteurs
+- Nettoyer duplication `UserRole` type (`lib/auth/session.ts` + `user-provider.tsx`)
+- Flux invitation : cas "email déjà en base" à détecter proprement côté UX (au-delà de la correction fonctionnelle du Chantier 2)
 
 ## 🔵 Idées / améliorations
 
 - Pages d'accueil dédiées pour `pro.terroir-local.fr/` et `admin.terroir-local.fr/` (actuellement fallback vers layout public)
 - MiniMap Mapbox sur fiche produit (non câblée)
 - Régionaliser le fallback géoloc (actuellement Le Mans en dur)
+- Notation/reviews producteurs (cadre existant via reviews mais flow à valider)
+- Export comptable consommateurs + producteurs
+- Gestion des litiges (retrait non effectué, marchandise abîmée)
+- Stats publiques sur la home (nb commandes, nb producteurs actifs)
