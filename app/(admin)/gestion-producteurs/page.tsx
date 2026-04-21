@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
-import { AdminLayout } from '../_components/AdminLayout';
 
 type Status = 'pending' | 'active' | 'suspended';
 
@@ -119,8 +118,8 @@ export default function AdminProducteursPage() {
   };
 
   return (
-    <AdminLayout>
-      <div className="max-w-7xl mx-auto px-8 py-10">
+    <>
+      <div>
         <header className="mb-8 flex items-end justify-between gap-4 flex-wrap">
           <div>
             <div className="text-[11px] uppercase tracking-[0.18em] text-green-400 font-semibold">Producteurs</div>
@@ -220,7 +219,7 @@ export default function AdminProducteursPage() {
       </div>
 
       {inviting && <InviteModal onClose={() => setInviting(false)} onSuccess={() => { refresh(); }} />}
-    </AdminLayout>
+    </>
   );
 }
 

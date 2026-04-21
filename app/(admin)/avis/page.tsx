@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { StarRating } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
-import { AdminLayout } from '../_components/AdminLayout';
 
 type Review = {
   id: string;
@@ -97,9 +96,8 @@ export default function AdminAvisPage() {
   };
 
   return (
-    <AdminLayout>
-      <div className="max-w-5xl mx-auto px-8 py-10">
-        <header className="mb-8 flex items-end justify-between gap-4 flex-wrap">
+    <div>
+      <header className="mb-8 flex items-end justify-between gap-4 flex-wrap">
           <div>
             <div className="text-[11px] uppercase tracking-[0.18em] text-green-400 font-semibold">Modération</div>
             <h1 className="mt-1 font-serif text-[40px] text-white leading-tight">Avis à modérer</h1>
@@ -158,8 +156,7 @@ export default function AdminAvisPage() {
               </article>
             ))}
           </div>
-        )}
-      </div>
-    </AdminLayout>
+      )}
+    </div>
   );
 }

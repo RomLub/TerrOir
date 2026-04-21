@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
-import { AdminLayout } from '../_components/AdminLayout';
 
 type Status = 'pending' | 'confirmed' | 'ready' | 'completed' | 'cancelled' | 'refunded';
 
@@ -178,9 +177,8 @@ export default function AdminCommandesPage() {
   };
 
   return (
-    <AdminLayout>
-      <div className="max-w-7xl mx-auto px-8 py-10">
-        <header className="mb-8 flex items-end justify-between gap-4 flex-wrap">
+    <div>
+      <header className="mb-8 flex items-end justify-between gap-4 flex-wrap">
           <div>
             <div className="text-[11px] uppercase tracking-[0.18em] text-green-400 font-semibold">Commandes</div>
             <h1 className="mt-1 font-serif text-[40px] text-white leading-tight">Toutes les commandes</h1>
@@ -266,9 +264,8 @@ export default function AdminCommandesPage() {
               Total filtré : <span className="text-white">{formatEuro(filtered.reduce((s, o) => s + o.total, 0))}</span>
             </span>
           </div>
-        </section>
-      </div>
-    </AdminLayout>
+      </section>
+    </div>
   );
 }
 
