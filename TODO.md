@@ -10,6 +10,7 @@
 - Resend vérifié pour `terroir-local.fr` (DKIM + SPF + MX + DMARC posés)
 - Nettoyage `STRIPE_CONNECT_CLIENT_ID` (code mort, flux Express + Account Links n'en a pas besoin)
 - Lien "Explorer les produits" corrigé sur la home (pointe vers `/carte`)
+- Nettoyage Redirect URLs Supabase Auth (suppression `terroir.fr` obsolètes, ajout `terroir-local.fr`)
 
 ## 🟠 En cours
 
@@ -19,6 +20,8 @@
 
 ## 🔴 À faire (bloquants lancement)
 
+- Flux de reset password fonctionnel côté app (route `/reset-password` qui capte le token Supabase et permet de définir un nouveau mot de passe — actuellement le lien email renvoie vers la home publique)
+- Corriger la Site URL Supabase Auth (actuellement pointe vers `localhost:3000` → lien de reset cassé)
 - Onboarder Julien (GAEC du Rheu) — après validation du test end-to-end
 - Basculer Stripe en mode Live (aujourd'hui en Test)
 - Mettre à jour le webhook Stripe vers `www.terroir-local.fr` (actuellement pointe sur `terr-oir-21cl.vercel.app`)
