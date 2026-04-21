@@ -6,6 +6,7 @@ import { Logo } from "@/components/ui/logo";
 import { Badge } from "@/components/ui/badge";
 import { useUserContext } from "@/components/providers/user-provider";
 import { logoutAction } from "@/app/(public)/connexion/logout-action";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export type NavLink = { href: string; label: string };
 
@@ -100,7 +101,19 @@ export function NavbarPublic({
                 <span className="font-medium">{label}</span>
               </Link>
               {isAdmin ? <Badge variant="green">Admin</Badge> : null}
-              <form action={logoutAction}>
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  // signOut côté client d'abord : déclenche le listener
+                  // onAuthStateChange du UserProvider → SIGNED_OUT →
+                  // setUser(null) → UI rafraîchie immédiatement.
+                  // Puis server action pour nettoyer les cookies côté
+                  // serveur et invalider la session GoTrue, avec redirect("/").
+                  const supabase = createSupabaseBrowserClient();
+                  await supabase.auth.signOut();
+                  await logoutAction();
+                }}
+              >
                 <button
                   type="submit"
                   className="text-xs text-terroir-muted transition-colors hover:text-terroir-green-700 hover:underline"
