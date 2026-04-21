@@ -90,7 +90,30 @@ export default async function InvitationPage({ searchParams }: PageProps) {
     ? (existingUser!.roles as string[])
     : [];
 
-  if (existingRoles.includes("producer")) {
+  // On charge la ligne producer si un user existe, pour distinguer :
+  //   - producer avec statut='draft' : onboarding en cours, on doit laisser
+  //     passer (cas typique : re-render SSR après step 1 quand signIn a
+  //     déposé des cookies, Next.js refresh, on revient ici avec le user
+  //     qu'on vient de créer).
+  //   - producer avec statut in (pending|active|public|suspended) :
+  //     onboarding complété, l'invitation est invalide.
+  const existingProducer = existingUser
+    ? (
+        await admin
+          .from("producers")
+          .select(
+            "id, nom_exploitation, forme_juridique, siret, adresse, code_postal, commune, type_production, type_production_precision, statut",
+          )
+          .eq("user_id", existingUser.id)
+          .maybeSingle()
+      ).data
+    : null;
+
+  if (
+    existingRoles.includes("producer") &&
+    existingProducer &&
+    existingProducer.statut !== "draft"
+  ) {
     return (
       <ErrorCard
         title="Invitation invalide"
@@ -136,13 +159,7 @@ export default async function InvitationPage({ searchParams }: PageProps) {
         .eq("id", existingUser.id);
     }
 
-    const { data: producer } = await admin
-      .from("producers")
-      .select(
-        "id, nom_exploitation, forme_juridique, siret, adresse, code_postal, commune, type_production, type_production_precision",
-      )
-      .eq("user_id", existingUser.id)
-      .maybeSingle();
+    const producer = existingProducer;
 
     if (!producer) {
       await admin.from("producers").insert({

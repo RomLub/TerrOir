@@ -50,9 +50,13 @@ export async function loginAndUpgradeAction(
   const currentRoles = Array.isArray(existingUser.roles)
     ? (existingUser.roles as string[])
     : [];
-  if (currentRoles.includes("producer")) {
-    return { error: "Vous êtes déjà producteur" };
-  }
+
+  // NOTE: pas de check "déjà producteur" ici — il est fait côté page.tsx
+  // en distinguant producer.statut === 'draft' (onboarding en cours, on laisse
+  // passer pour permettre la reprise) vs statut non-draft (vraiment déjà
+  // inscrit, page.tsx affiche l'ErrorCard avant d'atteindre ce formulaire).
+  // Cette action est idempotente : upsert roles via Set, insert producer
+  // conditionnel.
 
   const supabase = createSupabaseServerClient();
   const { error: signinError } = await supabase.auth.signInWithPassword({
