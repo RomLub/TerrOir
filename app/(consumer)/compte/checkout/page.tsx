@@ -269,7 +269,12 @@ function CheckoutForm({ orderId, amountLabel }: { orderId: string; amountLabel: 
 
   return (
     <form onSubmit={onSubmit} className="space-y-4">
-      <PaymentElement options={{ layout: 'tabs' }} />
+      <PaymentElement
+        options={{
+          layout: 'tabs',
+          wallets: { applePay: 'never', googlePay: 'never' },
+        }}
+      />
       {error && (
         <div className="p-3 rounded-lg bg-terra-100/60 border border-terra-300/40 text-[13px] text-terra-900">{error}</div>
       )}

@@ -50,9 +50,14 @@ export async function POST(request: Request) {
   // (montant_total − 6%) est déclenché plus tard par /api/cron/weekly-payout.
   const amount = Math.round(Number(order.montant_total) * 100);
 
+  // payment_method_types: ["card"] explicite → désactive le default
+  // automatic_payment_methods qui activerait Link dans le Payment Element.
+  // Notre propre système de cartes sauvegardées (Stripe Customer) couvre
+  // le besoin sans la friction Link (email+téléphone+nom obligatoires).
   const pi = await stripe.paymentIntents.create({
     amount,
     currency: "eur",
+    payment_method_types: ["card"],
     metadata: {
       order_id: order.id,
       producer_id: order.producer_id,

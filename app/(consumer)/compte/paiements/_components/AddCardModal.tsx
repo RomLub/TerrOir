@@ -148,7 +148,12 @@ function AddCardForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <PaymentElement options={{ layout: "tabs" }} />
+      <PaymentElement
+        options={{
+          layout: "tabs",
+          wallets: { applePay: "never", googlePay: "never" },
+        }}
+      />
       {error ? (
         <p className="text-sm text-red-600" role="alert">
           {error}
