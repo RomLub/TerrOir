@@ -2,22 +2,81 @@
 
 ## ✅ Fait (session 22/04/2026)
 
-- **Chantier 2 clôturé — les 6 phases en prod** :
-  - Phase 4 ✅ reprise d'onboarding (commit `285785d`) — test cas étape 2 validé en prod
-  - Phase 5 ✅ bouton Valider admin + `STATUS_META` final (commit `9ed234e`) — modal de validation, mapping couleurs `pending`/`active`/`public`
-  - Phase 6 ✅ auto-transition `active` → `public` au 1er produit + filtrage RPC/RLS publiques sur `statut='public'` (commits `e885439` + `e13c744` pour storage policies + migrations `20260422000000` + `20260422100000`)
-- **RLS storage.objects** : policies INSERT/UPDATE/DELETE sur le bucket photos producteurs/produits (commit `e13c744`). Le bucket `public` autorise la lecture mais pas l'écriture → policies explicites nécessaires pour les uploads authentifiés.
-- **Tests prod validés** :
-  - Cas A — nouveau user via invitation (Test 1 Phase 3)
-  - Reprise abandon mid-wizard — user `draft` qui reprend à l'étape correcte (Test Phase 4)
-  - Création 1er produit d'un producteur `active` → auto-promotion `public` + apparition sur `/carte` (Test Phase 6)
-- **Chantier 4 ✅ isolation cookies admin vs www/pro** (commit `1d83f5d`)
-  - Helper `lib/supabase/cookie-domain.ts` avec `cookieConfigForHost()`
-  - Admin : cookie `sb-admin-auth-token`, pas de domain → isolé
-  - www/pro : cookie `sb-*-auth-token` par défaut, domain `.terroir-local.fr` → partagé
-  - Wipe sessions + refresh_tokens post-deploy
-  - 3 tests validés en prod : admin → www/pro isolés, www → admin isolés, www ↔ pro partagés
-- **Cleanup `/api/stripe/payouts` legacy** (commit `8dcfd19`) — endpoint mort, logique partagée `lib/stripe/payouts.ts` conservée pour `/api/cron/weekly-payout`
+### Chantier 2 — Flux invitation producteur ✅ CLÔTURÉ (les 6 phases en prod)
+
+- Phase 4 ✅ reprise d'onboarding (commit `285785d`) — test cas étape 2 validé en prod
+- Phase 5 ✅ bouton Valider admin + `STATUS_META` final (commit `9ed234e`) — modal de validation, mapping couleurs `pending`/`active`/`public`
+- Phase 6 ✅ auto-transition `active` → `public` au 1er produit + filtrage RPC/RLS publiques sur `statut='public'` (commits `e885439` + `e13c744` pour storage policies + migrations `20260422000000` + `20260422100000`)
+- Clôture du tracking Chantier 2 dans TODO (commit `cb61da8`)
+
+### Chantier 4 — Isolation cookies admin vs www/pro (commit `1d83f5d`)
+
+- Helper `lib/supabase/cookie-domain.ts` avec `cookieConfigForHost()`
+- Admin : cookie `sb-admin-auth-token`, pas de domain → isolé
+- www/pro : cookie `sb-*-auth-token` par défaut, domain `.terroir-local.fr` → partagé
+- Wipe sessions + refresh_tokens post-deploy
+- 3 tests validés en prod : admin → www/pro isolés, www → admin isolés, www ↔ pro partagés
+
+### Chantier 5 — Middleware simplifié (commit `a050c80`)
+
+- Retrait du redirect `/compte` → `pro.*` pour les producers
+- Un user `consumer+producer` accède désormais librement à `/compte` sur www, et au dashboard producteur sur pro
+- Check admin inchangé (via `admin_users`, Chantier 1 déjà en prod)
+- 3 tests validés en prod
+
+### Chantier 6 — Switcher consumer/producer (commit `442840b`)
+
+- Nouveau composant `components/ui/role-switcher.tsx` avec variants `light` / `dark`
+- Affiché uniquement si `roles` inclut `'consumer'` ET `'producer'`
+- Injecté dans Sidebar consumer (pied avec séparateur) + `ProducerLayout` (dessus section identitaire)
+- Navigation cross-subdomain via `NEXT_PUBLIC_APP_URL` et `NEXT_PUBLIC_PRODUCER_URL`
+- 3 tests validés en prod
+
+### RGPD — Suppression de compte
+
+- Migration `20260422200000_rgpd_account_deletion.sql` : ajout statut `'deleted'`, colonnes audit (`deleted_at`, `deleted_reason`), RPC `delete_user_account()`
+- Server action `app/(consumer)/compte/profil/delete-account-action.ts` (commit `d9ce0e8`) — orchestration anonymisation/suppression selon présence de `orders`
+- UI `DeleteAccountSection` dans `/compte/profil` (commit `fb64675`) — double confirmation, explication claire (soft vs hard delete)
+- Migration appliquée prod (commit `29fa064`)
+- **Tests prod** : cas A (consumer pur sans orders → hard delete) + cas C (consumer+producer complet → hard delete en cascade) validés. Cas B et D (users avec orders → anonymisation soft) reportés, logique en place
+
+### Fix home admin (commit `581475e`)
+
+- `admin.terroir-local.fr/` sans session → redirect `/connexion`
+- `admin.terroir-local.fr/` avec session admin → redirect `/tableau-de-bord`
+- Logique placée dans le middleware (cf leçon : impossible d'avoir `(admin)/page.tsx` et `(public)/page.tsx` résolvant au même path)
+- 4 tests validés en prod
+
+### Chantier F — Mot de passe oublié (commit `c92b548`)
+
+- Nouvelle page `/mot-de-passe-oublie` (étape 1 du flow reset) — formulaire email, message ambigu enumeration-resistant
+- Lien "Mot de passe oublié ?" ajouté sur `/connexion`
+- Template Supabase Reset Password corrigé — `&type=recovery&` en dur au lieu de `{{ .EmailActionType }}` qui renvoyait vide
+- `redirectTo` dynamique basé sur `window.location.origin` pour que le magic link revienne sur le bon sous-domaine
+- Bonus : fix lien mort `/producteur/inscription` → `/devenir-producteur` sur la home
+- **Flow complet testé** : demande mdp → email reçu → clic → `/reset-password` → nouveau mdp → reconnexion OK
+
+### Sidebar producteur — nom réel (commit `a029116`)
+
+- Remplacement du placeholder hardcodé "Ferme des Chênes" par `producer.nom_exploitation` depuis `useUserContext`
+- Lien "Voir ma page publique" rendu conditionnel sur `statut='public'` (évite 404 pour producteurs `active` non encore vitrine)
+- Fallback loading + défensif pas-de-producer
+
+### Storage — RLS policies uploads photos (commit `e13c744`)
+
+- Policies INSERT/UPDATE/DELETE sur `storage.objects` pour buckets `product-photos` + `producer-photos`
+- Vérif `owns_producer(producer_id)` extrait du path via `storage.foldername(name)[1]::uuid`
+- Fix prod : uploads photos produits qui plantaient avec « new row violates row-level security policy »
+
+### Qualité de code
+
+- Consolidation type `UserRole` (commit `87371a4`) — suppression du re-export mort dans `lib/auth/session.ts`, `scripts/seed.ts` importe désormais depuis `@/lib/auth/roles`
+- Helper promote-to-public : `console.error` → `console.warn` + préfixe `[PROMOTE_PRODUCER_WARN]` (commit `653c756`) — meilleur signal/bruit pour debug futur sans bloquer le fail-open
+
+### Cleanup legacy
+
+- Suppression `/api/stripe/payouts` orphelin (commit `8dcfd19`) — logique partagée `lib/stripe/payouts.ts` conservée pour `/api/cron/weekly-payout`
+- Commentaire `create-payment-intent` aligné sur `/api/cron/weekly-payout` (commit `e93f143`)
 
 ## ✅ Fait (session 21/04/2026)
 
@@ -88,32 +147,24 @@ _(rien en cours)_
   - Durée par créneau configurable (min 5 min)
   - Capacité clients par créneau
   - Impact DB : probable refonte du schema `slots` (vérifier migration `20260419..._initial_schema` pour le modèle actuel avant de planifier la migration)
-- **RGPD** : suppression de compte (obligation légale avant ouverture publique)
-- Chantier 5 : middleware adapté au nouveau modèle rôles (laisser producteur accéder à `/compte`, utiliser `admin_users` pour auth admin)
-- Chantier 6 : interface de switch consumer/producer dans le profil producteur
 - Onboarder Julien (GAEC du Rheu) — après validation test end-to-end
 - Basculer Stripe en mode Live (aujourd'hui en Test)
-- Mettre à jour le webhook Stripe vers `www.terroir-local.fr` (actuellement pointe sur `terr-oir-21cl.vercel.app`)
+- Mettre à jour le webhook Stripe vers `www.terroir-local.fr` (actuellement pointe sur `terr-oir-21cl.vercel.app` — à confirmer, potentiellement déjà fait le 22/04 matin)
 
 ## 🟡 À faire (non bloquants)
 
 - Mapbox : en attente retour CB
 - Twilio SMS : numéro FR à régler
 - Vectormagic logo SVG (8,99€)
-- Ajouter un lien "Mot de passe oublié" sur la page de connexion
 - Remplacer images Unsplash provisoires par vraies photos producteurs
-- Nettoyer duplication `UserRole` type (`lib/auth/session.ts` + `user-provider.tsx`)
 - Flux invitation : cas "email déjà en base" à détecter proprement côté UX (au-delà de la correction fonctionnelle du Chantier 2)
-- Switcher consumer/producer cassé : depuis l'espace producteur, le lien vers le profil consommateur retourne 404. À fixer avec le Chantier 6 (switcher nav bidirectionnel).
 - Bouton « Voir page publique » (fiche producteur admin) était visible pour tous les statuts → désormais filtré sur `statut='public'` uniquement (Phase 5). Vérifier qu'aucun autre bouton/lien public ne fuit les producteurs non-publiés.
-- Helper `promoteProducerToPublicIfActive` en fail-open silencieux (swallow errors via `console.error`) — bonne UX (ne bloque pas la création produit si la promotion échoue), mais peut masquer des bugs RLS futurs. À considérer : upgrader vers `console.warn` ou toast dev-only si besoin de debug.
 - Quand la section Paiements & adresses de `/compte` sera implémentée (couplée au chantier Stripe Customer), garder l'adresse consumer strictement optionnelle : pas de `required` à l'inscription, pas de blocage au checkout. Décision produit du 22/04/2026 : modèle circuit court sans livraison domicile.
 - Magic link admin via `www.*` : si un flow magic link est ajouté pour les admins plus tard (recovery, invite), il faudra router explicitement via `admin.terroir-local.fr/auth/callback` + ajouter cette URL aux redirect URLs Supabase. Non bloquant aujourd'hui (admin password-only).
 
 ## 🔵 Idées / améliorations
 
-- Pages d'accueil dédiées pour `pro.terroir-local.fr/` et `admin.terroir-local.fr/` (actuellement fallback vers layout public)
-- `admin.terroir-local.fr/` (sans session) redirige vers la home publique au lieu de `/connexion`. Comportement hérité du fallback public quand admin.* n'avait pas de page d'accueil dédiée. À fixer avec le chantier « Pages d'accueil dédiées pour pro.* et admin.* ».
+- Pages d'accueil dédiées pour `pro.terroir-local.fr/` et `admin.terroir-local.fr/` (actuellement fallback vers layout public côté pro ; côté admin, redirect middleware en place depuis le 22/04 mais pas de vraie landing)
 - MiniMap Mapbox sur fiche produit (non câblée)
 - Régionaliser le fallback géoloc (actuellement Le Mans en dur)
 - Notation/reviews producteurs (cadre existant via reviews mais flow à valider)
@@ -135,5 +186,9 @@ _(rien en cours)_
 - **Next.js re-render SSR après mutation de cookies** (ex: `signInWithPassword`) peut déclencher une défense en profondeur avant que le client ne puisse avancer. Dans les flows multi-étapes, penser à vérifier que les conditions de blocage distinguent bien les états légitimes (`draft`) des états problématiques (`pending`/`active`/`public`). Incident du 21/04 : le middleware bloquait les users `draft` en pleine onboarding parce qu'il ne les distinguait pas des `pending` (fix commit `23a2b31`).
 - **Supabase Storage : bucket `public` ≠ écriture publique.** Un bucket marqué `public` autorise la LECTURE via `getPublicUrl`, mais TOUT upload authentifié nécessite des policies RLS explicites sur `storage.objects` (INSERT minimum, UPDATE/DELETE selon besoin). Pattern TerrOir : policy `WITH CHECK` qui vérifie `bucket_id` + `owns_producer(producer_id)` où `producer_id` est extrait du path via `storage.foldername(name)[1]::uuid`. Incident du 22/04 : uploads photos produits/producteurs plantaient en prod avec « new row violates row-level security policy » alors qu'aucune policy applicative ne semblait coupable.
 - **Debug RLS : toujours inspecter l'onglet Network DevTools.** Quand une erreur « new row violates row-level security policy » remonte et qu'aucune policy DB sur la table applicative ne semble coupable, vérifier les requêtes Network pour voir si c'est une AUTRE ressource qui plante (typiquement `storage.objects` pour un upload). Le message d'erreur générique ne distingue pas les tables — seule la requête HTTP échouée permet d'identifier la vraie cible.
-- **Cookies multi-subdomain : fixer uniquement le `domain` ne suffit pas pour isoler 2 sous-domaines.** Si le cookie `name` est identique entre tous les subdomains et que le `domain` est partagé (`.apex.fr`), le navigateur enverra le cookie à tous. Pour une vraie isolation, il faut combiner : (1) pas de `domain` explicite sur le subdomain isolé ET (2) un nom de cookie distinct. Le `@supabase/ssr` permet les deux via `CookieOptionsWithName`. Leçon du 22/04 : sans le nom distinct, admin voyait encore la session consumer posée par www.
+- **Cookies multi-subdomain : fixer uniquement le `domain` ne suffit pas pour isoler 2 sous-domaines.** Si le cookie `name` est identique entre tous les subdomains et que le `domain` parent est partagé (`.apex.fr`), le navigateur enverra le cookie à tous. Pour une vraie isolation, il faut combiner : (1) pas de `domain` explicite sur le subdomain isolé ET (2) un nom de cookie distinct. Le `@supabase/ssr` permet les deux via `CookieOptionsWithName`. Leçon du 22/04 : sans le nom distinct, admin voyait encore la session consumer posée par www.
 - **Les routes API Next.js peuvent avoir l'extension `.tsx` de manière légitime** quand elles utilisent du JSX inline — typiquement les crons qui envoient des emails via Resend avec un template React (`element: <OrderTimeoutCancelled {...props} />`). Ne pas présumer qu'une route API `.tsx` est un résidu à renommer sans vérifier son contenu. Incident du 22/04 : 4 routes cron renommées à tort `.tsx` → `.ts`, `tsc` a immédiatement levé 12 erreurs de parsing JSX, rollback nécessaire. `vercel.json` référence aussi les extensions explicitement dans le bloc `functions` — à synchroniser si rename légitime un jour.
+- **Templates email Supabase : `{{ .EmailActionType }}` peut renvoyer une string vide** et casser silencieusement le callback. Préférer **hardcoder** le type dans la querystring du template (ex: `&type=recovery&` en dur) plutôt que d'utiliser cette variable. Sinon `/auth/callback` reçoit `type=` vide → parsé comme `null` → rejette avec « Missing code or token_hash ». Incident du 22/04 : le lien de reset password tombait toujours en erreur à l'arrivée sur le callback, malgré un token valide.
+- **Mailinator introduit un délai d'affichage de 1-2 minutes** entre la réception d'un email côté serveur (200 OK depuis `/auth/v1/recover`) et son apparition dans l'inbox. Ne pas conclure « l'email n'a pas été envoyé » trop vite — rafraîchir l'inbox avant de suspecter le code applicatif.
+- **Les paths publics ont des noms piégeux à TerrOir.** `/inscription` **n'existe pas** : la vraie route d'inscription consumer est `/auth/inscription`. Le segment `/devenir-producteur` est la landing producer (formulaire d'intérêt). Le groupe de route `(consumer)` / `(public)` / `(producer)` / `(admin)` est transparent au path, donc attention aux confusions de lien — vérifier que la cible existe avec un test navigateur ou un Glob sur `app/**/slug/page.tsx` avant de coller un `<Link href=...>`.
+- **Next.js App Router refuse 2 `page.tsx` dans des route groups différents qui résolvent au même path.** Impossible de créer `app/(admin)/page.tsx` en parallèle de `app/(public)/page.tsx` pour gérer la home `admin.terroir-local.fr/` — les deux résolvent à `/` et Next.js lève une erreur de build. **Solution retenue** : logique de redirect dans le middleware pour différencier par hostname. Incident du 22/04 : tentative de créer `(admin)/page.tsx` a échoué au build → rollback, fix via middleware (commit `581475e`).
