@@ -63,24 +63,42 @@ export default async function ProductPage({ params }: { params: { slug: string; 
   const earliest = new Date(now.getTime() + delai * 24 * 3600 * 1000);
   const horizonEnd = new Date(now.getTime() + HORIZON_DAYS * 24 * 3600 * 1000);
 
-  const [{ data: slotsRaw }, { data: otherRaw }] = await Promise.all([
-    admin
-      .from('slots')
-      .select('id, starts_at, ends_at, capacity_per_slot')
-      .eq('producer_id', producerRow.id)
-      .eq('actif', true)
-      .is('excluded_at', null)
-      .gte('starts_at', earliest.toISOString())
-      .lt('starts_at', horizonEnd.toISOString())
-      .order('starts_at', { ascending: true }),
-    admin
-      .from('products')
-      .select('id, nom, photos, prix, unite, stock_disponible, stock_illimite')
-      .eq('producer_id', producerRow.id)
-      .eq('actif', true)
-      .neq('id', params.id)
-      .limit(3),
-  ]);
+  const [{ data: slotsRaw }, { data: otherRaw }, { data: bookingsRaw }] =
+    await Promise.all([
+      admin
+        .from('slots')
+        .select('id, starts_at, ends_at, capacity_per_slot')
+        .eq('producer_id', producerRow.id)
+        .eq('actif', true)
+        .is('excluded_at', null)
+        .gte('starts_at', earliest.toISOString())
+        .lt('starts_at', horizonEnd.toISOString())
+        .order('starts_at', { ascending: true }),
+      admin
+        .from('products')
+        .select('id, nom, photos, prix, unite, stock_disponible, stock_illimite')
+        .eq('producer_id', producerRow.id)
+        .eq('actif', true)
+        .neq('id', params.id)
+        .limit(3),
+      // Phase 6b : comptage des orders actives par slot pour dériver la
+      // capacité restante (SlotOption.left). Bornée aux statuts actifs
+      // (pending/confirmed/ready) → les orders completed/cancelled/refunded
+      // libèrent leur slot dans le décompte consumer. Le check autoritatif
+      // reste côté RPC create_order_with_items (SELECT FOR UPDATE +
+      // recount), ce fetch sert uniquement à griser les slots pleins en UI.
+      admin
+        .from('orders')
+        .select('slot_id')
+        .eq('producer_id', producerRow.id)
+        .in('statut', ['pending', 'confirmed', 'ready']),
+    ]);
+
+  const bookingCounts = new Map<string, number>();
+  for (const b of (bookingsRaw ?? []) as { slot_id: string | null }[]) {
+    if (!b.slot_id) continue;
+    bookingCounts.set(b.slot_id, (bookingCounts.get(b.slot_id) ?? 0) + 1);
+  }
 
   const commune = [producerRow.commune, producerRow.code_postal].filter(Boolean).join(' · ');
   const address = [producerRow.adresse, producerRow.code_postal, producerRow.commune]
@@ -120,8 +138,7 @@ export default async function ProductPage({ params }: { params: { slug: string; 
     starts_at: s.starts_at,
     ends_at: s.ends_at,
     capacity_per_slot: s.capacity_per_slot,
-    // Phase 6 câblera la capacité restante via count(orders actives).
-    left: null,
+    left: Math.max(0, s.capacity_per_slot - (bookingCounts.get(s.id) ?? 0)),
   }));
 
   const otherProducts: OtherProduct[] = (otherRaw ?? []).map((p) => ({
