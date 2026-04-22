@@ -11,7 +11,6 @@ const LOGIN_PATH = "/connexion";
 const PUBLIC_PATHS = new Set<string>([
   "/",
   "/connexion",
-  "/inscription",
   "/invitation",
   "/auth/inscription",
   "/reset-password",
