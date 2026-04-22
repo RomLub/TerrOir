@@ -2,14 +2,22 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
+import { getOrCreateStripeCustomer } from "@/lib/stripe/customer";
 
-const bodySchema = z.object({ order_id: z.string().uuid() });
+const bodySchema = z.object({
+  order_id: z.string().uuid(),
+  save_card: z.boolean().optional().default(false),
+});
 
 export async function POST(request: Request) {
   const session = await getSessionUser();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!session.email) {
+    return NextResponse.json({ error: "Email manquant" }, { status: 500 });
   }
 
   const body = await request.json().catch(() => null);
@@ -37,11 +45,57 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  // Idempotence: si un PI existe déjà, on renvoie son client_secret.
+  // Stripe Customer (Phase 6) : toujours attaché au PI, même si save_card=false.
+  // Préparation pour Phase 7 (sélecteur CB enregistrée au checkout) et pour
+  // cohérence de l'historique Stripe côté customer.
+  const admin = createSupabaseAdminClient();
+  const { data: profile } = await admin
+    .from("users")
+    .select("prenom, nom")
+    .eq("id", session.id)
+    .maybeSingle();
+
+  let customerId: string;
+  try {
+    customerId = await getOrCreateStripeCustomer(
+      session.id,
+      session.email,
+      profile?.prenom as string | null | undefined,
+      profile?.nom as string | null | undefined,
+    );
+  } catch (err) {
+    return NextResponse.json(
+      { error: `Stripe customer error: ${(err as Error).message}` },
+      { status: 500 },
+    );
+  }
+
+  const setupFutureUsage: "off_session" | undefined = parsed.data.save_card
+    ? "off_session"
+    : undefined;
+
+  // Idempotence : si un PI existe déjà, on ajuste setup_future_usage + customer
+  // pour refléter le choix courant (l'user a pu cocher/décocher la checkbox
+  // entre 2 clics "Payer") et on renvoie le même client_secret (stable pour
+  // la durée de vie du PI).
   if (order.stripe_payment_intent_id) {
     const existing = await stripe.paymentIntents.retrieve(
       order.stripe_payment_intent_id,
     );
+
+    const currentSFU = existing.setup_future_usage ?? null;
+    const targetSFU = setupFutureUsage ?? null;
+    const customerMismatch = existing.customer !== customerId;
+
+    if (currentSFU !== targetSFU || customerMismatch) {
+      // Stripe accepte "" pour unset setup_future_usage. Le cast est requis
+      // car le type TS ne liste que les valeurs enum + undefined, pas "".
+      await stripe.paymentIntents.update(order.stripe_payment_intent_id, {
+        customer: customerId,
+        setup_future_usage: (setupFutureUsage ?? "") as "off_session",
+      });
+    }
+
     return NextResponse.json({ client_secret: existing.client_secret });
   }
 
@@ -57,7 +111,9 @@ export async function POST(request: Request) {
   const pi = await stripe.paymentIntents.create({
     amount,
     currency: "eur",
+    customer: customerId,
     payment_method_types: ["card"],
+    ...(setupFutureUsage && { setup_future_usage: setupFutureUsage }),
     metadata: {
       order_id: order.id,
       producer_id: order.producer_id,

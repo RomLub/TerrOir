@@ -238,12 +238,30 @@ function CheckoutForm({ orderId, amountLabel }: { orderId: string; amountLabel: 
 
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saveCard, setSaveCard] = useState(false);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!stripe || !elements) return;
     setProcessing(true);
     setError(null);
+
+    // Phase 6 Stripe Customer : si l'user veut mémoriser sa CB, on update le
+    // PI côté serveur pour poser setup_future_usage='off_session' AVANT le
+    // confirm. Stripe attachera alors la CB au Customer automatiquement
+    // après un paiement réussi.
+    if (saveCard) {
+      const updateRes = await fetch('/api/stripe/create-payment-intent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: orderId, save_card: true }),
+      });
+      if (!updateRes.ok) {
+        setError("Impossible d'activer la mémorisation de la carte. Réessayez.");
+        setProcessing(false);
+        return;
+      }
+    }
 
     const { error: payError, paymentIntent } = await stripe.confirmPayment({
       elements,
@@ -275,6 +293,21 @@ function CheckoutForm({ orderId, amountLabel }: { orderId: string; amountLabel: 
           wallets: { applePay: 'never', googlePay: 'never' },
         }}
       />
+      <label className="flex items-start gap-3 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={saveCard}
+          onChange={(e) => setSaveCard(e.target.checked)}
+          disabled={processing}
+          className="mt-1 h-4 w-4 accent-green-900"
+        />
+        <span className="text-[13px] text-dark/80 leading-relaxed">
+          Mémoriser cette carte pour mes prochaines commandes
+          <span className="block text-[11px] text-dark/50 mt-0.5">
+            Enregistrement sécurisé chez Stripe. Supprimable à tout moment dans « Moyens de paiement ».
+          </span>
+        </span>
+      </label>
       {error && (
         <div className="p-3 rounded-lg bg-terra-100/60 border border-terra-300/40 text-[13px] text-terra-900">{error}</div>
       )}
