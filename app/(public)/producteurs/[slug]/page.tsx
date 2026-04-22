@@ -8,6 +8,13 @@ import {
   type ReviewData,
 } from './ProducerPageClient';
 
+// Rendu dynamique à chaque requête : la fiche producer fetch des données
+// qui évoluent (produits publiés, avis modérés, badges). Sans ça, un
+// nouveau produit mis en ligne ou un nouvel avis publié n'apparaît pas
+// avant un redeploy Vercel.
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 const REVIEWS_FETCH_LIMIT = 50;
 
 function scoreFromBadge(v: number | null | undefined): number {

@@ -9,6 +9,14 @@ import {
   type OtherProduct,
 } from './ProductPageClient';
 
+// Rendu dynamique à chaque requête : la page fetch des données qui évoluent
+// (stock produit, slots générés depuis slot_rules, autres produits du
+// producteur). Sans ça, Next.js peut cacher silencieusement le résultat
+// SSR entre deux deploys et les nouveaux slots/produits n'apparaissent
+// qu'après redeploy.
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 const HORIZON_DAYS = 90;
 
 function weightStepFor(unit: string | null): number {
