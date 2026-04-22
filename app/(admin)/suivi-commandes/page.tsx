@@ -6,6 +6,8 @@ import {
   formatSlotRange,
   formatLegacyTimeHHMM,
 } from '@/lib/slots/format-slot-time';
+import { formatDateFr } from '@/lib/format/date';
+import { formatEuro } from '@/lib/format/currency';
 
 type Status = 'pending' | 'confirmed' | 'ready' | 'completed' | 'cancelled' | 'refunded';
 
@@ -48,15 +50,6 @@ function startOfWeek(d: Date): Date {
   return c;
 }
 function startOfDay(d: Date): Date { const c = new Date(d); c.setHours(0, 0, 0, 0); return c; }
-
-function formatEuro(n: number): string { return `${n.toFixed(2).replace('.', ',')} €`; }
-
-function formatDateShort(iso: string | null): string {
-  if (!iso) return '—';
-  const d = new Date(iso + 'T00:00:00');
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
-}
 
 function csvEscape(v: string | number): string {
   const s = String(v);
@@ -114,7 +107,7 @@ export default function AdminCommandesPage() {
           producer: producer?.nom_exploitation ?? '—',
           created_at: o.created_at,
           date_retrait: o.date_retrait,
-          slot_label: `${formatDateShort(o.date_retrait)}${slotTime ? ' ' + slotTime : ''}`,
+          slot_label: `${formatDateFr(o.date_retrait, { year: false })}${slotTime ? ' ' + slotTime : ''}`,
           total: Number(o.montant_total ?? 0),
           status: o.statut,
         };

@@ -2,18 +2,9 @@
 
 import { Fragment, useState } from "react";
 import { useRouter } from "next/navigation";
+import { formatDateFr } from "@/lib/format/date";
 import { LeadStatusBadge } from "./LeadStatusBadge";
 import type { Lead, LeadStatus } from "./types";
-
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("fr-FR", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-}
 
 export function LeadsTable({
   leads,
@@ -76,7 +67,7 @@ export function LeadsTable({
                     }
                   >
                     <td className="px-5 py-4 font-mono text-[13px] text-gray-500">
-                      {formatDate(lead.created_at)}
+                      {formatDateFr(lead.created_at)}
                     </td>
                     <td className="px-5 py-4">
                       <div className="font-serif text-[17px] leading-tight text-gray-900">

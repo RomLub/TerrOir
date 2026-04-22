@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { formatDateFr } from '@/lib/format/date';
 
 // Statuts producers visibles côté admin. 'draft' et 'deleted' sont exclus
 // au fetch (formulaire d'onboarding incomplet / anonymisé RGPD via
@@ -58,12 +59,6 @@ const PLAN_LABEL: Record<string, string> = {
   pro: 'Pro',
   premium: 'Premium',
 };
-
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
-}
 
 export default function AdminProducteursPage() {
   // Suspense requis par Next.js 14 autour de useSearchParams (lecture
@@ -149,7 +144,7 @@ function AdminProducteursPageInner() {
         city: city || '—',
         status: p.statut,
         plan: PLAN_LABEL[p.abonnement_niveau ?? ''] ?? '—',
-        joinedAt: formatDate(p.created_at),
+        joinedAt: formatDateFr(p.created_at),
         email: user?.email ?? '—',
       };
     });
