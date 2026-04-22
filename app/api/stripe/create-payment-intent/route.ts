@@ -47,7 +47,7 @@ export async function POST(request: Request) {
 
   // Separate charges & transfers: le paiement arrive en totalité sur le
   // compte plateforme TerrOir. Le virement net vers le producteur
-  // (montant_total − 6%) est déclenché plus tard par /api/stripe/payouts.
+  // (montant_total − 6%) est déclenché plus tard par /api/cron/weekly-payout.
   const amount = Math.round(Number(order.montant_total) * 100);
 
   const pi = await stripe.paymentIntents.create({
