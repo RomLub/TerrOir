@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useFormState, useFormStatus } from "react-dom";
 import { loginAction, type LoginState } from "./actions";
 
@@ -50,6 +51,15 @@ export default function ConnexionPage() {
             className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
           />
         </label>
+
+        <div className="text-right">
+          <Link
+            href="/mot-de-passe-oublie"
+            className="text-sm text-terroir-green hover:underline"
+          >
+            Mot de passe oublié ?
+          </Link>
+        </div>
 
         {state.error ? (
           <p className="rounded-md bg-red-50 p-2 text-sm text-red-700">

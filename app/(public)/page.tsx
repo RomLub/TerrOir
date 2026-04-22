@@ -83,7 +83,7 @@ export default function HomePage() {
               communauté d&apos;amateurs.
             </p>
           </div>
-          <Link href="/producteur/inscription">
+          <Link href="/devenir-producteur">
             <Button variant="primary">Devenir producteur</Button>
           </Link>
         </div>
