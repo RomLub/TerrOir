@@ -51,6 +51,7 @@ export {
   type FilterTabsProps,
   type FilterTabOption,
 } from "./filter-tabs";
+export { MetricCard, type MetricCardProps } from "./metric-card";
 export { StatusPanel, type StatusPanelProps } from "./status-panel";
 export { TableStatus, type TableStatusProps } from "./table-status";
 export { CodeCommande, type CodeCommandeProps } from "./code-commande";

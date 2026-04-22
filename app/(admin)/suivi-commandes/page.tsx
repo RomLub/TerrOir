@@ -8,7 +8,7 @@ import {
 } from '@/lib/slots/format-slot-time';
 import { formatDateFr } from '@/lib/format/date';
 import { formatEuro } from '@/lib/format/currency';
-import { AdminPageHeader, StatusDotBadge, TableStatus } from '@/components/ui';
+import { AdminPageHeader, MetricCard, StatusDotBadge, TableStatus } from '@/components/ui';
 
 type Status = 'pending' | 'confirmed' | 'ready' | 'completed' | 'cancelled' | 'refunded';
 
@@ -252,12 +252,3 @@ export default function AdminCommandesPage() {
   );
 }
 
-function MetricCard({ label, value, hint }: { label: string; value: string; hint: string }) {
-  return (
-    <div className="rounded-md border border-gray-200 bg-white p-6 shadow-sm">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-terroir-green-700">{label}</div>
-      <div className="mt-2 font-serif text-[36px] leading-none tabular-nums text-gray-900">{value}</div>
-      <div className="mt-2 text-[12px] text-gray-500">{hint}</div>
-    </div>
-  );
-}

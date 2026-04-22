@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { AdminPageHeader, StarRating, StatusPanel } from '@/components/ui';
+import { AdminPageHeader, MetricCard, StarRating, StatusPanel } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
 type Review = {
@@ -102,12 +102,7 @@ export default function AdminAvisPage() {
         title="Avis à modérer"
         subtitle="Validez chaque avis avant publication sur la page du producteur."
         error={error}
-        right={
-          <div className="rounded-md border border-gray-200 bg-white px-5 py-4 text-center shadow-sm">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-terroir-green-700">En attente</div>
-            <div className="mt-1 font-serif text-[40px] leading-none tabular-nums text-gray-900">{reviews.length}</div>
-          </div>
-        }
+        right={<MetricCard size="sm" label="En attente" value={reviews.length} />}
       />
 
       {loading ? (
