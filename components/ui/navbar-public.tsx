@@ -131,7 +131,7 @@ export function NavbarPublic({
                 Connexion
               </Link>
               <Link
-                href="/inscription"
+                href="/auth/inscription"
                 className="inline-flex items-center rounded-md bg-terroir-green-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-terroir-green-700/90"
               >
                 S&apos;inscrire
