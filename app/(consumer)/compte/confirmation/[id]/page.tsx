@@ -3,7 +3,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getSessionUser } from '@/lib/auth/session';
 import {
   formatSlotRange,
-  formatLegacyTimeRange,
+  formatLegacyTimeHHMM,
   extractHeureRetrait,
 } from '@/lib/slots/format-slot-time';
 import { ConfirmationClient } from './ConfirmationClient';
@@ -61,7 +61,7 @@ export default async function ConfirmationPage({ params }: { params: { id: strin
     : null;
   const timeLabel = slotTyped?.starts_at && slotTyped?.ends_at
     ? formatSlotRange(slotTyped.starts_at, slotTyped.ends_at)
-    : formatLegacyTimeRange(order.heure_retrait, null);
+    : formatLegacyTimeHHMM(order.heure_retrait);
 
   const items = ((order.order_items as unknown as Array<{
     quantite: number;

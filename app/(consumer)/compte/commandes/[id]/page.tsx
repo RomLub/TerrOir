@@ -3,7 +3,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getSessionUser } from '@/lib/auth/session';
 import {
   formatSlotRange,
-  formatLegacyTimeRange,
+  formatLegacyTimeHHMM,
 } from '@/lib/slots/format-slot-time';
 import type { OrderStatus } from '@/components/ui';
 import { OrderDetailClient, type OrderDetailData } from './OrderDetailClient';
@@ -60,7 +60,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
   const slotTyped = slotRow as { starts_at: string | null; ends_at: string | null } | null;
   const timeLabel = slotTyped?.starts_at && slotTyped?.ends_at
     ? formatSlotRange(slotTyped.starts_at, slotTyped.ends_at)
-    : formatLegacyTimeRange(order.heure_retrait, null);
+    : formatLegacyTimeHHMM(order.heure_retrait);
 
   const items = ((order.order_items as unknown as Array<{
     quantite: number;

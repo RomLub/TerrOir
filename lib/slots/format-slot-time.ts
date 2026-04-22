@@ -53,7 +53,8 @@ export function formatSlotDateTime(startsAt: string): string {
 }
 
 // Fallback pour les données legacy `orders.heure_retrait` (string HH:MM ou
-// HH:MM:SS). Convertit en "9h" ou "9h30". Retourne "—" si null ou invalide.
+// HH:MM:SS) et `slot_rules.start_time`/`end_time` (DB type `time`). Convertit
+// en "9h" ou "9h30". Retourne "—" si null ou invalide.
 export function formatLegacyTimeHHMM(hmm: string | null): string {
   if (!hmm) return "—";
   const [hRaw, mRaw] = hmm.split(":");
@@ -62,15 +63,4 @@ export function formatLegacyTimeHHMM(hmm: string | null): string {
   if (Number.isNaN(h)) return "—";
   const mm = Number.isNaN(m) ? 0 : m;
   return mm === 0 ? `${h}h` : `${h}h${String(mm).padStart(2, "0")}`;
-}
-
-// Fallback range legacy pour afficher "9h30–10h" depuis deux strings HH:MM.
-// Si end est null, affiche uniquement start formatté.
-export function formatLegacyTimeRange(
-  startHmm: string | null,
-  endHmm: string | null,
-): string {
-  const startFormatted = formatLegacyTimeHHMM(startHmm);
-  if (!endHmm) return startFormatted;
-  return `${startFormatted}–${formatLegacyTimeHHMM(endHmm)}`;
 }
