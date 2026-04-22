@@ -16,6 +16,14 @@ const TTL_MS = 15 * 60 * 1000;
 // consumer. Bustable côté producer via invalidation explicite (Phase 4).
 const lastRun = new Map<string, number>();
 
+// Force le prochain generateSlotsForProducer(producerId) à ré-exécuter
+// (bypass du TTL 15 min). À appeler depuis les server actions de /creneaux
+// après CRUD sur slot_rules, pour que le producer voie immédiatement l'effet
+// de ses modifications sur les slots matérialisés.
+export function invalidateProducer(producerId: string): void {
+  lastRun.delete(producerId);
+}
+
 type SlotRule = {
   id: string;
   producer_id: string;
