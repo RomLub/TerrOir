@@ -33,6 +33,40 @@
   - 3 pages admin migrées (`/gestion-producteurs`, `/producer-interests`, `/suivi-commandes`) — duplications inline de `toLocaleDateString('fr-FR', …)` + formatting euro remplacées.
   - −43 lignes de duplication, 0 changement visuel.
 
+### Matin 23/04/2026
+
+- **Rename `products.actif → products.active`** (commits `47df4e8` + `9176cc8` + migration `20260423000000_rename_products_actif_to_active.sql` apply) :
+  - DB : rename colonne + index `products_actif_idx → products_active_idx` + recreate RLS policy `"products public read when producer public"` + recreate 2 RPCs (`search_producers` sous-select product_count, `create_order_with_items` bloc 5 validation produits).
+  - Backend + scripts seed : 2 fichiers (`scripts/seed.ts`, `scripts/seed-producers.ts`).
+  - Frontend : 12 remplacements sur 6 fichiers (pages public/producteur/catalogue + dashboard low-stock).
+  - Strings UI FR préservées (labels toggles, compteurs « produits actifs », « Actif/Inactif »).
+  - **Chantier rename actif → active COMPLET** (slots la veille + products aujourd'hui). Schéma principal 100% en anglais pour les booléens techniques.
+
+- **Phase 7 Créneaux COMPLÈTE** (commits `ffa0967` + `fca4871`) :
+  - Seed enrichi : `slot_rules` ajoutées aux 5 producers prod (idempotent via `(producer_id, days_of_week, start_time)`).
+  - Tests auto vitest : 27 tests (`generate`, `format-slot-time`, `validators`), 2.56s total, mock Supabase manuel, couverture DST Europe/Paris (passage hiver/été).
+  - Scripts `test` / `test:watch` / `test:ui` ajoutés dans `package.json`.
+  - **Chantier Créneaux personnalisables 100% CLOS** — Phases 1→7 + Phase 2bis ponctuels/exceptions en prod.
+
+- **Fix CB dupliquée via fingerprint Stripe** (commit `af7d1bb`) :
+  - Nouvelle server action `validateAndKeepPaymentMethodAction` dans `app/(consumer)/compte/paiements/actions.ts`.
+  - `AddCardModal` appelle post-`confirmSetup` : détache silencieusement le nouveau PM côté Stripe si son `fingerprint` matche un PM existant, affiche message explicite « Cette carte est déjà enregistrée (Visa •••• 4242). » et ne ferme pas la modal.
+  - Endpoint `/api/stripe/ensure-default-payment-method` étendu : dedupe fingerprint AVANT le set default (couvre le flow checkout `save_card=true`, fail-open silencieux côté client).
+  - Skip si fingerprint null (défense en profondeur pour marques exotiques / non-card).
+  - Bug listé depuis `d9a699a` → clos.
+
+- **Formulaire standalone opt-out V2** (commit `0851924`) :
+  - `/desabonnement` sans token affiche désormais un formulaire email pour renvoyer le lien de désabonnement par email.
+  - Server action `request-new-link-action.tsx` : enumeration-resistant (réponse générique identique quelque soit l'existence du lead).
+  - Email Resend avec token HMAC (même logique que le lien d'origine) pour retrouver le lien opt-out.
+  - **Chantier RGPD opt-out COMPLET** (lien token + standalone recovery).
+
+- **Consolidation admin — Phases B2 + B3 + B4** (commits `eaed1a2` + `5b63283` + `2960b18`) :
+  - **Phase B2 `AdminModal`** (`eaed1a2`) : 3 modals unifiés (`ConfirmValidateModal`, `InviteModal`, `DeleteLeadModal`), close X + Escape hérités partout, focus trap partagé.
+  - **Phase B3 `FilterTabs`** (`5b63283`) : 2 pages migrées (`gestion-producteurs`, `producer-interests`), `suivi-commandes` conserve son style pills divergent intentionnellement.
+  - **Phase B4 `AdminPageHeader`** (`2960b18`) : 4 pages migrées avec prop `error?` en bonus (flash erreur unifié dans le header).
+  - Reste **Phase B5** (`TableStatus` loading/empty rows).
+
 ### Chantier 2 — Flux invitation producteur ✅ CLÔTURÉ (les 6 phases en prod)
 
 - Phase 4 ✅ reprise d'onboarding (commit `285785d`) — test cas étape 2 validé en prod
@@ -248,8 +282,7 @@ _(rien en cours)_
 
 > **Décisions produit tranchées le 22/04/2026 matin** : pas de livraison domicile, adresses consumer optionnelles, Stripe Customer pour MVP, créneaux producteur entièrement personnalisables.
 
-- **Chantier Créneaux — Phase 7** : seed + tests auto (grouper avec la refonte `scripts/seed.ts` livrée — ajouter tests unitaires sur `generateSlotsForProducer` + intégration sur le RPC `create_order_with_items` avec capacity check).
-- **Apply migrations DB restantes en prod** : vérifier que toutes les migrations récentes ont été appliquées (`20260422200000` RGPD, `20260422300000_slot_rules`, `20260422300000_stripe_customer`, `20260422400000_slots_adhoc`, `20260422500000` capacity, `20260422700000` rename actif→active).
+- **Apply migrations DB restantes en prod** : vérifier que toutes les migrations récentes ont été appliquées (`20260422200000` RGPD, `20260422300000_slot_rules`, `20260422300000_stripe_customer`, `20260422400000_slots_adhoc`, `20260422500000` capacity, `20260422700000` rename slots.actif→active, `20260423000000` rename products.actif→active).
 - Onboarder Julien (GAEC du Rheu) — après validation test end-to-end
 - Basculer Stripe en mode Live (aujourd'hui en Test) + tester scénario 3DS
 - Mettre à jour le webhook Stripe vers `www.terroir-local.fr` (actuellement pointe sur `terr-oir-21cl.vercel.app` — à confirmer, potentiellement déjà fait le 22/04 matin)
@@ -278,16 +311,10 @@ _(rien en cours)_
 - Flux invitation : cas "email déjà en base" à détecter proprement côté UX (au-delà de la correction fonctionnelle du Chantier 2)
 - Magic link admin via `www.*` : si un flow magic link est ajouté pour les admins plus tard (recovery, invite), il faudra router explicitement via `admin.terroir-local.fr/auth/callback` + ajouter cette URL aux redirect URLs Supabase. Non bloquant aujourd'hui (admin password-only).
 - Désactiver Stripe Link dans le Dashboard Stripe (Settings > Payment methods > Link toggle off) — action externe, pas code. Nécessaire si Link persiste à apparaître malgré `payment_method_types: ['card']` côté intents.
-- **Bug : CB dupliquée possible sur `/compte/paiements`** — actuellement, un user peut ajouter 2× la même CB (même numéro) et les voir 2 fois dans la liste. Stripe permet l'attach multiple, chaque attach crée un `payment_method` distinct (`pm_xxx`, `pm_yyy`).
-  - Fix : avant d'attacher une nouvelle CB, check les `PaymentMethods` existants du customer et comparer via le champ `fingerprint` Stripe (empreinte unique d'une CB physique, stable quel que soit le `payment_method_id`). Si match → soit refuser l'ajout avec message « Cette carte est déjà enregistrée », soit remplacer l'ancienne en mergeant.
-  - Priorité : moyenne. Impact faible (user finit par nettoyer), mais UX chaotique.
 - **Marquer automatiquement un lead en `'contacted'` après envoi d'invitation** — la page admin leads `/producer-interests` est livrée (commit `a8ef04a`). Il reste à câbler la transition automatique : quand l'admin envoie une invitation depuis `InviteModal` (pré-rempli via `?invite=<email>`), bump le statut du lead `producer_interests` matching sur email vers `'contacted'` dans la même transaction.
-- **Consolidation admin — Phases B2/B3/B4/B5 restantes** (audit TC rapport complet, nuit 22→23/04) :
-  - **B2** : `<AdminModal>` partagé (3 modals actuels à mutualiser : `ConfirmValidateModal`, `InviteModal`, `DeleteLeadModal`).
-  - **B3** : `<FilterTabs filters counts active>` — `/gestion-producteurs` et `/producer-interests` ont des patterns quasi-identiques de tabs filtres avec counts.
-  - **B4** : `<AdminPageHeader eyebrow title subtitle right?>` — 4 pages admin reproduisent le même pattern header (eyebrow caps + title serif + subtitle).
-  - **B5** : `<TableStatus kind colSpan>` pour les rows loading/empty dans les tables admin.
-  - Effort estimé : 2-3h total. Priorités : haute (B2 modale, B4 header), basse (B5 table status).
+- **Consolidation admin — Phase B5 restante** (Phases B2/B3/B4 livrées dans les commits `eaed1a2` + `5b63283` + `2960b18`) :
+  - **B5** : `<TableStatus kind colSpan>` pour les rows loading/empty dans les tables admin. En cours côté TC.
+  - Priorité basse (cosmétique, pas de régression fonctionnelle).
 - **Doublon timestamp migrations `20260422300000`** — utilisé pour `slot_rules_and_materialized_slots.sql` ET `add_stripe_customer_id_to_users.sql`. Pas bloquant (Supabase ordonne alphabétiquement par filename à timestamp égal) mais convention à corriger un jour pour lisibilité historique. À ranger en dette si on touche les migrations.
 
 ## 🗺️ Roadmap produit (vision Avril 2026)
