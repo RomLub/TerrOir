@@ -109,7 +109,12 @@ export async function setDefaultPaymentMethodAction(
 export async function detachPaymentMethodAction(
   paymentMethodId: string,
 ): Promise<
-  { success: true; defaultChanged: boolean } | { error: string }
+  | {
+      success: true;
+      defaultChanged: boolean;
+      newDefault?: { brand: string; last4: string };
+    }
+  | { error: string }
 > {
   const session = await getSessionUser();
   if (!session) return { error: "Non authentifié" };
@@ -138,24 +143,31 @@ export async function detachPaymentMethodAction(
     const wasDefault = currentDefaultId === paymentMethodId;
 
     let defaultChanged = false;
+    let newDefault: { brand: string; last4: string } | undefined;
     if (wasDefault) {
       const list = await stripe.paymentMethods.list({
         customer: customerId,
         type: "card",
       });
-      const nextDefault = list.data.find((p) => p.id !== paymentMethodId);
-      if (nextDefault) {
+      const nextDefault = list.data.find(
+        (p) => p.id !== paymentMethodId && p.card,
+      );
+      if (nextDefault && nextDefault.card) {
         await stripe.customers.update(customerId, {
           invoice_settings: { default_payment_method: nextDefault.id },
         });
         defaultChanged = true;
+        newDefault = {
+          brand: nextDefault.card.brand,
+          last4: nextDefault.card.last4,
+        };
       }
     }
 
     await stripe.paymentMethods.detach(paymentMethodId);
 
     revalidatePath("/compte/paiements");
-    return { success: true, defaultChanged };
+    return { success: true, defaultChanged, newDefault };
   } catch (err) {
     console.error(
       `DETACH_PM_ERROR user_id=${session.id} pm=${paymentMethodId} error=${(err as Error).message}`,

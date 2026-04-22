@@ -63,31 +63,37 @@ export default function PaymentMethodsList({
     setTimeout(() => setErrorMessage(null), STATUS_TTL_MS);
   };
 
-  const handleSetDefault = (pmId: string) => {
+  const handleSetDefault = (pm: PaymentMethodSummary) => {
     startTransition(async () => {
-      const res = await setDefaultPaymentMethodAction(pmId);
-      if ("error" in res) {
-        flashError(res.error);
-        return;
-      }
-      flash("Carte par défaut mise à jour.");
-      router.refresh();
-    });
-  };
-
-  const handleDetach = (pmId: string) => {
-    startTransition(async () => {
-      const res = await detachPaymentMethodAction(pmId);
-      setConfirmingDetach(null);
+      const res = await setDefaultPaymentMethodAction(pm.id);
       if ("error" in res) {
         flashError(res.error);
         return;
       }
       flash(
-        res.defaultChanged
-          ? "Carte supprimée. Votre carte par défaut a été mise à jour."
-          : "Carte supprimée.",
+        `Carte ${formatBrand(pm.brand)} •••• ${pm.last4} définie par défaut.`,
       );
+      router.refresh();
+    });
+  };
+
+  const handleDetach = (pm: PaymentMethodSummary) => {
+    const deletedLabel = `${formatBrand(pm.brand)} •••• ${pm.last4}`;
+    startTransition(async () => {
+      const res = await detachPaymentMethodAction(pm.id);
+      setConfirmingDetach(null);
+      if ("error" in res) {
+        flashError(res.error);
+        return;
+      }
+      if (res.defaultChanged && res.newDefault) {
+        const newDefaultLabel = `${formatBrand(res.newDefault.brand)} •••• ${res.newDefault.last4}`;
+        flash(
+          `Carte ${deletedLabel} supprimée. ${newDefaultLabel} est maintenant votre carte par défaut.`,
+        );
+      } else {
+        flash(`Carte ${deletedLabel} supprimée.`);
+      }
       router.refresh();
     });
   };
@@ -156,7 +162,7 @@ export default function PaymentMethodsList({
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleDetach(pm.id)}
+                            onClick={() => handleDetach(pm)}
                             className="rounded-md bg-red-600 px-3 py-1.5 text-[13px] font-semibold text-white transition-colors hover:bg-red-700"
                           >
                             Confirmer
@@ -167,10 +173,10 @@ export default function PaymentMethodsList({
                           {!pm.isDefault ? (
                             <button
                               type="button"
-                              onClick={() => handleSetDefault(pm.id)}
+                              onClick={() => handleSetDefault(pm)}
                               className="text-[13px] text-terroir-green-700 hover:underline"
                             >
-                              Par défaut
+                              Définir par défaut
                             </button>
                           ) : null}
                           <button
