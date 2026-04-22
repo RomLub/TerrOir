@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Logo } from '@/components/ui';
+import { useUserContext } from '@/components/providers/user-provider';
 
 const NAV = [
   { href: '/dashboard', label: 'Dashboard', icon: '▦' },
@@ -14,10 +15,10 @@ const NAV = [
   { href: '/parametres', label: 'Paramètres', icon: '⚙' },
 ];
 
-const PRODUCER = { name: 'Ferme des Chênes', slug: 'ferme-des-chenes' };
-
 export function ProducerLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { producer, loading } = useUserContext();
+
   return (
     <div className="min-h-screen bg-bg flex">
       <aside className="w-64 flex-shrink-0 bg-green-900 text-white flex flex-col sticky top-0 h-screen">
@@ -40,10 +41,20 @@ export function ProducerLayout({ children }: { children: React.ReactNode }) {
           })}
         </nav>
         <div className="p-4 border-t border-white/10">
-          <div className="font-serif text-[18px] leading-tight">{PRODUCER.name}</div>
-          <Link href={`/producteurs/${PRODUCER.slug}`} className="text-[12px] text-terra-300 hover:text-white mt-1 inline-block">
-            ↗ Voir ma page publique
-          </Link>
+          {producer ? (
+            <>
+              <div className="font-serif text-[18px] leading-tight">{producer.nom_exploitation}</div>
+              {producer.statut === 'public' && producer.slug ? (
+                <Link href={`/producteurs/${producer.slug}`} className="text-[12px] text-terra-300 hover:text-white mt-1 inline-block">
+                  ↗ Voir ma page publique
+                </Link>
+              ) : (
+                <div className="text-[12px] text-terra-300/60 mt-1">Page publique après 1er produit</div>
+              )}
+            </>
+          ) : loading ? (
+            <div className="font-serif text-[18px] leading-tight text-white/40">—</div>
+          ) : null}
         </div>
       </aside>
       <main className="flex-1 min-w-0">{children}</main>
