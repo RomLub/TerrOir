@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
@@ -23,12 +24,16 @@ type Producer = {
   email: string;
 };
 
-type Filter = 'all' | 'pending' | 'active' | 'suspended';
-const FILTERS: { value: Filter; label: string }[] = [
+type Filter = 'all' | 'pending' | 'active' | 'suspended' | 'draft' | 'deleted';
+const BASE_FILTERS: { value: Filter; label: string }[] = [
   { value: 'all', label: 'Tous' },
   { value: 'pending', label: 'À valider' },
   { value: 'active', label: 'Actifs' },
   { value: 'suspended', label: 'Suspendus' },
+];
+const EXTRA_FILTERS: { value: Filter; label: string }[] = [
+  { value: 'draft', label: 'Brouillons' },
+  { value: 'deleted', label: 'Supprimés' },
 ];
 
 const STATUS_META: Record<Status, { label: string; dot: string; bg: string; text: string }> = {
@@ -61,21 +66,66 @@ function formatDate(iso: string): string {
 }
 
 export default function AdminProducteursPage() {
+  // Suspense requis par Next.js 14 autour de useSearchParams (lecture
+  // de ?invite=<email> depuis /producer-interests). Le fallback est null
+  // car la page rend déjà un état "Chargement…" à l'intérieur.
+  return (
+    <Suspense fallback={null}>
+      <AdminProducteursPageInner />
+    </Suspense>
+  );
+}
+
+function AdminProducteursPageInner() {
+  const searchParams = useSearchParams();
   const [filter, setFilter] = useState<Filter>('all');
+  const [showAll, setShowAll] = useState(false);
   const [producers, setProducers] = useState<Producer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [inviting, setInviting] = useState(false);
+  const [prefillEmail, setPrefillEmail] = useState<string | null>(null);
   const [validating, setValidating] = useState<Producer | null>(null);
+
+  const FILTERS = useMemo(
+    () => (showAll ? [...BASE_FILTERS, ...EXTRA_FILTERS] : BASE_FILTERS),
+    [showAll],
+  );
+
+  // Reset du filtre si on masque brouillons/supprimés alors qu'un de ces
+  // deux tabs était actif (sinon tableau vide sans tab highlight visible).
+  const handleToggleShowAll = () => {
+    setShowAll((prev) => {
+      const next = !prev;
+      if (!next && (filter === 'draft' || filter === 'deleted')) {
+        setFilter('all');
+      }
+      return next;
+    });
+  };
+
+  // Ouvre l'InviteModal pré-rempli quand on arrive depuis
+  // /producer-interests avec ?invite=<email>. Déclenché une seule fois au
+  // mount : on ne veut pas rouvrir le modal à chaque re-render du param.
+  useEffect(() => {
+    const invite = searchParams?.get('invite');
+    if (invite) {
+      setPrefillEmail(invite);
+      setInviting(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const refresh = async () => {
     const supabase = createSupabaseBrowserClient();
-    const { data, error: fetchError } = await supabase
+    let query = supabase
       .from('producers')
-      .select('id, slug, nom_exploitation, commune, code_postal, statut, abonnement_niveau, created_at, user:user_id ( email )')
-      .neq('statut', 'draft')
-      .neq('statut', 'deleted')
+      .select('id, slug, nom_exploitation, commune, code_postal, statut, abonnement_niveau, created_at, user:user_id ( email )');
+    if (!showAll) {
+      query = query.neq('statut', 'draft').neq('statut', 'deleted');
+    }
+    const { data, error: fetchError } = await query
       .order('created_at', { ascending: false });
     if (fetchError) { setError(fetchError.message); setLoading(false); return; }
 
@@ -115,13 +165,16 @@ export default function AdminProducteursPage() {
       await refresh();
     })();
     return () => { active = false; };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showAll]);
 
   const counts = useMemo(() => ({
     all: producers.length,
     pending: producers.filter((p) => p.status === 'pending').length,
     active: producers.filter((p) => p.status === 'active' || p.status === 'public').length,
     suspended: producers.filter((p) => p.status === 'suspended').length,
+    draft: producers.filter((p) => p.status === 'draft').length,
+    deleted: producers.filter((p) => p.status === 'deleted').length,
   }), [producers]);
 
   const filtered = producers.filter((p) => matchesFilter(p.status, filter));
@@ -149,21 +202,32 @@ export default function AdminProducteursPage() {
           <Button size="lg" onClick={() => setInviting(true)}>+ Inviter un producteur</Button>
         </header>
 
-        <div className="mb-6 flex flex-wrap gap-1.5 border-b border-gray-200">
-          {FILTERS.map((f) => {
-            const active = filter === f.value;
-            return (
-              <button key={f.value} onClick={() => setFilter(f.value)}
-                className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-3 text-[14px] font-medium transition-colors ${
-                  active ? 'border-terroir-green-700 text-gray-900' : 'border-transparent text-gray-600 hover:text-gray-900'
-                }`}>
-                {f.label}
-                <span className={`rounded px-1.5 font-mono text-[11px] ${active ? 'bg-terroir-green-100 text-terroir-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                  {counts[f.value]}
-                </span>
-              </button>
-            );
-          })}
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-3 border-b border-gray-200">
+          <div className="flex flex-wrap gap-1.5">
+            {FILTERS.map((f) => {
+              const active = filter === f.value;
+              return (
+                <button key={f.value} onClick={() => setFilter(f.value)}
+                  className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-3 text-[14px] font-medium transition-colors ${
+                    active ? 'border-terroir-green-700 text-gray-900' : 'border-transparent text-gray-600 hover:text-gray-900'
+                  }`}>
+                  {f.label}
+                  <span className={`rounded px-1.5 font-mono text-[11px] ${active ? 'bg-terroir-green-100 text-terroir-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                    {counts[f.value]}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <label className="-mb-px inline-flex cursor-pointer items-center gap-2 pb-3 text-[12px] text-gray-600 hover:text-gray-900">
+            <input
+              type="checkbox"
+              checked={showAll}
+              onChange={handleToggleShowAll}
+              className="h-3.5 w-3.5 rounded border-gray-300 text-terroir-green-700 focus:ring-terroir-green-700"
+            />
+            <span>Inclure brouillons et supprimés</span>
+          </label>
         </div>
 
         <div className="overflow-hidden rounded-md border border-gray-200 bg-white shadow-sm">
@@ -239,7 +303,16 @@ export default function AdminProducteursPage() {
         </div>
       </div>
 
-      {inviting && <InviteModal onClose={() => setInviting(false)} onSuccess={() => { refresh(); }} />}
+      {inviting && (
+        <InviteModal
+          initialEmail={prefillEmail ?? ''}
+          onClose={() => {
+            setInviting(false);
+            setPrefillEmail(null);
+          }}
+          onSuccess={() => { refresh(); }}
+        />
+      )}
       {validating && (
         <ConfirmValidateModal
           producer={validating}
@@ -286,8 +359,16 @@ function ConfirmValidateModal({
   );
 }
 
-function InviteModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
-  const [email, setEmail] = useState('');
+function InviteModal({
+  initialEmail = '',
+  onClose,
+  onSuccess,
+}: {
+  initialEmail?: string;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [email, setEmail] = useState(initialEmail);
   const [message, setMessage] = useState('');
   const [sent, setSent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
