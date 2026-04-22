@@ -1,10 +1,15 @@
 import { verifyOptOutToken } from '@/lib/rgpd/opt-out-token';
 import { UnsubscribeForm } from './UnsubscribeForm';
+import { RequestLinkForm } from './_components/RequestLinkForm';
 
 // 2-step confirm pour éviter que les prefetchers d'email (Outlook Safe Links,
 // scanners antivirus) déclenchent l'opt-out à l'insu du destinataire : ici
 // on vérifie le token et on affiche un bouton ; la suppression réelle ne
 // survient que sur POST explicite via server action.
+//
+// Si token absent ou invalide : fallback standalone permettant à un lead qui
+// a perdu son email (ou n'en a jamais reçu) de redemander un lien
+// enumeration-resistant (V2 opt-out RGPD).
 
 export default function DesabonnementPage({
   searchParams,
@@ -15,6 +20,7 @@ export default function DesabonnementPage({
   const token = (searchParams.token ?? '').trim();
 
   const valid = email && token && verifyOptOutToken(email, token);
+  const hasToken = Boolean(token);
 
   return (
     <section className="bg-bg">
@@ -30,22 +36,13 @@ export default function DesabonnementPage({
           {valid ? (
             <UnsubscribeForm email={email} token={token} />
           ) : (
-            <div className="rounded-2xl border border-dark/10 bg-white p-6">
-              <h2 className="font-serif text-[22px] text-green-900">
-                Lien invalide ou expiré
-              </h2>
-              <p className="mt-2 text-[14px] text-dark/70 leading-relaxed">
-                Le lien que vous avez suivi n&apos;est pas reconnu. Si vous
-                souhaitez être supprimé de notre base, merci de nous contacter à{' '}
-                <a
-                  href="mailto:admin@terroir-local.fr"
-                  className="text-green-700 underline hover:text-green-900"
-                >
-                  admin@terroir-local.fr
-                </a>
-                .
-              </p>
-            </div>
+            <RequestLinkForm
+              helperText={
+                hasToken
+                  ? "Votre lien n'est plus valide ou a expiré. Renseignez votre email pour recevoir un nouveau lien de désabonnement."
+                  : undefined
+              }
+            />
           )}
         </div>
       </div>
