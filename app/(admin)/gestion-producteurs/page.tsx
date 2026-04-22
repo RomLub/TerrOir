@@ -5,11 +5,12 @@ import Link from 'next/link';
 import { Button } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
-// Statuts producers visibles côté admin. 'draft' est exclu au fetch
-// (formulaire d'onboarding incomplet) ainsi que 'deleted' (RGPD, producteur
-// anonymisé via delete_user_account — masqué par défaut mais supporté par
-// STATUS_META en défense en profondeur).
-type Status = 'pending' | 'active' | 'public' | 'suspended' | 'deleted';
+// Statuts producers visibles côté admin. 'draft' et 'deleted' sont exclus
+// au fetch (formulaire d'onboarding incomplet / anonymisé RGPD via
+// delete_user_account) mais restent supportés par STATUS_META en défense
+// en profondeur pour survivre à un futur toggle d'affichage ou à un oubli
+// de filtre lors d'un refactor.
+type Status = 'draft' | 'pending' | 'active' | 'public' | 'suspended' | 'deleted';
 
 type Producer = {
   id: string;
@@ -31,6 +32,7 @@ const FILTERS: { value: Filter; label: string }[] = [
 ];
 
 const STATUS_META: Record<Status, { label: string; dot: string; bg: string; text: string }> = {
+  draft:     { label: 'Brouillon',  dot: 'bg-slate-400',         bg: 'bg-slate-100',         text: 'text-slate-600' },
   pending:   { label: 'En attente', dot: 'bg-amber-500',         bg: 'bg-amber-50',          text: 'text-amber-800' },
   active:    { label: 'Validé',     dot: 'bg-amber-600',         bg: 'bg-amber-100',         text: 'text-amber-900' },
   public:    { label: 'Public',     dot: 'bg-terroir-green-700', bg: 'bg-terroir-green-100', text: 'text-terroir-green-700' },
