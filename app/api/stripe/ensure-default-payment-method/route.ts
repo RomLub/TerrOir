@@ -5,15 +5,20 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
 
-// Phase 6 Stripe Customer — fix Constat 1 :
+// Phase 6 Stripe Customer — fix Constat 1 + dedupe fingerprint :
 // Après un checkout avec save_card=true, Stripe attache la CB au Customer
 // mais ne set PAS invoice_settings.default_payment_method. Résultat : sur
 // /compte/paiements, la CB n'apparaît pas "Par défaut" même si c'est la
 // seule du Customer.
 //
 // Ce endpoint est appelé après un confirmPayment réussi quand save_card=true :
-//   - si le Customer a déjà un default_payment_method → no-op
-//   - sinon → pick la CB la plus récente attachée et la marque comme default
+//   1. Dedupe : si la CB fraîchement attachée (pms[0], Stripe renvoie DESC
+//      par created) a le même fingerprint qu'un pm existant → detach la
+//      nouvelle pour éviter le doublon. La ref pour ensure-default devient
+//      alors le pm existant. Skip si fingerprint null (cas rare : marques
+//      exotiques ou type non-card).
+//   2. Si le Customer a déjà un default_payment_method → no-op
+//   3. Sinon → set le pm de référence comme default
 //
 // Fail-open côté client : si ça échoue, pas de blocage (le paiement a déjà
 // réussi, l'user pourra set un default manuellement depuis /compte/paiements).
@@ -69,11 +74,14 @@ export async function POST(request: Request) {
   }
 
   const currentDefault = customer.invoice_settings?.default_payment_method;
-  if (currentDefault) {
-    return NextResponse.json({ success: true, changed: false });
-  }
+  const currentDefaultId =
+    typeof currentDefault === "string"
+      ? currentDefault
+      : currentDefault?.id ?? null;
 
-  // Pas de default → pick la CB la plus récente et la marque comme default.
+  // List AVANT le check default : on doit pouvoir dédupliquer même si un
+  // default est déjà set (cas : user rajoute une CB en double via checkout
+  // alors qu'il avait déjà une default).
   const paymentMethods = await stripe.paymentMethods.list({
     customer: customerId,
     type: "card",
@@ -87,11 +95,41 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, reason: "no_payment_methods" });
   }
 
-  // list() retourne les PMs par created DESC par défaut → [0] = plus récente.
-  const pm = paymentMethods.data[0];
+  // list() retourne les PMs par created DESC par défaut → [0] = plus récent
+  // (= celui qui vient d'être attaché via setup_future_usage).
+  let refPm = paymentMethods.data[0];
+  let dedupeDetached: string | undefined;
+
+  if (paymentMethods.data.length > 1) {
+    const newFingerprint = refPm.card?.fingerprint ?? null;
+    if (newFingerprint) {
+      const existingMatch = paymentMethods.data
+        .slice(1)
+        .find((pm) => pm.card?.fingerprint === newFingerprint);
+      if (existingMatch) {
+        await stripe.paymentMethods.detach(refPm.id);
+        dedupeDetached = refPm.id;
+        refPm = existingMatch;
+      }
+    }
+  }
+
+  if (currentDefaultId) {
+    return NextResponse.json({
+      success: true,
+      changed: false,
+      ...(dedupeDetached ? { dedupeDetached } : {}),
+    });
+  }
+
   await stripe.customers.update(customerId, {
-    invoice_settings: { default_payment_method: pm.id },
+    invoice_settings: { default_payment_method: refPm.id },
   });
 
-  return NextResponse.json({ success: true, changed: true, payment_method_id: pm.id });
+  return NextResponse.json({
+    success: true,
+    changed: true,
+    payment_method_id: refPm.id,
+    ...(dedupeDetached ? { dedupeDetached } : {}),
+  });
 }

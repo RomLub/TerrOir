@@ -8,7 +8,10 @@ import {
   useStripe,
 } from "@stripe/react-stripe-js";
 import { getStripe } from "@/lib/stripe/client";
-import { createSetupIntentAction } from "../actions";
+import {
+  createSetupIntentAction,
+  validateAndKeepPaymentMethodAction,
+} from "../actions";
 
 export default function AddCardModal({
   onClose,
@@ -137,6 +140,35 @@ function AddCardForm({
     }
 
     if (setupIntent?.status === "succeeded") {
+      // Post-attach dedupe : Stripe attache chaque confirmSetup comme un
+      // PaymentMethod distinct, même si la CB physique est identique. On
+      // compare les fingerprints côté server pour detach les doublons
+      // silencieusement et afficher un message à l'user.
+      const pmId =
+        typeof setupIntent.payment_method === "string"
+          ? setupIntent.payment_method
+          : setupIntent.payment_method?.id ?? null;
+
+      if (!pmId) {
+        setError("Impossible de vérifier la carte. Réessayez.");
+        setSubmitting(false);
+        return;
+      }
+
+      const validation = await validateAndKeepPaymentMethodAction(pmId);
+      if ("error" in validation) {
+        setError(validation.error);
+        setSubmitting(false);
+        return;
+      }
+      if (validation.duplicate) {
+        setError(
+          `Cette carte est déjà enregistrée (${validation.existing.brand} •••• ${validation.existing.last4}).`,
+        );
+        setSubmitting(false);
+        return;
+      }
+
       onSuccess();
       return;
     }

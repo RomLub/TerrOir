@@ -3,18 +3,22 @@
 // =============================================================================
 // Server actions — gestion des moyens de paiement enregistrés (Phase 4)
 // =============================================================================
-// 3 actions exportées :
+// 4 actions exportées :
 //   - createSetupIntentAction() : crée le Stripe Customer (lazy) et un
 //     SetupIntent, retourne le client_secret pour que le client Elements
 //     puisse confirmer la collecte d'une CB.
+//   - validateAndKeepPaymentMethodAction(pmId) : appelé juste après un
+//     confirmSetup réussi côté client. Compare le fingerprint du pm fraîchement
+//     attaché aux autres pms du customer. Si doublon → detach le nouveau et
+//     signale au caller d'afficher un message d'erreur. Sinon → keep.
 //   - setDefaultPaymentMethodAction(pmId) : met à jour
 //     invoice_settings.default_payment_method côté Stripe.
 //   - detachPaymentMethodAction(pmId) : detach la CB. Si c'était la default
 //     ET qu'il en reste d'autres → bascule auto sur la 1ère restante.
 //
-// Ownership guard sur setDefault/detach : retrieve le PaymentMethod et
-// compare son customer à users.stripe_customer_id du session user. Bloque
-// toute manipulation d'une CB qui n'appartient pas au caller.
+// Ownership guard sur setDefault/detach/validateAndKeep : retrieve le
+// PaymentMethod et compare son customer à users.stripe_customer_id du session
+// user. Bloque toute manipulation d'une CB qui n'appartient pas au caller.
 // =============================================================================
 
 import type Stripe from "stripe";
@@ -73,6 +77,69 @@ export async function createSetupIntentAction(): Promise<
       `SETUP_INTENT_ERROR user_id=${session.id} error=${(err as Error).message}`,
     );
     return { error: "Erreur lors de la préparation. Réessayez." };
+  }
+}
+
+export async function validateAndKeepPaymentMethodAction(
+  paymentMethodId: string,
+): Promise<
+  | { success: true; duplicate: false }
+  | { success: true; duplicate: true; existing: { brand: string; last4: string } }
+  | { error: string }
+> {
+  const session = await getSessionUser();
+  if (!session) return { error: "Non authentifié" };
+
+  try {
+    const customerId = await getStripeCustomerId(session.id);
+    if (!customerId) {
+      // Ne devrait pas arriver : le SetupIntent crée déjà le Customer (lazy).
+      return { error: "Aucun compte Stripe associé." };
+    }
+
+    const newPm = await stripe.paymentMethods.retrieve(paymentMethodId);
+    if (newPm.customer !== customerId) {
+      return { error: "Carte introuvable." };
+    }
+
+    // Stripe ne fournit pas de fingerprint pour certaines marques exotiques
+    // ou types non-card. Sans fingerprint, impossible de dédupliquer : on
+    // accepte le pm (défense en profondeur, non-bloquant).
+    const newFingerprint = newPm.card?.fingerprint ?? null;
+    if (!newFingerprint) {
+      return { success: true, duplicate: false };
+    }
+
+    const list = await stripe.paymentMethods.list({
+      customer: customerId,
+      type: "card",
+    });
+
+    const duplicateOf = list.data.find(
+      (pm) =>
+        pm.id !== paymentMethodId &&
+        pm.card?.fingerprint &&
+        pm.card.fingerprint === newFingerprint,
+    );
+
+    if (duplicateOf && duplicateOf.card) {
+      await stripe.paymentMethods.detach(paymentMethodId);
+      return {
+        success: true,
+        duplicate: true,
+        existing: {
+          brand: duplicateOf.card.brand,
+          last4: duplicateOf.card.last4,
+        },
+      };
+    }
+
+    return { success: true, duplicate: false };
+  } catch (err) {
+    console.error(
+      `VALIDATE_KEEP_PM_ERROR user_id=${session.id} pm=${paymentMethodId} error=${(err as Error).message}`,
+    );
+    return { error: "Erreur lors de la validation de la carte." };
   }
 }
 
