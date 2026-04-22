@@ -103,6 +103,49 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(redirectUrl);
   }
 
+  // 0b. Cas spécial pro.*/ : symétrique du bloc admin ci-dessus. "/" est dans
+  //     PUBLIC_PATHS (pour www), donc pro.* tomberait sinon sur la home
+  //     consumer. On route par statut producteur : draft → /onboarding,
+  //     autres statuts actifs → /dashboard, deleted/no-row/non-producer →
+  //     /connexion. Admin sur pro.* n'existe pas en session (isolation
+  //     cookies Chantier 4 / 1d83f5d) → tombe dans le branch !user.
+  if (isProducerHost && pathname === "/") {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.search = "";
+
+    if (!user) {
+      redirectUrl.pathname = LOGIN_PATH;
+      return NextResponse.redirect(redirectUrl);
+    }
+
+    const { data: profile } = await supabase
+      .from("users")
+      .select("roles")
+      .eq("id", user.id)
+      .maybeSingle();
+    const roles = (profile?.roles as string[] | undefined) ?? [];
+
+    if (!roles.includes("producer")) {
+      redirectUrl.pathname = LOGIN_PATH;
+      return NextResponse.redirect(redirectUrl);
+    }
+
+    const { data: producerRow } = await supabase
+      .from("producers")
+      .select("statut")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (!producerRow || producerRow.statut === "deleted") {
+      redirectUrl.pathname = LOGIN_PATH;
+      return NextResponse.redirect(redirectUrl);
+    }
+
+    redirectUrl.pathname =
+      producerRow.statut === "draft" ? "/onboarding" : "/dashboard";
+    return NextResponse.redirect(redirectUrl);
+  }
+
   // 1. Chemins publics : pas de redirection.
   if (isPublicPath(pathname)) {
     return response;
