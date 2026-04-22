@@ -78,6 +78,13 @@
 - Suppression `/api/stripe/payouts` orphelin (commit `8dcfd19`) — logique partagée `lib/stripe/payouts.ts` conservée pour `/api/cron/weekly-payout`
 - Commentaire `create-payment-intent` aligné sur `/api/cron/weekly-payout` (commit `e93f143`)
 
+### Chantier Créneaux personnalisables — Phases 1+3 livrées
+
+- **Phase 1** (commit `abd0ec1` + migration `20260422300000_slot_rules_and_materialized_slots.sql`) : nouveau schema DB (`slot_rules` + refonte `slots` en instances matérialisées), RLS policies (public read gaté `statut='public'`, owner via `owns_producer`, admin via `is_admin()`). Le RPC `delete_user_account` protège aussi `slot_rules` via CASCADE (chaîne FK `slot_rules.producer_id → producers.id → users.id`).
+- **Phase 3** (commits `2616cf3` + `21f8c68`) : générateur `lib/slots/generate.ts` tz-aware (Europe/Paris via `@date-fns/tz`), mémo 15 min, UPSERT idempotent (`onConflict=(producer_id, starts_at) ignoreDuplicates`). Branché dans la page produit consumer avec refactor du select cassé (nouvelles colonnes `starts_at`/`ends_at`/`capacity_per_slot`).
+- **Smoke test validé en prod** : 42 slots matérialisés pour Vergers de l'Huisne (rule mer+sam 9h-12h, durée 30 min, capacité 5).
+- **Reste à faire** : Phase 2 (wipe+reseed data, skipped), Phase 4 (UI producer), Phase 5 (UI consumer avec accordéon), Phase 6 (RPC `create_order_with_items` check capacité), Phase 7 (seed + tests).
+
 ## ✅ Fait (session 21/04/2026)
 
 - Domaine `terroir-local.fr` branché (Vercel + OVH)
@@ -141,12 +148,11 @@ _(rien en cours)_
 > **Décisions produit tranchées le 22/04/2026 matin** : pas de livraison domicile, adresses consumer optionnelles, Stripe Customer pour MVP, créneaux producteur entièrement personnalisables.
 
 - **Stripe Customer pour MVP** : créer un Stripe Customer au premier paiement du consumer, enregistrer la CB via SetupIntent/PaymentMethod, exposer la gestion des moyens de paiement dans `/compte` (liste + ajout + suppression), réutiliser le PaymentMethod par défaut aux commandes suivantes. Impact : lien `stripe_customer_id` à stocker sur `users` (ou table dédiée), webhook `payment_method.*` si on veut synchro.
-- **Chantier Créneaux personnalisables** : remplacer le modèle actuel « créneaux fixes weekend toutes les 2 semaines » par un modèle configurable par producteur :
-  - Jours sélectionnés (multi-select jours de la semaine) OU périodicité type « toutes les 2 semaines »
-  - Amplitude horaire de la journée (ex: 9h-18h)
-  - Durée par créneau configurable (min 5 min)
-  - Capacité clients par créneau
-  - Impact DB : probable refonte du schema `slots` (vérifier migration `20260419..._initial_schema` pour le modèle actuel avant de planifier la migration)
+- **Chantier Créneaux personnalisables — Phases restantes (4, 5, 6, 7)** :
+  - **Phase 4** : UI producer `/creneaux` (formulaire règles + liste rules actives + preview « X créneaux sur 4 semaines ») — page actuellement cassée (insère les anciennes colonnes `jour_semaine`/`heure_debut`/`heure_fin` droppées en Phase 1).
+  - **Phase 5** : UI consumer refonte — afficher N slots par jour en accordéon (1 groupe par date, dropdown sur clic, accordéon exclusif, slots pleins grisés via `SlotOption.left`).
+  - **Phase 6** : RPC `create_order_with_items` à étendre pour check `capacity_per_slot` + `FOR UPDATE` sur slot (anti race condition overbooking) — `/api/orders/create` actuellement cassé (select `heure_debut` inexistant). Bundler le rename `slots.actif → slots.active` (différé depuis Phase 1).
+  - **Phase 7** : Seed + tests (grouper avec refacto `scripts/seed.ts` notée plus bas).
 - Onboarder Julien (GAEC du Rheu) — après validation test end-to-end
 - Basculer Stripe en mode Live (aujourd'hui en Test)
 - Mettre à jour le webhook Stripe vers `www.terroir-local.fr` (actuellement pointe sur `terr-oir-21cl.vercel.app` — à confirmer, potentiellement déjà fait le 22/04 matin)
@@ -165,6 +171,7 @@ _(rien en cours)_
   - Remplacer par une logique `slot_rules` + matérialisation `slots`
   - Profiter de la refonte pour hardcoder `statut='public'` (éviter invisibilité publique) et remplir `forme_juridique` / `type_production`
   - À faire en même temps que la Phase 7 du chantier Créneaux personnalisables (Seed + tests) pour éviter de toucher 2 fois au même fichier
+- **Horizon génération slots : 4 semaines → 3 mois** (12-13 semaines). Change à faire dans `generateSlotsForProducer` (`lib/slots/generate.ts`) + dans le select de la page produit consumer (`app/(public)/producteurs/[slug]/produits/[id]/page.tsx`). Pas prioritaire mais à prévoir avant lancement public.
 
 ## 🗺️ Roadmap produit (vision Avril 2026)
 
@@ -247,6 +254,7 @@ _(rien en cours)_
 - Stats publiques sur la home (nb commandes, nb producteurs actifs)
 - **Helper `fetchPublicProducerBySlug(slug)`** pour centraliser le filtre `statut='public'` sur les pages publiques qui utilisent `createSupabaseAdminClient`. Prévient les fuites futures quand de nouvelles pages publiques seront ajoutées.
 - **Edge case panier** : si un producer passe en `'suspended'` entre l'ajout au panier et la consultation, le lien vers `/producteurs/{slug}` mène à un `notFound()` (404). Pas une fuite de données, juste un UX problème mineur. À fixer en re-fetchant les producers lors du chargement du panier et en masquant le lien si non-public.
+- **Refacto UX créneaux page produit consumer** : regroupement par date + dropdown accordéon (1 seul ouvert à la fois), créneaux grisés si pleins (capacity restante via `SlotOption.left` câblée Phase 6). À traiter en Phase 5 (UI consumer) du chantier Créneaux personnalisables.
 
 ## ⚠️ Leçons apprises / Known pitfalls
 
