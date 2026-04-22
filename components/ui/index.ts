@@ -51,6 +51,7 @@ export {
   type FilterTabsProps,
   type FilterTabOption,
 } from "./filter-tabs";
+export { TableStatus, type TableStatusProps } from "./table-status";
 export { CodeCommande, type CodeCommandeProps } from "./code-commande";
 export { Logo, type LogoProps } from "./logo";
 export {

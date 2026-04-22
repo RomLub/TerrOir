@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { AdminModal, AdminPageHeader, Button, FilterTabs, ProducerStatusBadge, type ProducerStatus } from '@/components/ui';
+import { AdminModal, AdminPageHeader, Button, FilterTabs, ProducerStatusBadge, TableStatus, type ProducerStatus } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { formatDateFr } from '@/lib/format/date';
 
@@ -214,9 +214,9 @@ function AdminProducteursPageInner() {
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={6} className="px-5 py-10 text-center text-gray-500">Chargement…</td></tr>
+                  <TableStatus kind="loading" colSpan={6} />
                 ) : filtered.length === 0 ? (
-                  <tr><td colSpan={6} className="px-5 py-10 text-center text-gray-500">Aucun producteur.</td></tr>
+                  <TableStatus kind="empty" colSpan={6} emptyLabel="Aucun producteur." />
                 ) : filtered.map((p) => {
                   const disabled = busy === p.id;
                   return (

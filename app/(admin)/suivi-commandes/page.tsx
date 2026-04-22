@@ -8,7 +8,7 @@ import {
 } from '@/lib/slots/format-slot-time';
 import { formatDateFr } from '@/lib/format/date';
 import { formatEuro } from '@/lib/format/currency';
-import { AdminPageHeader, StatusDotBadge } from '@/components/ui';
+import { AdminPageHeader, StatusDotBadge, TableStatus } from '@/components/ui';
 
 type Status = 'pending' | 'confirmed' | 'ready' | 'completed' | 'cancelled' | 'refunded';
 
@@ -222,9 +222,9 @@ export default function AdminCommandesPage() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={6} className="px-5 py-10 text-center text-gray-500">Chargement…</td></tr>
+                <TableStatus kind="loading" colSpan={6} />
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={6} className="px-5 py-10 text-center text-gray-500">Aucune commande ne correspond.</td></tr>
+                <TableStatus kind="empty-filtered" colSpan={6} emptyFilteredLabel="Aucune commande ne correspond." />
               ) : filtered.map((o) => (
                   <tr key={o.id} className="border-b border-gray-200 last:border-0 hover:bg-gray-50">
                     <td className="px-5 py-4 font-mono text-[12px] text-gray-700">{o.code_commande ?? '—'}</td>
