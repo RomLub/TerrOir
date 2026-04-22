@@ -161,6 +161,76 @@ _(rien en cours)_
 - Quand la section Paiements & adresses de `/compte` sera implémentée (couplée au chantier Stripe Customer), garder l'adresse consumer strictement optionnelle : pas de `required` à l'inscription, pas de blocage au checkout. Décision produit du 22/04/2026 : modèle circuit court sans livraison domicile.
 - Magic link admin via `www.*` : si un flow magic link est ajouté pour les admins plus tard (recovery, invite), il faudra router explicitement via `admin.terroir-local.fr/auth/callback` + ajouter cette URL aux redirect URLs Supabase. Non bloquant aujourd'hui (admin password-only).
 
+## 🗺️ Roadmap produit (vision Avril 2026)
+
+> Feuille de route définie le 22/04/2026. 3 niveaux de priorité. Chaque item = une fonctionnalité produit à scoper techniquement le moment venu.
+
+### Priorité HAUTE (prochaines semaines)
+
+1. **Prix GMS sur chaque fiche produit**
+   Prix moyen constaté en grande surface (source RNM FranceAgriMer) affiché à côté du prix éleveur. Mis à jour manuellement chaque mois via interface admin.
+   *Impact : justifie le prix, montre que circuit direct = moins cher pour qualité supérieure.*
+   (Base de données · Interface admin · Fiche produit)
+
+2. **Le conseil de l'éleveur**
+   Sur chaque produit, case activable + champ libre 280 caractères (cuisson, conservation, accord). Si non activé, rien n'apparaît.
+   *Impact : humanise le produit, lien direct producteur-acheteur, différenciateur vs GMS.*
+   (Espace producteur · Fiche produit consommateur)
+
+3. **Score carbone & bien-être animal**
+   Sur la page producteur : km parcourus vs moyenne GMS (~1500 km), mode d'élevage (plein air/bâtiment), alimentation, densité. Remplis par le producteur à l'onboarding.
+   *Impact : transparence concrète, argument écologique mesurable sans jargon de label.*
+   (Onboarding producteur · Page producteur publique)
+
+### Priorité MOYENNE (prochain trimestre)
+
+4. **Carte interactive des morceaux**
+   Schéma SVG interactif (vache, puis porc, agneau). Clic sur un morceau → nom + conseils cuisson + redirection produits disponibles chez les éleveurs TerrOir.
+   *Impact : éducatif, unique sur le marché. Aide à découvrir des morceaux moins connus, augmente le panier moyen.*
+   (Page publique · Catalogue · UX éducatif)
+
+5. **Schéma interactif circuit court vs GMS**
+   Infographie animée sur `/comment-ca-marche` montrant parcours d'un morceau GMS (éleveur → abattoir → transporteur → centrale → GMS → consommateur) vs TerrOir (éleveur → TerrOir → consommateur). Impact sur prix et rémunération éleveur.
+   *Impact : argument de conversion puissant, rend concret l'avantage du circuit court.*
+   (Page `comment-ca-marche` · Marketing)
+
+6. **D'où vient ma viande**
+   Page confirmation + historique commandes : mini-carte du trajet exploitation → point de retrait avec km. Comparaison avec moyenne GMS (1500 km).
+   *Impact : moment émotionnel fort après achat, renforce satisfaction et fidélisation, potentiel partage social.*
+   (Page confirmation · Historique commandes · Carte)
+
+7. **Alerte disponibilité produit**
+   Produit indisponible → consumer laisse email → prévenu au retour en stock. Producteur voit dans dashboard combien de personnes attendent chaque produit.
+   *Impact : réduit perte de clients, donne visibilité sur la demande réelle au producteur.*
+   (Fiche produit · Dashboard producteur · Email)
+
+8. **Calculateur d'impact à la confirmation**
+   Sur page confirmation : « Merci. Grâce à vous, Julien a gagné X€ de plus qu'en circuit classique. » Calculé depuis montant commande et taux moyen rémunération éleveur en circuit long (~30%).
+   *Impact : crée sentiment de participation et de sens, fidélise au-delà du simple achat.*
+   (Page confirmation · Impact social)
+
+### Priorité BASSE (second semestre 2026)
+
+9. **Compteur impact global plateforme**
+   Home + `/a-propos` : « Depuis le lancement, les éleveurs TerrOir ont gagné X€ de plus qu'en circuit classique. » Calcul automatique depuis commandes en base.
+   *Impact : argument de marque fort, dimension collective et militante à chaque achat.*
+   (Home · Page à-propos · Marketing)
+
+10. **Abonnement panier mensuel**
+    Commande récurrente chez un éleveur. Paiement auto, notification avant débit, pause/annulation. Producteur voit ses abonnés.
+    *Impact : revenus récurrents, fidélisation max. Nécessite travail juridique CGV.*
+    (Stripe recurring · Dashboard producteur · CGV)
+
+11. **Carte cadeau & fidélité**
+    Carte cadeau TerrOir (crédit en euros, utilisable chez n'importe quel éleveur). Dans un 2e temps : système points de fidélité (X points/€ dépensé, convertibles en réduction).
+    *Impact : levier d'acquisition et de rétention.*
+    (Stripe · Système de points · Acquisition)
+
+12. **Glossaire du terroir**
+    Pages expliquant labels (Label Rouge, AB, AOC…), races (Charolais, Maine-Anjou…), modes d'élevage. Contenu evergreen SEO.
+    *Impact : SEO long terme, éducation consumer, autorité éditoriale terroir sarthois.*
+    (SEO · Contenu · Pages statiques)
+
 ## 🔵 Idées / améliorations
 
 - Pages d'accueil dédiées pour `pro.terroir-local.fr/` et `admin.terroir-local.fr/` (actuellement fallback vers layout public côté pro ; côté admin, redirect middleware en place depuis le 22/04 mais pas de vraie landing)
