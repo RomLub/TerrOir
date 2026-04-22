@@ -15,6 +15,9 @@ export async function promoteProducerToPublicIfActive(
     .eq('id', producerId)
     .eq('statut', 'active');
   if (error) {
-    console.error('[promoteProducerToPublicIfActive]', error);
+    // Fail-open volontaire : échec de promotion ne doit pas casser la
+    // création du produit. console.warn pour ne pas polluer les alertes
+    // d'erreurs Vercel — grep "PROMOTE_PRODUCER_WARN" pour retrouver.
+    console.warn('PROMOTE_PRODUCER_WARN [promoteProducerToPublicIfActive]', error);
   }
 }
