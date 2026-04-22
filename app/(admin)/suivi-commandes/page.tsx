@@ -2,6 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import {
+  formatSlotRange,
+  formatLegacyTimeHHMM,
+} from '@/lib/slots/format-slot-time';
 
 type Status = 'pending' | 'confirmed' | 'ready' | 'completed' | 'cancelled' | 'refunded';
 
@@ -54,15 +58,6 @@ function formatDateShort(iso: string | null): string {
   return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
 }
 
-function formatTimeRange(start: string | null, end: string | null): string {
-  if (!start) return '';
-  const fmt = (t: string) => {
-    const [h, m] = t.split(':');
-    return m && m !== '00' ? `${parseInt(h, 10)}h${m}` : `${parseInt(h, 10)}h`;
-  };
-  return end ? `${fmt(start)}–${fmt(end)}` : fmt(start);
-}
-
 function csvEscape(v: string | number): string {
   const s = String(v);
   return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -86,7 +81,7 @@ export default function AdminCommandesPage() {
           id, code_commande, created_at, statut, montant_total, date_retrait, heure_retrait,
           consumer:consumer_id ( prenom, nom ),
           producer:producer_id ( nom_exploitation ),
-          slots:slot_id ( heure_debut, heure_fin )
+          slots:slot_id ( starts_at, ends_at )
         `)
         .order('created_at', { ascending: false })
         .limit(200);
@@ -104,12 +99,14 @@ export default function AdminCommandesPage() {
         heure_retrait: string | null;
         consumer: { prenom: string | null; nom: string | null } | Array<{ prenom: string | null; nom: string | null }> | null;
         producer: { nom_exploitation: string } | Array<{ nom_exploitation: string }> | null;
-        slots: { heure_debut: string | null; heure_fin: string | null } | Array<{ heure_debut: string | null; heure_fin: string | null }> | null;
+        slots: { starts_at: string | null; ends_at: string | null } | Array<{ starts_at: string | null; ends_at: string | null }> | null;
       }>).map((o) => {
         const consumer = Array.isArray(o.consumer) ? o.consumer[0] : o.consumer;
         const producer = Array.isArray(o.producer) ? o.producer[0] : o.producer;
         const slot = Array.isArray(o.slots) ? o.slots[0] : o.slots;
-        const slotTime = formatTimeRange(slot?.heure_debut ?? o.heure_retrait, slot?.heure_fin ?? null);
+        const slotTime = slot?.starts_at && slot?.ends_at
+          ? formatSlotRange(slot.starts_at, slot.ends_at)
+          : formatLegacyTimeHHMM(o.heure_retrait);
         return {
           id: o.id,
           code_commande: o.code_commande,

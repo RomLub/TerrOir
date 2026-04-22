@@ -4,6 +4,10 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Button, OrderStatusBadge, type OrderStatus } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import {
+  formatSlotRange,
+  formatLegacyTimeHHMM,
+} from '@/lib/slots/format-slot-time';
 import { ProducerLayout } from '../_components/ProducerLayout';
 
 type OrderRow = {
@@ -25,15 +29,6 @@ const TABS: { value: Tab; label: string; statuses: OrderStatus[] }[] = [
   { value: 'completed', label: 'Terminées', statuses: ['completed'] },
   { value: 'cancelled', label: 'Annulées', statuses: ['cancelled', 'refunded'] },
 ];
-
-function formatRangeShort(start: string | null, end: string | null): string {
-  if (!start) return '—';
-  const fmt = (t: string) => {
-    const [h, m] = t.split(':');
-    return m && m !== '00' ? `${parseInt(h, 10)}h${m}` : `${parseInt(h, 10)}h`;
-  };
-  return end ? `${fmt(start)}–${fmt(end)}` : fmt(start);
-}
 
 function formatDateShort(iso: string | null): string {
   if (!iso) return '—';
@@ -83,7 +78,7 @@ export default function ProducerCommandesPage() {
           id, code_commande, created_at, statut, montant_total,
           date_retrait, heure_retrait,
           consumer:consumer_id ( prenom, nom ),
-          slots:slot_id ( heure_debut, heure_fin ),
+          slots:slot_id ( starts_at, ends_at ),
           order_items ( quantite, products:product_id ( nom, unite ) )
         `)
         .eq('producer_id', prod.id)
@@ -106,7 +101,7 @@ export default function ProducerCommandesPage() {
         date_retrait: string | null;
         heure_retrait: string | null;
         consumer: { prenom: string | null; nom: string | null } | Array<{ prenom: string | null; nom: string | null }> | null;
-        slots: { heure_debut: string | null; heure_fin: string | null } | Array<{ heure_debut: string | null; heure_fin: string | null }> | null;
+        slots: { starts_at: string | null; ends_at: string | null } | Array<{ starts_at: string | null; ends_at: string | null }> | null;
         order_items: Array<{ quantite: number; products: { nom: string; unite: string } | Array<{ nom: string; unite: string }> | null }>;
       }>).map((o) => {
         const consumer = Array.isArray(o.consumer) ? o.consumer[0] : o.consumer;
@@ -129,7 +124,9 @@ export default function ProducerCommandesPage() {
           total: Number(o.montant_total ?? 0),
           items,
           slotDate: formatDateShort(o.date_retrait),
-          slotTime: formatRangeShort(slot?.heure_debut ?? o.heure_retrait, slot?.heure_fin ?? null),
+          slotTime: slot?.starts_at && slot?.ends_at
+            ? formatSlotRange(slot.starts_at, slot.ends_at)
+            : formatLegacyTimeHHMM(o.heure_retrait),
         };
       });
 

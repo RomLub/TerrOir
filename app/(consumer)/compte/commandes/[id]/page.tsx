@@ -1,6 +1,10 @@
 import { notFound, redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getSessionUser } from '@/lib/auth/session';
+import {
+  formatSlotRange,
+  formatLegacyTimeRange,
+} from '@/lib/slots/format-slot-time';
 import type { OrderStatus } from '@/components/ui';
 import { OrderDetailClient, type OrderDetailData } from './OrderDetailClient';
 
@@ -15,15 +19,6 @@ function formatDateTimeLabel(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
-
-function formatTimeLabel(start: string, end: string | null): string {
-  const fmt = (t: string) => {
-    const [h, m] = t.split(':');
-    return m && m !== '00' ? `${parseInt(h, 10)}h${m}` : `${parseInt(h, 10)}h`;
-  };
-  if (!end) return fmt(start);
-  return `${fmt(start)} – ${fmt(end)}`;
 }
 
 function formatQty(qty: number, unite: string | null): string {
@@ -43,7 +38,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
       id, code_commande, consumer_id, producer_id, statut, created_at,
       date_retrait, heure_retrait, montant_total,
       producers:producer_id ( nom_exploitation, slug, adresse, commune, code_postal, latitude, longitude ),
-      slots:slot_id ( heure_debut, heure_fin ),
+      slots:slot_id ( starts_at, ends_at ),
       order_items ( quantite, sous_total, products:product_id ( nom, unite ) )
     `)
     .eq('id', params.id)
@@ -62,8 +57,10 @@ export default async function OrderDetailPage({ params }: { params: { id: string
   const slotRow = Array.isArray(order.slots) ? order.slots[0] : order.slots;
 
   const address = [producerRow?.adresse, producerRow?.code_postal, producerRow?.commune].filter(Boolean).join(', ');
-  const startTime = slotRow?.heure_debut ?? order.heure_retrait ?? '00:00';
-  const endTime = slotRow?.heure_fin ?? null;
+  const slotTyped = slotRow as { starts_at: string | null; ends_at: string | null } | null;
+  const timeLabel = slotTyped?.starts_at && slotTyped?.ends_at
+    ? formatSlotRange(slotTyped.starts_at, slotTyped.ends_at)
+    : formatLegacyTimeRange(order.heure_retrait, null);
 
   const items = ((order.order_items as unknown as Array<{
     quantite: number;
@@ -94,7 +91,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
     },
     slot: {
       dateLabel: order.date_retrait ? formatDateLabel(order.date_retrait) : '—',
-      timeLabel: formatTimeLabel(startTime, endTime),
+      timeLabel,
     },
     hasReview: !!review,
   };

@@ -1,10 +1,27 @@
 import { redirect } from 'next/navigation';
+import { TZDate } from '@date-fns/tz';
 import { getSessionUser } from '@/lib/auth/session';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { fetchProducerForUser } from '@/lib/producers/context';
+import {
+  formatSlotRange,
+  formatLegacyTimeHHMM,
+} from '@/lib/slots/format-slot-time';
 import { ProducerLayout } from '../_components/ProducerLayout';
 import { DashboardClient, type DashboardData } from './DashboardClient';
+
+const TZ_PARIS = 'Europe/Paris';
+
+// Extrait "YYYY-MM-DD" depuis un ISO timestamptz en Europe/Paris.
+// Utilisé pour matcher slots.starts_at au jour iso d'un planning semaine.
+function slotDateInParis(iso: string): string {
+  const d = new TZDate(iso, TZ_PARIS);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 
 const WEEK_DAYS_LABEL = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 
@@ -26,16 +43,6 @@ function startOfDay(d: Date): Date {
   const c = new Date(d);
   c.setHours(0, 0, 0, 0);
   return c;
-}
-
-function formatTimeRange(start: string | null, end: string | null): string {
-  const fmt = (t: string) => {
-    const [h, m] = t.split(':');
-    return m && m !== '00' ? `${parseInt(h, 10)}h${m}` : `${parseInt(h, 10)}h`;
-  };
-  if (!start) return '—';
-  if (!end) return fmt(start);
-  return `${fmt(start)}–${fmt(end)}`;
 }
 
 export default async function ProducerDashboardPage() {
@@ -110,7 +117,7 @@ export default async function ProducerDashboardPage() {
     .select(`
       id, code_commande, created_at, montant_total, date_retrait,
       consumer:consumer_id ( prenom ),
-      slots:slot_id ( heure_debut, heure_fin ),
+      slots:slot_id ( starts_at, ends_at ),
       order_items ( products:product_id ( nom ) )
     `)
     .eq('producer_id', producer.id)
@@ -125,7 +132,7 @@ export default async function ProducerDashboardPage() {
     montant_total: number | null;
     date_retrait: string | null;
     consumer: { prenom: string | null } | Array<{ prenom: string | null }> | null;
-    slots: { heure_debut: string | null; heure_fin: string | null } | Array<{ heure_debut: string | null; heure_fin: string | null }> | null;
+    slots: { starts_at: string | null; ends_at: string | null } | Array<{ starts_at: string | null; ends_at: string | null }> | null;
     order_items: Array<{ products: { nom: string } | Array<{ nom: string }> | null }>;
   }>).map((o) => {
     const consumer = Array.isArray(o.consumer) ? o.consumer[0] : o.consumer;
@@ -135,8 +142,11 @@ export default async function ProducerDashboardPage() {
       return p?.nom ?? '';
     }).filter(Boolean);
     const itemsSummary = itemNames.slice(0, 3).join(' · ') + (itemNames.length > 3 ? '…' : '');
+    const slotTimeLabel = slot?.starts_at && slot?.ends_at
+      ? formatSlotRange(slot.starts_at, slot.ends_at)
+      : '—';
     const slotLabel = o.date_retrait
-      ? `${new Date(o.date_retrait + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })} · ${formatTimeRange(slot?.heure_debut ?? null, slot?.heure_fin ?? null)}`
+      ? `${new Date(o.date_retrait + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })} · ${slotTimeLabel}`
       : '—';
     const hoursLeft = Math.max(0, 24 - Math.floor((now.getTime() - new Date(o.created_at).getTime()) / 3_600_000));
     return {
@@ -174,7 +184,7 @@ export default async function ProducerDashboardPage() {
       consumer: { prenom: string | null } | Array<{ prenom: string | null }> | null;
     };
     const consumer = Array.isArray(u.consumer) ? u.consumer[0] : u.consumer;
-    const label = formatTimeRange(u.heure_retrait, null);
+    const label = formatLegacyTimeHHMM(u.heure_retrait);
     const subDate = u.date_retrait
       ? new Date(u.date_retrait + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })
       : '';
@@ -184,18 +194,20 @@ export default async function ProducerDashboardPage() {
     };
   }
 
-  // Week planning
+  // Week planning : slots sont désormais des instances matérialisées avec
+  // starts_at/ends_at timestamptz (Phase 1 créneaux). On fetch les slots de
+  // la semaine courante avec 1 jour de marge de part et d'autre pour absorber
+  // les edge cases TZ (weekStart en UTC vs slots.starts_at en Paris).
+  const slotsRangeStart = addDays(weekStart, -1);
+  const slotsRangeEnd = addDays(weekEnd, 1);
+
   const { data: slots } = await admin
     .from('slots')
-    .select('id, jour_semaine, heure_debut, heure_fin, actif')
+    .select('id, starts_at, ends_at')
     .eq('producer_id', producer.id)
-    .eq('actif', true);
-
-  const ordersByDay: Record<string, number> = {};
-  (weekOrders ?? []).forEach((o) => {
-    const id = (o as { id: string }).id;
-    if (!id) return;
-  });
+    .eq('actif', true)
+    .gte('starts_at', slotsRangeStart.toISOString())
+    .lt('starts_at', slotsRangeEnd.toISOString());
 
   const { data: weekPickups } = await admin
     .from('orders')
@@ -215,12 +227,11 @@ export default async function ProducerDashboardPage() {
   const weekPlanning = WEEK_DAYS_LABEL.map((label, i) => {
     const dayDate = addDays(weekStart, i);
     const dayIso = dayDate.toISOString().slice(0, 10);
-    const dayOfWeek = dayDate.getDay();
     const daySlots = (slots ?? [])
-      .filter((s) => s.jour_semaine === dayOfWeek)
+      .filter((s) => s.starts_at && slotDateInParis(s.starts_at as string) === dayIso)
       .map((s) => ({
-        time: formatTimeRange(s.heure_debut, s.heure_fin),
-        orders: pickupsBySlotAndDay[`${dayIso}|${s.id}`] ?? 0,
+        time: formatSlotRange(s.starts_at as string, s.ends_at as string),
+        orders: pickupsBySlotAndDay[`${dayIso}|${s.id as string}`] ?? 0,
       }));
     return {
       day: `${label} ${dayDate.getDate()}`,

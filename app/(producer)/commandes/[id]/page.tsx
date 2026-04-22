@@ -3,6 +3,10 @@ import { getSessionUser } from '@/lib/auth/session';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { fetchProducerForUser } from '@/lib/producers/context';
+import {
+  formatSlotRange,
+  formatLegacyTimeHHMM,
+} from '@/lib/slots/format-slot-time';
 import type { OrderStatus } from '@/components/ui';
 import { ProducerLayout } from '../../_components/ProducerLayout';
 import { OrderDetailClient, type OrderDetailData } from './OrderDetailClient';
@@ -22,15 +26,6 @@ function formatDateLabel(iso: string | null): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-function formatTimeRange(start: string | null, end: string | null): string {
-  if (!start) return '—';
-  const fmt = (t: string) => {
-    const [h, m] = t.split(':');
-    return m && m !== '00' ? `${parseInt(h, 10)}h${m}` : `${parseInt(h, 10)}h`;
-  };
-  return end ? `${fmt(start)} – ${fmt(end)}` : fmt(start);
-}
-
 export default async function ProducerOrderDetailPage({ params }: { params: { id: string } }) {
   const session = await getSessionUser();
   if (!session) redirect('/connexion');
@@ -47,7 +42,7 @@ export default async function ProducerOrderDetailPage({ params }: { params: { id
       id, code_commande, producer_id, created_at, statut, notes_client,
       date_retrait, heure_retrait, montant_total, commission_terroir,
       consumer:consumer_id ( prenom, nom, email, telephone ),
-      slots:slot_id ( heure_debut, heure_fin ),
+      slots:slot_id ( starts_at, ends_at ),
       order_items ( quantite, prix_unitaire, sous_total, products:product_id ( nom, unite ) )
     `)
     .eq('id', params.id)
@@ -90,7 +85,9 @@ export default async function ProducerOrderDetailPage({ params }: { params: { id
     },
     createdAtLabel: formatReceived(order.created_at),
     slotDate: formatDateLabel(order.date_retrait),
-    slotTime: formatTimeRange(slot?.heure_debut ?? order.heure_retrait, slot?.heure_fin ?? null),
+    slotTime: slot?.starts_at && slot?.ends_at
+      ? formatSlotRange(slot.starts_at, slot.ends_at)
+      : formatLegacyTimeHHMM(order.heure_retrait),
     items,
     subtotal,
     commission,

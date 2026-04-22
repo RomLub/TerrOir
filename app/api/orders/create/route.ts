@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { extractHeureRetrait } from "@/lib/slots/format-slot-time";
 
 const bodySchema = z.object({
   producer_id: z.string().uuid(),
@@ -54,10 +55,11 @@ export async function POST(request: Request) {
   // SECURITY DEFINER qui vérifie p_consumer_id = auth.uid().
   const supabase = createSupabaseServerClient();
 
-  // heure_retrait = heure_debut du slot (autoritatif côté serveur).
+  // heure_retrait = heure locale (Europe/Paris) extraite du slot.starts_at,
+  // autoritatif côté serveur. La RPC attend un `time` ; on passe "HH:MM:00".
   const { data: slot } = await supabase
     .from("slots")
-    .select("heure_debut")
+    .select("starts_at")
     .eq("id", slot_id)
     .maybeSingle();
   if (!slot) {
@@ -74,7 +76,7 @@ export async function POST(request: Request) {
       p_producer_id: producer_id,
       p_slot_id: slot_id,
       p_date_retrait: date_retrait,
-      p_heure_retrait: slot.heure_debut,
+      p_heure_retrait: extractHeureRetrait(slot.starts_at as string),
       p_notes_client: notes_client ?? null,
       // prix_unitaire est présent pour cohérence d'interface mais la RPC
       // l'ignore et refacture au prix DB courant.
