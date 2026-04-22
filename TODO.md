@@ -78,14 +78,23 @@
 - Suppression `/api/stripe/payouts` orphelin (commit `8dcfd19`) — logique partagée `lib/stripe/payouts.ts` conservée pour `/api/cron/weekly-payout`
 - Commentaire `create-payment-intent` aligné sur `/api/cron/weekly-payout` (commit `e93f143`)
 
-### Chantier Créneaux personnalisables — Phases 1+3 livrées
+### Chantier Créneaux personnalisables — Phases 1-6 livrées + Phase 2bis ponctuels/exceptions
 
-- **Phase 1** (commit `abd0ec1` + migration `20260422300000_slot_rules_and_materialized_slots.sql`) : nouveau schema DB (`slot_rules` + refonte `slots` en instances matérialisées), RLS policies (public read gaté `statut='public'`, owner via `owns_producer`, admin via `is_admin()`). Le RPC `delete_user_account` protège aussi `slot_rules` via CASCADE (chaîne FK `slot_rules.producer_id → producers.id → users.id`).
-- **Phase 3** (commits `2616cf3` + `21f8c68`) : générateur `lib/slots/generate.ts` tz-aware (Europe/Paris via `@date-fns/tz`), mémo 15 min, UPSERT idempotent (`onConflict=(producer_id, starts_at) ignoreDuplicates`). Branché dans la page produit consumer avec refactor du select cassé (nouvelles colonnes `starts_at`/`ends_at`/`capacity_per_slot`).
-- **Smoke test validé en prod** : 42 slots matérialisés pour Vergers de l'Huisne (rule mer+sam 9h-12h, durée 30 min, capacité 5).
-- **Reste à faire** : Phase 2 (wipe+reseed data, skipped), Phase 4 (UI producer), Phase 5 (UI consumer avec accordéon), Phase 6 (RPC `create_order_with_items` check capacité), Phase 7 (seed + tests).
+- **Phase 1** (commit `abd0ec1` + migration `20260422300000_slot_rules_and_materialized_slots.sql`) : nouveau schema DB (`slot_rules` + refonte `slots` en instances matérialisées), RLS policies (public read gaté `statut='public'`, owner via `owns_producer`, admin via `is_admin()`).
+- **Phase 3** (commits `2616cf3` + `21f8c68`) : générateur `lib/slots/generate.ts` tz-aware (Europe/Paris via `@date-fns/tz`), mémo 15 min, UPSERT idempotent (`onConflict=(producer_id, starts_at) ignoreDuplicates`).
+- **Phase 4** (commit `ba8e6be`) : UI producer `/creneaux` — CRUD slot_rules, modal création/édition, multi-select jours (pills), périodicité 1-4 sem, live preview « ~X créneaux sur 4 semaines », toggle active/inactive, delete avec guard orders.
+- **Phase 5** (commit `e09755f`) : UI consumer accordéon par date (grouping Europe/Paris TZ, dropdown exclusif, pattern prêt pour `left=0` → grisé).
+- **Phase 6** (commit `4675e20` + migration `20260422500000`) : RPC `create_order_with_items` étendue — check `capacity_per_slot` + `FOR UPDATE` sur le row slot (anti race condition overbooking). Câblage `SlotOption.left` depuis count orders actives côté consumer.
+- **Phase 2bis — Créneaux ponctuels + exceptions** (backend `f63cc19` + UI `dae474a`) :
+  - Migration `20260422400000_slots_adhoc_and_exceptions.sql` : `slots.rule_id` nullable + `slots.excluded_at timestamptz` + RPC check `excluded_at IS NULL`.
+  - 5 server actions : `createAdHocSlotAction`, `deleteAdHocSlotAction`, `excludeSlotAction`, `unexcludeSlotAction`, `bulkExcludeRangeAction`.
+  - UI /creneaux en 3 sections verticales (Règles récurrentes / Créneaux ponctuels / Exceptions et absences). Modales create/exclude/bulk. Hard-delete ponctuel bloqué si orders historiques.
+  - **Fix UX** (commit `040a209`) : messages `bulkExcludeRangeAction` à 4 branches explicites + refonte `ExcludeSlotModal` avec date picker mandatory (min=today, max=today+90j) + filtrage Europe/Paris + bouton `Bloqué` pour slots avec orders actives.
+- **Horizon génération : 4 semaines → 3 mois** (commit `493684e`) — `generateSlotsForProducer(horizonDays = 90)` par défaut, cohérent avec la fenêtre d'affichage consumer.
+- **Tests prod validés** : 42 slots matérialisés Vergers de l'Huisne (Phase 1 smoke), Phase 5 accordéon par date OK, Phase 2bis UI 4 tests (création ponctuel, hard-delete bloqué, exclude slot avec blocked flag, bulk range avec skipped count).
+- **Reste** : Phase 7 (seed + tests auto). Dette potentielle : rename `slots.actif → slots.active` (mentionnée Phase 6, non bundlée).
 
-### Chantier Stripe Customer MVP — Phases 1-4 livrées
+### Chantier Stripe Customer MVP ✅ COMPLET (Phases 1-7 en prod)
 
 - **Phase 1** (commit `546fc5e`) : migration `20260422300000_add_stripe_customer_id_to_users.sql` — colonne `users.stripe_customer_id` nullable + index partiel.
 - **Phase 2** (commit `7992727`) : helpers `getOrCreateStripeCustomer()` / `deleteStripeCustomer()` dans `lib/stripe/customer.ts`, lazy creation au 1er besoin.
@@ -94,8 +103,14 @@
   - Liste cartes, ajout via SetupIntent + Payment Element, suppression avec confirmation, switch carte par défaut (commit `2e35f14`)
   - UX bouton « Définir par défaut » + flash messages enrichis (commit `d338e48`)
   - Fix scroll modale d'ajout de CB (commit `fe683ba`)
-- **Tests prod validés** : état vide · ajout CB · switch default · suppression avec bascule auto du default sur carte restante
-- **Reste à faire** : Phase 5 (lien sidebar `/compte/paiements`), Phase 6 (branchement checkout avec PaymentMethod existant), Phase 7 (sélecteur CB au paiement)
+- **Phase 5** (commit `922de5c`) : lien `Moyens de paiement` dans sidebar consumer + card dashboard `/compte` activée (remplace la card `Bientôt disponible`, icône `CardIcon` SVG).
+- **Phase 6** (commit `a7eed72`) : attach customer au PaymentIntent + checkbox `Mémoriser cette carte` conditionnelle (consentement explicite RGPD, non cochée par défaut) + `setup_future_usage: 'off_session'` si coché.
+  - **Fix auto-default première carte** (commit `8dce6c1`) : nouveau endpoint `/api/stripe/ensure-default-payment-method` appelé post-`confirmPayment` si saveCard et qu'aucune default n'existe — fail-open.
+- **Phase 7** (commit `f2fee74`) : sélecteur `CB enregistrée vs nouvelle` au checkout quand l'user a ≥1 PaymentMethod. Mode saved = 1-click via `stripe.confirmCardPayment(pm.id)`. Mode nouvelle = flow PaymentElement standard.
+- **Tests prod validés** : état vide · ajout CB · switch default · suppression avec bascule auto · sans CB · avec 1 CB · avec plusieurs CB · mode saved 1-click · toggle nouvelle carte + mémoriser OK.
+- **Notes résiduelles** :
+  - Bug CB dupliquée via fingerprint Stripe (commit `d9a699a` côté TODO) — à fixer en prévérifiant les PaymentMethods du customer avant attach. Priorité moyenne.
+  - Scénario 3DS non testé (flows SCA). À valider avant bascule Stripe Live.
 
 ### Désactivation Stripe Link (commit `f367338`)
 
@@ -106,6 +121,39 @@
 ### Fix lien mort `/inscription` dans NavbarPublic (commit `67f2799`)
 
 - `href="/inscription"` → `/auth/inscription` (la vraie route d'inscription consumer, le fallback sur `/inscription` restait dans PUBLIC_PATHS du middleware uniquement)
+
+### Fix force-dynamic pages consumer (commit `983ed8e`)
+
+- `/producteurs/[slug]` et `/producteurs/[slug]/produits/[id]` passent en ƒ Dynamic via `export const dynamic = 'force-dynamic'` + `revalidate = 0`.
+- Évite le cache SSR silencieux entre deploys — les nouveaux slots matérialisés, stocks à jour et produits récents apparaissent immédiatement sans redeploy.
+
+### Icône panier navbar + badge (commit `734d20d`)
+
+- `ShoppingBagIcon` inline SVG dans `components/ui/navbar-public.tsx` (à droite, entre prénom et déconnexion)
+- Badge rouge avec count d'articles depuis `lib/store/cart.ts`, clic → `/compte/panier`
+- Invisible si admin (pas de panier côté back-office)
+- Pattern `mounted` anti-hydration flash (SSR count = 0 pendant l'hydratation, puis vrai count côté client)
+
+### Cleanup middleware `/inscription` orpheline (commit `8d4eb27`)
+
+- Retrait de `"/inscription"` de `PUBLIC_PATHS` (la vraie route est `/auth/inscription`, plus de lien mort après fix NavbarPublic `67f2799`).
+
+### Refonte `scripts/seed.ts` (commit `379bdbe`)
+
+- Nouveau modèle `slot_rules` + colonnes producteur récentes (`forme_juridique`, `type_production`)
+- `statut='public'` en dur pour les seeds (évite l'invisibilité publique par défaut)
+- Aligné sur le chantier Créneaux Phase 7
+
+### Phase 1 backend créneaux ponctuels + exceptions (commit `f63cc19`)
+
+- Migration `20260422400000_slots_adhoc_and_exceptions.sql` : `slots.rule_id` nullable + `slots.excluded_at` + RPC `create_order_with_items` check `excluded_at IS NULL` (couvre ponctuels + exceptions manuelles).
+- 5 server actions ajoutées à `app/(producer)/creneaux/actions.ts` (`createAdHoc`, `deleteAdHoc`, `exclude`, `unexclude`, `bulkExcludeRange`).
+- Filter consumer page produit : `.is('excluded_at', null)` sur la query slots.
+- Apply prod OK.
+
+### Maj TODO + notes dette technique (commits `4feae35`, `d9a699a`, `afdc0eb`)
+
+- Icône panier, Stripe checkout non câblé (résolu par Phase 6/7 Stripe), bug CB dupliquée via fingerprint, désactivation Link account-wide Dashboard Stripe.
 
 ## ✅ Fait (session 21/04/2026)
 
@@ -169,15 +217,27 @@ _(rien en cours)_
 
 > **Décisions produit tranchées le 22/04/2026 matin** : pas de livraison domicile, adresses consumer optionnelles, Stripe Customer pour MVP, créneaux producteur entièrement personnalisables.
 
-- **Stripe Customer pour MVP** : créer un Stripe Customer au premier paiement du consumer, enregistrer la CB via SetupIntent/PaymentMethod, exposer la gestion des moyens de paiement dans `/compte` (liste + ajout + suppression), réutiliser le PaymentMethod par défaut aux commandes suivantes. Impact : lien `stripe_customer_id` à stocker sur `users` (ou table dédiée), webhook `payment_method.*` si on veut synchro.
-- **Chantier Créneaux personnalisables — Phases restantes (4, 5, 6, 7)** :
-  - **Phase 4** : UI producer `/creneaux` (formulaire règles + liste rules actives + preview « X créneaux sur 4 semaines ») — page actuellement cassée (insère les anciennes colonnes `jour_semaine`/`heure_debut`/`heure_fin` droppées en Phase 1).
-  - **Phase 5** : UI consumer refonte — afficher N slots par jour en accordéon (1 groupe par date, dropdown sur clic, accordéon exclusif, slots pleins grisés via `SlotOption.left`).
-  - **Phase 6** : RPC `create_order_with_items` à étendre pour check `capacity_per_slot` + `FOR UPDATE` sur slot (anti race condition overbooking) — `/api/orders/create` actuellement cassé (select `heure_debut` inexistant). Bundler le rename `slots.actif → slots.active` (différé depuis Phase 1).
-  - **Phase 7** : Seed + tests (grouper avec refacto `scripts/seed.ts` notée plus bas).
+- **Chantier Créneaux — Phase 7** : seed + tests auto (grouper avec la refonte `scripts/seed.ts` livrée — ajouter tests unitaires sur `generateSlotsForProducer` + intégration sur le RPC `create_order_with_items` avec capacity check).
+- **Dette technique `slots.actif → slots.active`** (rename différé depuis Phase 1 créneaux, mentionné Phase 6). Touche la RPC `create_order_with_items`, la page produit consumer, et les server actions `/creneaux`. À bundler dans une migration dédiée + refacto coordonnée.
+- **Apply migrations DB restantes en prod** : vérifier que toutes les migrations récentes ont été appliquées (`20260422200000` RGPD, `20260422300000_slot_rules`, `20260422300000_stripe_customer`, `20260422400000_slots_adhoc`, `20260422500000` capacity). Le doublon de timestamp `20260422300000` entre stripe_customer et slot_rules est ordonné alphabétiquement par Supabase — à confirmer côté prod.
 - Onboarder Julien (GAEC du Rheu) — après validation test end-to-end
-- Basculer Stripe en mode Live (aujourd'hui en Test)
+- Basculer Stripe en mode Live (aujourd'hui en Test) + tester scénario 3DS
 - Mettre à jour le webhook Stripe vers `www.terroir-local.fr` (actuellement pointe sur `terr-oir-21cl.vercel.app` — à confirmer, potentiellement déjà fait le 22/04 matin)
+
+## 🔐 Avant lancement public
+
+**Audit tech externe pré-lancement** (~2-4 k€, 1-2 semaines) :
+
+- Pentest complet de l'application
+- Review des policies RLS Supabase (toutes les tables)
+- Review des server actions sensibles : checkout Stripe, paiements, RGPD, invitation admin
+- Review du webhook Stripe et flows de paiement
+- Audit des flows Stripe Customer + Connect (commission, payouts)
+- Review de la conformité RGPD (registre, consentements, droits)
+- Tests de charge sur endpoints critiques (`create-payment-intent`, `create-order-with-items` RPC, `search_producers`)
+- Vérification absence d'injections SQL latentes
+
+À déclencher avant le go-live public (avant premiers clients payants). Prévoir avant la bascule Stripe Test → Live.
 
 ## 🟡 À faire (non bloquants)
 
@@ -186,29 +246,12 @@ _(rien en cours)_
 - Vectormagic logo SVG (8,99€)
 - Remplacer images Unsplash provisoires par vraies photos producteurs
 - Flux invitation : cas "email déjà en base" à détecter proprement côté UX (au-delà de la correction fonctionnelle du Chantier 2)
-- Quand la section Paiements & adresses de `/compte` sera implémentée (couplée au chantier Stripe Customer), garder l'adresse consumer strictement optionnelle : pas de `required` à l'inscription, pas de blocage au checkout. Décision produit du 22/04/2026 : modèle circuit court sans livraison domicile.
 - Magic link admin via `www.*` : si un flow magic link est ajouté pour les admins plus tard (recovery, invite), il faudra router explicitement via `admin.terroir-local.fr/auth/callback` + ajouter cette URL aux redirect URLs Supabase. Non bloquant aujourd'hui (admin password-only).
-- **Refonte `scripts/seed.ts`** (dette technique post-session 22/04) :
-  - `ensureSlots()` cassé par la refonte créneaux (utilise les colonnes `jour_semaine`/`heure_debut`/`heure_fin` droppées par migration `20260422300000_slot_rules_and_materialized_slots.sql`)
-  - Remplacer par une logique `slot_rules` + matérialisation `slots`
-  - Profiter de la refonte pour hardcoder `statut='public'` (éviter invisibilité publique) et remplir `forme_juridique` / `type_production`
-  - À faire en même temps que la Phase 7 du chantier Créneaux personnalisables (Seed + tests) pour éviter de toucher 2 fois au même fichier
-- **Horizon génération slots : 4 semaines → 3 mois** (12-13 semaines). Change à faire dans `generateSlotsForProducer` (`lib/slots/generate.ts`) + dans le select de la page produit consumer (`app/(public)/producteurs/[slug]/produits/[id]/page.tsx`). Pas prioritaire mais à prévoir avant lancement public.
-- Nettoyer l'entrée orpheline `"/inscription"` dans `middleware.ts` `PUBLIC_PATHS` (ligne 14) — la vraie route d'inscription consumer est `/auth/inscription`, `"/inscription"` ne résout à rien (lien mort fixé côté NavbarPublic par le commit `67f2799`).
 - Désactiver Stripe Link dans le Dashboard Stripe (Settings > Payment methods > Link toggle off) — action externe, pas code. Nécessaire si Link persiste à apparaître malgré `payment_method_types: ['card']` côté intents.
 - **Bug : CB dupliquée possible sur `/compte/paiements`** — actuellement, un user peut ajouter 2× la même CB (même numéro) et les voir 2 fois dans la liste. Stripe permet l'attach multiple, chaque attach crée un `payment_method` distinct (`pm_xxx`, `pm_yyy`).
   - Fix : avant d'attacher une nouvelle CB, check les `PaymentMethods` existants du customer et comparer via le champ `fingerprint` Stripe (empreinte unique d'une CB physique, stable quel que soit le `payment_method_id`). Si match → soit refuser l'ajout avec message « Cette carte est déjà enregistrée », soit remplacer l'ancienne en mergeant.
   - Priorité : moyenne. Impact faible (user finit par nettoyer), mais UX chaotique.
-- **Icône panier avec badge dans la navbar** : actuellement aucun accès direct au panier depuis la navigation. L'user doit cliquer « Passer commande » depuis une fiche produit pour atteindre `/compte/panier`. À ajouter :
-  - Icône 🛒 dans `components/ui/navbar-public.tsx` (à droite, entre le prénom user et la déconnexion)
-  - Badge rouge avec le nombre d'articles (depuis le store client `lib/store/cart.ts`)
-  - Clic → `/compte/panier`
-  - Update en temps réel via hook `useCart()` ou équivalent
-  - Visible uniquement pour les users consumer (loggés)
-- **Stripe Customer au checkout** : actuellement, un consumer ayant enregistré des CB via `/compte/paiements` ne les voit pas proposées automatiquement au checkout. Le `PaymentIntent` est encore créé sans customer attaché. Sera corrigé par :
-  - **Phase 6 Stripe Customer** : attacher le customer au `PaymentIntent` + checkbox « Mémoriser cette carte » conditionnelle
-  - **Phase 7 Stripe Customer** : sélecteur « CB enregistrée vs nouvelle » quand l'user a des PaymentMethods existants
-  Déjà planifié dans le chantier Stripe Customer (section 🔴 À faire).
+- **Marquer automatiquement un lead en `'contacted'` après envoi d'invitation** — quand un admin envoie une invitation producteur via la page admin leads (à livrer), il faut bump le statut du lead `producer_interests` vers `'contacted'` dans la même transaction. À re-noter après livraison de la page admin leads pour lier les deux flows.
 
 ## 🗺️ Roadmap produit (vision Avril 2026)
 
@@ -322,3 +365,6 @@ _(rien en cours)_
   4. **Gating UI** : les boutons "Voir page publique" vérifient `statut === 'public'` avant de rendre le lien.
   
   Audit complet : 13 liens vers `/producteurs/[slug]` ou queries `producers` en contexte public, tous filtrés. Aucune fuite.
+- **Next.js cache silencieusement les pages SSR par défaut.** Pour les pages avec data live (stock produit, slots matérialisés, listings), il faut expliciter `export const dynamic = 'force-dynamic'; export const revalidate = 0;`. Sinon symptôme : les nouvelles données DB sont invisibles avant redeploy Vercel. Incident du 22/04 : nouveaux slots matérialisés + produits récents n'apparaissaient qu'après redeploy sur `/producteurs/[slug]` et `/produits/[id]` (fix commit `983ed8e`).
+- **Pattern défense en profondeur sur les mappings enum** (ex: `STATUS_META`, `ORDER_STATUS_LABEL`) : toujours ajouter une entrée pour TOUS les statuts DB possibles, même si le fetch les filtre normalement. Un refactor futur qui élargit le fetch fera planter le client avec `Cannot read 'bg' of undefined`. Exemple concret : `STATUS_META` dans `/admin/gestion-producteurs` couvre `('pending', 'active', 'public', 'suspended', 'deleted')` même si le fetch filtre `.neq('statut','draft').neq('statut','deleted')`.
+- **`FOR UPDATE` sur le row slot dans la RPC `create_order_with_items`** sérialise les réservations concurrentes et empêche l'overbooking quand 2 consumers cliquent simultanément. Impact perf négligeable (ligne petite, opération rare, verrou local), gain anti-overbook critique pour les slots à capacité limitée. Pattern à répliquer pour tout check de capacité concurrente.
