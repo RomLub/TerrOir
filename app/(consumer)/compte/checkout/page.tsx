@@ -278,6 +278,25 @@ function CheckoutForm({ orderId, amountLabel }: { orderId: string; amountLabel: 
     }
 
     if (paymentIntent?.status === 'succeeded') {
+      // Phase 6 fix Constat 1 : si l'user vient de mémoriser une CB et n'avait
+      // pas de default_payment_method sur son Customer, on la marque default
+      // automatiquement. Fail-open : le paiement est déjà réussi, un échec
+      // ici ne doit pas bloquer la redirection (l'user pourra set un default
+      // manuellement depuis /compte/paiements).
+      if (saveCard) {
+        try {
+          const res = await fetch('/api/stripe/ensure-default-payment-method', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ order_id: orderId }),
+          });
+          if (!res.ok) {
+            console.warn('[ENSURE_DEFAULT_PM]', res.status, await res.text());
+          }
+        } catch (err) {
+          console.warn('[ENSURE_DEFAULT_PM]', (err as Error).message);
+        }
+      }
       clear();
       router.push(`/compte/confirmation/${orderId}`);
     } else {
