@@ -259,7 +259,7 @@ function ConfirmValidateModal({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-md rounded-md border border-gray-200 bg-white p-8 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-md border border-gray-200 bg-white p-8 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-terroir-green-700">Validation</div>
         <h2 className="mt-1 font-serif text-[24px] leading-tight text-gray-900">Valider ce producteur ?</h2>
         <p className="mt-3 text-[14px] leading-relaxed text-gray-700">
@@ -316,7 +316,7 @@ function InviteModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-full max-w-lg rounded-md border border-gray-200 bg-white p-8 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-md border border-gray-200 bg-white p-8 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         {sent ? (
           <div className="py-4 text-center">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border-2 border-terroir-green-700 bg-terroir-green-100">

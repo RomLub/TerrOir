@@ -89,7 +89,7 @@ function DeleteModal({ onClose }: { onClose: () => void }) {
       aria-labelledby="delete-account-title"
     >
       <div
-        className="w-full max-w-lg rounded-md border border-gray-200 bg-white p-8 shadow-2xl"
+        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-md border border-gray-200 bg-white p-8 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {state.success ? (

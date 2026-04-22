@@ -53,7 +53,7 @@ export default function AddCardModal({
       aria-labelledby="add-card-title"
     >
       <div
-        className="w-full max-w-md rounded-md border border-gray-200 bg-white p-8 shadow-2xl"
+        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-md border border-gray-200 bg-white p-8 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-terroir-terra-700">
