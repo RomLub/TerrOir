@@ -1,9 +1,16 @@
 /**
  * Seed de démonstration TerrOir.
  *
- * Crée un producteur test (GAEC du Rheu) avec 5 produits, 3 créneaux,
- * 2 commandes terminées et 2 avis publiés. Idempotent : peut être relancé,
- * les lignes sont détectées par email (users) ou slug (producers).
+ * Crée un producteur test (GAEC du Rheu) avec 5 produits, 1 slot_rule
+ * hebdomadaire + 2 slots matérialisés dans le passé pour rattacher 2 commandes
+ * terminées et 2 avis publiés. Idempotent : peut être relancé, les lignes sont
+ * détectées par email (users) ou slug (producers).
+ *
+ * Cohabite avec scripts/seed-producers.ts : celui-ci produit les 5 seeds
+ * "production-like" (Sarthe, photos unsplash, @seed.terroir-local.fr, cleanable
+ * via cleanup-seed.ts). seed.ts produit un unique producteur de test avec un
+ * flow de bout-en-bout (producer + produits + slot_rules + slots + orders +
+ * reviews + cache note_moyenne) utile pour la démo live et les QA manuels.
  *
  * Usage :
  *   npx tsx scripts/seed.ts
@@ -52,6 +59,12 @@ const PRODUCER = {
   generations: 3,
   especes: ["bovin", "porcin", "ovin"] as const,
   labels: ["label_rouge", "bio"] as const,
+  // Colonnes onboarding producteur (migration 20260421400000). Valeurs dans
+  // les enums canoniques : 'gaec' (GAEC du Rheu) / 'elevage' (bovin/porcin/ovin).
+  // type_production_precision reste NULL : il n'est affiché dans l'UI que
+  // lorsque type_production = 'autre'.
+  forme_juridique: "gaec" as const,
+  type_production: "elevage" as const,
 };
 
 const CONSUMERS = [
@@ -135,11 +148,43 @@ const PRODUCTS: Array<{
   },
 ];
 
-// Monday=1, Wednesday=3, Saturday=6 (Postgres DOW: Sunday=0..Saturday=6)
-const SLOTS: Array<{ jour_semaine: number; heure_debut: string; heure_fin: string }> = [
-  { jour_semaine: 3, heure_debut: "17:00", heure_fin: "19:00" },
-  { jour_semaine: 5, heure_debut: "10:00", heure_fin: "12:00" },
-  { jour_semaine: 6, heure_debut: "10:00", heure_fin: "13:00" },
+// Nouveau modèle créneaux (migration 20260422300000) : le producer configure
+// des slot_rules qui sont matérialisées en instances `slots` par la fonction
+// applicative generateSlotsForProducer. Ici on pose 1 rule hebdomadaire
+// (mercredi + samedi, 9h-12h, créneaux de 30min, capacité 3) qui suffit
+// pour démontrer le flow /creneaux producer + /producteurs/[slug] consumer.
+const SLOT_RULES: Array<{
+  days_of_week: number[];
+  periodicity_weeks: number;
+  start_time: string;
+  end_time: string;
+  slot_duration_minutes: number;
+  capacity_per_slot: number;
+  active: boolean;
+}> = [
+  {
+    days_of_week: [3, 6], // mercredi + samedi (Postgres DOW : 0=dim..6=sam)
+    periodicity_weeks: 1,
+    start_time: "09:00",
+    end_time: "12:00",
+    slot_duration_minutes: 30,
+    capacity_per_slot: 3,
+    active: true,
+  },
+];
+
+// Slots matérialisés à la main dans le passé pour rattacher les 2 commandes
+// terminées du seed. Alignés sur le pattern de SLOT_RULES[0] (10:00 et 10:30
+// tombent dans l'amplitude 9h-12h avec slots de 30min). En prod, la
+// matérialisation est faite par lib/slots/generate.ts (slots futurs
+// uniquement), donc on la court-circuite ici pour les dates passées.
+const SEED_MATERIALIZED_SLOTS: Array<{
+  daysAgo: number;
+  hour: number;
+  minute: number;
+}> = [
+  { daysAgo: 14, hour: 10, minute: 0 },
+  { daysAgo: 21, hour: 10, minute: 0 },
 ];
 
 const REVIEWS_DATA = [
@@ -209,6 +254,28 @@ async function ensureAuthUser(
 }
 
 async function ensureProducer(userId: string): Promise<string> {
+  // statut='public' : visibilité publique immédiate (aligne sur seed-producers.ts
+  // depuis commit fcc68e5). Les policies "public read when producer public"
+  // (migration 20260422000000) filtrent sur cette valeur.
+  const base = {
+    user_id: userId,
+    nom_exploitation: PRODUCER.nom_exploitation,
+    adresse: PRODUCER.adresse,
+    commune: PRODUCER.commune,
+    code_postal: PRODUCER.code_postal,
+    latitude: PRODUCER.latitude,
+    longitude: PRODUCER.longitude,
+    description: PRODUCER.description,
+    histoire: PRODUCER.histoire,
+    annee_creation: PRODUCER.annee_creation,
+    generations: PRODUCER.generations,
+    especes: [...PRODUCER.especes],
+    labels: [...PRODUCER.labels],
+    forme_juridique: PRODUCER.forme_juridique,
+    type_production: PRODUCER.type_production,
+    statut: "public" as const,
+  };
+
   const { data: existing } = await admin
     .from("producers")
     .select("id")
@@ -218,22 +285,7 @@ async function ensureProducer(userId: string): Promise<string> {
   if (existing) {
     const { error: updateError } = await admin
       .from("producers")
-      .update({
-        user_id: userId,
-        nom_exploitation: PRODUCER.nom_exploitation,
-        adresse: PRODUCER.adresse,
-        commune: PRODUCER.commune,
-        code_postal: PRODUCER.code_postal,
-        latitude: PRODUCER.latitude,
-        longitude: PRODUCER.longitude,
-        description: PRODUCER.description,
-        histoire: PRODUCER.histoire,
-        annee_creation: PRODUCER.annee_creation,
-        generations: PRODUCER.generations,
-        especes: [...PRODUCER.especes],
-        labels: [...PRODUCER.labels],
-        statut: "active",
-      })
+      .update(base)
       .eq("id", existing.id);
     if (updateError) throw new Error(`producer update : ${updateError.message}`);
     return existing.id as string;
@@ -241,23 +293,7 @@ async function ensureProducer(userId: string): Promise<string> {
 
   const { data: inserted, error: insertError } = await admin
     .from("producers")
-    .insert({
-      user_id: userId,
-      slug: PRODUCER.slug,
-      nom_exploitation: PRODUCER.nom_exploitation,
-      adresse: PRODUCER.adresse,
-      commune: PRODUCER.commune,
-      code_postal: PRODUCER.code_postal,
-      latitude: PRODUCER.latitude,
-      longitude: PRODUCER.longitude,
-      description: PRODUCER.description,
-      histoire: PRODUCER.histoire,
-      annee_creation: PRODUCER.annee_creation,
-      generations: PRODUCER.generations,
-      especes: [...PRODUCER.especes],
-      labels: [...PRODUCER.labels],
-      statut: "active",
-    })
+    .insert({ slug: PRODUCER.slug, ...base })
     .select("id")
     .single();
   if (insertError || !inserted) {
@@ -318,42 +354,102 @@ async function ensureProducts(producerId: string): Promise<string[]> {
   return ids;
 }
 
-async function ensureSlots(producerId: string): Promise<string[]> {
+async function ensureSlotRules(producerId: string): Promise<string[]> {
+  // Idempotence : on mappe positionnellement les rules SEED → rules DB triées
+  // par created_at. S'il y a déjà des rules pour ce producer, on update les N
+  // premières pour matcher SLOT_RULES ; sinon on insère. Suffisant pour un
+  // seed qui pose une seule rule.
   const { data: existing } = await admin
-    .from("slots")
-    .select("id, jour_semaine, heure_debut")
-    .eq("producer_id", producerId);
-
-  const existingKey = new Map<string, string>(
-    (existing ?? []).map((s) => [
-      `${s.jour_semaine}|${String(s.heure_debut).slice(0, 5)}`,
-      s.id as string,
-    ]),
-  );
+    .from("slot_rules")
+    .select("id")
+    .eq("producer_id", producerId)
+    .order("created_at", { ascending: true });
 
   const ids: string[] = [];
-  for (const s of SLOTS) {
-    const key = `${s.jour_semaine}|${s.heure_debut}`;
-    const existingId = existingKey.get(key);
+  for (let i = 0; i < SLOT_RULES.length; i++) {
+    const rule = SLOT_RULES[i];
+    const existingId = existing?.[i]?.id as string | undefined;
+    const payload = {
+      days_of_week: rule.days_of_week,
+      periodicity_weeks: rule.periodicity_weeks,
+      start_time: rule.start_time,
+      end_time: rule.end_time,
+      slot_duration_minutes: rule.slot_duration_minutes,
+      capacity_per_slot: rule.capacity_per_slot,
+      active: rule.active,
+    };
     if (existingId) {
+      const { error } = await admin
+        .from("slot_rules")
+        .update(payload)
+        .eq("id", existingId);
+      if (error) throw new Error(`slot_rule update : ${error.message}`);
       ids.push(existingId);
       continue;
     }
     const { data: inserted, error } = await admin
-      .from("slots")
-      .insert({
-        producer_id: producerId,
-        jour_semaine: s.jour_semaine,
-        heure_debut: s.heure_debut,
-        heure_fin: s.heure_fin,
-        actif: true,
-      })
+      .from("slot_rules")
+      .insert({ producer_id: producerId, ...payload })
       .select("id")
       .single();
-    if (error || !inserted) throw new Error(`slot insert : ${error?.message}`);
+    if (error || !inserted) throw new Error(`slot_rule insert : ${error?.message}`);
     ids.push(inserted.id as string);
   }
   return ids;
+}
+
+async function materializeSeedSlots(
+  producerId: string,
+  ruleId: string,
+): Promise<string[]> {
+  // Matérialise les slots passés dont les orders seedées ont besoin. UPSERT
+  // sur (producer_id, starts_at) (contrainte unique de la migration
+  // 20260422300000) pour rester idempotent entre deux lancements.
+  const durationMs = SLOT_RULES[0].slot_duration_minutes * 60_000;
+  const capacity = SLOT_RULES[0].capacity_per_slot;
+
+  const rows = SEED_MATERIALIZED_SLOTS.map((spec) => {
+    const start = new Date();
+    start.setUTCDate(start.getUTCDate() - spec.daysAgo);
+    start.setUTCHours(spec.hour, spec.minute, 0, 0);
+    const end = new Date(start.getTime() + durationMs);
+    return {
+      rule_id: ruleId,
+      producer_id: producerId,
+      starts_at: start.toISOString(),
+      ends_at: end.toISOString(),
+      capacity_per_slot: capacity,
+    };
+  });
+
+  const { error: upsertError } = await admin
+    .from("slots")
+    .upsert(rows, { onConflict: "producer_id,starts_at" });
+  if (upsertError) throw new Error(`slots upsert : ${upsertError.message}`);
+
+  // Récupère les IDs via lookup par (producer_id, starts_at). On ne se fie
+  // pas à l'ordre de retour de l'upsert.
+  const { data: slots, error: selectError } = await admin
+    .from("slots")
+    .select("id, starts_at")
+    .eq("producer_id", producerId)
+    .in(
+      "starts_at",
+      rows.map((r) => r.starts_at),
+    );
+  if (selectError) throw new Error(`slots select : ${selectError.message}`);
+
+  const byStart = new Map<string, string>(
+    (slots ?? []).map((s) => [
+      new Date(s.starts_at as string).toISOString(),
+      s.id as string,
+    ]),
+  );
+  return rows.map((r) => {
+    const id = byStart.get(new Date(r.starts_at).toISOString());
+    if (!id) throw new Error(`slot matérialisé introuvable : ${r.starts_at}`);
+    return id;
+  });
 }
 
 async function ensureCompletedOrder(
@@ -495,8 +591,11 @@ async function main() {
   const productIds = await ensureProducts(producerId);
   console.log(`  ✓ ${productIds.length} produits`);
 
-  const slotIds = await ensureSlots(producerId);
-  console.log(`  ✓ ${slotIds.length} créneaux`);
+  const ruleIds = await ensureSlotRules(producerId);
+  console.log(`  ✓ ${ruleIds.length} slot_rule(s)`);
+
+  const slotIds = await materializeSeedSlots(producerId, ruleIds[0]);
+  console.log(`  ✓ ${slotIds.length} slot(s) matérialisé(s) (passés, pour orders)`);
 
   const consumerIds: string[] = [];
   for (const c of CONSUMERS) {
@@ -505,24 +604,26 @@ async function main() {
   }
   console.log(`  ✓ ${consumerIds.length} consommateurs`);
 
-  // 2 commandes terminées pour pouvoir rattacher 2 avis.
+  // 2 commandes terminées pour pouvoir rattacher 2 avis. daysAgo aligné sur
+  // SEED_MATERIALIZED_SLOTS pour que slot.starts_at et order.date_retrait
+  // restent cohérents.
   const orderId1 = await ensureCompletedOrder(
     consumerIds[0],
     producerId,
-    slotIds[1],
+    slotIds[0],
     productIds[0], // entrecôte
     0.75,
     PRODUCTS[0].prix,
-    14,
+    SEED_MATERIALIZED_SLOTS[0].daysAgo,
   );
   const orderId2 = await ensureCompletedOrder(
     consumerIds[1],
     producerId,
-    slotIds[2],
+    slotIds[1],
     productIds[1], // rôti
     1.5,
     PRODUCTS[1].prix,
-    21,
+    SEED_MATERIALIZED_SLOTS[1].daysAgo,
   );
   console.log(`  ✓ 2 commandes terminées`);
 
