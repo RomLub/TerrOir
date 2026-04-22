@@ -52,7 +52,7 @@ function parseHM(t: string): [number, number] {
 export async function generateSlotsForProducer(
   supabase: SupabaseClient,
   producerId: string,
-  horizonDays = 28,
+  horizonDays = 90,
 ): Promise<{ inserted: number }> {
   const nowMs = Date.now();
   const last = lastRun.get(producerId);

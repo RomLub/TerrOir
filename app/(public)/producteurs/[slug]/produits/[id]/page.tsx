@@ -9,7 +9,7 @@ import {
   type OtherProduct,
 } from './ProductPageClient';
 
-const HORIZON_DAYS = 28;
+const HORIZON_DAYS = 90;
 
 function weightStepFor(unit: string | null): number {
   if (unit === 'kg') return 0.25;

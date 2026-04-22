@@ -15,7 +15,7 @@
 // profondeur côté DB.
 //
 // Après chaque mutation : invalidateProducer(producerId) +
-// generateSlotsForProducer(28) pour que l'UI consumer reflète immédiatement
+// generateSlotsForProducer(90) pour que l'UI consumer reflète immédiatement
 // les changements (nouveaux slots matérialisés). DELETE = hard delete (CASCADE
 // slots) mais bloqué si des orders historiques pointent dessus (FK sans
 // CASCADE → échec sinon).
@@ -91,7 +91,7 @@ export async function createSlotRuleAction(
 
   invalidateProducer(producerRes.id);
   try {
-    await generateSlotsForProducer(admin, producerRes.id, 28);
+    await generateSlotsForProducer(admin, producerRes.id, 90);
   } catch (err) {
     console.warn("GENERATE_SLOTS_WARN after create:", err);
   }
@@ -142,7 +142,7 @@ export async function updateSlotRuleAction(
 
   invalidateProducer(producerRes.id);
   try {
-    await generateSlotsForProducer(admin, producerRes.id, 28);
+    await generateSlotsForProducer(admin, producerRes.id, 90);
   } catch (err) {
     console.warn("GENERATE_SLOTS_WARN after update:", err);
   }
@@ -202,7 +202,7 @@ export async function toggleSlotRuleActiveAction(
   invalidateProducer(producerRes.id);
   if (nextActive) {
     try {
-      await generateSlotsForProducer(admin, producerRes.id, 28);
+      await generateSlotsForProducer(admin, producerRes.id, 90);
     } catch (err) {
       console.warn("GENERATE_SLOTS_WARN after toggle on:", err);
     }
