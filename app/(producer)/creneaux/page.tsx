@@ -70,7 +70,7 @@ export default async function CreneauxPage() {
       .from("slots")
       .select("id, starts_at, ends_at, rule_id")
       .eq("producer_id", producer.id)
-      .eq("actif", true)
+      .eq("active", true)
       .is("excluded_at", null)
       .gte("starts_at", nowIso)
       .order("starts_at", { ascending: true })

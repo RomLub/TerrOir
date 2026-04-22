@@ -205,7 +205,7 @@ export async function toggleSlotRuleActiveAction(
   const nowIso = new Date().toISOString();
   const { error: slotsUpdateError } = await admin
     .from("slots")
-    .update({ actif: nextActive })
+    .update({ active: nextActive })
     .eq("rule_id", ruleId)
     .gt("starts_at", nowIso);
   if (slotsUpdateError) {
@@ -359,7 +359,7 @@ export async function createAdHocSlotAction(
     starts_at: startsIso,
     ends_at: endsIso,
     capacity_per_slot: parsed.data.capacity_per_slot,
-    actif: true,
+    active: true,
   });
 
   if (insertError) {

@@ -205,7 +205,7 @@ export default async function ProducerDashboardPage() {
     .from('slots')
     .select('id, starts_at, ends_at')
     .eq('producer_id', producer.id)
-    .eq('actif', true)
+    .eq('active', true)
     .gte('starts_at', slotsRangeStart.toISOString())
     .lt('starts_at', slotsRangeEnd.toISOString());
 
