@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Button, Badge, ProductCard } from '@/components/ui';
 import { useCartStore } from '@/lib/store/cart';
+import { formatSlotTime, formatSlotRange } from '@/lib/slots/format-slot-time';
 
 export type ProducerSummary = {
   id: string;
@@ -49,18 +50,6 @@ function formatDayLabel(isoUtc: string): string {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
-function formatHourMinute(isoUtc: string): string {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: PARIS_TZ,
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(new Date(isoUtc));
-  const h = parts.find((p) => p.type === 'hour')?.value ?? '00';
-  const m = parts.find((p) => p.type === 'minute')?.value ?? '00';
-  return `${h}h${m}`;
-}
-
 function toParisDateISO(isoUtc: string): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: PARIS_TZ,
@@ -100,6 +89,27 @@ export function ProductPageClient({
   const [quantity, setQuantity] = useState(1);
   const [slot, setSlot] = useState<string | null>(null);
   const [added, setAdded] = useState(false);
+
+  // Groupement par jour calendaire Europe/Paris. Les slots arrivent triés
+  // starts_at ASC côté server → l'ordre d'insertion dans la Map conserve
+  // la chronologie.
+  const groupedEntries = useMemo<[string, SlotOption[]][]>(() => {
+    const map = new Map<string, SlotOption[]>();
+    for (const s of slots) {
+      const key = toParisDateISO(s.starts_at);
+      const bucket = map.get(key) ?? [];
+      if (bucket.length === 0) map.set(key, bucket);
+      bucket.push(s);
+    }
+    return Array.from(map.entries());
+  }, [slots]);
+
+  // Accordéon exclusif : 1er jour ouvert par défaut, null = tous fermés.
+  // L'état survit aux re-renders ; si `slots` change et que la date
+  // actuellement ouverte disparaît, aucun panel n'apparaît (acceptable).
+  const [openDate, setOpenDate] = useState<string | null>(
+    () => groupedEntries[0]?.[0] ?? null,
+  );
 
   const addItem = useCartStore((s) => s.addItem);
 
@@ -238,41 +248,23 @@ export function ProductPageClient({
               <div className="text-[11px] uppercase tracking-[0.14em] text-dark/60 font-semibold mb-2">
                 Créneau de retrait à la ferme
               </div>
-              {slots.length === 0 ? (
+              {groupedEntries.length === 0 ? (
                 <div className="rounded-xl border border-dark/10 bg-white px-4 py-6 text-center text-[13px] text-dark/60">
                   Aucun créneau disponible. Revenez bientôt.
                 </div>
               ) : (
-                <div className="grid sm:grid-cols-2 gap-2">
-                  {slots.map((s) => {
-                    const active = slot === s.id;
-                    const full = s.left === 0;
-                    return (
-                      <button
-                        key={s.id}
-                        type="button"
-                        disabled={full}
-                        onClick={() => setSlot(s.id)}
-                        className={`text-left rounded-xl border px-3 py-2.5 transition-colors ${
-                          full
-                            ? 'bg-dark/5 border-dark/10 text-dark/30 cursor-not-allowed'
-                            : active
-                              ? 'bg-green-100 border-green-700 text-green-900 ring-2 ring-green-700/20'
-                              : 'bg-white border-dark/10 text-dark/80 hover:border-green-500'
-                        }`}
-                      >
-                        <div className="text-[14px] font-semibold">{formatDayLabel(s.starts_at)}</div>
-                        <div className="text-[12px] text-dark/60">
-                          {formatHourMinute(s.starts_at)} – {formatHourMinute(s.ends_at)}
-                        </div>
-                        {s.left !== null && (
-                          <div className="text-[11px] mt-0.5 mono text-dark/50">
-                            {full ? 'Complet' : `${s.left} créneaux restants`}
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
+                <div className="space-y-2">
+                  {groupedEntries.map(([date, daySlots]) => (
+                    <DayGroup
+                      key={date}
+                      date={date}
+                      slots={daySlots}
+                      isOpen={openDate === date}
+                      selectedSlotId={slot}
+                      onToggle={() => setOpenDate(openDate === date ? null : date)}
+                      onSelectSlot={(id) => setSlot(id)}
+                    />
+                  ))}
                 </div>
               )}
             </div>
@@ -343,6 +335,103 @@ export function ProductPageClient({
 
 function Sep() {
   return <li aria-hidden className="text-dark/30">/</li>;
+}
+
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`h-4 w-4 shrink-0 text-dark/40 transition-transform ${open ? 'rotate-180' : ''}`}
+    >
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
+
+function DayGroup({
+  date,
+  slots,
+  isOpen,
+  selectedSlotId,
+  onToggle,
+  onSelectSlot,
+}: {
+  date: string;
+  slots: SlotOption[];
+  isOpen: boolean;
+  selectedSlotId: string | null;
+  onToggle: () => void;
+  onSelectSlot: (id: string) => void;
+}) {
+  const firstIso = slots[0].starts_at;
+  const count = slots.length;
+  const selectedInDay = slots.find((s) => s.id === selectedSlotId) ?? null;
+  const panelId = `creneaux-${date}`;
+
+  return (
+    <div className="rounded-xl border border-dark/10 bg-white overflow-hidden">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={isOpen}
+        aria-controls={panelId}
+        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-dark/[0.02]"
+      >
+        <div className="flex items-center gap-2 flex-wrap min-w-0">
+          <span className="text-[14px] font-semibold text-green-900">
+            {formatDayLabel(firstIso)}
+          </span>
+          {selectedInDay && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium text-green-900">
+              ✓ {formatSlotTime(selectedInDay.starts_at)}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
+          <span className="text-[12px] text-dark/50">
+            {count} créneau{count > 1 ? 'x' : ''}
+          </span>
+          <Chevron open={isOpen} />
+        </div>
+      </button>
+      {isOpen && (
+        <div id={panelId} className="border-t border-dark/[0.06] bg-dark/[0.02] p-3">
+          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+            {slots.map((s) => {
+              const active = selectedSlotId === s.id;
+              const full = s.left === 0;
+              const label = formatSlotRange(s.starts_at, s.ends_at);
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  disabled={full}
+                  onClick={() => onSelectSlot(s.id)}
+                  aria-label={`Créneau ${label}`}
+                  aria-pressed={active}
+                  className={`rounded-lg border px-2 py-1.5 text-[13px] tabular-nums transition-colors ${
+                    full
+                      ? 'bg-dark/5 border-dark/10 text-dark/30 cursor-not-allowed'
+                      : active
+                        ? 'bg-green-100 border-green-700 text-green-900 font-semibold ring-2 ring-green-700/20'
+                        : 'bg-white border-dark/10 text-dark/80 hover:border-green-500'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function QtyStepper({
