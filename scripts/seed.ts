@@ -16,6 +16,7 @@
  */
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { UserRole } from "@/lib/auth/roles";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -167,7 +168,7 @@ async function findUserIdByEmail(email: string): Promise<string | null> {
 
 async function ensureAuthUser(
   email: string,
-  role: "producer" | "consumer",
+  role: UserRole,
   prenom: string,
   nom: string,
   telephone?: string,

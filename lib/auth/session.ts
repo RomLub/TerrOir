@@ -3,8 +3,6 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { UserRole } from "./roles";
 
-export type { UserRole } from "./roles";
-
 export interface SessionUser {
   id: string;
   email: string | null;
