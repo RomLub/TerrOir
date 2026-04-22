@@ -7,6 +7,8 @@
 //   1. Re-auth password via client Supabase temporaire (anon key,
 //      persistSession=false) → verify sans toucher aux cookies de session.
 //   2. Capture de l'état producer (id + stripe_account_id) avant RPC.
+//   2bis. Capture users.stripe_customer_id avant RPC (disparaît par CASCADE
+//      en étape 7 sinon — besoin pour appeler stripe.customers.del).
 //   3. Appel RPC public.delete_user_account(p_user_id) → anonymise orders,
 //      hard-delete reviews/products/slots, anonymise producer en statut
 //      'deleted' (cf migration 20260422200000).
@@ -14,6 +16,9 @@
 //      producers.stripe_cleanup_pending=true via service_role (le producer
 //      est anonymisé user_id=NULL, donc la policy owner_update ne matche
 //      plus). Log explicite pour alertes Vercel.
+//   4bis. Cleanup Stripe Customer fail-open (détache PaymentMethods côté
+//      Stripe). Pas de flag DB persistant car users.stripe_customer_id
+//      disparaît par CASCADE en étape 7. Log explicite si échec.
 //   5. Email de confirmation via Resend. Le log notifications écrit par
 //      sendTemplate sera wipé par le CASCADE en étape 7 (propre RGPD).
 //   6. Server signOut → clear cookies sb-* pendant que auth.users existe
@@ -54,7 +59,10 @@ import { z } from "zod";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth/session";
-import { deleteStripeConnectAccount } from "@/lib/stripe/cleanup";
+import {
+  deleteStripeConnectAccount,
+  deleteStripeCustomer,
+} from "@/lib/stripe/cleanup";
 import { sendTemplate } from "@/lib/resend/send";
 import AccountDeleted, {
   subject as accountDeletedSubject,
@@ -117,6 +125,17 @@ export async function deleteAccountAction(
   const stripeAccountId =
     (producer?.stripe_account_id as string | null | undefined) ?? null;
 
+  // 3bis. Capture users.stripe_customer_id AVANT la suppression
+  //       (CASCADE via auth.users le fera disparaître en étape 8).
+  const { data: user } = await admin
+    .from("users")
+    .select("stripe_customer_id")
+    .eq("id", session.id)
+    .maybeSingle();
+
+  const stripeCustomerId =
+    (user?.stripe_customer_id as string | null | undefined) ?? null;
+
   // 4. RPC delete_user_account via client authentifié (auth.uid() = session.id)
   const supabase = createSupabaseServerClient();
   const { error: rpcError } = await supabase.rpc("delete_user_account", {
@@ -150,6 +169,18 @@ export async function deleteAccountAction(
         .from("producers")
         .update({ stripe_cleanup_pending: true })
         .eq("id", producerId);
+    }
+  }
+
+  // 5bis. Stripe Customer cleanup (fail-open, log seul si échec).
+  //       Pas de flag DB persistant : users.stripe_customer_id disparaît
+  //       par CASCADE à l'étape 8. Log explicite pour grep alertes Vercel.
+  if (stripeCustomerId) {
+    const customerResult = await deleteStripeCustomer(stripeCustomerId);
+    if (!customerResult.success) {
+      console.error(
+        `STRIPE_CUSTOMER_CLEANUP_PENDING user_id=${session.id} stripe_customer_id=${stripeCustomerId} error=${customerResult.error}`,
+      );
     }
   }
 
