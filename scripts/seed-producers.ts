@@ -42,6 +42,15 @@ const EMAIL_SUFFIX = "@seed.terroir-local.fr";
 
 type Unite = "kg" | "piece" | "colis";
 
+type SlotRuleSeed = {
+  days_of_week: number[];
+  start_time: string; // HH:MM:SS
+  end_time: string; // HH:MM:SS
+  slot_duration_minutes: number;
+  capacity_per_slot: number;
+  periodicity_weeks?: number;
+};
+
 type ProducerSeed = {
   slug: string;
   email: string;
@@ -71,6 +80,7 @@ type ProducerSeed = {
     stock_disponible: number;
     photoId: string;
   }>;
+  slotRule: SlotRuleSeed;
 };
 
 const PRODUCERS: ProducerSeed[] = [
@@ -128,6 +138,13 @@ const PRODUCERS: ProducerSeed[] = [
         photoId: "photo-1567306226416-28f0efdc88ce",
       },
     ],
+    slotRule: {
+      days_of_week: [3, 6], // mercredi, samedi
+      start_time: "09:00:00",
+      end_time: "12:00:00",
+      slot_duration_minutes: 30,
+      capacity_per_slot: 5,
+    },
   },
   {
     slug: "perche-sarthois",
@@ -183,6 +200,13 @@ const PRODUCERS: ProducerSeed[] = [
         photoId: "photo-1768850418251-17480117ac9b",
       },
     ],
+    slotRule: {
+      days_of_week: [6], // samedi
+      start_time: "10:00:00",
+      end_time: "13:00:00",
+      slot_duration_minutes: 30,
+      capacity_per_slot: 10,
+    },
   },
   {
     slug: "alpes-mancelles",
@@ -238,6 +262,13 @@ const PRODUCERS: ProducerSeed[] = [
         photoId: "photo-1607532941433-304659e8198a",
       },
     ],
+    slotRule: {
+      days_of_week: [1, 3, 5], // lundi, mercredi, vendredi
+      start_time: "16:00:00",
+      end_time: "19:00:00",
+      slot_duration_minutes: 30,
+      capacity_per_slot: 8,
+    },
   },
   {
     slug: "ruchers-sarthe",
@@ -293,6 +324,13 @@ const PRODUCERS: ProducerSeed[] = [
         photoId: "photo-1608563794211-e06ae1e58c1b",
       },
     ],
+    slotRule: {
+      days_of_week: [2, 5], // mardi, vendredi
+      start_time: "14:00:00",
+      end_time: "17:00:00",
+      slot_duration_minutes: 60,
+      capacity_per_slot: 3,
+    },
   },
   {
     slug: "clos-cenomane",
@@ -348,6 +386,13 @@ const PRODUCERS: ProducerSeed[] = [
         photoId: "photo-1532250327408-9bd6e0ce2c49",
       },
     ],
+    slotRule: {
+      days_of_week: [3, 6], // mercredi, samedi
+      start_time: "15:00:00",
+      end_time: "18:00:00",
+      slot_duration_minutes: 45,
+      capacity_per_slot: 6,
+    },
   },
 ];
 
@@ -571,10 +616,58 @@ async function ensureProducts(p: ProducerSeed, producerId: string): Promise<numb
   return count;
 }
 
+// Idempotent : match sur (producer_id, start_time) — une seule rule par
+// producer et par start_time dans le seed. Si trouvée, UPDATE ; sinon INSERT.
+// Le générateur matérialisera les slots au prochain hit de la page produit.
+async function ensureSlotRule(
+  p: ProducerSeed,
+  producerId: string,
+): Promise<"inserted" | "updated" | "dry"> {
+  const rule = p.slotRule;
+  const payload = {
+    producer_id: producerId,
+    days_of_week: rule.days_of_week,
+    periodicity_weeks: rule.periodicity_weeks ?? 1,
+    start_time: rule.start_time,
+    end_time: rule.end_time,
+    slot_duration_minutes: rule.slot_duration_minutes,
+    capacity_per_slot: rule.capacity_per_slot,
+    active: true,
+  };
+
+  if (DRY_RUN) {
+    log(`slot_rules INSERT ${p.slug}`, payload);
+    return "dry";
+  }
+
+  const { data: existing, error: selError } = await admin
+    .from("slot_rules")
+    .select("id")
+    .eq("producer_id", producerId)
+    .eq("start_time", rule.start_time)
+    .maybeSingle();
+  if (selError) throw new Error(`slot_rules select ${p.slug}: ${selError.message}`);
+
+  if (existing) {
+    log(`slot_rules UPDATE ${p.slug}`, { id: existing.id, ...payload });
+    const { error } = await admin
+      .from("slot_rules")
+      .update(payload)
+      .eq("id", existing.id);
+    if (error) throw new Error(`slot_rules update ${p.slug}: ${error.message}`);
+    return "updated";
+  }
+
+  log(`slot_rules INSERT ${p.slug}`, payload);
+  const { error } = await admin.from("slot_rules").insert(payload);
+  if (error) throw new Error(`slot_rules insert ${p.slug}: ${error.message}`);
+  return "inserted";
+}
+
 async function confirm(): Promise<boolean> {
   const rl = readline.createInterface({ input, output });
   const answer = await rl.question(
-    `\n⚠️  Connexion à ${SUPABASE_URL}\n   5 producteurs + 15 produits vont être insérés/mis à jour.\n   Continuer ? (y/N) `,
+    `\n⚠️  Connexion à ${SUPABASE_URL}\n   5 producteurs + 15 produits + 5 slot_rules vont être insérés/mis à jour.\n   Continuer ? (y/N) `,
   );
   rl.close();
   return answer.trim().toLowerCase() === "y";
@@ -597,18 +690,23 @@ async function main(): Promise<void> {
 
   let producersCount = 0;
   let productsCount = 0;
+  let slotRulesCount = 0;
 
   for (const p of PRODUCERS) {
     console.log(`\n─── ${p.nom_exploitation} (${p.slug}) ───`);
     const userId = await ensureAuthAndUser(p);
     const producerId = await ensureProducer(p, userId);
     const n = await ensureProducts(p, producerId);
+    await ensureSlotRule(p, producerId);
     producersCount++;
     productsCount += n;
+    slotRulesCount++;
   }
 
   console.log("\n" + "=".repeat(70));
-  console.log(`✓ Terminé : ${producersCount} producteurs · ${productsCount} produits`);
+  console.log(
+    `✓ Terminé : ${producersCount} producteurs · ${productsCount} produits · ${slotRulesCount} slot_rules`,
+  );
   if (DRY_RUN) console.log("  (dry-run, rien n'a été écrit)");
   console.log("=".repeat(70));
 }
