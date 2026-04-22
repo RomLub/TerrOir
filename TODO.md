@@ -74,7 +74,6 @@ _(rien en cours)_
 
 > **Décisions produit tranchées le 22/04/2026 matin** : pas de livraison domicile, adresses consumer optionnelles, Stripe Customer pour MVP, créneaux producteur entièrement personnalisables.
 
-- **Inscription consumer — adresse optionnelle** : la page `/auth/inscription` ne demande pas d'adresse (déjà OK). Vérifier que l'adresse reste optionnelle partout où elle pourrait être demandée en aval (profil `/compte`, tunnel de commande, checkout Stripe) — aucune validation `required` ni blocage ne doit exiger une adresse pour un consumer.
 - **Stripe Customer pour MVP** : créer un Stripe Customer au premier paiement du consumer, enregistrer la CB via SetupIntent/PaymentMethod, exposer la gestion des moyens de paiement dans `/compte` (liste + ajout + suppression), réutiliser le PaymentMethod par défaut aux commandes suivantes. Impact : lien `stripe_customer_id` à stocker sur `users` (ou table dédiée), webhook `payment_method.*` si on veut synchro.
 - **Chantier Créneaux personnalisables** : remplacer le modèle actuel « créneaux fixes weekend toutes les 2 semaines » par un modèle configurable par producteur :
   - Jours sélectionnés (multi-select jours de la semaine) OU périodicité type « toutes les 2 semaines »
@@ -105,6 +104,7 @@ _(rien en cours)_
 - Switcher consumer/producer cassé : depuis l'espace producteur, le lien vers le profil consommateur retourne 404. À fixer avec le Chantier 6 (switcher nav bidirectionnel).
 - Bouton « Voir page publique » (fiche producteur admin) était visible pour tous les statuts → désormais filtré sur `statut='public'` uniquement (Phase 5). Vérifier qu'aucun autre bouton/lien public ne fuit les producteurs non-publiés.
 - Helper `promoteProducerToPublicIfActive` en fail-open silencieux (swallow errors via `console.error`) — bonne UX (ne bloque pas la création produit si la promotion échoue), mais peut masquer des bugs RLS futurs. À considérer : upgrader vers `console.warn` ou toast dev-only si besoin de debug.
+- Quand la section Paiements & adresses de `/compte` sera implémentée (couplée au chantier Stripe Customer), garder l'adresse consumer strictement optionnelle : pas de `required` à l'inscription, pas de blocage au checkout. Décision produit du 22/04/2026 : modèle circuit court sans livraison domicile.
 
 ## 🔵 Idées / améliorations
 
