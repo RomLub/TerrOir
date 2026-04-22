@@ -5,9 +5,11 @@ import Link from 'next/link';
 import { Button } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
-// Statuts producers visibles côté admin. 'draft' est exclu au fetch —
-// formulaire d'onboarding incomplet, pas de sens à afficher en admin.
-type Status = 'pending' | 'active' | 'public' | 'suspended';
+// Statuts producers visibles côté admin. 'draft' est exclu au fetch
+// (formulaire d'onboarding incomplet) ainsi que 'deleted' (RGPD, producteur
+// anonymisé via delete_user_account — masqué par défaut mais supporté par
+// STATUS_META en défense en profondeur).
+type Status = 'pending' | 'active' | 'public' | 'suspended' | 'deleted';
 
 type Producer = {
   id: string;
@@ -33,6 +35,7 @@ const STATUS_META: Record<Status, { label: string; dot: string; bg: string; text
   active:    { label: 'Validé',     dot: 'bg-amber-600',         bg: 'bg-amber-100',         text: 'text-amber-900' },
   public:    { label: 'Public',     dot: 'bg-terroir-green-700', bg: 'bg-terroir-green-100', text: 'text-terroir-green-700' },
   suspended: { label: 'Suspendu',   dot: 'bg-red-500',           bg: 'bg-red-100',           text: 'text-red-700' },
+  deleted:   { label: 'Supprimé',   dot: 'bg-slate-400',         bg: 'bg-slate-100',         text: 'text-slate-600' },
 };
 
 // Le filtre "Actifs" agrège 'active' (validé, pas encore vitrine) et 'public'
@@ -70,6 +73,7 @@ export default function AdminProducteursPage() {
       .from('producers')
       .select('id, slug, nom_exploitation, commune, code_postal, statut, abonnement_niveau, created_at, user:user_id ( email )')
       .neq('statut', 'draft')
+      .neq('statut', 'deleted')
       .order('created_at', { ascending: false });
     if (fetchError) { setError(fetchError.message); setLoading(false); return; }
 
