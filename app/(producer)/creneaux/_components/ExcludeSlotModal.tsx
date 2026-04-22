@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { TZDate } from "@date-fns/tz";
 import {
   formatSlotDateTime,
   formatSlotRange,
@@ -14,31 +15,50 @@ export interface FutureActiveSlot {
   rule_id: string | null;
 }
 
-// Regroupe les slots par jour calendaire (ISO YYYY-MM-DD extrait de starts_at,
-// simple slice — l'affichage ordonné suffit, pas besoin de TZ précise ici).
-function groupByDate(slots: FutureActiveSlot[]): Map<string, FutureActiveSlot[]> {
-  const map = new Map<string, FutureActiveSlot[]>();
-  for (const s of slots) {
-    const key = s.starts_at.slice(0, 10);
-    const arr = map.get(key);
-    if (arr) arr.push(s);
-    else map.set(key, [s]);
-  }
-  return map;
+const TZ_PARIS = "Europe/Paris";
+
+// Extrait "YYYY-MM-DD" en Europe/Paris depuis un ISO timestamptz. Utilisé
+// pour matcher un slot.starts_at au date-input sélectionné par le producer.
+function slotDateInParis(iso: string): string {
+  const d = new TZDate(iso, TZ_PARIS);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function todayISO(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function horizonMaxISO(horizonDays: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + horizonDays);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 export default function ExcludeSlotModal({
   activeSlots,
+  blockedSlotIds,
   onClose,
   onSuccess,
 }: {
   activeSlots: FutureActiveSlot[];
+  blockedSlotIds: string[];
   onClose: () => void;
   onSuccess: (slotLabel: string) => void;
 }) {
-  const [dateFilter, setDateFilter] = useState<string>("");
+  const [selectedDate, setSelectedDate] = useState<string>(todayISO());
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [, startTransition] = useTransition();
+  const dateInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    dateInputRef.current?.focus();
+  }, []);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -48,15 +68,19 @@ export default function ExcludeSlotModal({
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
 
-  const grouped = useMemo(() => groupByDate(activeSlots), [activeSlots]);
+  const blockedSet = useMemo(
+    () => new Set(blockedSlotIds),
+    [blockedSlotIds],
+  );
 
-  const filtered = useMemo(() => {
-    if (!dateFilter) return grouped;
-    const filteredMap = new Map<string, FutureActiveSlot[]>();
-    const slots = grouped.get(dateFilter);
-    if (slots) filteredMap.set(dateFilter, slots);
-    return filteredMap;
-  }, [grouped, dateFilter]);
+  const minDate = todayISO();
+  const maxDate = horizonMaxISO(90);
+
+  const slotsForDay = useMemo(
+    () =>
+      activeSlots.filter((s) => slotDateInParis(s.starts_at) === selectedDate),
+    [activeSlots, selectedDate],
+  );
 
   const handleExclude = (slot: FutureActiveSlot) => {
     setErrorMessage(null);
@@ -79,7 +103,7 @@ export default function ExcludeSlotModal({
       aria-labelledby="exclude-slot-modal-title"
     >
       <div
-        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-8 shadow-card"
+        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl bg-white p-8 shadow-card"
         onClick={(e) => e.stopPropagation()}
       >
         <h2
@@ -89,70 +113,68 @@ export default function ExcludeSlotModal({
           Annuler un créneau
         </h2>
         <p className="mt-1 text-[13px] text-dark/60">
-          Sélectionnez un créneau actif à exclure. Il ne sera plus réservable
-          par les clients. Vous pourrez le rétablir plus tard.
+          Choisissez la date, puis le créneau à exclure. Il ne sera plus
+          réservable par les clients. Vous pourrez le rétablir plus tard.
         </p>
 
-        <div className="mt-5">
-          <label className="block">
-            <span className="text-[12px] font-medium text-dark/70">
-              Filtrer par date (optionnel)
-            </span>
-            <input
-              type="date"
-              value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
-              className="mono mt-1 h-11 w-full rounded-xl border border-dark/10 bg-white px-3 text-[15px] outline-none focus:border-green-700"
-            />
-          </label>
-          {dateFilter ? (
-            <button
-              type="button"
-              onClick={() => setDateFilter("")}
-              className="mt-2 text-[12px] text-dark/60 hover:text-dark"
-            >
-              Effacer le filtre
-            </button>
-          ) : null}
-        </div>
+        <label className="mt-5 block">
+          <span className="text-[12px] font-medium text-dark/70">Date</span>
+          <input
+            ref={dateInputRef}
+            type="date"
+            value={selectedDate}
+            min={minDate}
+            max={maxDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            className="mono mt-1 h-11 w-full rounded-xl border border-dark/10 bg-white px-3 text-[15px] outline-none focus:border-green-700"
+          />
+        </label>
 
-        <div className="mt-5 max-h-[45vh] overflow-y-auto rounded-xl border border-dark/[0.06] bg-bg/40 p-2">
-          {filtered.size === 0 ? (
-            <p className="py-6 text-center text-[13px] text-dark/50">
-              Aucun créneau {dateFilter ? "à cette date." : "actif futur."}
+        <div className="mt-5">
+          {slotsForDay.length === 0 ? (
+            <p className="rounded-xl bg-bg/60 py-6 text-center text-[13px] text-dark/55">
+              Aucun créneau à exclure ce jour-là.
             </p>
           ) : (
-            [...filtered.entries()].map(([date, slots]) => (
-              <div key={date} className="mb-3 last:mb-0">
-                <div className="mono mb-1 px-2 text-[11px] font-semibold uppercase tracking-wider text-dark/50">
-                  {date}
-                </div>
-                <ul className="space-y-1">
-                  {slots.map((s) => (
-                    <li
-                      key={s.id}
-                      className="flex items-center justify-between rounded-lg bg-white px-3 py-2 shadow-sm"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="mono text-[13px] text-green-900">
-                          {formatSlotRange(s.starts_at, s.ends_at)}
-                        </span>
-                        <span className="text-[11px] text-dark/45">
-                          {s.rule_id ? "Règle récurrente" : "Ponctuel"}
-                        </span>
-                      </div>
+            <ul className="space-y-2">
+              {slotsForDay.map((s) => {
+                const blocked = blockedSet.has(s.id);
+                return (
+                  <li
+                    key={s.id}
+                    className="flex items-center justify-between rounded-xl border border-dark/[0.06] bg-white px-4 py-3 shadow-sm"
+                  >
+                    <div className="flex flex-col gap-0.5">
+                      <span className="mono text-[14px] text-green-900">
+                        {formatSlotRange(s.starts_at, s.ends_at)}
+                      </span>
+                      <span className="text-[11px] text-dark/45">
+                        {s.rule_id ? "Règle récurrente" : "Ponctuel"}
+                        {blocked ? " · Commande active" : ""}
+                      </span>
+                    </div>
+                    {blocked ? (
+                      <button
+                        type="button"
+                        disabled
+                        className="cursor-not-allowed rounded-md border border-dark/10 px-3 py-1.5 text-[13px] text-dark/40"
+                        title="Annulez d'abord la commande liée à ce créneau."
+                      >
+                        Bloqué
+                      </button>
+                    ) : (
                       <button
                         type="button"
                         onClick={() => handleExclude(s)}
-                        className="text-[13px] text-terra-700 hover:underline"
+                        className="rounded-md bg-terra-700 px-3 py-1.5 text-[13px] font-semibold text-white transition-colors hover:bg-terra-700/90"
                       >
                         Exclure
                       </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </div>
 

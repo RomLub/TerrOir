@@ -25,9 +25,11 @@ const STATUS_TTL_MS = 3000;
 export default function ExceptionsList({
   exceptions,
   futureActiveSlots,
+  blockedSlotIds,
 }: {
   exceptions: ExcludedSlot[];
   futureActiveSlots: FutureActiveSlot[];
+  blockedSlotIds: string[];
 }) {
   const router = useRouter();
   const [excludeModalOpen, setExcludeModalOpen] = useState(false);
@@ -167,6 +169,7 @@ export default function ExceptionsList({
       {excludeModalOpen ? (
         <ExcludeSlotModal
           activeSlots={futureActiveSlots}
+          blockedSlotIds={blockedSlotIds}
           onClose={() => setExcludeModalOpen(false)}
           onSuccess={onExcludeSuccess}
         />

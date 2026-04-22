@@ -83,6 +83,26 @@ export default async function CreneauxPage() {
   const futureActiveSlots =
     (futureActiveRaw ?? []) as unknown as FutureActiveSlot[];
 
+  // Slots qui ont une commande active en cours — proactivement désactivés
+  // dans le picker ExcludeSlotModal. L'action serveur re-checke de toute
+  // façon, c'est du polish UX pour éviter un clic → erreur.
+  const slotIds = futureActiveSlots.map((s) => s.id);
+  let blockedSlotIds: string[] = [];
+  if (slotIds.length > 0) {
+    const { data: blockedRaw } = await admin
+      .from("orders")
+      .select("slot_id")
+      .in("slot_id", slotIds)
+      .in("statut", ["pending", "confirmed", "ready"]);
+    blockedSlotIds = Array.from(
+      new Set(
+        (blockedRaw ?? [])
+          .map((o) => o.slot_id as string | null)
+          .filter((id): id is string => id !== null),
+      ),
+    );
+  }
+
   return (
     <ProducerLayout>
       <div className="mx-auto max-w-5xl px-8 py-10">
@@ -138,6 +158,7 @@ export default async function CreneauxPage() {
           <ExceptionsList
             exceptions={exceptions}
             futureActiveSlots={futureActiveSlots}
+            blockedSlotIds={blockedSlotIds}
           />
         </section>
       </div>

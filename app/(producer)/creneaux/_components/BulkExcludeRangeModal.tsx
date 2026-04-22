@@ -43,15 +43,25 @@ export default function BulkExcludeRangeModal({
     if (!state.success) return;
     const excluded = state.count_excluded ?? 0;
     const skipped = state.count_skipped_orders ?? 0;
-    const parts = [
-      `${excluded} créneau${excluded > 1 ? "x" : ""} exclu${excluded > 1 ? "s" : ""}`,
-    ];
-    if (skipped > 0) {
-      parts.push(
-        `${skipped} ignoré${skipped > 1 ? "s" : ""} (commandes actives)`,
-      );
+    const plural = (n: number, s: string, p: string) => (n > 1 ? p : s);
+
+    let message: string;
+    if (excluded === 0 && skipped === 0) {
+      message = "Aucun créneau à annuler sur cette plage.";
+    } else if (excluded > 0 && skipped === 0) {
+      message = `${excluded} créneau${plural(excluded, "", "x")} annulé${plural(excluded, "", "s")} pour cette plage.`;
+    } else if (excluded === 0 && skipped > 0) {
+      message =
+        `Aucun créneau annulé. Les ${skipped} créneaux de cette plage ont des commandes actives. ` +
+        `Annulez d'abord ces commandes.`;
+    } else {
+      // excluded > 0 && skipped > 0
+      message =
+        `${excluded} créneau${plural(excluded, "", "x")} annulé${plural(excluded, "", "s")} pour cette plage. ` +
+        `${skipped} créneau${plural(skipped, "", "x")} non annulé${plural(skipped, "", "s")} : des commandes actives sont en cours. ` +
+        `Annulez d'abord ces commandes si vous voulez libérer ces créneaux.`;
     }
-    onSuccess(parts.join(" · "));
+    onSuccess(message);
   }, [state.success, state.count_excluded, state.count_skipped_orders, onSuccess]);
 
   const clientValid = endDate >= startDate;
