@@ -19,3 +19,22 @@ export async function deleteStripeConnectAccount(
     };
   }
 }
+
+// Supprime un Stripe Customer (côté consumer). Fail-open : ne throw JAMAIS.
+// Contrairement aux Connect accounts, les customers sont en principe toujours
+// deletables — stripe.customers.del détache automatiquement les PaymentMethods
+// et anonymise les charges historiques. En cas d'échec (rare), l'appelant
+// peut logger et continuer : la purge RGPD n'est pas bloquée par Stripe.
+export async function deleteStripeCustomer(
+  customerId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    await stripe.customers.del(customerId);
+    return { success: true };
+  } catch (err) {
+    return {
+      success: false,
+      error: (err as Error).message ?? "unknown",
+    };
+  }
+}
