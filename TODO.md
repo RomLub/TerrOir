@@ -72,8 +72,16 @@ _(rien en cours)_
 
 ## 🔴 À faire (bloquants lancement)
 
-- **Décision produit en attente** : adresses consumer pertinent vu le modèle circuit court (retrait sur place) ?
-- **Décision produit en attente** : moyens de paiement Stripe customer pour MVP, ou reporter post-launch ?
+> **Décisions produit tranchées le 22/04/2026 matin** : pas de livraison domicile, adresses consumer optionnelles, Stripe Customer pour MVP, créneaux producteur entièrement personnalisables.
+
+- **Inscription consumer — adresse optionnelle** : la page `/auth/inscription` ne demande pas d'adresse (déjà OK). Vérifier que l'adresse reste optionnelle partout où elle pourrait être demandée en aval (profil `/compte`, tunnel de commande, checkout Stripe) — aucune validation `required` ni blocage ne doit exiger une adresse pour un consumer.
+- **Stripe Customer pour MVP** : créer un Stripe Customer au premier paiement du consumer, enregistrer la CB via SetupIntent/PaymentMethod, exposer la gestion des moyens de paiement dans `/compte` (liste + ajout + suppression), réutiliser le PaymentMethod par défaut aux commandes suivantes. Impact : lien `stripe_customer_id` à stocker sur `users` (ou table dédiée), webhook `payment_method.*` si on veut synchro.
+- **Chantier Créneaux personnalisables** : remplacer le modèle actuel « créneaux fixes weekend toutes les 2 semaines » par un modèle configurable par producteur :
+  - Jours sélectionnés (multi-select jours de la semaine) OU périodicité type « toutes les 2 semaines »
+  - Amplitude horaire de la journée (ex: 9h-18h)
+  - Durée par créneau configurable (min 5 min)
+  - Capacité clients par créneau
+  - Impact DB : probable refonte du schema `slots` (vérifier migration `20260419..._initial_schema` pour le modèle actuel avant de planifier la migration)
 - **RGPD** : suppression de compte (obligation légale avant ouverture publique)
 - REVERT du commit `38b46ff` (cookies partagés `.terroir-local.fr`) — à faire après Chantier 1, avant Chantier 4
 - Chantier 4 : cookies refait proprement — cookies `.terroir-local.fr` UNIQUEMENT pour `www` et `pro`, cookies isolés sur `admin.terroir-local.fr`
