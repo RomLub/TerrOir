@@ -96,8 +96,6 @@ _(rien en cours)_
 - Twilio SMS : numéro FR à régler
 - Vectormagic logo SVG (8,99€)
 - Ajouter un lien "Mot de passe oublié" sur la page de connexion
-- Supprimer `/api/stripe/payouts` legacy (remplacé par `/api/cron/weekly-payout`)
-- Nettoyer les `.tsx` résiduels dans `/api/cron/` (route.tsx → route.ts)
 - Remplacer images Unsplash provisoires par vraies photos producteurs
 - Nettoyer duplication `UserRole` type (`lib/auth/session.ts` + `user-provider.tsx`)
 - Flux invitation : cas "email déjà en base" à détecter proprement côté UX (au-delà de la correction fonctionnelle du Chantier 2)
