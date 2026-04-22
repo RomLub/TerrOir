@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Button, Input } from "@/components/ui";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import DeleteAccountSection from "./_components/DeleteAccountSection";
 
 type Profil = {
   prenom: string;
@@ -222,6 +223,8 @@ export default function ProfilPage() {
             </div>
           </form>
         )}
+
+        <DeleteAccountSection />
     </main>
   );
 }
