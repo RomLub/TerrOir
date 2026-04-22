@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Logo } from '@/components/ui';
+import { Logo, RoleSwitcher } from '@/components/ui';
 import { useUserContext } from '@/components/providers/user-provider';
 
 const NAV = [
@@ -40,6 +40,9 @@ export function ProducerLayout({ children }: { children: React.ReactNode }) {
             );
           })}
         </nav>
+        <div className="p-3 border-t border-white/10">
+          <RoleSwitcher current="producer" variant="dark" />
+        </div>
         <div className="p-4 border-t border-white/10">
           {producer ? (
             <>

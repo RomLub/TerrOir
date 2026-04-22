@@ -46,3 +46,4 @@ export {
   type FooterColumn,
   type FooterLink,
 } from "./footer";
+export { RoleSwitcher, type RoleSwitcherProps } from "./role-switcher";
