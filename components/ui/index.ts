@@ -43,6 +43,10 @@ export {
 } from "./producer-status-badge";
 export { AdminModal, type AdminModalProps } from "./admin-modal";
 export {
+  AdminPageHeader,
+  type AdminPageHeaderProps,
+} from "./admin-page-header";
+export {
   FilterTabs,
   type FilterTabsProps,
   type FilterTabOption,

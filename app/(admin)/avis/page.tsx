@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { StarRating } from '@/components/ui';
+import { AdminPageHeader, StarRating } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
 type Review = {
@@ -97,18 +97,18 @@ export default function AdminAvisPage() {
 
   return (
     <div>
-      <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-terroir-green-700">Modération</div>
-          <h1 className="mt-1 font-serif text-[40px] leading-tight text-gray-900">Avis à modérer</h1>
-          <p className="mt-1 text-[14px] text-gray-500">Validez chaque avis avant publication sur la page du producteur.</p>
-          {error && <p className="mt-2 text-[13px] text-red-700">{error}</p>}
-        </div>
-        <div className="rounded-md border border-gray-200 bg-white px-5 py-4 text-center shadow-sm">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-terroir-green-700">En attente</div>
-          <div className="mt-1 font-serif text-[40px] leading-none tabular-nums text-gray-900">{reviews.length}</div>
-        </div>
-      </header>
+      <AdminPageHeader
+        eyebrow="Modération"
+        title="Avis à modérer"
+        subtitle="Validez chaque avis avant publication sur la page du producteur."
+        error={error}
+        right={
+          <div className="rounded-md border border-gray-200 bg-white px-5 py-4 text-center shadow-sm">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-terroir-green-700">En attente</div>
+            <div className="mt-1 font-serif text-[40px] leading-none tabular-nums text-gray-900">{reviews.length}</div>
+          </div>
+        }
+      />
 
       {loading ? (
         <div className="rounded-md border border-gray-200 bg-white p-12 text-center text-gray-500 shadow-sm">Chargement…</div>

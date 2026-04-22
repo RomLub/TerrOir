@@ -8,7 +8,7 @@ import {
 } from '@/lib/slots/format-slot-time';
 import { formatDateFr } from '@/lib/format/date';
 import { formatEuro } from '@/lib/format/currency';
-import { StatusDotBadge } from '@/components/ui';
+import { AdminPageHeader, StatusDotBadge } from '@/components/ui';
 
 type Status = 'pending' | 'confirmed' | 'ready' | 'completed' | 'cancelled' | 'refunded';
 
@@ -169,20 +169,18 @@ export default function AdminCommandesPage() {
 
   return (
     <div>
-      <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-terroir-green-700">Commandes</div>
-          <h1 className="mt-1 font-serif text-[40px] leading-tight text-gray-900">Toutes les commandes</h1>
-          <p className="mt-1 text-[14px] text-gray-500">
-            {loading ? 'Chargement…' : `${orders.length} commandes récentes`}
-          </p>
-          {error && <p className="mt-2 text-[13px] text-red-700">{error}</p>}
-        </div>
-        <button onClick={exportCsv} disabled={filtered.length === 0}
-          className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2.5 text-[14px] text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60">
-          <span aria-hidden>⬇</span> Export CSV
-        </button>
-      </header>
+      <AdminPageHeader
+        eyebrow="Commandes"
+        title="Toutes les commandes"
+        subtitle={loading ? 'Chargement…' : `${orders.length} commandes récentes`}
+        error={error}
+        right={
+          <button onClick={exportCsv} disabled={filtered.length === 0}
+            className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2.5 text-[14px] text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60">
+            <span aria-hidden>⬇</span> Export CSV
+          </button>
+        }
+      />
 
       <section className="mb-8 grid gap-4 sm:grid-cols-3">
         <MetricCard label="Commandes aujourd'hui" value={String(metrics.today)} hint="Depuis 00h00" />

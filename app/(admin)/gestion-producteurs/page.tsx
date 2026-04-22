@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { AdminModal, Button, FilterTabs, ProducerStatusBadge, type ProducerStatus } from '@/components/ui';
+import { AdminModal, AdminPageHeader, Button, FilterTabs, ProducerStatusBadge, type ProducerStatus } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { formatDateFr } from '@/lib/format/date';
 
@@ -178,15 +178,13 @@ function AdminProducteursPageInner() {
   return (
     <>
       <div>
-        <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-terroir-green-700">Producteurs</div>
-            <h1 className="mt-1 font-serif text-[40px] leading-tight text-gray-900">Gestion des producteurs</h1>
-            <p className="mt-1 text-[14px] text-gray-500">{counts.active} actifs · {counts.pending} en attente · {counts.suspended} suspendus</p>
-            {error && <p className="mt-2 text-[13px] text-red-700">{error}</p>}
-          </div>
-          <Button size="lg" onClick={() => setInviting(true)}>+ Inviter un producteur</Button>
-        </header>
+        <AdminPageHeader
+          eyebrow="Producteurs"
+          title="Gestion des producteurs"
+          subtitle={`${counts.active} actifs · ${counts.pending} en attente · ${counts.suspended} suspendus`}
+          error={error}
+          right={<Button size="lg" onClick={() => setInviting(true)}>+ Inviter un producteur</Button>}
+        />
 
         <div className="mb-6 flex flex-wrap items-end justify-between gap-3 border-b border-gray-200">
           <FilterTabs filters={FILTERS} counts={counts} active={filter} onChange={setFilter} />

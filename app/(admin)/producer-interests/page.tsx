@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { FilterTabs } from "@/components/ui";
+import { AdminPageHeader, FilterTabs } from "@/components/ui";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { LeadsTable } from "./_components/LeadsTable";
 import { DeleteLeadModal } from "./_components/DeleteLeadModal";
@@ -92,19 +92,12 @@ export default function AdminProducerInterestsPage() {
   return (
     <>
       <div>
-        <header className="mb-8">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-terroir-green-700">
-            Prospection
-          </div>
-          <h1 className="mt-1 font-serif text-[40px] leading-tight text-gray-900">
-            Leads producteurs
-          </h1>
-          <p className="mt-1 text-[14px] text-gray-500">
-            {counts.new} nouveaux · {counts.contacted} contactés ·{" "}
-            {counts.onboarded} onboardés
-          </p>
-          {error && <p className="mt-2 text-[13px] text-red-700">{error}</p>}
-        </header>
+        <AdminPageHeader
+          eyebrow="Prospection"
+          title="Leads producteurs"
+          subtitle={`${counts.new} nouveaux · ${counts.contacted} contactés · ${counts.onboarded} onboardés`}
+          error={error}
+        />
 
         <FilterTabs
           filters={FILTERS}
