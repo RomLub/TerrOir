@@ -57,7 +57,7 @@ export default function ProductEditPage() {
 
       const { data: product, error: fetchError } = await supabase
         .from('products')
-        .select('id, producer_id, nom, description, prix, unite, poids_estime_kg, stock_disponible, stock_illimite, delai_preparation_jours, actif, photos')
+        .select('id, producer_id, nom, description, prix, unite, poids_estime_kg, stock_disponible, stock_illimite, delai_preparation_jours, active, photos')
         .eq('id', productId)
         .maybeSingle();
 
@@ -77,7 +77,7 @@ export default function ProductEditPage() {
         stock: product.stock_disponible != null ? String(product.stock_disponible) : '',
         stockUnlimited: !!product.stock_illimite,
         delai: product.delai_preparation_jours != null ? String(product.delai_preparation_jours) : '0',
-        active: !!product.actif,
+        active: !!product.active,
       });
       setExistingPhotos(Array.isArray(product.photos) ? product.photos : []);
       setLoading(false);
@@ -152,7 +152,7 @@ export default function ProductEditPage() {
           stock_disponible: form.stockUnlimited ? 0 : (parseInt(form.stock) || 0),
           stock_illimite: form.stockUnlimited,
           delai_preparation_jours: parseInt(form.delai) || 0,
-          actif: form.active,
+          active: form.active,
           photos: finalPhotos.length ? finalPhotos : null,
         })
         .eq('id', productId);

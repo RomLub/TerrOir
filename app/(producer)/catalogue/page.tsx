@@ -43,7 +43,7 @@ export default function ProducerCataloguePage() {
 
       const { data, error: fetchError } = await supabase
         .from('products')
-        .select('id, nom, prix, unite, stock_disponible, stock_illimite, actif, photos')
+        .select('id, nom, prix, unite, stock_disponible, stock_illimite, active, photos')
         .eq('producer_id', prod.id)
         .order('created_at', { ascending: false });
 
@@ -57,7 +57,7 @@ export default function ProducerCataloguePage() {
         unite: p.unite ?? 'kg',
         stock: p.stock_disponible ?? 0,
         unlimited: !!p.stock_illimite,
-        active: !!p.actif,
+        active: !!p.active,
         image: Array.isArray(p.photos) && p.photos.length > 0 ? p.photos[0] : null,
       }));
 
@@ -76,7 +76,7 @@ export default function ProducerCataloguePage() {
     const next = !current.active;
     const { error: upError } = await supabase
       .from('products')
-      .update({ actif: next })
+      .update({ active: next })
       .eq('id', id);
     if (!upError) {
       setProducts((arr) => arr.map((p) => p.id === id ? { ...p, active: next } : p));

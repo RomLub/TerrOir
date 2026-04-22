@@ -268,7 +268,7 @@ export default async function ProducerDashboardPage() {
     .from('products')
     .select('id, nom, stock_disponible, stock_illimite')
     .eq('producer_id', producer.id)
-    .eq('actif', true)
+    .eq('active', true)
     .eq('stock_illimite', false)
     .lte('stock_disponible', 5)
     .gt('stock_disponible', 0)

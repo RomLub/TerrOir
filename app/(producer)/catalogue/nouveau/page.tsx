@@ -108,7 +108,7 @@ export default function ProductNewPage() {
           stock_disponible: form.stockUnlimited ? 0 : (parseInt(form.stock) || 0),
           stock_illimite: form.stockUnlimited,
           delai_preparation_jours: parseInt(form.delai) || 0,
-          actif: form.active,
+          active: form.active,
           photos: photoUrls.length ? photoUrls : null,
         })
         .select('id')

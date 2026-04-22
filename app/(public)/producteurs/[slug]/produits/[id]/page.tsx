@@ -30,9 +30,9 @@ export default async function ProductPage({ params }: { params: { slug: string; 
 
   const { data: productRow } = await admin
     .from('products')
-    .select('id, nom, description, photos, prix, unite, poids_estime_kg, stock_disponible, stock_illimite, delai_preparation_jours, actif, producer_id')
+    .select('id, nom, description, photos, prix, unite, poids_estime_kg, stock_disponible, stock_illimite, delai_preparation_jours, active, producer_id')
     .eq('id', params.id)
-    .eq('actif', true)
+    .eq('active', true)
     .maybeSingle();
 
   if (!productRow) notFound();
@@ -77,7 +77,7 @@ export default async function ProductPage({ params }: { params: { slug: string; 
         .from('products')
         .select('id, nom, photos, prix, unite, stock_disponible, stock_illimite')
         .eq('producer_id', producerRow.id)
-        .eq('actif', true)
+        .eq('active', true)
         .neq('id', params.id)
         .limit(3),
       // Phase 6b : comptage des orders actives par slot pour dériver la

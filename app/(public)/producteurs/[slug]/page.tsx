@@ -49,7 +49,7 @@ export default async function ProducteurPage({ params }: { params: { slug: strin
       .from('products')
       .select('id, nom, description, photos, prix, unite, stock_disponible, stock_illimite')
       .eq('producer_id', producer.id)
-      .eq('actif', true)
+      .eq('active', true)
       .order('created_at', { ascending: false }),
     admin
       .from('reviews')
