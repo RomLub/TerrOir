@@ -196,6 +196,16 @@ _(rien en cours)_
 - **Horizon génération slots : 4 semaines → 3 mois** (12-13 semaines). Change à faire dans `generateSlotsForProducer` (`lib/slots/generate.ts`) + dans le select de la page produit consumer (`app/(public)/producteurs/[slug]/produits/[id]/page.tsx`). Pas prioritaire mais à prévoir avant lancement public.
 - Nettoyer l'entrée orpheline `"/inscription"` dans `middleware.ts` `PUBLIC_PATHS` (ligne 14) — la vraie route d'inscription consumer est `/auth/inscription`, `"/inscription"` ne résout à rien (lien mort fixé côté NavbarPublic par le commit `67f2799`).
 - Désactiver Stripe Link dans le Dashboard Stripe (Settings > Payment methods > Link toggle off) — action externe, pas code. Nécessaire si Link persiste à apparaître malgré `payment_method_types: ['card']` côté intents.
+- **Icône panier avec badge dans la navbar** : actuellement aucun accès direct au panier depuis la navigation. L'user doit cliquer « Passer commande » depuis une fiche produit pour atteindre `/compte/panier`. À ajouter :
+  - Icône 🛒 dans `components/ui/navbar-public.tsx` (à droite, entre le prénom user et la déconnexion)
+  - Badge rouge avec le nombre d'articles (depuis le store client `lib/store/cart.ts`)
+  - Clic → `/compte/panier`
+  - Update en temps réel via hook `useCart()` ou équivalent
+  - Visible uniquement pour les users consumer (loggés)
+- **Stripe Customer au checkout** : actuellement, un consumer ayant enregistré des CB via `/compte/paiements` ne les voit pas proposées automatiquement au checkout. Le `PaymentIntent` est encore créé sans customer attaché. Sera corrigé par :
+  - **Phase 6 Stripe Customer** : attacher le customer au `PaymentIntent` + checkbox « Mémoriser cette carte » conditionnelle
+  - **Phase 7 Stripe Customer** : sélecteur « CB enregistrée vs nouvelle » quand l'user a des PaymentMethods existants
+  Déjà planifié dans le chantier Stripe Customer (section 🔴 À faire).
 
 ## 🗺️ Roadmap produit (vision Avril 2026)
 
