@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { AdminModal, Button, ProducerStatusBadge, type ProducerStatus } from '@/components/ui';
+import { AdminModal, Button, FilterTabs, ProducerStatusBadge, type ProducerStatus } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { formatDateFr } from '@/lib/format/date';
 
@@ -189,22 +189,7 @@ function AdminProducteursPageInner() {
         </header>
 
         <div className="mb-6 flex flex-wrap items-end justify-between gap-3 border-b border-gray-200">
-          <div className="flex flex-wrap gap-1.5">
-            {FILTERS.map((f) => {
-              const active = filter === f.value;
-              return (
-                <button key={f.value} onClick={() => setFilter(f.value)}
-                  className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-3 text-[14px] font-medium transition-colors ${
-                    active ? 'border-terroir-green-700 text-gray-900' : 'border-transparent text-gray-600 hover:text-gray-900'
-                  }`}>
-                  {f.label}
-                  <span className={`rounded px-1.5 font-mono text-[11px] ${active ? 'bg-terroir-green-100 text-terroir-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                    {counts[f.value]}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+          <FilterTabs filters={FILTERS} counts={counts} active={filter} onChange={setFilter} />
           <label className="-mb-px inline-flex cursor-pointer items-center gap-2 pb-3 text-[12px] text-gray-600 hover:text-gray-900">
             <input
               type="checkbox"

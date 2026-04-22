@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { FilterTabs } from "@/components/ui";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { LeadsTable } from "./_components/LeadsTable";
 import { DeleteLeadModal } from "./_components/DeleteLeadModal";
@@ -105,33 +106,13 @@ export default function AdminProducerInterestsPage() {
           {error && <p className="mt-2 text-[13px] text-red-700">{error}</p>}
         </header>
 
-        <div className="mb-6 flex flex-wrap gap-1.5 border-b border-gray-200">
-          {FILTERS.map((f) => {
-            const active = filter === f.value;
-            return (
-              <button
-                key={f.value}
-                onClick={() => setFilter(f.value)}
-                className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-3 text-[14px] font-medium transition-colors ${
-                  active
-                    ? "border-terroir-green-700 text-gray-900"
-                    : "border-transparent text-gray-600 hover:text-gray-900"
-                }`}
-              >
-                {f.label}
-                <span
-                  className={`rounded px-1.5 font-mono text-[11px] ${
-                    active
-                      ? "bg-terroir-green-100 text-terroir-green-700"
-                      : "bg-gray-100 text-gray-600"
-                  }`}
-                >
-                  {counts[f.value]}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+        <FilterTabs
+          filters={FILTERS}
+          counts={counts}
+          active={filter}
+          onChange={setFilter}
+          className="mb-6 flex flex-wrap gap-1.5 border-b border-gray-200"
+        />
 
         {loading ? (
           <div className="overflow-hidden rounded-md border border-gray-200 bg-white shadow-sm">
