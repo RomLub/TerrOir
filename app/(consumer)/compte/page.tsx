@@ -75,7 +75,7 @@ function LockIcon() {
   );
 }
 
-function FutureIcon() {
+function CardIcon() {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -84,12 +84,11 @@ function FutureIcon() {
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className="h-5 w-5 text-terroir-muted"
+      className="h-5 w-5 text-terroir-green-700"
       aria-hidden
     >
-      <rect x="3" y="3" width="18" height="18" rx="2" />
-      <line x1="12" y1="8" x2="12" y2="16" />
-      <line x1="8" y1="12" x2="16" y2="12" />
+      <rect x="2" y="5" width="20" height="14" rx="2" />
+      <line x1="2" y1="10" x2="22" y2="10" />
     </svg>
   );
 }
@@ -187,10 +186,10 @@ export default async function ComptePage() {
           description="Sécurité du compte"
         />
         <SectionCard
-          icon={<FutureIcon />}
-          title="Paiements & adresses"
-          description="Bientôt disponible"
-          disabled
+          href="/compte/paiements"
+          icon={<CardIcon />}
+          title="Moyens de paiement"
+          description="Vos cartes enregistrées"
         />
       </div>
     </div>
