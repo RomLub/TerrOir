@@ -4,6 +4,7 @@ import { z } from "zod";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { sendTemplate } from "@/lib/resend/send";
+import { generateOptOutToken } from "@/lib/rgpd/opt-out-token";
 import ProducerInvitation, {
   subject as invitationSubject,
 } from "@/lib/resend/templates/producer-invitation";
@@ -93,13 +94,27 @@ export async function POST(request: Request) {
     process.env.NEXT_PUBLIC_PRODUCER_URL ?? "http://pro.localhost:3000";
   const invitationUrl = `${producerBase}/invitation?token=${invitation.token}`;
 
+  // Lien opt-out RGPD embarqué dans le pied de l'email (token HMAC
+  // déterministe, pointe sur www. Impose que OPT_OUT_TOKEN_SECRET soit
+  // configuré côté Vercel — sinon generateOptOutToken throw et casse l'envoi.
+  const publicBase =
+    process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const unsubscribeUrl = `${publicBase}/desabonnement?email=${encodeURIComponent(
+    input.email,
+  )}&token=${generateOptOutToken(input.email)}`;
+
   // 3. Email via Resend
   const emailResult = await sendTemplate({
     to: input.email,
     userId: null,
     template: "producer_invitation",
     subject: invitationSubject(),
-    element: <ProducerInvitation invitationUrl={invitationUrl} />,
+    element: (
+      <ProducerInvitation
+        invitationUrl={invitationUrl}
+        unsubscribeUrl={unsubscribeUrl}
+      />
+    ),
     metadata: { token_prefix: token.slice(0, 8), email: input.email },
   });
 

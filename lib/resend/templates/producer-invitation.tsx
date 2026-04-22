@@ -2,6 +2,7 @@ import { EmailLayout, emailTheme } from "./layout";
 
 export interface Props {
   invitationUrl: string;
+  unsubscribeUrl: string;
   senderName?: string | null;
 }
 
@@ -38,6 +39,15 @@ export default function ProducerInvitation(props: Props) {
       </p>
       <p style={{ fontSize: 12, color: "#6b6b6b" }}>
         Lien direct : {props.invitationUrl}
+      </p>
+      <hr style={{ border: 0, borderTop: "1px solid #e5e5e5", margin: "24px 0 12px" }} />
+      <p style={{ fontSize: 11, color: "#8a8a8a", lineHeight: 1.5 }}>
+        Vous avez reçu cet email car vous avez manifesté votre intérêt pour
+        TerrOir.{" "}
+        <a href={props.unsubscribeUrl} style={{ color: "#8a8a8a" }}>
+          Je ne souhaite plus être contacté
+        </a>
+        .
       </p>
     </EmailLayout>
   );

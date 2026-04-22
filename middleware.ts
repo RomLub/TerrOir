@@ -16,6 +16,7 @@ const PUBLIC_PATHS = new Set<string>([
   "/auth/inscription",
   "/reset-password",
   "/mot-de-passe-oublie",
+  "/desabonnement",
 ]);
 
 function isPublicPath(pathname: string): boolean {
