@@ -196,6 +196,9 @@ _(rien en cours)_
 - **Horizon génération slots : 4 semaines → 3 mois** (12-13 semaines). Change à faire dans `generateSlotsForProducer` (`lib/slots/generate.ts`) + dans le select de la page produit consumer (`app/(public)/producteurs/[slug]/produits/[id]/page.tsx`). Pas prioritaire mais à prévoir avant lancement public.
 - Nettoyer l'entrée orpheline `"/inscription"` dans `middleware.ts` `PUBLIC_PATHS` (ligne 14) — la vraie route d'inscription consumer est `/auth/inscription`, `"/inscription"` ne résout à rien (lien mort fixé côté NavbarPublic par le commit `67f2799`).
 - Désactiver Stripe Link dans le Dashboard Stripe (Settings > Payment methods > Link toggle off) — action externe, pas code. Nécessaire si Link persiste à apparaître malgré `payment_method_types: ['card']` côté intents.
+- **Bug : CB dupliquée possible sur `/compte/paiements`** — actuellement, un user peut ajouter 2× la même CB (même numéro) et les voir 2 fois dans la liste. Stripe permet l'attach multiple, chaque attach crée un `payment_method` distinct (`pm_xxx`, `pm_yyy`).
+  - Fix : avant d'attacher une nouvelle CB, check les `PaymentMethods` existants du customer et comparer via le champ `fingerprint` Stripe (empreinte unique d'une CB physique, stable quel que soit le `payment_method_id`). Si match → soit refuser l'ajout avec message « Cette carte est déjà enregistrée », soit remplacer l'ancienne en mergeant.
+  - Priorité : moyenne. Impact faible (user finit par nettoyer), mais UX chaotique.
 - **Icône panier avec badge dans la navbar** : actuellement aucun accès direct au panier depuis la navigation. L'user doit cliquer « Passer commande » depuis une fiche produit pour atteindre `/compte/panier`. À ajouter :
   - Icône 🛒 dans `components/ui/navbar-public.tsx` (à droite, entre le prénom user et la déconnexion)
   - Badge rouge avec le nombre d'articles (depuis le store client `lib/store/cart.ts`)
