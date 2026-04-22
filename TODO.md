@@ -85,6 +85,28 @@
 - **Smoke test validé en prod** : 42 slots matérialisés pour Vergers de l'Huisne (rule mer+sam 9h-12h, durée 30 min, capacité 5).
 - **Reste à faire** : Phase 2 (wipe+reseed data, skipped), Phase 4 (UI producer), Phase 5 (UI consumer avec accordéon), Phase 6 (RPC `create_order_with_items` check capacité), Phase 7 (seed + tests).
 
+### Chantier Stripe Customer MVP — Phases 1-4 livrées
+
+- **Phase 1** (commit `546fc5e`) : migration `20260422300000_add_stripe_customer_id_to_users.sql` — colonne `users.stripe_customer_id` nullable + index partiel.
+- **Phase 2** (commit `7992727`) : helpers `getOrCreateStripeCustomer()` / `deleteStripeCustomer()` dans `lib/stripe/customer.ts`, lazy creation au 1er besoin.
+- **Phase 3** (commit `a4b6509`) : purge RGPD côté Stripe Customer — `delete-account-action.ts` nettoie le customer Stripe avant suppression du user, flag `stripe_cleanup_pending` si échec.
+- **Phase 4** : page `/compte/paiements`
+  - Liste cartes, ajout via SetupIntent + Payment Element, suppression avec confirmation, switch carte par défaut (commit `2e35f14`)
+  - UX bouton « Définir par défaut » + flash messages enrichis (commit `d338e48`)
+  - Fix scroll modale d'ajout de CB (commit `fe683ba`)
+- **Tests prod validés** : état vide · ajout CB · switch default · suppression avec bascule auto du default sur carte restante
+- **Reste à faire** : Phase 5 (lien sidebar `/compte/paiements`), Phase 6 (branchement checkout avec PaymentMethod existant), Phase 7 (sélecteur CB au paiement)
+
+### Désactivation Stripe Link (commit `f367338`)
+
+- Ajout `payment_method_types: ['card']` sur la `PaymentIntent` (la `SetupIntent` l'avait déjà)
+- `wallets: { applePay: 'never', googlePay: 'never' }` sur les 2 PaymentElement (`AddCardModal` + checkout)
+- Link peut persister en UI via override Dashboard Stripe → désactivation account-wide à faire manuellement
+
+### Fix lien mort `/inscription` dans NavbarPublic (commit `67f2799`)
+
+- `href="/inscription"` → `/auth/inscription` (la vraie route d'inscription consumer, le fallback sur `/inscription` restait dans PUBLIC_PATHS du middleware uniquement)
+
 ## ✅ Fait (session 21/04/2026)
 
 - Domaine `terroir-local.fr` branché (Vercel + OVH)
@@ -172,6 +194,8 @@ _(rien en cours)_
   - Profiter de la refonte pour hardcoder `statut='public'` (éviter invisibilité publique) et remplir `forme_juridique` / `type_production`
   - À faire en même temps que la Phase 7 du chantier Créneaux personnalisables (Seed + tests) pour éviter de toucher 2 fois au même fichier
 - **Horizon génération slots : 4 semaines → 3 mois** (12-13 semaines). Change à faire dans `generateSlotsForProducer` (`lib/slots/generate.ts`) + dans le select de la page produit consumer (`app/(public)/producteurs/[slug]/produits/[id]/page.tsx`). Pas prioritaire mais à prévoir avant lancement public.
+- Nettoyer l'entrée orpheline `"/inscription"` dans `middleware.ts` `PUBLIC_PATHS` (ligne 14) — la vraie route d'inscription consumer est `/auth/inscription`, `"/inscription"` ne résout à rien (lien mort fixé côté NavbarPublic par le commit `67f2799`).
+- Désactiver Stripe Link dans le Dashboard Stripe (Settings > Payment methods > Link toggle off) — action externe, pas code. Nécessaire si Link persiste à apparaître malgré `payment_method_types: ['card']` côté intents.
 
 ## 🗺️ Roadmap produit (vision Avril 2026)
 
@@ -272,6 +296,8 @@ _(rien en cours)_
 - **Debug RLS : toujours inspecter l'onglet Network DevTools.** Quand une erreur « new row violates row-level security policy » remonte et qu'aucune policy DB sur la table applicative ne semble coupable, vérifier les requêtes Network pour voir si c'est une AUTRE ressource qui plante (typiquement `storage.objects` pour un upload). Le message d'erreur générique ne distingue pas les tables — seule la requête HTTP échouée permet d'identifier la vraie cible.
 - **Cookies multi-subdomain : fixer uniquement le `domain` ne suffit pas pour isoler 2 sous-domaines.** Si le cookie `name` est identique entre tous les subdomains et que le `domain` parent est partagé (`.apex.fr`), le navigateur enverra le cookie à tous. Pour une vraie isolation, il faut combiner : (1) pas de `domain` explicite sur le subdomain isolé ET (2) un nom de cookie distinct. Le `@supabase/ssr` permet les deux via `CookieOptionsWithName`. Leçon du 22/04 : sans le nom distinct, admin voyait encore la session consumer posée par www.
 - **Les routes API Next.js peuvent avoir l'extension `.tsx` de manière légitime** quand elles utilisent du JSX inline — typiquement les crons qui envoient des emails via Resend avec un template React (`element: <OrderTimeoutCancelled {...props} />`). Ne pas présumer qu'une route API `.tsx` est un résidu à renommer sans vérifier son contenu. Incident du 22/04 : 4 routes cron renommées à tort `.tsx` → `.ts`, `tsc` a immédiatement levé 12 erreurs de parsing JSX, rollback nécessaire. `vercel.json` référence aussi les extensions explicitement dans le bloc `functions` — à synchroniser si rename légitime un jour.
+- **Stripe PaymentElement inclut Link par défaut** quand la `PaymentIntent` / `SetupIntent` utilise `automatic_payment_methods` (le default silencieux quand on omet `payment_method_types`). Pour une UX card-only : spécifier `payment_method_types: ['card']` côté intent **et** `wallets: { applePay: 'never', googlePay: 'never' }` côté Payment Element. Link peut quand même persister en UI si un override account-level est actif dans le Dashboard Stripe — à désactiver manuellement (Settings > Payment methods > Link toggle off).
+- **Next.js pre-fetch RSC des `<Link>` visibles dans le viewport** : un `href` mort déclenche un `404` silencieux en Network DevTools dès l'apparition du lien à l'écran, avant même tout clic. Ça peut faire paniquer lors d'un audit (« il y a du 404 dans le Network »), alors que c'est juste le pre-fetch qui échoue sur une route supprimée/renommée. À surveiller lors des refactors de routes : chercher les `<Link href="/chemin-supprimé">` restants plutôt que d'ignorer les 404 silencieux.
 - **Templates email Supabase : `{{ .EmailActionType }}` peut renvoyer une string vide** et casser silencieusement le callback. Préférer **hardcoder** le type dans la querystring du template (ex: `&type=recovery&` en dur) plutôt que d'utiliser cette variable. Sinon `/auth/callback` reçoit `type=` vide → parsé comme `null` → rejette avec « Missing code or token_hash ». Incident du 22/04 : le lien de reset password tombait toujours en erreur à l'arrivée sur le callback, malgré un token valide.
 - **Mailinator introduit un délai d'affichage de 1-2 minutes** entre la réception d'un email côté serveur (200 OK depuis `/auth/v1/recover`) et son apparition dans l'inbox. Ne pas conclure « l'email n'a pas été envoyé » trop vite — rafraîchir l'inbox avant de suspecter le code applicatif.
 - **Les paths publics ont des noms piégeux à TerrOir.** `/inscription` **n'existe pas** : la vraie route d'inscription consumer est `/auth/inscription`. Le segment `/devenir-producteur` est la landing producer (formulaire d'intérêt). Le groupe de route `(consumer)` / `(public)` / `(producer)` / `(admin)` est transparent au path, donc attention aux confusions de lien — vérifier que la cible existe avec un test navigateur ou un Glob sur `app/**/slug/page.tsx` avant de coller un `<Link href=...>`.
