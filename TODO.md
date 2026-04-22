@@ -1,5 +1,17 @@
 # TODO TerrOir
 
+## ✅ Fait (session 22/04/2026)
+
+- **Chantier 2 clôturé — les 6 phases en prod** :
+  - Phase 4 ✅ reprise d'onboarding (commit `285785d`) — test cas étape 2 validé en prod
+  - Phase 5 ✅ bouton Valider admin + `STATUS_META` final (commit `9ed234e`) — modal de validation, mapping couleurs `pending`/`active`/`public`
+  - Phase 6 ✅ auto-transition `active` → `public` au 1er produit + filtrage RPC/RLS publiques sur `statut='public'` (commits `e885439` + `e13c744` pour storage policies + migrations `20260422000000` + `20260422100000`)
+- **RLS storage.objects** : policies INSERT/UPDATE/DELETE sur le bucket photos producteurs/produits (commit `e13c744`). Le bucket `public` autorise la lecture mais pas l'écriture → policies explicites nécessaires pour les uploads authentifiés.
+- **Tests prod validés** :
+  - Cas A — nouveau user via invitation (Test 1 Phase 3)
+  - Reprise abandon mid-wizard — user `draft` qui reprend à l'étape correcte (Test Phase 4)
+  - Création 1er produit d'un producteur `active` → auto-promotion `public` + apparition sur `/carte` (Test Phase 6)
+
 ## ✅ Fait (session 21/04/2026)
 
 - Domaine `terroir-local.fr` branché (Vercel + OVH)
@@ -41,24 +53,22 @@
 - **Padding admin content area** (commit `ae5c8f0`) : espacement uniforme dans la zone de contenu admin
 - **Seed 5 producteurs Sarthe fictifs** : photos Unsplash curées (commits `f4be9ca` + `91559cb`). Scripts `scripts/seed-producers.ts` + `scripts/cleanup-seed.ts` (cleanup via email `@seed.terroir-local.fr`)
 
-## Chantier 2 — Flux invitation producteur
-
-### État post-soirée (21/04/2026)
+## Chantier 2 — Flux invitation producteur ✅ CLÔTURÉ (22/04/2026)
 
 - ✅ **Phase 1** : statuts `draft` + `public` ajoutés en DB (migration `20260421300000`, apply prod OK)
 - ✅ **Phase 2** : blocages admin invitation (admin + producteur déjà inscrit) — commits `2f7b8e4` + `8a33027`, tests prod validés
 - ✅ **Phase 3** : formulaire onboarding 3 étapes + upgrade consumer → producer
   - commits : `b776421` (formulaire) + `23a2b31` (fix draft) + `52d8e4e` (fix RLS admin) + `4268b20` (cleanup legacy)
   - migration `20260421400000` (`forme_juridique` + `type_production`, apply prod OK)
-  - Test 1 (cas A — nouveau user) validé en prod
-  - Tests 2, 3, 4 pas encore effectués
-- 🟠 **Phase 4** : reprise d'onboarding (redirect middleware vers le bon step si `statut='draft'`)
-- 🟠 **Phase 5** : bouton « Valider » admin (`pending` → `active`) + `STATUS_META` front refait avec mapping final (amber pour `active`, vert pour `public`)
-- 🟠 **Phase 6** : auto-transition `active` → `public` au 1er produit publié + filtrage RPC publiques sur `statut='public'` au lieu de `'active'`
+- ✅ **Phase 4** : reprise d'onboarding (redirect middleware vers le bon step si `statut='draft'`) — commit `285785d`, test validé en prod (cas étape 2)
+- ✅ **Phase 5** : bouton « Valider » admin (`pending` → `active`) + modal de validation + `STATUS_META` front refait avec mapping final (amber pour `active`, vert pour `public`) — commit `9ed234e`
+- ✅ **Phase 6** : auto-transition `active` → `public` au 1er produit publié + filtrage RPC/RLS publiques sur `statut='public'` — commits `e885439` + `e13c744` + migrations `20260422000000` + `20260422100000`, test validé en prod
+
+**Tests validés en prod** : cas A nouveau user (Phase 3), reprise abandon mid-wizard (Phase 4), création 1er produit + auto-promotion public (Phase 6).
 
 ## 🟠 En cours
 
-_(rien en cours — Chantier 2 en pause après Phase 3, reprise ultérieure pour phases 4-6)_
+_(rien en cours)_
 
 ## 🔴 À faire (bloquants lancement)
 
@@ -85,6 +95,8 @@ _(rien en cours — Chantier 2 en pause après Phase 3, reprise ultérieure pour
 - Nettoyer duplication `UserRole` type (`lib/auth/session.ts` + `user-provider.tsx`)
 - Flux invitation : cas "email déjà en base" à détecter proprement côté UX (au-delà de la correction fonctionnelle du Chantier 2)
 - Switcher consumer/producer cassé : depuis l'espace producteur, le lien vers le profil consommateur retourne 404. À fixer avec le Chantier 6 (switcher nav bidirectionnel).
+- Bouton « Voir page publique » (fiche producteur admin) était visible pour tous les statuts → désormais filtré sur `statut='public'` uniquement (Phase 5). Vérifier qu'aucun autre bouton/lien public ne fuit les producteurs non-publiés.
+- Helper `promoteProducerToPublicIfActive` en fail-open silencieux (swallow errors via `console.error`) — bonne UX (ne bloque pas la création produit si la promotion échoue), mais peut masquer des bugs RLS futurs. À considérer : upgrader vers `console.warn` ou toast dev-only si besoin de debug.
 
 ## 🔵 Idées / améliorations
 
@@ -108,3 +120,5 @@ _(rien en cours — Chantier 2 en pause après Phase 3, reprise ultérieure pour
 - **`npm run build` (pas `npx tsc --noEmit`) est obligatoire avant push quand un refactor supprime, déplace ou renomme un fichier.** `tsc` ne reproduit pas la résolution de modules webpack et laisse passer les imports vers des fichiers inexistants.
 - **Les RLS policies peuvent filtrer silencieusement des données avant même que le code applicatif les lise.** Quand un bug de type « la donnée existe en DB mais n'apparaît nulle part dans l'UI », toujours vérifier les policies RLS sur la table concernée : `SELECT polname, pg_get_expr(polqual, polrelid) FROM pg_policy WHERE polrelid = 'table'::regclass;`. Incident du 21/04 : les producteurs `pending` étaient invisibles côté admin à cause d'une policy qui filtrait sur `statut='active'` (fix commit `52d8e4e`).
 - **Next.js re-render SSR après mutation de cookies** (ex: `signInWithPassword`) peut déclencher une défense en profondeur avant que le client ne puisse avancer. Dans les flows multi-étapes, penser à vérifier que les conditions de blocage distinguent bien les états légitimes (`draft`) des états problématiques (`pending`/`active`/`public`). Incident du 21/04 : le middleware bloquait les users `draft` en pleine onboarding parce qu'il ne les distinguait pas des `pending` (fix commit `23a2b31`).
+- **Supabase Storage : bucket `public` ≠ écriture publique.** Un bucket marqué `public` autorise la LECTURE via `getPublicUrl`, mais TOUT upload authentifié nécessite des policies RLS explicites sur `storage.objects` (INSERT minimum, UPDATE/DELETE selon besoin). Pattern TerrOir : policy `WITH CHECK` qui vérifie `bucket_id` + `owns_producer(producer_id)` où `producer_id` est extrait du path via `storage.foldername(name)[1]::uuid`. Incident du 22/04 : uploads photos produits/producteurs plantaient en prod avec « new row violates row-level security policy » alors qu'aucune policy applicative ne semblait coupable.
+- **Debug RLS : toujours inspecter l'onglet Network DevTools.** Quand une erreur « new row violates row-level security policy » remonte et qu'aucune policy DB sur la table applicative ne semble coupable, vérifier les requêtes Network pour voir si c'est une AUTRE ressource qui plante (typiquement `storage.objects` pour un upload). Le message d'erreur générique ne distingue pas les tables — seule la requête HTTP échouée permet d'identifier la vraie cible.
