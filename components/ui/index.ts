@@ -41,6 +41,7 @@ export {
   ProducerStatusBadge,
   type ProducerStatus,
 } from "./producer-status-badge";
+export { AdminModal, type AdminModalProps } from "./admin-modal";
 export { CodeCommande, type CodeCommandeProps } from "./code-commande";
 export { Logo, type LogoProps } from "./logo";
 export {

@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Button, ProducerStatusBadge, type ProducerStatus } from '@/components/ui';
+import { AdminModal, Button, ProducerStatusBadge, type ProducerStatus } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { formatDateFr } from '@/lib/format/date';
 
@@ -319,25 +319,27 @@ function ConfirmValidateModal({
   onConfirm: () => void | Promise<void>;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-md border border-gray-200 bg-white p-8 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-terroir-green-700">Validation</div>
-        <h2 className="mt-1 font-serif text-[24px] leading-tight text-gray-900">Valider ce producteur ?</h2>
-        <p className="mt-3 text-[14px] leading-relaxed text-gray-700">
-          Le producteur <span className="font-semibold text-gray-900">{producer.name}</span> passera en statut validé et pourra publier ses produits.
-        </p>
-        <div className="mt-6 flex justify-end gap-2">
-          <button type="button" onClick={onClose} disabled={busy}
-            className="rounded-md px-4 py-2 text-[14px] text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900 disabled:opacity-60">
-            Annuler
-          </button>
-          <button type="button" onClick={onConfirm} disabled={busy}
-            className="rounded-md bg-terroir-green-700 px-4 py-2 text-[14px] font-semibold text-white transition-colors hover:bg-terroir-green-700/90 disabled:cursor-not-allowed disabled:opacity-60">
-            {busy ? 'Validation…' : 'Valider'}
-          </button>
-        </div>
-      </div>
-    </div>
+    <AdminModal
+      open
+      onClose={onClose}
+      eyebrow="Validation"
+      title="Valider ce producteur ?"
+      size="md"
+      footer={<>
+        <button type="button" onClick={onClose} disabled={busy}
+          className="rounded-md px-4 py-2 text-[14px] text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900 disabled:opacity-60">
+          Annuler
+        </button>
+        <button type="button" onClick={onConfirm} disabled={busy}
+          className="rounded-md bg-terroir-green-700 px-4 py-2 text-[14px] font-semibold text-white transition-colors hover:bg-terroir-green-700/90 disabled:cursor-not-allowed disabled:opacity-60">
+          {busy ? 'Validation…' : 'Valider'}
+        </button>
+      </>}
+    >
+      <p className="mt-3 text-[14px] leading-relaxed text-gray-700">
+        Le producteur <span className="font-semibold text-gray-900">{producer.name}</span> passera en statut validé et pourra publier ses produits.
+      </p>
+    </AdminModal>
   );
 }
 
@@ -383,54 +385,62 @@ function InviteModal({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-md border border-gray-200 bg-white p-8 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        {sent ? (
-          <div className="py-4 text-center">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border-2 border-terroir-green-700 bg-terroir-green-100">
-              <svg width="36" height="36" viewBox="0 0 48 48" className="text-terroir-green-700">
-                <path d="M12 24 L20 32 L36 16" stroke="currentColor" strokeWidth="4" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
-            <h2 className="mt-4 font-serif text-[24px] text-gray-900">Invitation envoyée</h2>
-            <p className="mt-1 text-[13px] text-gray-600">Un email vient de partir à {email}.</p>
+  if (sent) {
+    return (
+      <AdminModal
+        open
+        onClose={onClose}
+        title="Invitation envoyée"
+        size="lg"
+      >
+        <div className="mt-3 py-2 text-center">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border-2 border-terroir-green-700 bg-terroir-green-100">
+            <svg width="36" height="36" viewBox="0 0 48 48" className="text-terroir-green-700">
+              <path d="M12 24 L20 32 L36 16" stroke="currentColor" strokeWidth="4" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
           </div>
-        ) : (
-          <form onSubmit={submit}>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-terroir-green-700">Nouvelle invitation</div>
-            <h2 className="mt-1 font-serif text-[26px] leading-tight text-gray-900">Inviter un producteur</h2>
-            <p className="mt-1 text-[13px] text-gray-600">Il recevra un lien de création de compte personnalisé.</p>
+          <p className="mt-3 text-[13px] text-gray-600">Un email vient de partir à {email}.</p>
+        </div>
+      </AdminModal>
+    );
+  }
 
-            <div className="mt-6 space-y-4">
-              <div>
-                <label className="mb-1.5 block text-[12px] font-medium text-gray-800">Email du producteur</label>
-                <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-                  placeholder="contact@ma-ferme.fr"
-                  className="w-full rounded-md border border-gray-300 bg-white px-3 py-2.5 text-[14px] text-gray-900 placeholder:text-gray-400 focus:border-terroir-green-700 focus:outline-none focus:ring-2 focus:ring-terroir-green-700" />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-[12px] font-medium text-gray-800">Message personnalisé</label>
-                <textarea rows={5} value={message} onChange={(e) => setMessage(e.target.value)}
-                  placeholder="Quelques mots pour personnaliser l'invitation (optionnel)"
-                  className="w-full resize-none rounded-md border border-gray-300 bg-white px-3 py-2.5 text-[14px] text-gray-900 placeholder:text-gray-400 focus:border-terroir-green-700 focus:outline-none focus:ring-2 focus:ring-terroir-green-700" />
-              </div>
-              {error && <p className="text-[13px] text-red-700">{error}</p>}
-            </div>
-
-            <div className="mt-6 flex justify-end gap-2">
-              <button type="button" onClick={onClose}
-                className="rounded-md px-4 py-2 text-[14px] text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900">
-                Annuler
-              </button>
-              <button type="submit" disabled={!email.includes('@') || submitting}
-                className="rounded-md bg-terroir-green-700 px-4 py-2 text-[14px] font-semibold text-white transition-colors hover:bg-terroir-green-700/90 disabled:cursor-not-allowed disabled:opacity-50">
-                {submitting ? 'Envoi…' : 'Envoyer l\'invitation'}
-              </button>
-            </div>
-          </form>
-        )}
-      </div>
-    </div>
+  return (
+    <AdminModal
+      open
+      onClose={onClose}
+      eyebrow="Nouvelle invitation"
+      title="Inviter un producteur"
+      size="lg"
+      footer={<>
+        <button type="button" onClick={onClose}
+          className="rounded-md px-4 py-2 text-[14px] text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900">
+          Annuler
+        </button>
+        <button type="submit" form="admin-invite-form" disabled={!email.includes('@') || submitting}
+          className="rounded-md bg-terroir-green-700 px-4 py-2 text-[14px] font-semibold text-white transition-colors hover:bg-terroir-green-700/90 disabled:cursor-not-allowed disabled:opacity-50">
+          {submitting ? 'Envoi…' : 'Envoyer l\'invitation'}
+        </button>
+      </>}
+    >
+      <form id="admin-invite-form" onSubmit={submit}>
+        <p className="mt-1 text-[13px] text-gray-600">Il recevra un lien de création de compte personnalisé.</p>
+        <div className="mt-6 space-y-4">
+          <div>
+            <label className="mb-1.5 block text-[12px] font-medium text-gray-800">Email du producteur</label>
+            <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+              placeholder="contact@ma-ferme.fr"
+              className="w-full rounded-md border border-gray-300 bg-white px-3 py-2.5 text-[14px] text-gray-900 placeholder:text-gray-400 focus:border-terroir-green-700 focus:outline-none focus:ring-2 focus:ring-terroir-green-700" />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-[12px] font-medium text-gray-800">Message personnalisé</label>
+            <textarea rows={5} value={message} onChange={(e) => setMessage(e.target.value)}
+              placeholder="Quelques mots pour personnaliser l'invitation (optionnel)"
+              className="w-full resize-none rounded-md border border-gray-300 bg-white px-3 py-2.5 text-[14px] text-gray-900 placeholder:text-gray-400 focus:border-terroir-green-700 focus:outline-none focus:ring-2 focus:ring-terroir-green-700" />
+          </div>
+          {error && <p className="text-[13px] text-red-700">{error}</p>}
+        </div>
+      </form>
+    </AdminModal>
   );
 }
