@@ -2,6 +2,7 @@
 
 import { Fragment, useState } from "react";
 import { useRouter } from "next/navigation";
+import { StatusPanel } from "@/components/ui";
 import { formatDateFr } from "@/lib/format/date";
 import { LeadStatusBadge } from "./LeadStatusBadge";
 import type { Lead, LeadStatus } from "./types";
@@ -30,13 +31,7 @@ export function LeadsTable({
   };
 
   if (leads.length === 0) {
-    return (
-      <div className="overflow-hidden rounded-md border border-gray-200 bg-white shadow-sm">
-        <div className="px-5 py-12 text-center text-[14px] text-gray-500">
-          Aucun lead dans cette catégorie.
-        </div>
-      </div>
-    );
+    return <StatusPanel kind="empty" label="Aucun lead dans cette catégorie." />;
   }
 
   return (

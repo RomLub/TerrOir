@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { AdminPageHeader, StarRating } from '@/components/ui';
+import { AdminPageHeader, StarRating, StatusPanel } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
 type Review = {
@@ -111,17 +111,20 @@ export default function AdminAvisPage() {
       />
 
       {loading ? (
-        <div className="rounded-md border border-gray-200 bg-white p-12 text-center text-gray-500 shadow-sm">Chargement…</div>
+        <StatusPanel kind="loading" label="Chargement…" />
       ) : reviews.length === 0 ? (
-        <div className="rounded-md border border-gray-200 bg-white p-12 text-center shadow-sm">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border-2 border-terroir-green-700 bg-terroir-green-100">
-            <svg width="36" height="36" viewBox="0 0 48 48" className="text-terroir-green-700">
-              <path d="M12 24 L20 32 L36 16" stroke="currentColor" strokeWidth="4" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </div>
-          <h3 className="mt-4 font-serif text-[24px] text-gray-900">Tout est à jour</h3>
-          <p className="mt-1 text-[14px] text-gray-500">Aucun avis en attente de modération.</p>
-        </div>
+        <StatusPanel
+          kind="success-empty"
+          label="Tout est à jour"
+          subtitle="Aucun avis en attente de modération."
+          icon={
+            <div className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-terroir-green-700 bg-terroir-green-100">
+              <svg width="36" height="36" viewBox="0 0 48 48" className="text-terroir-green-700">
+                <path d="M12 24 L20 32 L36 16" stroke="currentColor" strokeWidth="4" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+          }
+        />
       ) : (
         <div className="space-y-4">
           {reviews.map((r) => (

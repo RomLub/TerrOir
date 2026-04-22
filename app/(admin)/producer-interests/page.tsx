@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AdminPageHeader, FilterTabs } from "@/components/ui";
+import { AdminPageHeader, FilterTabs, StatusPanel } from "@/components/ui";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { LeadsTable } from "./_components/LeadsTable";
 import { DeleteLeadModal } from "./_components/DeleteLeadModal";
@@ -108,11 +108,7 @@ export default function AdminProducerInterestsPage() {
         />
 
         {loading ? (
-          <div className="overflow-hidden rounded-md border border-gray-200 bg-white shadow-sm">
-            <div className="px-5 py-12 text-center text-[14px] text-gray-500">
-              Chargement…
-            </div>
-          </div>
+          <StatusPanel kind="loading" label="Chargement…" />
         ) : (
           <LeadsTable
             leads={filtered}
