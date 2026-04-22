@@ -158,7 +158,6 @@ _(rien en cours)_
 - Vectormagic logo SVG (8,99€)
 - Remplacer images Unsplash provisoires par vraies photos producteurs
 - Flux invitation : cas "email déjà en base" à détecter proprement côté UX (au-delà de la correction fonctionnelle du Chantier 2)
-- Bouton « Voir page publique » (fiche producteur admin) était visible pour tous les statuts → désormais filtré sur `statut='public'` uniquement (Phase 5). Vérifier qu'aucun autre bouton/lien public ne fuit les producteurs non-publiés.
 - Quand la section Paiements & adresses de `/compte` sera implémentée (couplée au chantier Stripe Customer), garder l'adresse consumer strictement optionnelle : pas de `required` à l'inscription, pas de blocage au checkout. Décision produit du 22/04/2026 : modèle circuit court sans livraison domicile.
 - Magic link admin via `www.*` : si un flow magic link est ajouté pour les admins plus tard (recovery, invite), il faudra router explicitement via `admin.terroir-local.fr/auth/callback` + ajouter cette URL aux redirect URLs Supabase. Non bloquant aujourd'hui (admin password-only).
 
@@ -171,6 +170,8 @@ _(rien en cours)_
 - Export comptable consommateurs + producteurs
 - Gestion des litiges (retrait non effectué, marchandise abîmée)
 - Stats publiques sur la home (nb commandes, nb producteurs actifs)
+- **Helper `fetchPublicProducerBySlug(slug)`** pour centraliser le filtre `statut='public'` sur les pages publiques qui utilisent `createSupabaseAdminClient`. Prévient les fuites futures quand de nouvelles pages publiques seront ajoutées.
+- **Edge case panier** : si un producer passe en `'suspended'` entre l'ajout au panier et la consultation, le lien vers `/producteurs/{slug}` mène à un `notFound()` (404). Pas une fuite de données, juste un UX problème mineur. À fixer en re-fetchant les producers lors du chargement du panier et en masquant le lien si non-public.
 
 ## ⚠️ Leçons apprises / Known pitfalls
 
@@ -192,3 +193,10 @@ _(rien en cours)_
 - **Mailinator introduit un délai d'affichage de 1-2 minutes** entre la réception d'un email côté serveur (200 OK depuis `/auth/v1/recover`) et son apparition dans l'inbox. Ne pas conclure « l'email n'a pas été envoyé » trop vite — rafraîchir l'inbox avant de suspecter le code applicatif.
 - **Les paths publics ont des noms piégeux à TerrOir.** `/inscription` **n'existe pas** : la vraie route d'inscription consumer est `/auth/inscription`. Le segment `/devenir-producteur` est la landing producer (formulaire d'intérêt). Le groupe de route `(consumer)` / `(public)` / `(producer)` / `(admin)` est transparent au path, donc attention aux confusions de lien — vérifier que la cible existe avec un test navigateur ou un Glob sur `app/**/slug/page.tsx` avant de coller un `<Link href=...>`.
 - **Next.js App Router refuse 2 `page.tsx` dans des route groups différents qui résolvent au même path.** Impossible de créer `app/(admin)/page.tsx` en parallèle de `app/(public)/page.tsx` pour gérer la home `admin.terroir-local.fr/` — les deux résolvent à `/` et Next.js lève une erreur de build. **Solution retenue** : logique de redirect dans le middleware pour différencier par hostname. Incident du 22/04 : tentative de créer `(admin)/page.tsx` a échoué au build → rollback, fix via middleware (commit `581475e`).
+- **Audit du 22/04/2026 — 4 couches de protection indépendantes sécurisent les producers non-publiés** :
+  1. **RLS DB** : policy `"producers public read when public"` filtre `statut='public'` pour tout client respectant la RLS.
+  2. **RPC `search_producers()`** : `WHERE p.statut = 'public'` en dur (utilisée par `/producteurs` et `/carte`).
+  3. **Filtres applicatifs** : les pages publiques qui utilisent `createSupabaseAdminClient()` (service_role, bypasse RLS) DOIVENT explicitement filtrer `.eq('statut', 'public')` + `notFound()` si absent. **Convention à respecter pour toute nouvelle page publique.**
+  4. **Gating UI** : les boutons "Voir page publique" vérifient `statut === 'public'` avant de rendre le lien.
+  
+  Audit complet : 13 liens vers `/producteurs/[slug]` ou queries `producers` en contexte public, tous filtrés. Aucune fuite.
