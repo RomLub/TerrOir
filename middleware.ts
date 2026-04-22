@@ -113,18 +113,9 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(redirectUrl);
     }
 
-    // 3b. /compte accédé par un producteur → redirige vers pro.terroir-local.fr.
-    //     (Chantier 5 assouplira ce comportement pour laisser les producteurs
-    //      utiliser leur double casquette consumer+producer.)
-    if (isConsumerProtected && roles.includes("producer")) {
-      const producerBase =
-        process.env.NEXT_PUBLIC_PRODUCER_URL ?? "http://pro.localhost:3000";
-      return NextResponse.redirect(new URL("/", producerBase));
-    }
-
-    // 3c. Producer avec statut='draft' sur pro.* : redirige vers /onboarding
-    //     (Phase 4). Exemptions : /onboarding lui-même et /invitation/* pour
-    //     éviter toute boucle. Admins bypass complet.
+    // 3b. Producer avec statut='draft' sur pro.* : redirige vers /onboarding
+    //     (Chantier 2 Phase 4). Exemptions : /onboarding lui-même et
+    //     /invitation/* pour éviter toute boucle. Admins bypass complet.
     //     Inversement, si l'utilisateur atterrit sur /onboarding sans draft
     //     à reprendre, on le renvoie vers /ma-page.
     if (isProducerHost && !isAdmin && roles.includes("producer")) {
