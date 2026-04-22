@@ -11,6 +11,12 @@
   - Cas A — nouveau user via invitation (Test 1 Phase 3)
   - Reprise abandon mid-wizard — user `draft` qui reprend à l'étape correcte (Test Phase 4)
   - Création 1er produit d'un producteur `active` → auto-promotion `public` + apparition sur `/carte` (Test Phase 6)
+- **Chantier 4 ✅ isolation cookies admin vs www/pro** (commit `1d83f5d`)
+  - Helper `lib/supabase/cookie-domain.ts` avec `cookieConfigForHost()`
+  - Admin : cookie `sb-admin-auth-token`, pas de domain → isolé
+  - www/pro : cookie `sb-*-auth-token` par défaut, domain `.terroir-local.fr` → partagé
+  - Wipe sessions + refresh_tokens post-deploy
+  - 3 tests validés en prod : admin → www/pro isolés, www → admin isolés, www ↔ pro partagés
 
 ## ✅ Fait (session 21/04/2026)
 
@@ -82,8 +88,6 @@ _(rien en cours)_
   - Capacité clients par créneau
   - Impact DB : probable refonte du schema `slots` (vérifier migration `20260419..._initial_schema` pour le modèle actuel avant de planifier la migration)
 - **RGPD** : suppression de compte (obligation légale avant ouverture publique)
-- REVERT du commit `38b46ff` (cookies partagés `.terroir-local.fr`) — à faire après Chantier 1, avant Chantier 4
-- Chantier 4 : cookies refait proprement — cookies `.terroir-local.fr` UNIQUEMENT pour `www` et `pro`, cookies isolés sur `admin.terroir-local.fr`
 - Chantier 5 : middleware adapté au nouveau modèle rôles (laisser producteur accéder à `/compte`, utiliser `admin_users` pour auth admin)
 - Chantier 6 : interface de switch consumer/producer dans le profil producteur
 - Onboarder Julien (GAEC du Rheu) — après validation test end-to-end
@@ -103,10 +107,12 @@ _(rien en cours)_
 - Bouton « Voir page publique » (fiche producteur admin) était visible pour tous les statuts → désormais filtré sur `statut='public'` uniquement (Phase 5). Vérifier qu'aucun autre bouton/lien public ne fuit les producteurs non-publiés.
 - Helper `promoteProducerToPublicIfActive` en fail-open silencieux (swallow errors via `console.error`) — bonne UX (ne bloque pas la création produit si la promotion échoue), mais peut masquer des bugs RLS futurs. À considérer : upgrader vers `console.warn` ou toast dev-only si besoin de debug.
 - Quand la section Paiements & adresses de `/compte` sera implémentée (couplée au chantier Stripe Customer), garder l'adresse consumer strictement optionnelle : pas de `required` à l'inscription, pas de blocage au checkout. Décision produit du 22/04/2026 : modèle circuit court sans livraison domicile.
+- Magic link admin via `www.*` : si un flow magic link est ajouté pour les admins plus tard (recovery, invite), il faudra router explicitement via `admin.terroir-local.fr/auth/callback` + ajouter cette URL aux redirect URLs Supabase. Non bloquant aujourd'hui (admin password-only).
 
 ## 🔵 Idées / améliorations
 
 - Pages d'accueil dédiées pour `pro.terroir-local.fr/` et `admin.terroir-local.fr/` (actuellement fallback vers layout public)
+- `admin.terroir-local.fr/` (sans session) redirige vers la home publique au lieu de `/connexion`. Comportement hérité du fallback public quand admin.* n'avait pas de page d'accueil dédiée. À fixer avec le chantier « Pages d'accueil dédiées pour pro.* et admin.* ».
 - MiniMap Mapbox sur fiche produit (non câblée)
 - Régionaliser le fallback géoloc (actuellement Le Mans en dur)
 - Notation/reviews producteurs (cadre existant via reviews mais flow à valider)
@@ -128,3 +134,4 @@ _(rien en cours)_
 - **Next.js re-render SSR après mutation de cookies** (ex: `signInWithPassword`) peut déclencher une défense en profondeur avant que le client ne puisse avancer. Dans les flows multi-étapes, penser à vérifier que les conditions de blocage distinguent bien les états légitimes (`draft`) des états problématiques (`pending`/`active`/`public`). Incident du 21/04 : le middleware bloquait les users `draft` en pleine onboarding parce qu'il ne les distinguait pas des `pending` (fix commit `23a2b31`).
 - **Supabase Storage : bucket `public` ≠ écriture publique.** Un bucket marqué `public` autorise la LECTURE via `getPublicUrl`, mais TOUT upload authentifié nécessite des policies RLS explicites sur `storage.objects` (INSERT minimum, UPDATE/DELETE selon besoin). Pattern TerrOir : policy `WITH CHECK` qui vérifie `bucket_id` + `owns_producer(producer_id)` où `producer_id` est extrait du path via `storage.foldername(name)[1]::uuid`. Incident du 22/04 : uploads photos produits/producteurs plantaient en prod avec « new row violates row-level security policy » alors qu'aucune policy applicative ne semblait coupable.
 - **Debug RLS : toujours inspecter l'onglet Network DevTools.** Quand une erreur « new row violates row-level security policy » remonte et qu'aucune policy DB sur la table applicative ne semble coupable, vérifier les requêtes Network pour voir si c'est une AUTRE ressource qui plante (typiquement `storage.objects` pour un upload). Le message d'erreur générique ne distingue pas les tables — seule la requête HTTP échouée permet d'identifier la vraie cible.
+- **Cookies multi-subdomain : fixer uniquement le `domain` ne suffit pas pour isoler 2 sous-domaines.** Si le cookie `name` est identique entre tous les subdomains et que le `domain` est partagé (`.apex.fr`), le navigateur enverra le cookie à tous. Pour une vraie isolation, il faut combiner : (1) pas de `domain` explicite sur le subdomain isolé ET (2) un nom de cookie distinct. Le `@supabase/ssr` permet les deux via `CookieOptionsWithName`. Leçon du 22/04 : sans le nom distinct, admin voyait encore la session consumer posée par www.
