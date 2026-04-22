@@ -7,6 +7,22 @@ import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-
 import { Button } from '@/components/ui';
 import { getStripe } from '@/lib/stripe/client';
 import { useCartStore, type CartItem } from '@/lib/store/cart';
+import { listPaymentMethodsAction, type PaymentMethodSummary } from './actions';
+
+const BRAND_LABEL: Record<string, string> = {
+  visa: 'Visa',
+  mastercard: 'Mastercard',
+  amex: 'American Express',
+  discover: 'Discover',
+  diners: 'Diners Club',
+  jcb: 'JCB',
+  unionpay: 'UnionPay',
+  unknown: 'Carte',
+};
+
+function brandLabel(brand: string): string {
+  return BRAND_LABEL[brand] ?? brand.charAt(0).toUpperCase() + brand.slice(1);
+}
 
 type OrderCreated = {
   order_id: string;
@@ -225,12 +241,22 @@ function StripeElementsForm({
 }) {
   return (
     <Elements stripe={getStripe()} options={{ clientSecret, locale: 'fr', appearance: { theme: 'stripe' } }}>
-      <CheckoutForm orderId={orderId} amountLabel={amountLabel} />
+      <CheckoutForm clientSecret={clientSecret} orderId={orderId} amountLabel={amountLabel} />
     </Elements>
   );
 }
 
-function CheckoutForm({ orderId, amountLabel }: { orderId: string; amountLabel: string }) {
+type PaymentMode = 'saved' | 'new';
+
+function CheckoutForm({
+  clientSecret,
+  orderId,
+  amountLabel,
+}: {
+  clientSecret: string;
+  orderId: string;
+  amountLabel: string;
+}) {
   const router = useRouter();
   const stripe = useStripe();
   const elements = useElements();
@@ -240,16 +266,71 @@ function CheckoutForm({ orderId, amountLabel }: { orderId: string; amountLabel: 
   const [error, setError] = useState<string | null>(null);
   const [saveCard, setSaveCard] = useState(false);
 
+  // Phase 7 : sélecteur CB enregistrée vs nouvelle CB.
+  const [savedPms, setSavedPms] = useState<PaymentMethodSummary[] | null>(null);
+  const [mode, setMode] = useState<PaymentMode>('new');
+  const [selectedPmId, setSelectedPmId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const res = await listPaymentMethodsAction();
+      if (cancelled) return;
+      if ('pms' in res && res.pms.length > 0) {
+        setSavedPms(res.pms);
+        setMode('saved');
+        const defaultPm = res.pms.find((p) => p.isDefault) ?? res.pms[0];
+        setSelectedPmId(defaultPm.id);
+      } else {
+        if ('error' in res) {
+          console.warn('[LIST_PM]', res.error);
+        }
+        // Fail-silent : on laisse le mode 'new' par défaut.
+        setSavedPms([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const hasSaved = !!savedPms && savedPms.length > 0;
+
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!stripe || !elements) return;
+    if (!stripe) return;
     setProcessing(true);
     setError(null);
 
-    // Phase 6 Stripe Customer : si l'user veut mémoriser sa CB, on update le
-    // PI côté serveur pour poser setup_future_usage='off_session' AVANT le
-    // confirm. Stripe attachera alors la CB au Customer automatiquement
-    // après un paiement réussi.
+    // Branche "CB enregistrée" : confirm direct via clientSecret + payment_method.
+    // Stripe gère 3DS nativement (iframe modal in-page). Pas de PaymentElement
+    // nécessaire puisque la CB est déjà attachée au Customer.
+    if (mode === 'saved' && selectedPmId) {
+      const { error: payError, paymentIntent } = await stripe.confirmCardPayment(
+        clientSecret,
+        { payment_method: selectedPmId },
+      );
+
+      if (payError) {
+        setError(payError.message ?? 'Le paiement a échoué.');
+        setProcessing(false);
+        return;
+      }
+
+      if (paymentIntent?.status === 'succeeded') {
+        // Pas d'appel ensure-default-payment-method : la CB est déjà
+        // enregistrée, donc déjà default ou intentionnellement non-default.
+        clear();
+        router.push(`/compte/confirmation/${orderId}`);
+      } else {
+        setProcessing(false);
+      }
+      return;
+    }
+
+    // Branche "Nouvelle carte" : comportement Phase 6 inchangé.
+    if (!elements) return;
+
     if (saveCard) {
       const updateRes = await fetch('/api/stripe/create-payment-intent', {
         method: 'POST',
@@ -278,11 +359,6 @@ function CheckoutForm({ orderId, amountLabel }: { orderId: string; amountLabel: 
     }
 
     if (paymentIntent?.status === 'succeeded') {
-      // Phase 6 fix Constat 1 : si l'user vient de mémoriser une CB et n'avait
-      // pas de default_payment_method sur son Customer, on la marque default
-      // automatiquement. Fail-open : le paiement est déjà réussi, un échec
-      // ici ne doit pas bloquer la redirection (l'user pourra set un default
-      // manuellement depuis /compte/paiements).
       if (saveCard) {
         try {
           const res = await fetch('/api/stripe/ensure-default-payment-method', {
@@ -306,31 +382,107 @@ function CheckoutForm({ orderId, amountLabel }: { orderId: string; amountLabel: 
 
   return (
     <form onSubmit={onSubmit} className="space-y-4">
-      <PaymentElement
-        options={{
-          layout: 'tabs',
-          wallets: { applePay: 'never', googlePay: 'never' },
-        }}
-      />
-      <label className="flex items-start gap-3 cursor-pointer select-none">
-        <input
-          type="checkbox"
-          checked={saveCard}
-          onChange={(e) => setSaveCard(e.target.checked)}
-          disabled={processing}
-          className="mt-1 h-4 w-4 accent-green-900"
+      {hasSaved && (
+        <div className="space-y-3">
+          <label className="flex items-start gap-3 cursor-pointer select-none">
+            <input
+              type="radio"
+              name="payment-mode"
+              checked={mode === 'saved'}
+              onChange={() => setMode('saved')}
+              disabled={processing}
+              className="mt-1 h-4 w-4 accent-green-900"
+            />
+            <span className="text-[14px] font-medium text-dark/90">
+              Carte enregistrée
+            </span>
+          </label>
+          {mode === 'saved' && (
+            <div className="ml-7 space-y-2">
+              {savedPms!.map((pm) => (
+                <label
+                  key={pm.id}
+                  className="flex items-center gap-3 cursor-pointer select-none rounded-lg border border-dark/[0.08] bg-white p-3 hover:border-green-700/40"
+                >
+                  <input
+                    type="radio"
+                    name="saved-pm"
+                    checked={selectedPmId === pm.id}
+                    onChange={() => setSelectedPmId(pm.id)}
+                    disabled={processing}
+                    className="h-4 w-4 accent-green-900"
+                  />
+                  <span className="text-[13px] text-dark/90">
+                    {brandLabel(pm.brand)} •••• {pm.last4}
+                    <span className="ml-2 text-[11px] text-dark/50">
+                      exp. {String(pm.expMonth).padStart(2, '0')}/{String(pm.expYear).slice(-2)}
+                    </span>
+                  </span>
+                  {pm.isDefault && (
+                    <span className="ml-auto text-[10px] uppercase tracking-[0.12em] font-semibold text-green-900 bg-green-100 px-2 py-0.5 rounded">
+                      Par défaut
+                    </span>
+                  )}
+                </label>
+              ))}
+            </div>
+          )}
+          <label className="flex items-start gap-3 cursor-pointer select-none">
+            <input
+              type="radio"
+              name="payment-mode"
+              checked={mode === 'new'}
+              onChange={() => setMode('new')}
+              disabled={processing}
+              className="mt-1 h-4 w-4 accent-green-900"
+            />
+            <span className="text-[14px] font-medium text-dark/90">
+              Nouvelle carte
+            </span>
+          </label>
+        </div>
+      )}
+
+      {/* PaymentElement toujours monté (required par useElements) mais caché
+          en mode 'saved' pour éviter un remount coûteux. */}
+      <div className={mode === 'saved' ? 'hidden' : 'space-y-4'}>
+        <PaymentElement
+          options={{
+            layout: 'tabs',
+            wallets: { applePay: 'never', googlePay: 'never' },
+          }}
         />
-        <span className="text-[13px] text-dark/80 leading-relaxed">
-          Mémoriser cette carte pour mes prochaines commandes
-          <span className="block text-[11px] text-dark/50 mt-0.5">
-            Enregistrement sécurisé chez Stripe. Supprimable à tout moment dans « Moyens de paiement ».
+        <label className="flex items-start gap-3 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={saveCard}
+            onChange={(e) => setSaveCard(e.target.checked)}
+            disabled={processing}
+            className="mt-1 h-4 w-4 accent-green-900"
+          />
+          <span className="text-[13px] text-dark/80 leading-relaxed">
+            Mémoriser cette carte pour mes prochaines commandes
+            <span className="block text-[11px] text-dark/50 mt-0.5">
+              Enregistrement sécurisé chez Stripe. Supprimable à tout moment dans « Moyens de paiement ».
+            </span>
           </span>
-        </span>
-      </label>
+        </label>
+      </div>
+
       {error && (
         <div className="p-3 rounded-lg bg-terra-100/60 border border-terra-300/40 text-[13px] text-terra-900">{error}</div>
       )}
-      <Button type="submit" size="lg" className="w-full" disabled={!stripe || !elements || processing}>
+      <Button
+        type="submit"
+        size="lg"
+        className="w-full"
+        disabled={
+          !stripe ||
+          processing ||
+          (mode === 'new' && !elements) ||
+          (mode === 'saved' && !selectedPmId)
+        }
+      >
         {processing ? 'Traitement…' : `Payer ${amountLabel} €`}
       </Button>
     </form>
