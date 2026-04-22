@@ -61,6 +61,7 @@ export default async function ProductPage({ params }: { params: { slug: string; 
       .select('id, starts_at, ends_at, capacity_per_slot')
       .eq('producer_id', producerRow.id)
       .eq('actif', true)
+      .is('excluded_at', null)
       .gte('starts_at', earliest.toISOString())
       .lt('starts_at', horizonEnd.toISOString())
       .order('starts_at', { ascending: true }),
