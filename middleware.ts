@@ -78,6 +78,30 @@ export async function middleware(request: NextRequest) {
 
   const needsAuth = isProducerHost || isAdminHost || isConsumerProtected;
 
+  // 0. Cas spécial admin.*/ : "/" est listé dans PUBLIC_PATHS (pour www/pro),
+  //    mais sur admin.* on ne veut jamais servir la home publique — on
+  //    redirige explicitement vers /connexion ou /tableau-de-bord.
+  if (isAdminHost && pathname === "/") {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.search = "";
+
+    if (!user) {
+      redirectUrl.pathname = LOGIN_PATH;
+      return NextResponse.redirect(redirectUrl);
+    }
+
+    const { data: adminRow } = await supabase
+      .from("admin_users")
+      .select("id")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    // Non-admin avec session sur admin.* : improbable depuis l'isolation
+    // des cookies (Chantier 4), gardé en défensif → /connexion.
+    redirectUrl.pathname = adminRow ? "/tableau-de-bord" : LOGIN_PATH;
+    return NextResponse.redirect(redirectUrl);
+  }
+
   // 1. Chemins publics : pas de redirection.
   if (isPublicPath(pathname)) {
     return response;
