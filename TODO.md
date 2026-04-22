@@ -2,6 +2,37 @@
 
 ## ✅ Fait (session 22/04/2026)
 
+### Nuit du 22 → 23/04/2026
+
+- **Fix bug latent `'draft'` statut gestion-producteurs** (commit `e6dc1e3`) : défense en profondeur similaire au fix `'deleted'` (entrée `STATUS_META` dédiée, palette slate neutre). Convention du 22/04 appliquée : toute valeur DB possible doit avoir une entrée, même si filtrée au fetch.
+
+- **Page admin "Leads producteurs"** (commit `a8ef04a`) :
+  - `/producer-interests` : tabs Tous / Nouveaux / Contactés / Onboardés avec counts, table avec actions (marquer comme contacté / inviter / supprimer).
+  - Migration RLS DELETE admin apply prod.
+  - Lien « Inviter » pré-remplit `InviteModal` de `/gestion-producteurs` via query param `?invite=<email>`.
+  - **Bonus embarqué** (par merge parallèle entre 2 terminaux CC) : toggle `showAll` pour afficher brouillons + supprimés dans `/gestion-producteurs`. Logique TC livrée sous message TA — état code correct, historique git confus (cf leçon parallélisation plus bas).
+
+- **Helper centralisé `fetchPublicProducerBySlug`** (commit `7f9540a`) :
+  - `lib/producers/fetch-public.ts` : lookup par slug + filter `statut='public'` + `deleted_at IS NULL`, 21 champs typés via interface `ProducerPublic`.
+  - 2 pages publiques migrées (`/producteurs/[slug]` fiche + `/producteurs/[slug]/produits/[id]` fiche produit). Logique inversée sur la fiche produit : slug-first via helper + cross-check `producerRow.id === productRow.producer_id` (au lieu de `id → slug cross-check`).
+  - 11 lignes de duplication supprimées. Item 🔵 "helper centralisé" réalisé.
+
+- **Rename `slots.actif → slots.active`** (commit `726bbe5` + migration `20260422700000_rename_slots_actif_to_active.sql` apply) :
+  - DB : rename column via migration dédiée.
+  - RPC `create_order_with_items` mise à jour avec `active` dans le check disponibilité slot.
+  - 5 fichiers backend touchés (server actions `/creneaux`, pages fetch dashboard/creneaux, page produit consumer).
+  - Frontend no-op : grep préalable confirmait zéro référence `actif` côté client — refacto purement backend.
+
+- **Refactor consolidation formatters slots** (commit `de40458`) :
+  - `formatLegacyTimeRange` supprimé de `lib/slots/format-slot-time.ts` (fonction structurellement dead : les 2 call sites passaient toujours `null` en 2e argument, dégénérant en `formatLegacyTimeHHMM`).
+  - 2 pages consumer migrées (`/compte/confirmation/[id]`, `/compte/commandes/[id]`) vers `formatLegacyTimeHHMM(order.heure_retrait)` direct.
+  - 6 helpers → 5 helpers. −10 lignes nettes.
+
+- **Consolidation admin — Phase A formatters** (commit `31670a2`) :
+  - `lib/format/date.ts` (`formatDateFr(iso, { year?: boolean })`) + `lib/format/currency.ts` (`formatEuro(value)` avec fallback).
+  - 3 pages admin migrées (`/gestion-producteurs`, `/producer-interests`, `/suivi-commandes`) — duplications inline de `toLocaleDateString('fr-FR', …)` + formatting euro remplacées.
+  - −43 lignes de duplication, 0 changement visuel.
+
 ### Chantier 2 — Flux invitation producteur ✅ CLÔTURÉ (les 6 phases en prod)
 
 - Phase 4 ✅ reprise d'onboarding (commit `285785d`) — test cas étape 2 validé en prod
@@ -218,8 +249,7 @@ _(rien en cours)_
 > **Décisions produit tranchées le 22/04/2026 matin** : pas de livraison domicile, adresses consumer optionnelles, Stripe Customer pour MVP, créneaux producteur entièrement personnalisables.
 
 - **Chantier Créneaux — Phase 7** : seed + tests auto (grouper avec la refonte `scripts/seed.ts` livrée — ajouter tests unitaires sur `generateSlotsForProducer` + intégration sur le RPC `create_order_with_items` avec capacity check).
-- **Dette technique `slots.actif → slots.active`** (rename différé depuis Phase 1 créneaux, mentionné Phase 6). Touche la RPC `create_order_with_items`, la page produit consumer, et les server actions `/creneaux`. À bundler dans une migration dédiée + refacto coordonnée.
-- **Apply migrations DB restantes en prod** : vérifier que toutes les migrations récentes ont été appliquées (`20260422200000` RGPD, `20260422300000_slot_rules`, `20260422300000_stripe_customer`, `20260422400000_slots_adhoc`, `20260422500000` capacity). Le doublon de timestamp `20260422300000` entre stripe_customer et slot_rules est ordonné alphabétiquement par Supabase — à confirmer côté prod.
+- **Apply migrations DB restantes en prod** : vérifier que toutes les migrations récentes ont été appliquées (`20260422200000` RGPD, `20260422300000_slot_rules`, `20260422300000_stripe_customer`, `20260422400000_slots_adhoc`, `20260422500000` capacity, `20260422700000` rename actif→active).
 - Onboarder Julien (GAEC du Rheu) — après validation test end-to-end
 - Basculer Stripe en mode Live (aujourd'hui en Test) + tester scénario 3DS
 - Mettre à jour le webhook Stripe vers `www.terroir-local.fr` (actuellement pointe sur `terr-oir-21cl.vercel.app` — à confirmer, potentiellement déjà fait le 22/04 matin)
@@ -251,7 +281,14 @@ _(rien en cours)_
 - **Bug : CB dupliquée possible sur `/compte/paiements`** — actuellement, un user peut ajouter 2× la même CB (même numéro) et les voir 2 fois dans la liste. Stripe permet l'attach multiple, chaque attach crée un `payment_method` distinct (`pm_xxx`, `pm_yyy`).
   - Fix : avant d'attacher une nouvelle CB, check les `PaymentMethods` existants du customer et comparer via le champ `fingerprint` Stripe (empreinte unique d'une CB physique, stable quel que soit le `payment_method_id`). Si match → soit refuser l'ajout avec message « Cette carte est déjà enregistrée », soit remplacer l'ancienne en mergeant.
   - Priorité : moyenne. Impact faible (user finit par nettoyer), mais UX chaotique.
-- **Marquer automatiquement un lead en `'contacted'` après envoi d'invitation** — quand un admin envoie une invitation producteur via la page admin leads (à livrer), il faut bump le statut du lead `producer_interests` vers `'contacted'` dans la même transaction. À re-noter après livraison de la page admin leads pour lier les deux flows.
+- **Marquer automatiquement un lead en `'contacted'` après envoi d'invitation** — la page admin leads `/producer-interests` est livrée (commit `a8ef04a`). Il reste à câbler la transition automatique : quand l'admin envoie une invitation depuis `InviteModal` (pré-rempli via `?invite=<email>`), bump le statut du lead `producer_interests` matching sur email vers `'contacted'` dans la même transaction.
+- **Consolidation admin — Phases B2/B3/B4/B5 restantes** (audit TC rapport complet, nuit 22→23/04) :
+  - **B2** : `<AdminModal>` partagé (3 modals actuels à mutualiser : `ConfirmValidateModal`, `InviteModal`, `DeleteLeadModal`).
+  - **B3** : `<FilterTabs filters counts active>` — `/gestion-producteurs` et `/producer-interests` ont des patterns quasi-identiques de tabs filtres avec counts.
+  - **B4** : `<AdminPageHeader eyebrow title subtitle right?>` — 4 pages admin reproduisent le même pattern header (eyebrow caps + title serif + subtitle).
+  - **B5** : `<TableStatus kind colSpan>` pour les rows loading/empty dans les tables admin.
+  - Effort estimé : 2-3h total. Priorités : haute (B2 modale, B4 header), basse (B5 table status).
+- **Doublon timestamp migrations `20260422300000`** — utilisé pour `slot_rules_and_materialized_slots.sql` ET `add_stripe_customer_id_to_users.sql`. Pas bloquant (Supabase ordonne alphabétiquement par filename à timestamp égal) mais convention à corriger un jour pour lisibilité historique. À ranger en dette si on touche les migrations.
 
 ## 🗺️ Roadmap produit (vision Avril 2026)
 
@@ -368,3 +405,4 @@ _(rien en cours)_
 - **Next.js cache silencieusement les pages SSR par défaut.** Pour les pages avec data live (stock produit, slots matérialisés, listings), il faut expliciter `export const dynamic = 'force-dynamic'; export const revalidate = 0;`. Sinon symptôme : les nouvelles données DB sont invisibles avant redeploy Vercel. Incident du 22/04 : nouveaux slots matérialisés + produits récents n'apparaissaient qu'après redeploy sur `/producteurs/[slug]` et `/produits/[id]` (fix commit `983ed8e`).
 - **Pattern défense en profondeur sur les mappings enum** (ex: `STATUS_META`, `ORDER_STATUS_LABEL`) : toujours ajouter une entrée pour TOUS les statuts DB possibles, même si le fetch les filtre normalement. Un refactor futur qui élargit le fetch fera planter le client avec `Cannot read 'bg' of undefined`. Exemple concret : `STATUS_META` dans `/admin/gestion-producteurs` couvre `('pending', 'active', 'public', 'suspended', 'deleted')` même si le fetch filtre `.neq('statut','draft').neq('statut','deleted')`.
 - **`FOR UPDATE` sur le row slot dans la RPC `create_order_with_items`** sérialise les réservations concurrentes et empêche l'overbooking quand 2 consumers cliquent simultanément. Impact perf négligeable (ligne petite, opération rare, verrou local), gain anti-overbook critique pour les slots à capacité limitée. Pattern à répliquer pour tout check de capacité concurrente.
+- **Parallélisation à risque : éviter que 2 terminaux Claude Code touchent le même fichier en même temps.** Si overlap possible, séquencer les tâches OU fractionner les prompts pour que chaque terminal ait son périmètre de fichiers strict. Incident nuit 22→23/04 : TA (page admin leads) et TC (toggle `showAll`) ont tous les deux modifié `/gestion-producteurs/page.tsx`. Le commit TA a embarqué les modifs TC en cours → commit label « impur » (logique TC livrée sous message TA). État du code correct mais historique git confus et difficile à tracer. Mitigation : planifier les périmètres en amont et fractionner si collision possible.
