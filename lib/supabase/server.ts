@@ -1,15 +1,17 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
-import { sharedCookieOptions } from "./cookie-options";
+import { cookieConfigForHost } from "./cookie-domain";
 
 export const createSupabaseServerClient = () => {
   const cookieStore = cookies();
+  const host = headers().get("host") ?? undefined;
+  const cookieOptions = cookieConfigForHost(host);
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
-      cookieOptions: sharedCookieOptions,
+      cookieOptions,
       cookies: {
         getAll: () => cookieStore.getAll(),
         setAll: (

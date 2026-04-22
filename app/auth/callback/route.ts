@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import type { EmailOtpType } from "@supabase/supabase-js";
-import { sharedCookieOptions } from "@/lib/supabase/cookie-options";
+import { cookieConfigForHost } from "@/lib/supabase/cookie-domain";
 
 // Gère le retour des emails transactionnels Supabase (recovery, invite,
 // magic link, signup). Deux formats supportés :
@@ -42,11 +42,14 @@ export async function GET(request: NextRequest) {
   const targetUrl = new URL(next ?? defaultPath, url.origin);
   const response = NextResponse.redirect(targetUrl);
 
+  const host = request.headers.get("host") ?? undefined;
+  const cookieOptions = cookieConfigForHost(host);
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
-      cookieOptions: sharedCookieOptions,
+      cookieOptions,
       cookies: {
         getAll: () => request.cookies.getAll(),
         setAll: (

@@ -3,11 +3,11 @@
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-// signOut() supprime les cookies sb-* avec les options configurées dans
-// lib/supabase/cookie-options.ts (actuellement domain=.terroir-local.fr en
-// prod). Conséquence : un logout depuis www déconnecte aussi pro tant que
-// les cookies sont partagés. Quand le Chantier 4 isolera admin, le logout
-// admin ne touchera plus aux cookies www/pro automatiquement.
+// signOut() supprime les cookies sb-* via les options calculées par
+// lib/supabase/cookie-domain.ts en fonction du host (Chantier 4).
+// Logout depuis www/pro → efface le cookie partagé '.terroir-local.fr'
+// (déconnecte les deux sous-domaines). Logout depuis admin → efface
+// uniquement le cookie 'sb-admin-auth-token' scopé sur admin.*.
 export async function logoutAction() {
   const supabase = createSupabaseServerClient();
   await supabase.auth.signOut();
