@@ -3,16 +3,16 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Button } from '@/components/ui';
+import { Button, ProducerStatusBadge, type ProducerStatus } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { formatDateFr } from '@/lib/format/date';
 
 // Statuts producers visibles côté admin. 'draft' et 'deleted' sont exclus
-// au fetch (formulaire d'onboarding incomplet / anonymisé RGPD via
-// delete_user_account) mais restent supportés par STATUS_META en défense
-// en profondeur pour survivre à un futur toggle d'affichage ou à un oubli
-// de filtre lors d'un refactor.
-type Status = 'draft' | 'pending' | 'active' | 'public' | 'suspended' | 'deleted';
+// au fetch par défaut (formulaire d'onboarding incomplet / anonymisé RGPD
+// via delete_user_account), le toggle "Inclure brouillons et supprimés"
+// les ramène. Le type + les palettes sont centralisés dans
+// components/ui/producer-status-badge.tsx depuis la Phase B1 consolidation.
+type Status = ProducerStatus;
 
 type Producer = {
   id: string;
@@ -36,15 +36,6 @@ const EXTRA_FILTERS: { value: Filter; label: string }[] = [
   { value: 'draft', label: 'Brouillons' },
   { value: 'deleted', label: 'Supprimés' },
 ];
-
-const STATUS_META: Record<Status, { label: string; dot: string; bg: string; text: string }> = {
-  draft:     { label: 'Brouillon',  dot: 'bg-slate-400',         bg: 'bg-slate-100',         text: 'text-slate-600' },
-  pending:   { label: 'En attente', dot: 'bg-amber-500',         bg: 'bg-amber-50',          text: 'text-amber-800' },
-  active:    { label: 'Validé',     dot: 'bg-amber-600',         bg: 'bg-amber-100',         text: 'text-amber-900' },
-  public:    { label: 'Public',     dot: 'bg-terroir-green-700', bg: 'bg-terroir-green-100', text: 'text-terroir-green-700' },
-  suspended: { label: 'Suspendu',   dot: 'bg-red-500',           bg: 'bg-red-100',           text: 'text-red-700' },
-  deleted:   { label: 'Supprimé',   dot: 'bg-slate-400',         bg: 'bg-slate-100',         text: 'text-slate-600' },
-};
 
 // Le filtre "Actifs" agrège 'active' (validé, pas encore vitrine) et 'public'
 // (visible publiquement) — les deux sont considérés comme « en activité ».
@@ -244,7 +235,6 @@ function AdminProducteursPageInner() {
                 ) : filtered.length === 0 ? (
                   <tr><td colSpan={6} className="px-5 py-10 text-center text-gray-500">Aucun producteur.</td></tr>
                 ) : filtered.map((p) => {
-                  const meta = STATUS_META[p.status];
                   const disabled = busy === p.id;
                   return (
                     <tr key={p.id} className="border-b border-gray-200 last:border-0 hover:bg-gray-50">
@@ -254,10 +244,7 @@ function AdminProducteursPageInner() {
                       </td>
                       <td className="px-5 py-4 text-gray-700">{p.city}</td>
                       <td className="px-5 py-4">
-                        <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-medium ${meta.bg} ${meta.text}`}>
-                          <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} />
-                          {meta.label}
-                        </span>
+                        <ProducerStatusBadge status={p.status} />
                       </td>
                       <td className="px-5 py-4 text-gray-700">{p.plan}</td>
                       <td className="px-5 py-4 font-mono text-[13px] text-gray-500">{p.joinedAt}</td>

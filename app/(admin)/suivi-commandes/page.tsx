@@ -8,6 +8,7 @@ import {
 } from '@/lib/slots/format-slot-time';
 import { formatDateFr } from '@/lib/format/date';
 import { formatEuro } from '@/lib/format/currency';
+import { StatusDotBadge } from '@/components/ui';
 
 type Status = 'pending' | 'confirmed' | 'ready' | 'completed' | 'cancelled' | 'refunded';
 
@@ -226,24 +227,18 @@ export default function AdminCommandesPage() {
                 <tr><td colSpan={6} className="px-5 py-10 text-center text-gray-500">Chargement…</td></tr>
               ) : filtered.length === 0 ? (
                 <tr><td colSpan={6} className="px-5 py-10 text-center text-gray-500">Aucune commande ne correspond.</td></tr>
-              ) : filtered.map((o) => {
-                const meta = STATUS_META[o.status];
-                return (
+              ) : filtered.map((o) => (
                   <tr key={o.id} className="border-b border-gray-200 last:border-0 hover:bg-gray-50">
                     <td className="px-5 py-4 font-mono text-[12px] text-gray-700">{o.code_commande ?? '—'}</td>
                     <td className="px-5 py-4 text-gray-900">{o.client}</td>
                     <td className="px-5 py-4 text-terroir-green-700">{o.producer}</td>
                     <td className="px-5 py-4 text-gray-700">{o.slot_label}</td>
                     <td className="px-5 py-4">
-                      <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-medium ${meta.bg} ${meta.text}`}>
-                        <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} />
-                        {meta.label}
-                      </span>
+                      <StatusDotBadge {...STATUS_META[o.status]} />
                     </td>
                     <td className="px-5 py-4 text-right font-serif text-[17px] tabular-nums text-gray-900">{formatEuro(o.total)}</td>
                   </tr>
-                );
-              })}
+                ))}
             </tbody>
           </table>
         </div>

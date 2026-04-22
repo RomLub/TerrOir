@@ -33,6 +33,14 @@ export {
   type OrderStatusBadgeProps,
   type OrderStatus,
 } from "./order-status-badge";
+export {
+  StatusDotBadge,
+  type StatusDotBadgeProps,
+} from "./status-dot-badge";
+export {
+  ProducerStatusBadge,
+  type ProducerStatus,
+} from "./producer-status-badge";
 export { CodeCommande, type CodeCommandeProps } from "./code-commande";
 export { Logo, type LogoProps } from "./logo";
 export {
