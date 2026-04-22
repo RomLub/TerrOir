@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import { generateSlotsForProducer } from '@/lib/slots/generate';
 import {
   ProductPageClient,
   type ProducerSummary,
@@ -8,28 +9,11 @@ import {
   type OtherProduct,
 } from './ProductPageClient';
 
+const HORIZON_DAYS = 28;
+
 function weightStepFor(unit: string | null): number {
   if (unit === 'kg') return 0.25;
   return 1;
-}
-
-function formatTime(t: string): string {
-  const [h, m] = t.split(':');
-  if (!h) return t;
-  const hi = parseInt(h, 10);
-  return m && m !== '00' ? `${hi}h${m}` : `${hi}h`;
-}
-
-function nextOccurrenceISO(dayOfWeek: number, minDaysAhead: number): string {
-  const now = new Date();
-  const target = new Date(now);
-  target.setDate(now.getDate() + Math.max(0, minDaysAhead));
-  const diff = (7 + dayOfWeek - target.getDay()) % 7;
-  target.setDate(target.getDate() + diff);
-  const y = target.getFullYear();
-  const m = String(target.getMonth() + 1).padStart(2, '0');
-  const d = String(target.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
 }
 
 export default async function ProductPage({ params }: { params: { slug: string; id: string } }) {
@@ -53,14 +37,33 @@ export default async function ProductPage({ params }: { params: { slug: string; 
 
   if (!producerRow || producerRow.slug !== params.slug) notFound();
 
+  // Matérialise les slots depuis les slot_rules actives. Idempotent
+  // (UPSERT onConflict producer_id,starts_at ignoreDuplicates) + mémo
+  // 15 min côté helper. Fail-open : si le générateur échoue, on affiche
+  // les slots déjà en DB plutôt que de casser la page.
+  try {
+    await generateSlotsForProducer(admin, producerRow.id, HORIZON_DAYS);
+  } catch (e) {
+    console.warn('SLOTS_GENERATE_WARN', e);
+  }
+
+  // Préserve l'ancien comportement de delai_preparation_jours :
+  // nextOccurrenceISO() poussait la première date visible de N jours.
+  // Ici on filtre directement à la lecture.
+  const delai = productRow.delai_preparation_jours ?? 0;
+  const now = new Date();
+  const earliest = new Date(now.getTime() + delai * 24 * 3600 * 1000);
+  const horizonEnd = new Date(now.getTime() + HORIZON_DAYS * 24 * 3600 * 1000);
+
   const [{ data: slotsRaw }, { data: otherRaw }] = await Promise.all([
     admin
       .from('slots')
-      .select('id, jour_semaine, heure_debut, heure_fin, actif')
+      .select('id, starts_at, ends_at, capacity_per_slot')
       .eq('producer_id', producerRow.id)
       .eq('actif', true)
-      .order('jour_semaine', { ascending: true })
-      .order('heure_debut', { ascending: true }),
+      .gte('starts_at', earliest.toISOString())
+      .lt('starts_at', horizonEnd.toISOString())
+      .order('starts_at', { ascending: true }),
     admin
       .from('products')
       .select('id, nom, photos, prix, unite, stock_disponible, stock_illimite')
@@ -103,19 +106,14 @@ export default async function ProductPage({ params }: { params: { slug: string; 
     description: descParas,
   };
 
-  const delai = productRow.delai_preparation_jours ?? 0;
-  const slots: SlotOption[] = (slotsRaw ?? []).map((s) => {
-    const dateISO = nextOccurrenceISO(s.jour_semaine, delai);
-    const d = new Date(dateISO + 'T00:00:00');
-    const human = d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
-    return {
-      id: s.id,
-      label: human.charAt(0).toUpperCase() + human.slice(1),
-      time: `${formatTime(s.heure_debut)} – ${formatTime(s.heure_fin)}`,
-      left: null,
-      dateISO,
-    };
-  });
+  const slots: SlotOption[] = (slotsRaw ?? []).map((s) => ({
+    id: s.id,
+    starts_at: s.starts_at,
+    ends_at: s.ends_at,
+    capacity_per_slot: s.capacity_per_slot,
+    // Phase 6 câblera la capacité restante via count(orders actives).
+    left: null,
+  }));
 
   const otherProducts: OtherProduct[] = (otherRaw ?? []).map((p) => ({
     id: p.id,

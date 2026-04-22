@@ -31,11 +31,48 @@ export type ProductDetail = {
 
 export type SlotOption = {
   id: string;
-  label: string;
-  time: string;
+  starts_at: string;
+  ends_at: string;
+  capacity_per_slot: number;
   left: number | null;
-  dateISO: string;
 };
+
+const PARIS_TZ = 'Europe/Paris';
+
+function formatDayLabel(isoUtc: string): string {
+  const str = new Intl.DateTimeFormat('fr-FR', {
+    timeZone: PARIS_TZ,
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  }).format(new Date(isoUtc));
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+function formatHourMinute(isoUtc: string): string {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: PARIS_TZ,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date(isoUtc));
+  const h = parts.find((p) => p.type === 'hour')?.value ?? '00';
+  const m = parts.find((p) => p.type === 'minute')?.value ?? '00';
+  return `${h}h${m}`;
+}
+
+function toParisDateISO(isoUtc: string): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: PARIS_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(isoUtc));
+  const y = parts.find((p) => p.type === 'year')?.value ?? '';
+  const m = parts.find((p) => p.type === 'month')?.value ?? '';
+  const d = parts.find((p) => p.type === 'day')?.value ?? '';
+  return `${y}-${m}-${d}`;
+}
 
 export type OtherProduct = {
   id: string;
@@ -93,7 +130,7 @@ export function ProductPageClient({
       unite: product.unit,
       quantite: weight,
       creneauId: selected.id,
-      dateRetrait: selected.dateISO,
+      dateRetrait: toParisDateISO(selected.starts_at),
       producerName: producer.name,
       image: product.photos.find((p): p is string => typeof p === 'string') ?? null,
     });
@@ -224,8 +261,10 @@ export function ProductPageClient({
                               : 'bg-white border-dark/10 text-dark/80 hover:border-green-500'
                         }`}
                       >
-                        <div className="text-[14px] font-semibold">{s.label}</div>
-                        <div className="text-[12px] text-dark/60">{s.time}</div>
+                        <div className="text-[14px] font-semibold">{formatDayLabel(s.starts_at)}</div>
+                        <div className="text-[12px] text-dark/60">
+                          {formatHourMinute(s.starts_at)} – {formatHourMinute(s.ends_at)}
+                        </div>
                         {s.left !== null && (
                           <div className="text-[11px] mt-0.5 mono text-dark/50">
                             {full ? 'Complet' : `${s.left} créneaux restants`}
