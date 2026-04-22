@@ -498,7 +498,7 @@ async function ensureProducer(p: ProducerSeed, userId: string): Promise<string> 
     generations: p.generations,
     especes: p.especes,
     labels: p.labels,
-    statut: "active" as const,
+    statut: "public" as const,
   };
 
   const { data: existing } = await admin

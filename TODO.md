@@ -160,6 +160,11 @@ _(rien en cours)_
 - Flux invitation : cas "email déjà en base" à détecter proprement côté UX (au-delà de la correction fonctionnelle du Chantier 2)
 - Quand la section Paiements & adresses de `/compte` sera implémentée (couplée au chantier Stripe Customer), garder l'adresse consumer strictement optionnelle : pas de `required` à l'inscription, pas de blocage au checkout. Décision produit du 22/04/2026 : modèle circuit court sans livraison domicile.
 - Magic link admin via `www.*` : si un flow magic link est ajouté pour les admins plus tard (recovery, invite), il faudra router explicitement via `admin.terroir-local.fr/auth/callback` + ajouter cette URL aux redirect URLs Supabase. Non bloquant aujourd'hui (admin password-only).
+- **Refonte `scripts/seed.ts`** (dette technique post-session 22/04) :
+  - `ensureSlots()` cassé par la refonte créneaux (utilise les colonnes `jour_semaine`/`heure_debut`/`heure_fin` droppées par migration `20260422300000_slot_rules_and_materialized_slots.sql`)
+  - Remplacer par une logique `slot_rules` + matérialisation `slots`
+  - Profiter de la refonte pour hardcoder `statut='public'` (éviter invisibilité publique) et remplir `forme_juridique` / `type_production`
+  - À faire en même temps que la Phase 7 du chantier Créneaux personnalisables (Seed + tests) pour éviter de toucher 2 fois au même fichier
 
 ## 🗺️ Roadmap produit (vision Avril 2026)
 
