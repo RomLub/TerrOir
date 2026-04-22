@@ -2,7 +2,7 @@
 
 import { Fragment, useState } from "react";
 import { useRouter } from "next/navigation";
-import { StatusPanel } from "@/components/ui";
+import { StatusPanel, TableActionButton } from "@/components/ui";
 import { formatDateFr } from "@/lib/format/date";
 import { LeadStatusBadge } from "./LeadStatusBadge";
 import type { Lead, LeadStatus } from "./types";
@@ -88,52 +88,47 @@ export function LeadsTable({
                       <div className="flex flex-wrap items-center justify-end gap-2">
                         {lead.statut === "new" && (
                           <>
-                            <button
-                              type="button"
+                            <TableActionButton
+                              variant="ghost"
                               onClick={() => onSetStatus(lead.id, "contacted")}
                               disabled={disabled}
-                              className="rounded-md px-3 py-1.5 text-[12px] font-medium text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900 disabled:opacity-60"
                             >
                               Marquer contacté
-                            </button>
-                            <button
-                              type="button"
+                            </TableActionButton>
+                            <TableActionButton
+                              variant="primary"
                               onClick={() => invite(lead)}
                               disabled={disabled}
-                              className="rounded-md bg-terroir-green-700 px-3 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-terroir-green-700/90 disabled:opacity-60"
                             >
                               Inviter
-                            </button>
+                            </TableActionButton>
                           </>
                         )}
                         {lead.statut === "contacted" && (
                           <>
-                            <button
-                              type="button"
+                            <TableActionButton
+                              variant="primary"
                               onClick={() => onSetStatus(lead.id, "onboarded")}
                               disabled={disabled}
-                              className="rounded-md bg-terroir-green-700 px-3 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-terroir-green-700/90 disabled:opacity-60"
                             >
                               Marquer onboardé
-                            </button>
-                            <button
-                              type="button"
+                            </TableActionButton>
+                            <TableActionButton
+                              variant="ghost"
                               onClick={() => onSetStatus(lead.id, "new")}
                               disabled={disabled}
-                              className="rounded-md px-3 py-1.5 text-[12px] font-medium text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900 disabled:opacity-60"
                             >
                               Réouvrir
-                            </button>
+                            </TableActionButton>
                           </>
                         )}
-                        <button
-                          type="button"
+                        <TableActionButton
+                          variant="ghost-danger"
                           onClick={() => onDelete(lead)}
                           disabled={disabled}
-                          className="rounded-md px-3 py-1.5 text-[12px] font-medium text-red-700 transition-colors hover:bg-red-50 disabled:opacity-60"
                         >
                           Supprimer
-                        </button>
+                        </TableActionButton>
                       </div>
                     </td>
                   </tr>

@@ -1,9 +1,8 @@
 'use client';
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { AdminModal, AdminPageHeader, Button, FilterTabs, ProducerStatusBadge, TableStatus, type ProducerStatus } from '@/components/ui';
+import { AdminModal, AdminPageHeader, Button, FilterTabs, ProducerStatusBadge, TableActionButton, TableStatus, type ProducerStatus } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { formatDateFr } from '@/lib/format/date';
 
@@ -234,28 +233,24 @@ function AdminProducteursPageInner() {
                       <td className="px-5 py-4">
                         <div className="flex flex-wrap items-center justify-end gap-2">
                           {p.status === 'pending' && (
-                            <button onClick={() => setValidating(p)} disabled={disabled}
-                              className="rounded-md bg-terroir-green-700 px-3 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-terroir-green-700/90 disabled:opacity-60">
+                            <TableActionButton variant="primary" onClick={() => setValidating(p)} disabled={disabled}>
                               Valider
-                            </button>
+                            </TableActionButton>
                           )}
                           {(p.status === 'active' || p.status === 'public') && (
-                            <button onClick={() => setStatus(p.id, 'suspended')} disabled={disabled}
-                              className="rounded-md px-3 py-1.5 text-[12px] font-medium text-red-700 transition-colors hover:bg-red-50 disabled:opacity-60">
+                            <TableActionButton variant="ghost-danger" onClick={() => setStatus(p.id, 'suspended')} disabled={disabled}>
                               Suspendre
-                            </button>
+                            </TableActionButton>
                           )}
                           {p.status === 'suspended' && (
-                            <button onClick={() => setStatus(p.id, 'active')} disabled={disabled}
-                              className="rounded-md px-3 py-1.5 text-[12px] font-medium text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900 disabled:opacity-60">
+                            <TableActionButton variant="ghost" onClick={() => setStatus(p.id, 'active')} disabled={disabled}>
                               Réactiver
-                            </button>
+                            </TableActionButton>
                           )}
                           {p.status === 'public' && (
-                            <Link href={`/producteurs/${p.slug}`} target="_blank"
-                              className="rounded-md px-3 py-1.5 text-[12px] font-medium text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900">
+                            <TableActionButton variant="ghost" href={`/producteurs/${p.slug}`} target="_blank">
                               Voir page publique ↗
-                            </Link>
+                            </TableActionButton>
                           )}
                         </div>
                       </td>

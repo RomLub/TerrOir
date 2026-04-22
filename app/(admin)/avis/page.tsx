@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { AdminPageHeader, MetricCard, StarRating, StatusPanel } from '@/components/ui';
+import { AdminPageHeader, MetricCard, StarRating, StatusPanel, TableActionButton } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
 type Review = {
@@ -142,14 +142,12 @@ export default function AdminAvisPage() {
               </div>
 
               <div className="mt-5 flex flex-wrap justify-end gap-2 border-t border-gray-200 pt-5">
-                <button onClick={() => moderate(r.id, 'reject')} disabled={busy === r.id}
-                  className="rounded-md px-4 py-2 text-[13px] font-medium text-red-700 transition-colors hover:bg-red-50 disabled:opacity-60">
+                <TableActionButton variant="ghost-danger" size="md" onClick={() => moderate(r.id, 'reject')} disabled={busy === r.id}>
                   Rejeter
-                </button>
-                <button onClick={() => moderate(r.id, 'publish')} disabled={busy === r.id}
-                  className="rounded-md bg-terroir-green-700 px-4 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-terroir-green-700/90 disabled:opacity-60">
+                </TableActionButton>
+                <TableActionButton variant="primary" size="md" onClick={() => moderate(r.id, 'publish')} disabled={busy === r.id}>
                   {busy === r.id ? 'Publication…' : 'Publier'}
-                </button>
+                </TableActionButton>
               </div>
             </article>
           ))}

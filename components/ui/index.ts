@@ -53,6 +53,12 @@ export {
 } from "./filter-tabs";
 export { MetricCard, type MetricCardProps } from "./metric-card";
 export { StatusPanel, type StatusPanelProps } from "./status-panel";
+export {
+  TableActionButton,
+  type TableActionButtonProps,
+  type TableActionButtonVariant,
+  type TableActionButtonSize,
+} from "./table-action-button";
 export { TableStatus, type TableStatusProps } from "./table-status";
 export { CodeCommande, type CodeCommandeProps } from "./code-commande";
 export { Logo, type LogoProps } from "./logo";
