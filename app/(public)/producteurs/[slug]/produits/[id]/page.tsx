@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { generateSlotsForProducer } from '@/lib/slots/generate';
+import { fetchPublicProducerBySlug } from '@/lib/producers/fetch-public';
 import {
   ProductPageClient,
   type ProducerSummary,
@@ -36,14 +37,12 @@ export default async function ProductPage({ params }: { params: { slug: string; 
 
   if (!productRow) notFound();
 
-  const { data: producerRow } = await admin
-    .from('producers')
-    .select('id, slug, nom_exploitation, commune, code_postal, adresse, latitude, longitude')
-    .eq('id', productRow.producer_id)
-    .eq('statut', 'public')
-    .maybeSingle();
-
-  if (!producerRow || producerRow.slug !== params.slug) notFound();
+  // Fetch producer par slug (canonique depuis l'URL) via le helper public,
+  // puis cross-check que le product.producer_id matche. Garanties identiques
+  // à l'ancien flow : statut='public', deleted_at IS NULL, et cohérence
+  // slug↔product.
+  const producerRow = await fetchPublicProducerBySlug(admin, params.slug);
+  if (!producerRow || producerRow.id !== productRow.producer_id) notFound();
 
   // Matérialise les slots depuis les slot_rules actives. Idempotent
   // (UPSERT onConflict producer_id,starts_at ignoreDuplicates) + mémo
