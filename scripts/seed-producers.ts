@@ -540,7 +540,7 @@ async function ensureProducts(p: ProducerSeed, producerId: string): Promise<numb
       stock_disponible: prod.stock_disponible,
       stock_illimite: false,
       delai_preparation_jours: 1,
-      actif: true,
+      active: true,
     };
 
     // idempotence : (producer_id, nom)

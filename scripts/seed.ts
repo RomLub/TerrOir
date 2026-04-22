@@ -326,7 +326,7 @@ async function ensureProducts(producerId: string): Promise<string[]> {
           stock_disponible: p.stock_disponible,
           stock_illimite: p.stock_illimite,
           delai_preparation_jours: p.delai_preparation_jours,
-          actif: true,
+          active: true,
         })
         .eq("id", existingId);
       ids.push(existingId);
@@ -344,7 +344,7 @@ async function ensureProducts(producerId: string): Promise<string[]> {
         stock_disponible: p.stock_disponible,
         stock_illimite: p.stock_illimite,
         delai_preparation_jours: p.delai_preparation_jours,
-        actif: true,
+        active: true,
       })
       .select("id")
       .single();
