@@ -1,9 +1,35 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Button, Badge } from '@/components/ui';
 import { useCartStore, type CartItem } from '@/lib/store/cart';
+import { itemKey, type ValidateResponse } from '@/lib/cart/validate';
+import { StaleItemsBanner, type StaleChange } from './_components/StaleItemsBanner';
+
+// Libellés user-facing pour chaque raison retournée par /api/cart/validate.
+// Le texte est intentionnellement neutre (pas d'accusation du producteur) :
+// un 'producer_unavailable' peut être une suspension temporaire aussi bien
+// qu'une suppression RGPD — on laisse l'user décider d'explorer ou non.
+function reasonLabel(
+  reason: 'producer_unavailable' | 'product_unavailable' | 'slot_unavailable' | 'slot_full',
+): string {
+  switch (reason) {
+    case 'producer_unavailable':
+      return "ce producteur n'est plus disponible";
+    case 'product_unavailable':
+      return "ce produit n'est plus disponible";
+    case 'slot_unavailable':
+      return 'ce créneau de retrait n\'est plus disponible';
+    case 'slot_full':
+      return 'le créneau choisi est complet';
+  }
+}
+
+function formatQty(qty: number, unite: string): string {
+  return `${qty.toFixed(2).replace('.', ',')} ${unite}`;
+}
 
 function formatDateFr(iso: string): string {
   if (!iso) return '';
@@ -13,6 +39,17 @@ function formatDateFr(iso: string): string {
 }
 
 export default function PanierPage() {
+  // Suspense requis par Next.js 14 autour de useSearchParams (lecture de
+  // ?stale=1 lors d'un redirect depuis /compte/checkout). Fallback neutre :
+  // la page a son propre état "Chargement du panier…" côté inner.
+  return (
+    <Suspense fallback={null}>
+      <PanierPageInner />
+    </Suspense>
+  );
+}
+
+function PanierPageInner() {
   const items = useCartStore((s) => s.items);
   const updateQuantity = useCartStore((s) => s.updateQuantity);
   const removeItem = useCartStore((s) => s.removeItem);
@@ -21,6 +58,86 @@ export default function PanierPage() {
   useEffect(() => {
     setHydrated(true);
   }, []);
+
+  // Validation DB au load : détecte les items orphelins (producer suspended/
+  // deleted, produit inactif, slot supprimé, slot plein, stock tombé en
+  // dessous de la quantité en panier) et applique remove/clamp.
+  //
+  // L'effet ne tourne QU'UNE fois après hydratation — on ne relance pas sur
+  // chaque mutation du panier, sinon boucle infinie (on muterait `items` via
+  // remove/updateQuantity, ce qui re-triggerait l'effect). Le checkout
+  // re-valide explicitement avant POST /api/orders/create, et un arrivage
+  // sur /compte/panier?stale=1 (redirect depuis le checkout) force un
+  // re-run + clear du dismiss banner.
+  const searchParams = useSearchParams();
+  const forceRefresh = searchParams.get('stale') === '1';
+  const validatedRef = useRef(false);
+  const [staleChanges, setStaleChanges] = useState<StaleChange[]>([]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    if (validatedRef.current && !forceRefresh) return;
+    validatedRef.current = true;
+
+    const current = useCartStore.getState().items;
+    if (current.length === 0) {
+      setStaleChanges([]);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/cart/validate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items: current.map((it) => ({
+              productId: it.productId,
+              producerId: it.producerId,
+              creneauId: it.creneauId,
+              dateRetrait: it.dateRetrait,
+              quantite: it.quantite,
+            })),
+          }),
+        });
+        if (cancelled) return;
+        if (!res.ok) return; // fail-silent : le checkout re-validera.
+
+        const data = (await res.json()) as ValidateResponse;
+        const store = useCartStore.getState();
+        const changes: StaleChange[] = [];
+
+        for (const item of current) {
+          const status = data.results[itemKey(item)];
+          if (!status || status.ok) continue;
+
+          const key = {
+            productId: item.productId,
+            creneauId: item.creneauId,
+            dateRetrait: item.dateRetrait,
+          };
+          if (status.fatal) {
+            store.removeItem(key);
+            changes.push({ nom: item.nom, reason: reasonLabel(status.reason) });
+          } else {
+            store.updateQuantity(key, status.maxQuantite);
+            changes.push({
+              nom: item.nom,
+              reason: `quantité ajustée à ${formatQty(status.maxQuantite, item.unite)} (stock restreint)`,
+            });
+          }
+        }
+        if (!cancelled) setStaleChanges(changes);
+      } catch {
+        // fail-silent
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, forceRefresh]);
 
   const byProducer = useMemo(() => {
     const map: Record<string, { name: string; slug: string; producerId: string; items: CartItem[] }> = {};
@@ -53,6 +170,9 @@ export default function PanierPage() {
   if (items.length === 0) {
     return (
       <section className="py-24 text-center">
+        <div className="max-w-xl mx-auto text-left">
+          <StaleItemsBanner changes={staleChanges} forceShow={forceRefresh} />
+        </div>
         <h1 className="font-serif text-[44px] text-green-900">Votre panier est vide</h1>
         <p className="mt-3 text-[16px] text-dark/70">Découvrez les éleveurs sarthois près de chez vous.</p>
         <div className="mt-8"><Link href="/carte"><Button size="lg">Trouver un producteur →</Button></Link></div>
@@ -64,6 +184,10 @@ export default function PanierPage() {
     <section>
       <h1 className="font-serif text-[40px] md:text-[52px] text-green-900 leading-tight">Votre panier</h1>
         <p className="text-[14px] text-dark/60 mt-1">{items.length} article{items.length > 1 ? 's' : ''} chez {byProducer.length} producteur{byProducer.length > 1 ? 's' : ''}</p>
+
+        <div className="mt-6">
+          <StaleItemsBanner changes={staleChanges} forceShow={forceRefresh} />
+        </div>
 
         <div className="mt-10 grid lg:grid-cols-[1fr_380px] gap-10 items-start">
           <div className="space-y-6">
