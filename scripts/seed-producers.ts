@@ -529,6 +529,7 @@ async function ensureProducer(p: ProducerSeed, userId: string): Promise<string> 
     user_id: userId,
     slug: p.slug,
     nom_exploitation: p.nom_exploitation,
+    prenom_affichage: p.prenom,
     siret: p.siret,
     adresse: p.adresse,
     commune: p.commune,

@@ -88,6 +88,7 @@ export async function loginAndUpgradeAction(
     const { error: producerError } = await admin.from("producers").insert({
       user_id: existingUser.id,
       slug: slugFromEmail(invitation.email),
+      prenom_affichage: "À compléter",
       nom_exploitation: "À compléter",
       statut: "draft",
     });

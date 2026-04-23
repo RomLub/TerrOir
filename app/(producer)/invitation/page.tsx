@@ -183,13 +183,17 @@ export default async function InvitationPage({ searchParams }: PageProps) {
       await admin.from("producers").insert({
         user_id: existingUser.id,
         slug: slugFromEmail(email),
+        prenom_affichage: "À compléter",
         nom_exploitation: "À compléter",
         statut: "draft",
       });
       startStep = 2;
     } else {
       initialEntreprise = {
-        prenom_affichage: (producer.prenom_affichage as string) ?? "",
+        prenom_affichage:
+          producer.prenom_affichage === "À compléter"
+            ? ""
+            : (producer.prenom_affichage as string) ?? "",
         nom_exploitation:
           producer.nom_exploitation === "À compléter"
             ? ""

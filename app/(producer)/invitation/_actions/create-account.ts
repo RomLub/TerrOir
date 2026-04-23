@@ -65,6 +65,7 @@ export async function createAccountAction(
   const { error: producerError } = await admin.from("producers").insert({
     user_id: userId,
     slug: slugFromEmail(invitation.email),
+    prenom_affichage: "À compléter",
     nom_exploitation: "À compléter",
     statut: "draft",
   });
