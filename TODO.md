@@ -112,6 +112,43 @@
   - Propagation DNS confirmée via `Resolve-DnsName` PowerShell.
   - Note : délai « delivery delayed » attendu 15 min à 1h pour greylisting OVH au premier email Resend vers `admin@`.
 
+### Soir 23/04/2026
+
+- **Auto-bump lead `'contacted'` à l'envoi d'invitation admin** (commit `dbe6360`) :
+  - Remplacement d'un `INSERT` inconditionnel par un `UPDATE` conditionnel gaté sur `emailResult.ok` dans `app/api/admin/producers/invite/route.tsx`.
+  - Match par email (case-insensitive) dans `producer_interests` en statut `'new'` → bump `'contacted'`.
+  - Silent no-op si pas de lead matching (admin invite un prospect direct) — invitation non bloquée.
+  - Fix embarqué d'un bug latent pré-existant : l'INSERT créait un doublon `producer_interests` fantôme (nom=email) à chaque invitation admin si le lead existait déjà via formulaire public. La trace « invitation envoyée » vit dans `producer_invitations`, pas besoin de polluer `producer_interests`.
+
+- **Pages landing Stripe Connect onboarding** (commit `e93043e`) :
+  - `app/(producer)/connect/done/page.tsx` : landing de retour (`return_url` Stripe), banner succès vert + auto-redirect `/parametres` après 3s.
+  - `app/(producer)/connect/refresh/page.tsx` : landing de reprise (`refresh_url` Stripe), bouton « Reprendre l'onboarding » qui relance `POST /api/stripe/connect/onboard` pour obtenir une nouvelle Account Link.
+  - Débloque le flow d'onboarding producer Stripe en prod : sans ces landings, `return_url`/`refresh_url` tombaient sur des 404.
+  - **Dette notée** : pas de vérif Stripe server-side sur `/connect/done`. La source de vérité du statut Connect doit remonter via webhook `account.updated` (non implémenté). Conséquence : `producers.stripe_account_id` peut être set AVANT onboarding complété côté Stripe → faux positif « ✓ Compte Stripe connecté » sur `/parametres` si le producer abandonne le flux.
+
+- **Robustesse flow Resend + invitation producer** (commit `ef7f10b`) :
+  - Fix 1 : `console.error("[EMAIL_SEND_FAIL] ...")` sur les 3 chemins d'échec de `sendTemplate` (render_failed, error||!data, catch). Préfixe grep-able dans les logs Vercel — toute erreur était auparavant silencieuse côté logs (tracée uniquement en `notifications.metadata.error`, impossible à diagnostiquer sans query DB).
+  - Fix 2 : `renderEmail` wrappé dans try/catch dédié avant l'envoi Resend.
+  - Fix 3 : appel `sendTemplate` côté `invite/route.tsx` wrappé en try/catch ceinture+bretelles (tout throw imprévu → `emailResult.ok=false` → bump lead skippé via gating existant).
+  - Fix 4 : tokens (`randomBytes` + `generateOptOutToken`) déplacés AVANT l'INSERT `producer_invitations`. Si `OPT_OUT_TOKEN_SECRET` absent, 500 propre sans invitation orpheline.
+  - Fix 5 : fallback silencieux `RESEND_FROM_EMAIL ?? "no-reply@..."` retiré. Throw module-load dans `lib/resend/client.ts` (pattern `RESEND_API_KEY`) + export `resendFromEmail` typé `string`.
+  - Reste ouvert : bug #6 RGPD (email en clair dans `[EMAIL_SEND_FAIL]` + `[LEAD_BUMP_WARN]` + `notifications.metadata`) — cohérent avec l'existant, à traiter dans un chantier RGPD dédié.
+
+- **Audit migrations prod — 7 migrations vérifiées appliquées** :
+  - `20260422200000_rgpd_account_deletion.sql`
+  - `20260422300000_slot_rules_and_materialized_slots.sql`
+  - `20260422300000_add_stripe_customer_id_to_users.sql`
+  - `20260422400000_slots_adhoc_and_exceptions.sql`
+  - `20260422500000` (capacity)
+  - `20260422700000_rename_slots_actif_to_active.sql`
+  - `20260423000000_rename_products_actif_to_active.sql`
+  - Toutes vérifiées vertes en prod via query SQL. Aucune migration en attente d'apply.
+
+- **Rotation clé API Resend** :
+  - Clé Resend Full Access rotée (Vercel `RESEND_API_KEY` + Supabase Dashboard > Auth > SMTP custom — même clé partagée pour l'app et pour les flows Supabase Magic Link / Reset Password).
+  - Vérif post-rotation via test email invitation (Mailinator) + Reset Password (Zimbra). Tous les flows email fonctionnels.
+  - Pattern à retenir : toute rotation de cette clé = **2 endroits** à mettre à jour en parallèle, sinon Supabase continue silencieusement avec la clé révoquée.
+
 ### Chantier 2 — Flux invitation producteur ✅ CLÔTURÉ (les 6 phases en prod)
 
 - Phase 4 ✅ reprise d'onboarding (commit `285785d`) — test cas étape 2 validé en prod
@@ -327,7 +364,7 @@ _(rien en cours)_
 
 > **Décisions produit tranchées le 22/04/2026 matin** : pas de livraison domicile, adresses consumer optionnelles, Stripe Customer pour MVP, créneaux producteur entièrement personnalisables.
 
-- **Apply migrations DB restantes en prod** : vérifier que toutes les migrations récentes ont été appliquées (`20260422200000` RGPD, `20260422300000_slot_rules`, `20260422300000_stripe_customer`, `20260422400000_slots_adhoc`, `20260422500000` capacity, `20260422700000` rename slots.actif→active, `20260423000000` rename products.actif→active).
+- ~~**Apply migrations DB restantes en prod**~~ ✅ Fait (23/04 soir) — les 7 migrations listées vérifiées appliquées en prod via query SQL.
 - Onboarder Julien (GAEC du Rheu) — après validation test end-to-end
 - Basculer Stripe en mode Live (aujourd'hui en Test) + tester scénario 3DS
 - Mettre à jour le webhook Stripe vers `www.terroir-local.fr` (actuellement pointe sur `terr-oir-21cl.vercel.app` — à confirmer, potentiellement déjà fait le 22/04 matin)
@@ -357,8 +394,10 @@ _(rien en cours)_
 - Désactiver Stripe Link dans le Dashboard Stripe (Settings > Payment methods > Link toggle off) — action externe, pas code. Nécessaire si Link persiste à apparaître malgré `payment_method_types: ['card']` côté intents.
 - **Extraction helper `useLogoutFlow()`** si un 3e bouton logout apparaît un jour (DRY prévention, optionnel). Aujourd'hui 2 call sites : `navbar-public.tsx` et `AdminHeader.tsx` appliquent le pattern double signOut manuellement.
 - **Tests supplémentaires sur `lib/producers/fetch-public.ts` + `promote-to-public.ts`** (nécessite mocks Supabase non-triviaux). Non prioritaire aujourd'hui — les 77 tests existants couvrent les helpers critiques (slots, HMAC, cookie-domain, formatters).
-- **Marquer automatiquement un lead en `'contacted'` après envoi d'invitation** — la page admin leads `/producer-interests` est livrée (commit `a8ef04a`). Il reste à câbler la transition automatique : quand l'admin envoie une invitation depuis `InviteModal` (pré-rempli via `?invite=<email>`), bump le statut du lead `producer_interests` matching sur email vers `'contacted'` dans la même transaction.
+- ~~**Marquer automatiquement un lead en `'contacted'` après envoi d'invitation**~~ ✅ Fait (commit `dbe6360`) — UPDATE conditionnel gaté sur `emailResult.ok` dans `invite/route.tsx`.
 - **Doublon timestamp migrations `20260422300000`** — utilisé pour `slot_rules_and_materialized_slots.sql` ET `add_stripe_customer_id_to_users.sql`. Pas bloquant (Supabase ordonne alphabétiquement par filename à timestamp égal) mais convention à corriger un jour pour lisibilité historique. À ranger en dette si on touche les migrations.
+- **Webhook Stripe `account.updated` manquant** — conséquence : `producers.stripe_account_id` est set AVANT onboarding complété côté Stripe, donc le badge « ✓ Compte Stripe connecté » sur `/parametres` peut être un faux positif si le producer abandonne le flux Stripe à mi-course. Chantier : ajouter un handler webhook `account.updated` qui synchronise `producers.stripe_onboarding_completed` (ou équivalent) avec `charges_enabled` / `details_submitted` côté Stripe. **Bloquant avant go-live public** si on veut un statut Connect fiable.
+- **Logging email en clair RGPD** — `[EMAIL_SEND_FAIL]` + `[LEAD_BUMP_WARN]` + `notifications.metadata` contiennent des emails en clair. Incohérence RGPD à trancher globalement : masquage partiel (`u***@domain.tld`), hash, ou conservation assumée selon finalité. Chantier RGPD logs dédié à prévoir avant go-live.
 
 ## 🗺️ Roadmap produit (vision Avril 2026)
 
@@ -480,3 +519,7 @@ _(rien en cours)_
 - **Ne JAMAIS coller de clé API, token, mot de passe ou secret dans le chat avec Claude** (même dans un exemple `curl`). La clé devient compromise immédiatement et doit être rotée sans délai. Si un test `curl` est nécessaire : stocker la clé dans une variable PowerShell/bash locale et ne coller que la commande sans la valeur. Incident du 23/04 : clé Resend Full Access collée dans le chat → révoquée immédiatement côté Resend Dashboard + nouvelle clé générée + utilisée uniquement via variable locale.
 - **Les emails d'un domaine envoyés par un serveur tiers (ex: Resend via Amazon SES) vers des boîtes sur le même domaine peuvent être rejetés silencieusement** par le MX destinataire si le SPF n'autorise pas ce serveur tiers (anti-usurpation interne). Fix : ajouter `include:amazonses.com` (ou équivalent du provider) au SPF du domaine. Diagnostic : check Resend Dashboard status `Sent` vs `Delivered` — si coincé en `Sent` ou `Delivery Delayed`, probablement SPF. Incident du 23/04 : emails Resend `From:@terroir-local.fr` vers `admin@terroir-local.fr` rejetés par MX OVH jusqu'à ajout `include:amazonses.com` dans la zone DNS OVH.
 - **Le template Supabase Magic Link (et Recovery) utilise par défaut `{{ .SiteURL }}` hardcodé**, ce qui court-circuite entièrement le `emailRedirectTo` passé via `signInWithOtp` / `resetPasswordForEmail`. Pour un routing subdomain-dépendant (admin vs www), remplacer par `{{ .RedirectTo }}` dans le template : `<a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=magiclink">...`. Le serveur calcule le bon subdomain dans `emailRedirectTo`, le template le honore. Incident du 23/04 : admin cliquant sur magic link atterrissait toujours sur www (cookies isolés → session non visible côté admin), résolu en passant les 2 templates (Magic Link + Recovery) à `{{ .RedirectTo }}`.
+- **`lib/resend/sendTemplate` était silencieux côté logs Vercel.** Toute erreur Resend était tracée en DB (`notifications.metadata.error`) mais aucun `console.*` émis → impossible de diagnostiquer sans query DB, même pour une clé API invalide. Fix appliqué commit `ef7f10b` : logging `[EMAIL_SEND_FAIL]` préfixé grep-able sur les 3 chemins d'échec (render_failed, error||!data, catch). **Leçon générale** : toute fonction d'I/O critique doit émettre au minimum un `console.error` structuré avec préfixe grep-able en cas de failure, même si l'erreur est par ailleurs persistée proprement. Le log Vercel est le premier endroit qu'on regarde lors d'un incident.
+- **Pattern tokens-avant-INSERT.** Quand une route API fait (1) génération de tokens/secrets, (2) INSERT DB, (3) appel I/O externe (email, API, etc.), toujours calculer les tokens AVANT l'INSERT. Sinon un throw sur la génération de token (ex: `OPT_OUT_TOKEN_SECRET` absent) laisse un état orphelin en DB. Appliqué à `/api/admin/producers/invite` commit `ef7f10b` (randomBytes + generateOptOutToken hoistés avant l'INSERT `producer_invitations`).
+- **Rotation clé Resend : 2 endroits obligatoires en parallèle.** (1) Vercel Dashboard `RESEND_API_KEY` (consommé par `lib/resend/client.ts`) ET (2) Supabase Dashboard > Auth > SMTP custom (qui utilise la même clé pour Magic Link et Reset Password). Oublier le 2e endroit = Supabase continue de tenter des envois avec la clé révoquée, silencieusement, jusqu'au prochain test manuel. Pattern valable pour toute rotation de secret partagé entre l'app Vercel et la config Supabase.
+- **Route `/api/admin/producers/invite` avait un bug latent pré-existant : INSERT inconditionnel dans `producer_interests` à chaque invitation admin**, créant un doublon fantôme (nom=email) si le lead existait déjà via formulaire public. Corrigé par commit `dbe6360` (UPDATE conditionnel gaté sur `emailResult.ok`). **Leçon générale** : quand on touche une route d'écriture DB, toujours ausculter le comportement pré-existant (INSERT vs UPSERT vs UPDATE) et vérifier que la sémantique colle à la réalité métier — un « INSERT inconditionnel » est rarement la bonne réponse dès qu'il y a unicité logique sur une autre colonne (ici, l'email).

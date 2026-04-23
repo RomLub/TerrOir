@@ -1,6 +1,6 @@
 # HANDOFF — TerrOir
 
-> À jour le **2026-04-23** après commit `44c108b` (clôture session 23/04 : edge case panier + logout admin + vitest extension + SMTP/SPF/templates).
+> À jour le **2026-04-23** après session soir (commits `dbe6360` auto-bump lead + `e93043e` Stripe Connect landings + `ef7f10b` robustesse Resend).
 >
 > Objectif : permettre à un Claude frais de reprendre le projet exactement où on en est, juste en lisant ce document (puis `METHODOLOGY.md` et `TODO.md`).
 
@@ -122,6 +122,7 @@ Gérées via Vercel Dashboard. Jamais dans le code.
 - **OVH Zone DNS `terroir-local.fr`** : SPF inclut `include:mx.ovh.com` (MX OVH) et `include:amazonses.com` (Resend via SES) pour permettre Resend → boîtes `@terroir-local.fr` sans rejet MX interne.
   - Enregistrement complet : `v=spf1 include:mx.ovh.com include:amazonses.com ~all`.
 - **Resend Dashboard** : domaine `terroir-local.fr` vérifié (DKIM + SPF + MX + DMARC). Clé API Full Access utilisée par le code app (`RESEND_API_KEY` Vercel) ET par le SMTP custom Supabase.
+  - **Rotation de cette clé = 2 endroits en parallèle** : (1) Vercel `RESEND_API_KEY`, (2) Supabase Dashboard > Auth > SMTP custom. Oublier le 2e = Supabase continue silencieusement avec la clé révoquée.
 - **Vercel Dashboard > Environment Variables** : toutes les clés listées dans la section « Variables d'env critiques » ci-dessus.
 - **Stripe Dashboard** :
   - Mode Test actuel → Live à basculer avant go-live.
@@ -152,6 +153,9 @@ Gérées via Vercel Dashboard. Jamais dans le code.
 - **Tests vitest étendus** : 77 tests au total couvrant slots, HMAC opt-out, cookie-domain, formatters date/currency.
 - **Magic link admin** : flow universel sur `/connexion` (password + magic) avec `emailRedirectTo` routé server-side selon admin vs autres. Config externe : templates Supabase migrés à `{{ .RedirectTo }}`, `admin.terroir-local.fr/auth/callback` ajouté aux Redirect URLs.
 - **Custom SMTP Resend** : Supabase Auth envoie via Resend SMTP (plus de rate limit built-in). SPF OVH complété pour permettre Resend → boîtes `@terroir-local.fr`.
+- **Auto-bump lead `'contacted'` à l'envoi d'invitation admin** (commit `dbe6360`) : UPDATE conditionnel gaté sur `emailResult.ok` dans `invite/route.tsx` ; match email case-insensitive dans `producer_interests` en statut `'new'`. Corrige au passage un bug latent d'INSERT inconditionnel qui créait un doublon fantôme.
+- **Pages landing Stripe Connect onboarding** (commit `e93043e`) : `app/(producer)/connect/done/page.tsx` (return_url, auto-redirect `/parametres` 3s) + `app/(producer)/connect/refresh/page.tsx` (refresh_url, bouton « Reprendre l'onboarding »). Débloque le flow onboarding producer Stripe en prod.
+- **Robustesse flow Resend + invitation producer** (commit `ef7f10b`) : logging `[EMAIL_SEND_FAIL]` grep-able Vercel, `renderEmail` wrappé try/catch, appel `sendTemplate` wrappé côté route, tokens hoistés AVANT INSERT `producer_invitations`, fail-fast `RESEND_FROM_EMAIL` au module-load.
 
 ## Chantiers en cours
 
@@ -164,9 +168,11 @@ _(rien en cours)_
 - **Framework de tests** : vitest couvre slots, HMAC opt-out, cookie-domain, formatters (77 tests). Reste à étendre à d'autres helpers critiques si besoin.
 - **Tests `fetch-public.ts` + `promote-to-public.ts`** : helpers producers non testés — nécessite des mocks Supabase non-triviaux. Non prioritaire.
 - **Phase B5 TableStatus** : livrée (commit `b89160f`), mais à vérifier que toutes les tables admin l'utilisent.
-- **Marquer auto lead `'contacted'`** après envoi d'invitation : transition non câblée, à faire dans la même transaction que `InviteModal`.
+- ~~**Marquer auto lead `'contacted'`** après envoi d'invitation~~ ✅ Fait (commit `dbe6360`).
 - **Stripe Link account-wide** : à désactiver manuellement dans Dashboard Stripe (action externe).
 - **Extraction helper `useLogoutFlow()`** : 2 call sites (`navbar-public.tsx`, `AdminHeader.tsx`) appliquent manuellement le pattern double signOut. À factoriser si un 3e call site apparaît (prévention DRY).
+- **Webhook Stripe `account.updated` manquant** : `producers.stripe_account_id` est set AVANT onboarding complété côté Stripe → le badge « ✓ Compte Stripe connecté » sur `/parametres` peut être un faux positif si le producer abandonne à mi-course. Chantier : ajouter handler webhook qui synchronise un flag `stripe_onboarding_completed` (ou équivalent) avec `charges_enabled` / `details_submitted` côté Stripe. Bloquant avant go-live public si on veut un statut Connect fiable.
+- **Logging email en clair RGPD** : préfixes `[EMAIL_SEND_FAIL]` + `[LEAD_BUMP_WARN]` + `notifications.metadata` contiennent des emails en clair. Incohérence RGPD à trancher globalement (masquage partiel, hash, ou conservation assumée). Chantier RGPD logs dédié à prévoir.
 
 ## Users de test
 
