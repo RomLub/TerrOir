@@ -118,26 +118,34 @@ export async function POST(request: Request) {
     metadata: { token_prefix: token.slice(0, 8), email: input.email },
   });
 
-  // 4. Trace dans producer_interests avec statut='contacted'
-  const { error: interestError } = await admin
-    .from("producer_interests")
-    .insert({
-      nom: input.nom ?? input.email,
-      email: input.email,
-      telephone: input.telephone ?? null,
-      nom_exploitation: input.nom_exploitation ?? null,
-      commune: input.commune ?? null,
-      especes: input.especes ?? null,
-      message: input.message ?? null,
-      statut: "contacted",
-    });
+  // 4. Bump du lead matching : producer_interests.statut 'new' → 'contacted'.
+  //    Gaté sur emailResult.ok : si l'email n'est pas parti, le prospect n'a
+  //    pas vraiment été "contacté", on laisse le lead en 'new' pour relance.
+  //    Match email case-insensitive (ilike sans wildcards). Si 0 rows
+  //    (admin invite un prospect direct, jamais passé par /devenir-producteur),
+  //    no-op silencieux — on ne bloque pas l'invitation déjà partie.
+  let leadUpdated = 0;
+  if (emailResult.ok) {
+    const { data: bumped, error: bumpError } = await admin
+      .from("producer_interests")
+      .update({ statut: "contacted" })
+      .ilike("email", input.email)
+      .eq("statut", "new")
+      .select("id");
+    if (bumpError) {
+      console.warn(
+        `[LEAD_BUMP_WARN] Failed to bump producer_interests for ${input.email}: ${bumpError.message}`,
+      );
+    } else {
+      leadUpdated = bumped?.length ?? 0;
+    }
+  }
 
   return NextResponse.json({
     url: invitationUrl,
     expires_at: invitation.expires_at,
     email_sent: emailResult.ok,
     email_error: emailResult.ok ? undefined : emailResult.error,
-    interest_logged: !interestError,
-    interest_error: interestError?.message,
+    lead_updated: leadUpdated,
   });
 }
