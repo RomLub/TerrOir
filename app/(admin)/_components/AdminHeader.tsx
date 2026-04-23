@@ -3,6 +3,7 @@
 import { Logo } from "@/components/ui";
 import { useUserContext } from "@/components/providers/user-provider";
 import { logoutAction } from "@/app/(public)/connexion/logout-action";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export function AdminHeader() {
   const { user } = useUserContext();
@@ -21,7 +22,14 @@ export function AdminHeader() {
           {user?.email ? (
             <span className="text-sm text-gray-600">{user.email}</span>
           ) : null}
-          <form action={logoutAction}>
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const supabase = createSupabaseBrowserClient();
+              await supabase.auth.signOut();
+              await logoutAction();
+            }}
+          >
             <button
               type="submit"
               className="text-sm font-medium text-gray-600 transition-colors hover:text-red-600"
