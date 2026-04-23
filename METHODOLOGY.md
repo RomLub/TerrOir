@@ -138,6 +138,10 @@ Si erreur → fix puis re-run, OU rapport à Romain/Claude si blocage de concept
 - Rester strictement dans le scope de la tâche demandée.
 - Jamais exposer ou hardcoder secrets, API keys ou credentials.
 
+## Gestion du contexte CC
+
+- **Clear régulier des terminaux CC** : les terminaux CC accumulent du contexte qui consomme des tokens à chaque interaction. Claude (chat web) identifie les moments opportuns pour faire `/clear` dans les terminaux et le signale à Romain. Typiquement après la fin d'un chantier bien délimité, ou quand CC lui-même suggère `/clear to save X tokens`. Le clear ne perd que le contexte conversationnel, le repo et l'état git sont intacts.
+
 ## Quand s'arrêter et flagger
 
 CC (ou Claude chat) doit stopper et demander confirmation si :

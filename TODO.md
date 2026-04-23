@@ -67,6 +67,18 @@
   - **Phase B4 `AdminPageHeader`** (`2960b18`) : 4 pages migrées avec prop `error?` en bonus (flash erreur unifié dans le header).
   - Reste **Phase B5** (`TableStatus` loading/empty rows).
 
+- **Phase C.3 `TableActionButton` consolidation admin** (commit `df3840a`) : 4 variants (`primary` / `ghost` / `ghost-danger` / `ghost-neutral`), 2 sizes, support `href` pour `<Link>`. 11 boutons migrés sur 3 pages admin (`gestion-producteurs`, `avis`, `producer-interests`). Phase C.4 intentionnellement skippée (1 seul call site restant = pas de duplication à consolider).
+
+- **Consolidation admin 100% COMPLÈTE** (Phases A + B1-B5 + C1-C3) : 10 composants partagés créés (`formatDateFr`, `formatEuro`, `StatusDotBadge`, `ProducerStatusBadge`, `AdminModal`, `FilterTabs`, `AdminPageHeader`, `TableStatus`, `StatusPanel`, `MetricCard`, `TableActionButton`). Chantier admin consolidation clos.
+
+- **`METHODOLOGY.md` + `HANDOFF.md` créés** (commit `dd12386`) : documentation méthodologie + snapshot reproductible projet pour Claude frais.
+
+- **Custom SMTP Supabase configuré vers Resend** :
+  - Avant : Supabase built-in SMTP (rate limit ~3-4/h, non prod).
+  - Après : custom SMTP via Resend API, illimité selon plan Resend.
+  - Config : `smtp.resend.com:465`, sender `no-reply@terroir-local.fr`.
+  - Email Auth (magic link, reset password, signup) passe désormais par Resend.
+
 ### Chantier 2 — Flux invitation producteur ✅ CLÔTURÉ (les 6 phases en prod)
 
 - Phase 4 ✅ reprise d'onboarding (commit `285785d`) — test cas étape 2 validé en prod
@@ -312,9 +324,6 @@ _(rien en cours)_
 - Magic link admin via `www.*` : si un flow magic link est ajouté pour les admins plus tard (recovery, invite), il faudra router explicitement via `admin.terroir-local.fr/auth/callback` + ajouter cette URL aux redirect URLs Supabase. Non bloquant aujourd'hui (admin password-only).
 - Désactiver Stripe Link dans le Dashboard Stripe (Settings > Payment methods > Link toggle off) — action externe, pas code. Nécessaire si Link persiste à apparaître malgré `payment_method_types: ['card']` côté intents.
 - **Marquer automatiquement un lead en `'contacted'` après envoi d'invitation** — la page admin leads `/producer-interests` est livrée (commit `a8ef04a`). Il reste à câbler la transition automatique : quand l'admin envoie une invitation depuis `InviteModal` (pré-rempli via `?invite=<email>`), bump le statut du lead `producer_interests` matching sur email vers `'contacted'` dans la même transaction.
-- **Consolidation admin — Phase B5 restante** (Phases B2/B3/B4 livrées dans les commits `eaed1a2` + `5b63283` + `2960b18`) :
-  - **B5** : `<TableStatus kind colSpan>` pour les rows loading/empty dans les tables admin. En cours côté TC.
-  - Priorité basse (cosmétique, pas de régression fonctionnelle).
 - **Doublon timestamp migrations `20260422300000`** — utilisé pour `slot_rules_and_materialized_slots.sql` ET `add_stripe_customer_id_to_users.sql`. Pas bloquant (Supabase ordonne alphabétiquement par filename à timestamp égal) mais convention à corriger un jour pour lisibilité historique. À ranger en dette si on touche les migrations.
 
 ## 🗺️ Roadmap produit (vision Avril 2026)
@@ -399,6 +408,7 @@ _(rien en cours)_
 - **Helper `fetchPublicProducerBySlug(slug)`** pour centraliser le filtre `statut='public'` sur les pages publiques qui utilisent `createSupabaseAdminClient`. Prévient les fuites futures quand de nouvelles pages publiques seront ajoutées.
 - **Edge case panier** : si un producer passe en `'suspended'` entre l'ajout au panier et la consultation, le lien vers `/producteurs/{slug}` mène à un `notFound()` (404). Pas une fuite de données, juste un UX problème mineur. À fixer en re-fetchant les producers lors du chargement du panier et en masquant le lien si non-public.
 - **Refacto UX créneaux page produit consumer** : regroupement par date + dropdown accordéon (1 seul ouvert à la fois), créneaux grisés si pleins (capacity restante via `SlotOption.left` câblée Phase 6). À traiter en Phase 5 (UI consumer) du chantier Créneaux personnalisables.
+- **Phase C.4 `SuccessConfirmation`** : skippée aujourd'hui car 1 seul call site. À reconsidérer si un 2e pattern similaire apparaît.
 
 ## ⚠️ Leçons apprises / Known pitfalls
 
@@ -433,3 +443,4 @@ _(rien en cours)_
 - **Pattern défense en profondeur sur les mappings enum** (ex: `STATUS_META`, `ORDER_STATUS_LABEL`) : toujours ajouter une entrée pour TOUS les statuts DB possibles, même si le fetch les filtre normalement. Un refactor futur qui élargit le fetch fera planter le client avec `Cannot read 'bg' of undefined`. Exemple concret : `STATUS_META` dans `/admin/gestion-producteurs` couvre `('pending', 'active', 'public', 'suspended', 'deleted')` même si le fetch filtre `.neq('statut','draft').neq('statut','deleted')`.
 - **`FOR UPDATE` sur le row slot dans la RPC `create_order_with_items`** sérialise les réservations concurrentes et empêche l'overbooking quand 2 consumers cliquent simultanément. Impact perf négligeable (ligne petite, opération rare, verrou local), gain anti-overbook critique pour les slots à capacité limitée. Pattern à répliquer pour tout check de capacité concurrente.
 - **Parallélisation à risque : éviter que 2 terminaux Claude Code touchent le même fichier en même temps.** Si overlap possible, séquencer les tâches OU fractionner les prompts pour que chaque terminal ait son périmètre de fichiers strict. Incident nuit 22→23/04 : TA (page admin leads) et TC (toggle `showAll`) ont tous les deux modifié `/gestion-producteurs/page.tsx`. Le commit TA a embarqué les modifs TC en cours → commit label « impur » (logique TC livrée sous message TA). État du code correct mais historique git confus et difficile à tracer. Mitigation : planifier les périmètres en amont et fractionner si collision possible.
+- **Supabase built-in SMTP est rate-limited et non destiné à la production.** Custom SMTP via Resend est critique avant lancement public. Config minimale : `smtp.resend.com:465`, username=`resend`, password=Resend API Key (Full access), sender = `no-reply@domaine`. Tester avec une commande `curl` avant de valider côté Supabase.
