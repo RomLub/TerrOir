@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
 import { render } from "@react-email/render";
-import { resend } from "./client";
+import { resend, resendFromEmail } from "./client";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 interface SendTemplateArgs {
@@ -18,7 +18,8 @@ export async function renderEmail(element: ReactElement): Promise<string> {
 
 // Envoie un email via Resend et log l'envoi dans public.notifications.
 // Ne throw pas : renvoie un statut pour que l'appelant puisse continuer
-// à traiter les autres destinataires.
+// à traiter les autres destinataires. Tout échec produit un log Vercel
+// grep-able via [EMAIL_SEND_FAIL].
 export async function sendTemplate({
   to,
   userId,
@@ -29,27 +30,48 @@ export async function sendTemplate({
 }: SendTemplateArgs): Promise<
   { ok: true; id: string } | { ok: false; error: string }
 > {
-  const html = await renderEmail(element);
-  const from = process.env.RESEND_FROM_EMAIL ?? "no-reply@terroir-local.fr";
   const admin = createSupabaseAdminClient();
+
+  let html: string;
+  try {
+    html = await renderEmail(element);
+  } catch (err) {
+    const error = err as Error;
+    const reason = `render_failed: ${error.message}`;
+    console.error(
+      `[EMAIL_SEND_FAIL] template=${template} to=${to} error_name=${error.name} error_message=${error.message}`,
+    );
+    await admin.from("notifications").insert({
+      user_id: userId,
+      type: "email",
+      template,
+      statut: "failed",
+      metadata: { ...metadata, error: reason },
+    });
+    return { ok: false, error: reason };
+  }
 
   try {
     const { data, error } = await resend.emails.send({
-      from,
+      from: resendFromEmail,
       to,
       subject,
       html,
     });
 
     if (error || !data) {
+      const message = error?.message ?? "unknown";
+      console.error(
+        `[EMAIL_SEND_FAIL] template=${template} to=${to} error_name=${error?.name ?? "unknown"} error_message=${message}`,
+      );
       await admin.from("notifications").insert({
         user_id: userId,
         type: "email",
         template,
         statut: "failed",
-        metadata: { ...metadata, error: error?.message ?? "unknown" },
+        metadata: { ...metadata, error: message },
       });
-      return { ok: false, error: error?.message ?? "unknown" };
+      return { ok: false, error: message };
     }
 
     await admin.from("notifications").insert({
@@ -61,15 +83,18 @@ export async function sendTemplate({
     });
     return { ok: true, id: data.id };
   } catch (err) {
-    const message = (err as Error).message;
+    const error = err as Error;
+    console.error(
+      `[EMAIL_SEND_FAIL] template=${template} to=${to} error_name=${error.name} error_message=${error.message}`,
+    );
     await admin.from("notifications").insert({
       user_id: userId,
       type: "email",
       template,
       statut: "failed",
-      metadata: { ...metadata, error: message },
+      metadata: { ...metadata, error: error.message },
     });
-    return { ok: false, error: message };
+    return { ok: false, error: error.message };
   }
 }
 

@@ -72,8 +72,20 @@ export async function POST(request: Request) {
     );
   }
 
-  // 2. Invitation (token + expiry gérés par la table)
+  // 2. Préparer TOUS les tokens AVANT le moindre write DB. Si un token
+  //    échoue (OPT_OUT_TOKEN_SECRET absent → generateOptOutToken throw),
+  //    on 500 proprement sans laisser d'invitation orpheline en base.
   const token = randomBytes(32).toString("hex");
+
+  // Lien opt-out RGPD embarqué dans le pied de l'email (token HMAC
+  // déterministe, pointe sur www).
+  const publicBase =
+    process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const unsubscribeUrl = `${publicBase}/desabonnement?email=${encodeURIComponent(
+    input.email,
+  )}&token=${generateOptOutToken(input.email)}`;
+
+  // 3. Invitation (token + expiry gérés par la table)
   const { data: invitation, error: invitationError } = await admin
     .from("producer_invitations")
     .insert({
@@ -94,31 +106,33 @@ export async function POST(request: Request) {
     process.env.NEXT_PUBLIC_PRODUCER_URL ?? "http://pro.localhost:3000";
   const invitationUrl = `${producerBase}/invitation?token=${invitation.token}`;
 
-  // Lien opt-out RGPD embarqué dans le pied de l'email (token HMAC
-  // déterministe, pointe sur www. Impose que OPT_OUT_TOKEN_SECRET soit
-  // configuré côté Vercel — sinon generateOptOutToken throw et casse l'envoi.
-  const publicBase =
-    process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-  const unsubscribeUrl = `${publicBase}/desabonnement?email=${encodeURIComponent(
-    input.email,
-  )}&token=${generateOptOutToken(input.email)}`;
+  // 4. Email via Resend. Wrap dans try/catch pour absorber tout throw
+  //    imprévu (sendTemplate ne devrait pas throw, mais ceinture+bretelles).
+  //    Le gating emailResult.ok plus bas suffit alors à skip le bump lead.
+  let emailResult: { ok: true; id: string } | { ok: false; error: string };
+  try {
+    emailResult = await sendTemplate({
+      to: input.email,
+      userId: null,
+      template: "producer_invitation",
+      subject: invitationSubject(),
+      element: (
+        <ProducerInvitation
+          invitationUrl={invitationUrl}
+          unsubscribeUrl={unsubscribeUrl}
+        />
+      ),
+      metadata: { token_prefix: token.slice(0, 8), email: input.email },
+    });
+  } catch (err) {
+    const message = (err as Error).message;
+    console.error(
+      `[EMAIL_SEND_FAIL] template=producer_invitation to=${input.email} error_name=unexpected_throw error_message=${message}`,
+    );
+    emailResult = { ok: false, error: message };
+  }
 
-  // 3. Email via Resend
-  const emailResult = await sendTemplate({
-    to: input.email,
-    userId: null,
-    template: "producer_invitation",
-    subject: invitationSubject(),
-    element: (
-      <ProducerInvitation
-        invitationUrl={invitationUrl}
-        unsubscribeUrl={unsubscribeUrl}
-      />
-    ),
-    metadata: { token_prefix: token.slice(0, 8), email: input.email },
-  });
-
-  // 4. Bump du lead matching : producer_interests.statut 'new' → 'contacted'.
+  // 5. Bump du lead matching : producer_interests.statut 'new' → 'contacted'.
   //    Gaté sur emailResult.ok : si l'email n'est pas parti, le prospect n'a
   //    pas vraiment été "contacté", on laisse le lead en 'new' pour relance.
   //    Match email case-insensitive (ilike sans wildcards). Si 0 rows
