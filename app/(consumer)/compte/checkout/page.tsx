@@ -7,6 +7,7 @@ import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-
 import { Button } from '@/components/ui';
 import { getStripe } from '@/lib/stripe/client';
 import { useCartStore, type CartItem } from '@/lib/store/cart';
+import { itemKey, type ValidateResponse } from '@/lib/cart/validate';
 import { listPaymentMethodsAction, type PaymentMethodSummary } from './actions';
 
 const BRAND_LABEL: Record<string, string> = {
@@ -82,6 +83,8 @@ export default function CheckoutPage() {
 
   const subtotal = group ? group.items.reduce((s, i) => s + i.prix * i.quantite, 0) : 0;
 
+  const router = useRouter();
+
   useEffect(() => {
     if (!hydrated || !group || order || preparing) return;
     setPreparing(true);
@@ -89,6 +92,41 @@ export default function CheckoutPage() {
 
     (async () => {
       try {
+        // Phase 3 — re-validation du panier AVANT création d'order. Le
+        // producer/produit/slot peuvent avoir été invalidés entre l'ouverture
+        // du panier et ce clic (admin a suspendu, producer a dépublié un
+        // produit, slot plein par un autre consumer, stock tombé). On
+        // redirige vers /compte/panier?stale=1 → la page panier clear le
+        // dismiss du bandeau, re-valide, ré-affiche les changements.
+        // Stock_insufficient (non-fatal) aussi : le total affiché ici serait
+        // trompeur et l'user doit voir la quantité ajustée avant paiement.
+        const validateRes = await fetch('/api/cart/validate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items: group.items.map((it) => ({
+              productId: it.productId,
+              producerId: it.producerId,
+              creneauId: it.creneauId,
+              dateRetrait: it.dateRetrait,
+              quantite: it.quantite,
+            })),
+          }),
+        });
+        if (validateRes.ok) {
+          const vData = (await validateRes.json()) as ValidateResponse;
+          const hasIssue = group.items.some((it) => {
+            const status = vData.results[itemKey(it)];
+            return status !== undefined && !status.ok;
+          });
+          if (hasIssue) {
+            router.replace('/compte/panier?stale=1');
+            return;
+          }
+        }
+        // Si /validate fail (erreur réseau/serveur) : on laisse passer.
+        // La RPC create_order_with_items reste le garde-fou final.
+
         const orderRes = await fetch('/api/orders/create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -127,7 +165,7 @@ export default function CheckoutPage() {
         setPreparing(false);
       }
     })();
-  }, [hydrated, group, order, preparing]);
+  }, [hydrated, group, order, preparing, router]);
 
   if (!hydrated) {
     return (
