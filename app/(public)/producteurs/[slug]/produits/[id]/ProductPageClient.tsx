@@ -10,6 +10,10 @@ export type ProducerSummary = {
   id: string;
   slug: string;
   name: string;
+  // Nullable pendant la fenêtre transitoire des 3 migrations. Après
+  // migration C, toujours string non-vide, mais le post-it prévoit un
+  // early return si null pour éviter d'afficher "Le conseil de null".
+  firstName: string | null;
   commune: string;
   address: string;
   lat: number | null;
@@ -28,6 +32,7 @@ export type ProductDetail = {
   delaiJours: number;
   photos: (string | null)[];
   description: string[];
+  conseil: { active: boolean; texte: string | null };
 };
 
 export type SlotOption = {
@@ -232,6 +237,12 @@ export function ProductPageClient({
               </div>
             )}
 
+            <ConseilPostIt
+              active={product.conseil.active}
+              texte={product.conseil.texte}
+              firstName={producer.firstName}
+            />
+
             <div className="mt-8">
               <div className="text-[11px] uppercase tracking-[0.14em] text-dark/60 font-semibold mb-2">
                 Quantité
@@ -335,6 +346,35 @@ export function ProductPageClient({
 
 function Sep() {
   return <li aria-hidden className="text-dark/30">/</li>;
+}
+
+function ConseilPostIt({
+  active,
+  texte,
+  firstName,
+}: {
+  active: boolean;
+  texte: string | null;
+  firstName: string | null;
+}) {
+  // Early return null : pendant la fenêtre transitoire A→C, un producer
+  // peut avoir prenom_affichage=null. On n'affiche pas "Le conseil de null".
+  // Après migration C, firstName est toujours renseigné → ce check devient
+  // défensif sans effet visible.
+  if (!active || !texte || !firstName) return null;
+  return (
+    <figure className="mt-6 relative rounded-lg bg-[#FFF7D6] border border-amber-200/60 shadow-sm px-5 py-4 -rotate-[0.6deg]">
+      <figcaption className="text-[11px] uppercase tracking-[0.14em] text-terra-700 font-semibold mb-1.5">
+        Le conseil de {firstName}
+      </figcaption>
+      <blockquote className="font-serif text-[15px] text-dark/85 leading-relaxed italic">
+        « {texte} »
+      </blockquote>
+      <div className="mt-2 text-right text-[13px] text-green-900 font-serif italic">
+        — {firstName}
+      </div>
+    </figure>
+  );
 }
 
 function Chevron({ open }: { open: boolean }) {

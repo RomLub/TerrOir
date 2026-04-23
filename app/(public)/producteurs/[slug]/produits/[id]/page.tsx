@@ -30,7 +30,7 @@ export default async function ProductPage({ params }: { params: { slug: string; 
 
   const { data: productRow } = await admin
     .from('products')
-    .select('id, nom, description, photos, prix, unite, poids_estime_kg, stock_disponible, stock_illimite, delai_preparation_jours, active, producer_id')
+    .select('id, nom, description, photos, prix, unite, poids_estime_kg, stock_disponible, stock_illimite, delai_preparation_jours, active, producer_id, conseil_active, conseil_texte')
     .eq('id', params.id)
     .eq('active', true)
     .maybeSingle();
@@ -108,6 +108,7 @@ export default async function ProductPage({ params }: { params: { slug: string; 
     id: producerRow.id,
     slug: producerRow.slug,
     name: producerRow.nom_exploitation,
+    firstName: producerRow.prenom_affichage,
     commune: commune || '—',
     address: address || '—',
     lat: producerRow.latitude,
@@ -130,6 +131,10 @@ export default async function ProductPage({ params }: { params: { slug: string; 
     delaiJours: productRow.delai_preparation_jours ?? 0,
     photos: Array.isArray(productRow.photos) ? productRow.photos : [],
     description: descParas,
+    conseil: {
+      active: !!productRow.conseil_active,
+      texte: (productRow.conseil_texte as string | null) ?? null,
+    },
   };
 
   const slots: SlotOption[] = (slotsRaw ?? []).map((s) => ({
