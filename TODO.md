@@ -73,11 +73,44 @@
 
 - **`METHODOLOGY.md` + `HANDOFF.md` créés** (commit `dd12386`) : documentation méthodologie + snapshot reproductible projet pour Claude frais.
 
-- **Custom SMTP Supabase configuré vers Resend** :
-  - Avant : Supabase built-in SMTP (rate limit ~3-4/h, non prod).
-  - Après : custom SMTP via Resend API, illimité selon plan Resend.
-  - Config : `smtp.resend.com:465`, sender `no-reply@terroir-local.fr`.
-  - Email Auth (magic link, reset password, signup) passe désormais par Resend.
+### Après-midi 23/04/2026
+
+- **Edge case panier producer suspended/deleted/product/slot/stock** (commits `c6f0567` + `8d8878b`) :
+  - Phase 1 endpoint `POST /api/cart/validate` : mapping per-item (`producer`/`product`/`slot`/`slot_full` fatal, `stock_insufficient` non-fatal avec `maxQuantite`, `ok`).
+  - Phase 2 hook au load du panier : `removeItem` pour fatals, `updateQuantity` pour stock, banner `StaleItemsBanner` dismissable avec sessionStorage + hash re-flash.
+  - Phase 3 re-validation au checkout avant `POST orders/create`, redirect vers `/compte/panier?stale=1` si stale détecté.
+  - Défense en profondeur 3 couches : cart load + checkout + RPC `create_order_with_items`.
+  - Tests manuels attendus post-deploy (5 scénarios : producer suspended, product actif=false, slot excluded, slot_full, stock_insufficient).
+
+- **Fix bug logout admin** (commit `f681300`) :
+  - `AdminHeader` déclenchait uniquement la server action `logoutAction`.
+  - Client Supabase browser gardait sa session en mémoire → `AdminHeader` continuait d'afficher l'email après déconnexion jusqu'au hard reload.
+  - Fix : pattern double `signOut` (client + server) aligné sur `navbar-public.tsx`. `onAuthStateChange` déclenché → `UserProvider` pose `user=null` → re-render sans email.
+  - Leçon déjà documentée (TODO.md:419) appliquée à `AdminHeader`.
+
+- **Tests vitest étendus** (commits `7904ae9` + `9c3cf0c` + `44c108b`) :
+  - +50 tests unitaires sur helpers critiques, zéro modification du code source.
+  - `opt-out-token` HMAC (14 tests sécurité).
+  - `cookie-domain` (17 tests isolation auth admin vs www/pro, avec 2 cas defense-in-depth suffix spoofing).
+  - `date` + `currency` formatters (19 tests).
+  - Total : **77 tests green** (vs 27 avant).
+
+- **Custom SMTP Resend configuré** (action externe Supabase Dashboard) :
+  - `smtp.resend.com:465`, username=`resend`, password=Resend API Key (Full Access), sender=`no-reply@terroir-local.fr`.
+  - Avant : Supabase built-in SMTP (rate limit ~3-4/h, non prod). Après : illimité selon plan Resend.
+  - Leçon apprise : ne JAMAIS coller de clé API dans un chat ; clé rotée après leak accidentel, nouvelle clé testée via `curl` PowerShell avec variable locale avant config Supabase.
+
+- **Fix template Magic Link + Recovery** (action externe Supabase Dashboard) :
+  - Cause bug routing admin → www (reporté le matin) : les templates utilisaient `{{ .SiteURL }}` hardcodé qui court-circuite `emailRedirectTo` passé via `signInWithOtp`.
+  - Fix : remplacer par `{{ .RedirectTo }}` dans les 2 templates (Magic Link + Reset Password).
+  - Bonus : correction structure HTML du template Reset Password qui était cassée.
+
+- **Fix SPF pour emails Resend vers `@terroir-local.fr`** (action externe OVH Zone DNS) :
+  - Cause : SPF du domaine autorisait `mx.ovh.com` uniquement, donc emails Resend `From:@terroir-local.fr` vers `admin@terroir-local.fr` rejetés silencieusement par le MX OVH (anti-usurpation interne).
+  - Fix : ajouter `include:amazonses.com` dans le SPF du domaine.
+  - SPF final : `v=spf1 include:mx.ovh.com include:amazonses.com ~all`.
+  - Propagation DNS confirmée via `Resolve-DnsName` PowerShell.
+  - Note : délai « delivery delayed » attendu 15 min à 1h pour greylisting OVH au premier email Resend vers `admin@`.
 
 ### Chantier 2 — Flux invitation producteur ✅ CLÔTURÉ (les 6 phases en prod)
 
@@ -321,8 +354,9 @@ _(rien en cours)_
 - Vectormagic logo SVG (8,99€)
 - Remplacer images Unsplash provisoires par vraies photos producteurs
 - Flux invitation : cas "email déjà en base" à détecter proprement côté UX (au-delà de la correction fonctionnelle du Chantier 2)
-- Magic link admin via `www.*` : si un flow magic link est ajouté pour les admins plus tard (recovery, invite), il faudra router explicitement via `admin.terroir-local.fr/auth/callback` + ajouter cette URL aux redirect URLs Supabase. Non bloquant aujourd'hui (admin password-only).
 - Désactiver Stripe Link dans le Dashboard Stripe (Settings > Payment methods > Link toggle off) — action externe, pas code. Nécessaire si Link persiste à apparaître malgré `payment_method_types: ['card']` côté intents.
+- **Extraction helper `useLogoutFlow()`** si un 3e bouton logout apparaît un jour (DRY prévention, optionnel). Aujourd'hui 2 call sites : `navbar-public.tsx` et `AdminHeader.tsx` appliquent le pattern double signOut manuellement.
+- **Tests supplémentaires sur `lib/producers/fetch-public.ts` + `promote-to-public.ts`** (nécessite mocks Supabase non-triviaux). Non prioritaire aujourd'hui — les 77 tests existants couvrent les helpers critiques (slots, HMAC, cookie-domain, formatters).
 - **Marquer automatiquement un lead en `'contacted'` après envoi d'invitation** — la page admin leads `/producer-interests` est livrée (commit `a8ef04a`). Il reste à câbler la transition automatique : quand l'admin envoie une invitation depuis `InviteModal` (pré-rempli via `?invite=<email>`), bump le statut du lead `producer_interests` matching sur email vers `'contacted'` dans la même transaction.
 - **Doublon timestamp migrations `20260422300000`** — utilisé pour `slot_rules_and_materialized_slots.sql` ET `add_stripe_customer_id_to_users.sql`. Pas bloquant (Supabase ordonne alphabétiquement par filename à timestamp égal) mais convention à corriger un jour pour lisibilité historique. À ranger en dette si on touche les migrations.
 
@@ -406,7 +440,6 @@ _(rien en cours)_
 - Gestion des litiges (retrait non effectué, marchandise abîmée)
 - Stats publiques sur la home (nb commandes, nb producteurs actifs)
 - **Helper `fetchPublicProducerBySlug(slug)`** pour centraliser le filtre `statut='public'` sur les pages publiques qui utilisent `createSupabaseAdminClient`. Prévient les fuites futures quand de nouvelles pages publiques seront ajoutées.
-- **Edge case panier** : si un producer passe en `'suspended'` entre l'ajout au panier et la consultation, le lien vers `/producteurs/{slug}` mène à un `notFound()` (404). Pas une fuite de données, juste un UX problème mineur. À fixer en re-fetchant les producers lors du chargement du panier et en masquant le lien si non-public.
 - **Refacto UX créneaux page produit consumer** : regroupement par date + dropdown accordéon (1 seul ouvert à la fois), créneaux grisés si pleins (capacity restante via `SlotOption.left` câblée Phase 6). À traiter en Phase 5 (UI consumer) du chantier Créneaux personnalisables.
 - **Phase C.4 `SuccessConfirmation`** : skippée aujourd'hui car 1 seul call site. À reconsidérer si un 2e pattern similaire apparaît.
 
@@ -444,3 +477,6 @@ _(rien en cours)_
 - **`FOR UPDATE` sur le row slot dans la RPC `create_order_with_items`** sérialise les réservations concurrentes et empêche l'overbooking quand 2 consumers cliquent simultanément. Impact perf négligeable (ligne petite, opération rare, verrou local), gain anti-overbook critique pour les slots à capacité limitée. Pattern à répliquer pour tout check de capacité concurrente.
 - **Parallélisation à risque : éviter que 2 terminaux Claude Code touchent le même fichier en même temps.** Si overlap possible, séquencer les tâches OU fractionner les prompts pour que chaque terminal ait son périmètre de fichiers strict. Incident nuit 22→23/04 : TA (page admin leads) et TC (toggle `showAll`) ont tous les deux modifié `/gestion-producteurs/page.tsx`. Le commit TA a embarqué les modifs TC en cours → commit label « impur » (logique TC livrée sous message TA). État du code correct mais historique git confus et difficile à tracer. Mitigation : planifier les périmètres en amont et fractionner si collision possible.
 - **Supabase built-in SMTP est rate-limited et non destiné à la production.** Custom SMTP via Resend est critique avant lancement public. Config minimale : `smtp.resend.com:465`, username=`resend`, password=Resend API Key (Full access), sender = `no-reply@domaine`. Tester avec une commande `curl` avant de valider côté Supabase.
+- **Ne JAMAIS coller de clé API, token, mot de passe ou secret dans le chat avec Claude** (même dans un exemple `curl`). La clé devient compromise immédiatement et doit être rotée sans délai. Si un test `curl` est nécessaire : stocker la clé dans une variable PowerShell/bash locale et ne coller que la commande sans la valeur. Incident du 23/04 : clé Resend Full Access collée dans le chat → révoquée immédiatement côté Resend Dashboard + nouvelle clé générée + utilisée uniquement via variable locale.
+- **Les emails d'un domaine envoyés par un serveur tiers (ex: Resend via Amazon SES) vers des boîtes sur le même domaine peuvent être rejetés silencieusement** par le MX destinataire si le SPF n'autorise pas ce serveur tiers (anti-usurpation interne). Fix : ajouter `include:amazonses.com` (ou équivalent du provider) au SPF du domaine. Diagnostic : check Resend Dashboard status `Sent` vs `Delivered` — si coincé en `Sent` ou `Delivery Delayed`, probablement SPF. Incident du 23/04 : emails Resend `From:@terroir-local.fr` vers `admin@terroir-local.fr` rejetés par MX OVH jusqu'à ajout `include:amazonses.com` dans la zone DNS OVH.
+- **Le template Supabase Magic Link (et Recovery) utilise par défaut `{{ .SiteURL }}` hardcodé**, ce qui court-circuite entièrement le `emailRedirectTo` passé via `signInWithOtp` / `resetPasswordForEmail`. Pour un routing subdomain-dépendant (admin vs www), remplacer par `{{ .RedirectTo }}` dans le template : `<a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=magiclink">...`. Le serveur calcule le bon subdomain dans `emailRedirectTo`, le template le honore. Incident du 23/04 : admin cliquant sur magic link atterrissait toujours sur www (cookies isolés → session non visible côté admin), résolu en passant les 2 templates (Magic Link + Recovery) à `{{ .RedirectTo }}`.

@@ -1,6 +1,6 @@
 # HANDOFF — TerrOir
 
-> À jour le **2026-04-23** après commit `7fdc494` (Phase C.2 MetricCard).
+> À jour le **2026-04-23** après commit `44c108b` (clôture session 23/04 : edge case panier + logout admin + vitest extension + SMTP/SPF/templates).
 >
 > Objectif : permettre à un Claude frais de reprendre le projet exactement où on en est, juste en lisant ce document (puis `METHODOLOGY.md` et `TODO.md`).
 
@@ -106,6 +106,28 @@ Gérées via Vercel Dashboard. Jamais dans le code.
 - `NEXT_PUBLIC_APP_URL`
 - `NEXT_PUBLIC_PRODUCER_URL`
 
+## Configurations externes critiques
+
+(Configs qui vivent **hors du repo** et doivent être reproduites manuellement lors d'une migration provider / recovery / nouvel environnement.)
+
+- **Supabase Dashboard > Authentication > SMTP** : custom SMTP Resend configuré.
+  - `smtp.resend.com:465`, username=`resend`, password=Resend API Key Full Access, sender=`no-reply@terroir-local.fr`.
+  - Remplace le built-in Supabase SMTP (rate limit ~3-4/h, non prod).
+- **Supabase Dashboard > Authentication > Email Templates** : templates Magic Link et Reset Password utilisent `{{ .RedirectTo }}` (pas `{{ .SiteURL }}`) pour honorer `emailRedirectTo` passé côté server. Type de callback hardcodé (`&type=magiclink&`, `&type=recovery&`) — `{{ .EmailActionType }}` peut renvoyer vide silencieusement.
+- **Supabase Dashboard > Authentication > URL Configuration > Redirect URLs** : doit inclure :
+  - `https://www.terroir-local.fr/auth/callback`
+  - `https://admin.terroir-local.fr/auth/callback`
+  - `https://pro.terroir-local.fr/auth/callback` (si flow magic link étendu au producer)
+- **Supabase Dashboard > Authentication > URL Configuration > Site URL** : `https://www.terroir-local.fr`.
+- **OVH Zone DNS `terroir-local.fr`** : SPF inclut `include:mx.ovh.com` (MX OVH) et `include:amazonses.com` (Resend via SES) pour permettre Resend → boîtes `@terroir-local.fr` sans rejet MX interne.
+  - Enregistrement complet : `v=spf1 include:mx.ovh.com include:amazonses.com ~all`.
+- **Resend Dashboard** : domaine `terroir-local.fr` vérifié (DKIM + SPF + MX + DMARC). Clé API Full Access utilisée par le code app (`RESEND_API_KEY` Vercel) ET par le SMTP custom Supabase.
+- **Vercel Dashboard > Environment Variables** : toutes les clés listées dans la section « Variables d'env critiques » ci-dessus.
+- **Stripe Dashboard** :
+  - Mode Test actuel → Live à basculer avant go-live.
+  - Webhook endpoint à pointer sur `https://www.terroir-local.fr/api/stripe/webhook` pour la prod.
+  - Payment methods > Link : à désactiver account-wide avant lancement.
+
 ## Chantiers majeurs clos
 
 (Résumé ; détails dans `TODO.md` section « ✅ Fait ».)
@@ -126,21 +148,25 @@ Gérées via Vercel Dashboard. Jamais dans le code.
 - **Page admin leads** : `/producer-interests` + toggle `showAll` sur `/gestion-producteurs` + lien « Inviter » pré-rempli.
 - **Force-dynamic** sur pages consumer data-live (évite cache SSR silencieux).
 - **Fingerprint dedupe Stripe** : prévention CB dupliquées.
+- **Edge case panier** : validation DB au load panier + re-check au checkout + RPC (3 couches défense en profondeur), banner `StaleItemsBanner` dismissable, auto-remove des fatals (producer/product/slot), auto-adjust stock_insufficient.
+- **Tests vitest étendus** : 77 tests au total couvrant slots, HMAC opt-out, cookie-domain, formatters date/currency.
+- **Magic link admin** : flow universel sur `/connexion` (password + magic) avec `emailRedirectTo` routé server-side selon admin vs autres. Config externe : templates Supabase migrés à `{{ .RedirectTo }}`, `admin.terroir-local.fr/auth/callback` ajouté aux Redirect URLs.
+- **Custom SMTP Resend** : Supabase Auth envoie via Resend SMTP (plus de rate limit built-in). SPF OVH complété pour permettre Resend → boîtes `@terroir-local.fr`.
 
 ## Chantiers en cours
 
-- **Magic link admin** (TA) — en cours, changements unstaged sur `app/(public)/connexion/actions.ts` + `app/(public)/connexion/page.tsx`. Objectif : flow magic link pour admins (recovery / invite). Impliquera ajout de `admin.terroir-local.fr/auth/callback` aux redirect URLs Supabase.
-- **Consolidation admin — Phase C.3 / C.4** (TC, faible priorité) : audit fait, non prioritaire. Table action buttons + success confirmation restants.
+_(rien en cours)_
 
 ## Dettes techniques connues
 
 - **Doublon timestamp migration `20260422300000`** : utilisé pour `slot_rules_and_materialized_slots.sql` ET `add_stripe_customer_id_to_users.sql`. Ordonnancement alphabétique OK en pratique, mais convention à corriger un jour.
 - **Setup CLI Supabase pour migrations auto** : aujourd'hui apply manuel via SQL Editor. À automatiser si fréquence de migrations augmente.
-- **Framework de tests** : vitest installé mais uniquement utilisé sur `lib/slots/`. Pas de tests sur le reste du codebase.
+- **Framework de tests** : vitest couvre slots, HMAC opt-out, cookie-domain, formatters (77 tests). Reste à étendre à d'autres helpers critiques si besoin.
+- **Tests `fetch-public.ts` + `promote-to-public.ts`** : helpers producers non testés — nécessite des mocks Supabase non-triviaux. Non prioritaire.
 - **Phase B5 TableStatus** : livrée (commit `b89160f`), mais à vérifier que toutes les tables admin l'utilisent.
 - **Marquer auto lead `'contacted'`** après envoi d'invitation : transition non câblée, à faire dans la même transaction que `InviteModal`.
 - **Stripe Link account-wide** : à désactiver manuellement dans Dashboard Stripe (action externe).
-- **Edge case panier** : si producer passe `'suspended'` entre ajout panier et consultation → lien mène à un 404. Pas une fuite, juste UX mineur.
+- **Extraction helper `useLogoutFlow()`** : 2 call sites (`navbar-public.tsx`, `AdminHeader.tsx`) appliquent manuellement le pattern double signOut. À factoriser si un 3e call site apparaît (prévention DRY).
 
 ## Users de test
 

@@ -117,10 +117,41 @@ Si erreur → fix puis re-run, OU rapport à Romain/Claude si blocage de concept
 
 ## Secrets et sécurité
 
-- **Jamais de secrets** (tokens, API keys, mdps, service role keys) dans le chat, les commits, les logs.
-- Env vars gérées via **Vercel Dashboard** (pas de `.env.local` commité).
-- Si un secret est leaké par erreur : **régénérer immédiatement** côté provider (Stripe, Supabase, Resend…) avant toute autre action.
-- Pas de hardcoding d'IDs de test dans le code livré en prod.
+### Règle critique : jamais de secrets dans le chat
+
+Les secrets (API keys, tokens, mots de passe, clés privées, service role keys) ne doivent **JAMAIS** être partagés dans le chat avec Claude, même dans un exemple `curl` ou pour du debugging. Un secret collé dans le chat est **instantanément compromis** et doit être roté sans délai.
+
+**Bonnes pratiques :**
+
+- **Tests `curl` / PowerShell** : stocker la clé dans une variable locale, ne coller que la commande qui la référence par la variable — jamais la valeur en clair.
+  - PowerShell : `$key = "<paste-in-your-terminal-only>"; curl.exe -u "resend:$key" …`
+  - Bash : `export KEY=<paste>; curl -u "resend:$KEY" …`
+- **Screenshots** : masquer les tokens visibles avant d'envoyer. Au moindre doute, ne pas envoyer.
+- **Si un secret est leaké par accident** :
+  1. Révocation immédiate côté provider (Stripe, Supabase, Resend, OVH…).
+  2. Génération d'une nouvelle clé.
+  3. Audit des logs d'utilisation côté provider pour détecter un usage frauduleux avant rotation.
+  4. Mise à jour des env vars Vercel / configs externes avec la nouvelle clé.
+
+### Autres règles secrets
+
+- **Env vars** gérées via **Vercel Dashboard** (pas de `.env.local` commité).
+- Pas de hardcoding d'IDs de test ni de credentials dans le code livré en prod.
+- Les logs doivent redacter les valeurs sensibles (pas de `console.log` brut d'un objet de réponse qui contient un token).
+
+## Configurations externes critiques
+
+Certaines configurations critiques vivent **hors du repo** et ne peuvent pas être versionnées. Elles doivent être documentées dans `HANDOFF.md` (section « Configurations externes critiques ») pour reproduction et audit.
+
+Périmètre typique :
+
+- **Supabase Dashboard** : SMTP custom, email templates, Redirect URLs, Site URL, webhook hooks.
+- **OVH Zone DNS** : enregistrements SPF, DKIM, DMARC, MX, CNAME Vercel.
+- **Stripe Dashboard** : mode Test/Live, webhook endpoints, payment methods account-wide (Link).
+- **Resend Dashboard** : domaines vérifiés, clés API.
+- **Vercel** : env vars, domaines.
+
+**Règle** : toute modification d'une de ces configs par Romain doit être reportée dans `HANDOFF.md` dans la session où elle a été faite. Sinon un Claude frais (ou Romain dans 3 mois) ne pourra pas reproduire l'environnement.
 
 ## Principes de code
 
