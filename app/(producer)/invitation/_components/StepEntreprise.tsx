@@ -59,6 +59,7 @@ export function StepEntreprise({
 }: {
   token: string;
   initialValues: {
+    prenom_affichage: string;
     nom_exploitation: string;
     forme_juridique: string;
     siret: string;
@@ -78,6 +79,24 @@ export function StepEntreprise({
   return (
     <form action={action} className="space-y-4">
       <input type="hidden" name="token" value={token} />
+
+      <div>
+        <label className="mb-1 block text-sm font-medium text-gray-800">
+          Prénom d&apos;affichage
+        </label>
+        <input
+          name="prenom_affichage"
+          type="text"
+          required
+          maxLength={50}
+          defaultValue={initialValues.prenom_affichage}
+          placeholder="Julien, Julien et Marie, La famille Durand…"
+          className={inputClass}
+        />
+        <p className="mt-1 text-xs text-gray-500">
+          Visible sur vos produits. Ce prénom signera vos conseils aux clients.
+        </p>
+      </div>
 
       <div>
         <label className="mb-1 block text-sm font-medium text-gray-800">

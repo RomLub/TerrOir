@@ -15,6 +15,7 @@ export type WizardProps = {
   startStep: 1 | 2 | 3;
   initialPersonnel: { prenom: string; nom: string; telephone: string };
   initialEntreprise: {
+    prenom_affichage: string;
     nom_exploitation: string;
     forme_juridique: string;
     siret: string;

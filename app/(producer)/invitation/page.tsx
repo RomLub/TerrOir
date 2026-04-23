@@ -103,7 +103,7 @@ export default async function InvitationPage({ searchParams }: PageProps) {
         await admin
           .from("producers")
           .select(
-            "id, nom_exploitation, forme_juridique, siret, adresse, code_postal, commune, type_production, type_production_precision, statut",
+            "id, prenom_affichage, nom_exploitation, forme_juridique, siret, adresse, code_postal, commune, type_production, type_production_precision, statut",
           )
           .eq("user_id", existingUser.id)
           .maybeSingle()
@@ -151,6 +151,7 @@ export default async function InvitationPage({ searchParams }: PageProps) {
     telephone: existingUser?.telephone ?? "",
   };
   let initialEntreprise = {
+    prenom_affichage: "",
     nom_exploitation: "",
     forme_juridique: "",
     siret: "",
@@ -188,6 +189,7 @@ export default async function InvitationPage({ searchParams }: PageProps) {
       startStep = 2;
     } else {
       initialEntreprise = {
+        prenom_affichage: (producer.prenom_affichage as string) ?? "",
         nom_exploitation:
           producer.nom_exploitation === "À compléter"
             ? ""

@@ -80,6 +80,11 @@ export const invitationBusinessInfoSchema = z
     // Voir note sur invitationPersonalInfoSchema : optionnel pour le flux
     // de reprise (Phase 4), contrôlé par la session côté action.
     token: z.string().optional(),
+    prenom_affichage: z
+      .string()
+      .trim()
+      .min(1, "Prénom d'affichage requis")
+      .max(50, "50 caractères maximum"),
     nom_exploitation: z.string().trim().min(1, "Nom de l'exploitation requis"),
     forme_juridique: formeJuridiqueEnum,
     siret: z.string().trim().regex(/^\d{14}$/, "SIRET : 14 chiffres requis"),

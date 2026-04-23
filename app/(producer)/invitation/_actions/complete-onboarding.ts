@@ -16,6 +16,7 @@ export async function completeOnboardingAction(
 
   const parsed = invitationBusinessInfoSchema.safeParse({
     token: formData.get("token"),
+    prenom_affichage: formData.get("prenom_affichage"),
     nom_exploitation: formData.get("nom_exploitation"),
     forme_juridique: formData.get("forme_juridique"),
     siret: formData.get("siret"),
@@ -69,6 +70,7 @@ export async function completeOnboardingAction(
   const { error: producerError } = await admin
     .from("producers")
     .update({
+      prenom_affichage: parsed.data.prenom_affichage,
       nom_exploitation: parsed.data.nom_exploitation,
       forme_juridique: parsed.data.forme_juridique,
       siret: parsed.data.siret,

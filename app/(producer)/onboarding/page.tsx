@@ -36,7 +36,7 @@ export default async function OnboardingPage() {
     admin
       .from("producers")
       .select(
-        "nom_exploitation, forme_juridique, siret, adresse, code_postal, commune, type_production, type_production_precision, statut",
+        "prenom_affichage, nom_exploitation, forme_juridique, siret, adresse, code_postal, commune, type_production, type_production_precision, statut",
       )
       .eq("user_id", session.id)
       .maybeSingle(),
@@ -57,6 +57,7 @@ export default async function OnboardingPage() {
   const initialPersonnel = { prenom, nom, telephone };
 
   const initialEntreprise = {
+    prenom_affichage: (producer.prenom_affichage as string) ?? "",
     nom_exploitation:
       producer.nom_exploitation === "À compléter"
         ? ""

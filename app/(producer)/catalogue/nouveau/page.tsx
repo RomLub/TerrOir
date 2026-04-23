@@ -13,12 +13,16 @@ type Form = {
   name: string; description: string; category: string; price: string; unit: string;
   weightStep: string; estimatedWeight: string; stock: string; stockUnlimited: boolean;
   delai: string; active: boolean;
+  conseilActive: boolean; conseilTexte: string;
 };
 
 const EMPTY: Form = {
   name: '', description: '', category: 'Bœuf', price: '', unit: 'kg',
   weightStep: '0.25', estimatedWeight: '', stock: '', stockUnlimited: false, delai: '2', active: true,
+  conseilActive: false, conseilTexte: '',
 };
+
+const CONSEIL_MAX = 280;
 
 export default function ProductNewPage() {
   const router = useRouter();
@@ -85,6 +89,10 @@ export default function ProductNewPage() {
     e.preventDefault();
     if (!producerId) return;
     if (!form.name || !form.price) { setError('Nom et prix requis.'); return; }
+    if (form.conseilActive && !form.conseilTexte.trim()) {
+      setError('Conseil activé : saisissez le texte ou désactivez le conseil.');
+      return;
+    }
     setSaving(true);
     setError(null);
 
@@ -110,6 +118,8 @@ export default function ProductNewPage() {
           delai_preparation_jours: parseInt(form.delai) || 0,
           active: form.active,
           photos: photoUrls.length ? photoUrls : null,
+          conseil_active: form.conseilActive,
+          conseil_texte: form.conseilActive ? (form.conseilTexte.trim() || null) : null,
         })
         .select('id')
         .single();
@@ -147,6 +157,36 @@ export default function ProductNewPage() {
                   {['Bœuf', 'Veau', 'Porc', 'Agneau', 'Volaille', 'Colis'].map((c) => <option key={c}>{c}</option>)}
                 </Select>
               </div>
+            </section>
+
+            <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
+              <label className="flex items-center justify-between gap-3 cursor-pointer">
+                <div>
+                  <div className="font-serif text-[18px] text-green-900">Le conseil de l&apos;éleveur</div>
+                  <div className="text-[12px] text-dark/55 mt-0.5">
+                    Un mot manuscrit visible sur la fiche. Cuisson, conservation, accord…
+                  </div>
+                </div>
+                <span className={`relative w-10 h-6 rounded-full transition-colors ${form.conseilActive ? 'bg-green-700' : 'bg-dark/20'}`}>
+                  <input type="checkbox" className="sr-only" checked={form.conseilActive}
+                    onChange={(e) => setForm({ ...form, conseilActive: e.target.checked })} />
+                  <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${form.conseilActive ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+                </span>
+              </label>
+              {form.conseilActive && (
+                <div className="mt-4">
+                  <Textarea
+                    rows={4}
+                    maxLength={CONSEIL_MAX}
+                    value={form.conseilTexte}
+                    onChange={up('conseilTexte')}
+                    placeholder="Ex : Sortez la viande 1h avant de la cuire. Saisir 2 min par face à feu vif, puis reposer sous papier alu."
+                  />
+                  <div className="mt-1 text-right text-[11px] text-dark/50 tabular-nums">
+                    {form.conseilTexte.length}/{CONSEIL_MAX}
+                  </div>
+                </div>
+              )}
             </section>
 
             <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
