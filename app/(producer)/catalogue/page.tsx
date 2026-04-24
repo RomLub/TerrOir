@@ -21,6 +21,11 @@ type Product = {
 export default function ProducerCataloguePage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [producerId, setProducerId] = useState<string | null>(null);
+  // slug + statut : nécessaires pour afficher le lien ↗ "voir la fiche
+  // publique" uniquement si le producer est en statut='public' (sinon la
+  // route consumer renvoie 404 via fetchPublicProducerBySlug).
+  const [producerSlug, setProducerSlug] = useState<string | null>(null);
+  const [producerStatut, setProducerStatut] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [toggling, setToggling] = useState<string | null>(null);
@@ -35,11 +40,15 @@ export default function ProducerCataloguePage() {
 
       const { data: prod } = await supabase
         .from('producers')
-        .select('id')
+        .select('id, slug, statut')
         .eq('user_id', user.id)
         .maybeSingle();
       if (!prod) { if (active) { setError('Profil producteur introuvable.'); setLoading(false); } return; }
-      if (active) setProducerId(prod.id);
+      if (active) {
+        setProducerId(prod.id);
+        setProducerSlug(prod.slug);
+        setProducerStatut(prod.statut);
+      }
 
       const { data, error: fetchError } = await supabase
         .from('products')
@@ -145,7 +154,21 @@ export default function ProducerCataloguePage() {
                           <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${p.active ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
                         </span>
                       </label>
-                      <Link href={`/catalogue/${p.id}/modifier`} className="text-[13px] text-green-700 font-medium hover:text-green-900">Modifier →</Link>
+                      <div className="flex items-center gap-3">
+                        <Link href={`/catalogue/${p.id}/modifier`} className="text-[13px] text-green-700 font-medium hover:text-green-900">Modifier →</Link>
+                        {producerStatut === 'public' && producerSlug && (
+                          <a
+                            href={`/producteurs/${producerSlug}/produits/${p.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[13px] text-dark/55 hover:text-green-900"
+                            title="Voir la fiche publique"
+                            aria-label="Voir la fiche publique"
+                          >
+                            ↗
+                          </a>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </article>

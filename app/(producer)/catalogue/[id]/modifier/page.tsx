@@ -36,6 +36,11 @@ export default function ProductEditPage() {
   const [dragging, setDragging] = useState(false);
   const [producerId, setProducerId] = useState<string | null>(null);
   const [producerName, setProducerName] = useState('');
+  // slug + statut : pour afficher le lien "Voir ma fiche publique ↗"
+  // uniquement si le producer est publié (statut='public'). Sinon la
+  // route consumer renverrait 404.
+  const [producerSlug, setProducerSlug] = useState<string | null>(null);
+  const [producerStatut, setProducerStatut] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,13 +56,15 @@ export default function ProductEditPage() {
 
       const { data: prod } = await supabase
         .from('producers')
-        .select('id, nom_exploitation')
+        .select('id, nom_exploitation, slug, statut')
         .eq('user_id', user.id)
         .maybeSingle();
       if (!prod) { if (active) { setError('Profil producteur introuvable.'); setLoading(false); } return; }
 
       setProducerId(prod.id);
       setProducerName(prod.nom_exploitation);
+      setProducerSlug(prod.slug);
+      setProducerStatut(prod.statut);
 
       const { data: product, error: fetchError } = await supabase
         .from('products')
@@ -205,7 +212,19 @@ export default function ProductEditPage() {
     <ProducerLayout>
       <div className="max-w-7xl mx-auto px-8 py-10">
         <header className="mb-8">
-          <Link href="/catalogue" className="text-[13px] text-dark/60 hover:text-green-900">← Retour au catalogue</Link>
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <Link href="/catalogue" className="text-[13px] text-dark/60 hover:text-green-900">← Retour au catalogue</Link>
+            {producerStatut === 'public' && producerSlug && (
+              <a
+                href={`/producteurs/${producerSlug}/produits/${productId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[13px] text-green-700 font-medium hover:text-green-900"
+              >
+                Voir ma fiche publique ↗
+              </a>
+            )}
+          </div>
           <h1 className="mt-2 font-serif text-[40px] text-green-900 leading-tight">Modifier le produit</h1>
           <p className="text-[13px] text-dark/55 mt-1 mono">ID : {productId}</p>
           {error && <p className="mt-2 text-[13px] text-terra-700">{error}</p>}
