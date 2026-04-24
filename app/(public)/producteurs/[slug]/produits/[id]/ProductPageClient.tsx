@@ -365,11 +365,12 @@ function Sep() {
   return <li aria-hidden className="text-dark/30">/</li>;
 }
 
-// Popover "Conseil de l'éleveur" : icône cliquable à côté du h1 produit,
-// ouverte au clic (desktop + mobile unifié). Fermeture par Escape,
-// click-outside, ou bouton ×. Le focus revient sur le trigger après
-// fermeture clavier. ARIA dialog non-modal : le reste de la page reste
-// interactif pendant l'ouverture.
+// Popover "Conseil de l'éleveur" : icône à côté du h1 produit. Ouverture
+// au clic (desktop + mobile) et au hover (desktop uniquement, via
+// matchMedia '(hover: hover)' qui exclut les devices touch-only pour
+// éviter le sticky-hover d'iOS Safari). Fermeture par Escape, click-
+// outside, bouton ×, ou mouseleave (délai 200ms pour tolérer le gap
+// entre bouton et popover). ARIA dialog non-modal.
 function ConseilPopover({
   texte,
   firstName,
@@ -378,8 +379,10 @@ function ConseilPopover({
   firstName: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [isHoverDevice, setIsHoverDevice] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dialogId = useId();
   const titleId = useId();
 
@@ -387,6 +390,38 @@ function ConseilPopover({
     setOpen(false);
     buttonRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    const mql = window.matchMedia('(hover: hover)');
+    const update = () => setIsHoverDevice(mql.matches);
+    update();
+    mql.addEventListener('change', update);
+    return () => mql.removeEventListener('change', update);
+  }, []);
+
+  const cancelCloseTimer = useCallback(() => {
+    if (closeTimeoutRef.current !== null) {
+      clearTimeout(closeTimeoutRef.current);
+      closeTimeoutRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => () => cancelCloseTimer(), [cancelCloseTimer]);
+
+  const handleMouseEnter = () => {
+    if (!isHoverDevice) return;
+    cancelCloseTimer();
+    setOpen(true);
+  };
+
+  const handleMouseLeave = () => {
+    if (!isHoverDevice) return;
+    cancelCloseTimer();
+    closeTimeoutRef.current = setTimeout(() => {
+      setOpen(false);
+      closeTimeoutRef.current = null;
+    }, 200);
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -405,7 +440,12 @@ function ConseilPopover({
   }, [open, close]);
 
   return (
-    <div ref={wrapperRef} className="relative">
+    <div
+      ref={wrapperRef}
+      className="relative"
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
       <button
         ref={buttonRef}
         type="button"
