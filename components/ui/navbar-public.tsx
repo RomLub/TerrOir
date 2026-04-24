@@ -7,8 +7,7 @@ import { Logo } from "@/components/ui/logo";
 import { Badge } from "@/components/ui/badge";
 import { useUserContext } from "@/components/providers/user-provider";
 import { useCartStore } from "@/lib/store/cart";
-import { logoutAction } from "@/app/(public)/connexion/logout-action";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useLogoutFlow } from "@/lib/auth/use-logout-flow";
 
 export type NavLink = { href: string; label: string };
 
@@ -106,6 +105,7 @@ export function NavbarPublic({
 }: NavbarPublicProps) {
   const pathname = usePathname();
   const { user, isAdmin, loading } = useUserContext();
+  const { logout, isLoggingOut } = useLogoutFlow();
 
   const prenom = user?.user_metadata?.prenom as string | undefined;
   const label = prenom || (user?.email ? truncateEmail(user.email) : "");
@@ -155,19 +155,13 @@ export function NavbarPublic({
               <form
                 onSubmit={async (e) => {
                   e.preventDefault();
-                  // signOut côté client d'abord : déclenche le listener
-                  // onAuthStateChange du UserProvider → SIGNED_OUT →
-                  // setUser(null) → UI rafraîchie immédiatement.
-                  // Puis server action pour nettoyer les cookies côté
-                  // serveur et invalider la session GoTrue, avec redirect("/").
-                  const supabase = createSupabaseBrowserClient();
-                  await supabase.auth.signOut();
-                  await logoutAction();
+                  await logout();
                 }}
               >
                 <button
                   type="submit"
-                  className="text-xs text-terroir-muted transition-colors hover:text-terroir-green-700 hover:underline"
+                  disabled={isLoggingOut}
+                  className="text-xs text-terroir-muted transition-colors hover:text-terroir-green-700 hover:underline disabled:opacity-50"
                 >
                   Déconnexion
                 </button>

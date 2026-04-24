@@ -2,11 +2,11 @@
 
 import { Logo } from "@/components/ui";
 import { useUserContext } from "@/components/providers/user-provider";
-import { logoutAction } from "@/app/(public)/connexion/logout-action";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useLogoutFlow } from "@/lib/auth/use-logout-flow";
 
 export function AdminHeader() {
   const { user } = useUserContext();
+  const { logout, isLoggingOut } = useLogoutFlow();
 
   return (
     <header className="sticky top-0 z-40 border-b border-gray-200 bg-white">
@@ -25,14 +25,13 @@ export function AdminHeader() {
           <form
             onSubmit={async (e) => {
               e.preventDefault();
-              const supabase = createSupabaseBrowserClient();
-              await supabase.auth.signOut();
-              await logoutAction();
+              await logout();
             }}
           >
             <button
               type="submit"
-              className="text-sm font-medium text-gray-600 transition-colors hover:text-red-600"
+              disabled={isLoggingOut}
+              className="text-sm font-medium text-gray-600 transition-colors hover:text-red-600 disabled:opacity-50"
             >
               Déconnexion
             </button>
