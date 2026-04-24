@@ -164,7 +164,13 @@ function CartePageContent() {
     map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-right');
     mapRef.current = map;
 
+    // Backup resize après le 1er paint : si le conteneur n'avait pas encore
+    // ses dimensions finales à l'instant du new Map(), trackResize peut rater
+    // le 1er trigger. On force une resize() une fois la layout stabilisée.
+    const raf = requestAnimationFrame(() => map.resize());
+
     return () => {
+      cancelAnimationFrame(raf);
       map.remove();
       mapRef.current = null;
     };
@@ -262,9 +268,9 @@ function CartePageContent() {
   })), [results]);
 
   return (
-    <div className="min-h-screen bg-bg flex flex-col">
-      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
-        <aside className="w-full lg:w-[40%] lg:max-w-[560px] border-r border-dark/[0.06] flex flex-col overflow-hidden">
+    <div className="bg-bg flex flex-col h-[calc(100dvh-4rem)] min-h-[600px]">
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
+        <aside className="w-full lg:w-[40%] lg:max-w-[560px] border-r border-dark/[0.06] flex flex-col overflow-hidden flex-1 lg:flex-initial">
           <div className="p-6 border-b border-dark/[0.06]">
             <div className="flex items-end justify-between gap-3">
               <div>
@@ -343,7 +349,7 @@ function CartePageContent() {
           </div>
         </aside>
 
-        <div className="relative flex-1 min-h-[500px] bg-green-100/40">
+        <div className="relative w-full h-[400px] shrink-0 bg-green-100/40 lg:h-auto lg:flex-1 lg:min-h-0">
           {mapboxgl.accessToken ? (
             <div ref={mapContainer} className="absolute inset-0" />
           ) : (
