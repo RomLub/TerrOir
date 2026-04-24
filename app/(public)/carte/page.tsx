@@ -169,8 +169,15 @@ function CartePageContent() {
     // le 1er trigger. On force une resize() une fois la layout stabilisée.
     const raf = requestAnimationFrame(() => map.resize());
 
+    // Self-healing : un ResizeObserver explicite rattrape tous les cas où le
+    // canvas interne de Mapbox reste à 0 parce que le conteneur a grandi
+    // après l'init (cascade flex tardive, fonts qui décalent, etc.).
+    const resizeObserver = new ResizeObserver(() => map.resize());
+    resizeObserver.observe(mapContainer.current);
+
     return () => {
       cancelAnimationFrame(raf);
+      resizeObserver.disconnect();
       map.remove();
       mapRef.current = null;
     };
