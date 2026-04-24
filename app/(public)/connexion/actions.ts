@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { loginSchema } from "@/lib/auth/validators";
+import { maskEmail } from "@/lib/rgpd/mask-email";
 
 export type LoginState = { error?: string };
 
@@ -96,7 +97,7 @@ export async function requestMagicLinkAction(
     // Fail-open : si le lookup échoue (DB down, etc.), on route sur le
     // callback par défaut. Un admin pourra retenter ou passer par le mdp.
     console.warn(
-      `MAGIC_LINK_ADMIN_LOOKUP_WARN email=${email} error=${(err as Error).message}`,
+      `MAGIC_LINK_ADMIN_LOOKUP_WARN email=${maskEmail(email)} error=${(err as Error).message}`,
     );
   }
 
@@ -118,7 +119,7 @@ export async function requestMagicLinkAction(
     });
   } catch (err) {
     console.warn(
-      `MAGIC_LINK_SEND_WARN email=${email} error=${(err as Error).message}`,
+      `MAGIC_LINK_SEND_WARN email=${maskEmail(email)} error=${(err as Error).message}`,
     );
   }
 

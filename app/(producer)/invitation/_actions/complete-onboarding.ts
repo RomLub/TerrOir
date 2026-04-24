@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth/session";
 import { invitationBusinessInfoSchema } from "@/lib/auth/validators";
+import { maskEmail } from "@/lib/rgpd/mask-email";
 
 export type State = { error?: string };
 
@@ -115,11 +116,11 @@ export async function completeOnboardingAction(
       .select("id");
     if (bumpError) {
       console.warn(
-        `[LEAD_ONBOARDED_WARN] Failed to bump producer_interests for ${session.email}: ${bumpError.message}`,
+        `[LEAD_ONBOARDED_WARN] Failed to bump producer_interests for ${maskEmail(session.email)}: ${bumpError.message}`,
       );
     } else if ((bumped?.length ?? 0) > 0) {
       console.info(
-        `[LEAD_ONBOARDED] Bumped ${bumped?.length} lead(s) to 'onboarded' for ${session.email}`,
+        `[LEAD_ONBOARDED] Bumped ${bumped?.length} lead(s) to 'onboarded' for ${maskEmail(session.email)}`,
       );
     }
   }

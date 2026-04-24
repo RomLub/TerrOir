@@ -5,6 +5,7 @@ import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { sendTemplate } from "@/lib/resend/send";
 import { generateOptOutToken } from "@/lib/rgpd/opt-out-token";
+import { maskEmail } from "@/lib/rgpd/mask-email";
 import ProducerInvitation, {
   subject as invitationSubject,
 } from "@/lib/resend/templates/producer-invitation";
@@ -127,7 +128,7 @@ export async function POST(request: Request) {
   } catch (err) {
     const message = (err as Error).message;
     console.error(
-      `[EMAIL_SEND_FAIL] template=producer_invitation to=${input.email} error_name=unexpected_throw error_message=${message}`,
+      `[EMAIL_SEND_FAIL] template=producer_invitation to=${maskEmail(input.email)} error_name=unexpected_throw error_message=${message}`,
     );
     emailResult = { ok: false, error: message };
   }
@@ -148,7 +149,7 @@ export async function POST(request: Request) {
       .select("id");
     if (bumpError) {
       console.warn(
-        `[LEAD_BUMP_WARN] Failed to bump producer_interests for ${input.email}: ${bumpError.message}`,
+        `[LEAD_BUMP_WARN] Failed to bump producer_interests for ${maskEmail(input.email)}: ${bumpError.message}`,
       );
     } else {
       leadUpdated = bumped?.length ?? 0;

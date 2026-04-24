@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 import { render } from "@react-email/render";
 import { resend, resendFromEmail } from "./client";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { maskEmail } from "@/lib/rgpd/mask-email";
 
 interface SendTemplateArgs {
   to: string;
@@ -39,7 +40,7 @@ export async function sendTemplate({
     const error = err as Error;
     const reason = `render_failed: ${error.message}`;
     console.error(
-      `[EMAIL_SEND_FAIL] template=${template} to=${to} error_name=${error.name} error_message=${error.message}`,
+      `[EMAIL_SEND_FAIL] template=${template} to=${maskEmail(to)} error_name=${error.name} error_message=${error.message}`,
     );
     await admin.from("notifications").insert({
       user_id: userId,
@@ -62,7 +63,7 @@ export async function sendTemplate({
     if (error || !data) {
       const message = error?.message ?? "unknown";
       console.error(
-        `[EMAIL_SEND_FAIL] template=${template} to=${to} error_name=${error?.name ?? "unknown"} error_message=${message}`,
+        `[EMAIL_SEND_FAIL] template=${template} to=${maskEmail(to)} error_name=${error?.name ?? "unknown"} error_message=${message}`,
       );
       await admin.from("notifications").insert({
         user_id: userId,
@@ -85,7 +86,7 @@ export async function sendTemplate({
   } catch (err) {
     const error = err as Error;
     console.error(
-      `[EMAIL_SEND_FAIL] template=${template} to=${to} error_name=${error.name} error_message=${error.message}`,
+      `[EMAIL_SEND_FAIL] template=${template} to=${maskEmail(to)} error_name=${error.name} error_message=${error.message}`,
     );
     await admin.from("notifications").insert({
       user_id: userId,
