@@ -14,6 +14,9 @@ type State = {
   siret: string;
   sms_optin: boolean;
   stripe_account_id: string | null;
+  stripe_charges_enabled: boolean;
+  stripe_payouts_enabled: boolean;
+  stripe_details_submitted: boolean;
 };
 
 const INITIAL: State = {
@@ -25,6 +28,9 @@ const INITIAL: State = {
   siret: '',
   sms_optin: false,
   stripe_account_id: null,
+  stripe_charges_enabled: false,
+  stripe_payouts_enabled: false,
+  stripe_details_submitted: false,
 };
 
 function Toggle({ checked, onChange, label, hint, disabled }: {
@@ -64,7 +70,7 @@ export default function ProducerSettingsPage() {
 
       const [{ data: prod, error: prodErr }, { data: userRow }] = await Promise.all([
         supabase.from('producers')
-          .select('id, nom_exploitation, adresse, commune, code_postal, siret, stripe_account_id')
+          .select('id, nom_exploitation, adresse, commune, code_postal, siret, stripe_account_id, stripe_charges_enabled, stripe_payouts_enabled, stripe_details_submitted')
           .eq('user_id', user.id)
           .maybeSingle(),
         supabase.from('users').select('sms_optin').eq('id', user.id).maybeSingle(),
@@ -83,6 +89,9 @@ export default function ProducerSettingsPage() {
         siret: prod.siret ?? '',
         sms_optin: !!userRow?.sms_optin,
         stripe_account_id: prod.stripe_account_id ?? null,
+        stripe_charges_enabled: !!prod.stripe_charges_enabled,
+        stripe_payouts_enabled: !!prod.stripe_payouts_enabled,
+        stripe_details_submitted: !!prod.stripe_details_submitted,
       });
       setLoading(false);
     })();
@@ -153,7 +162,14 @@ export default function ProducerSettingsPage() {
     );
   }
 
-  const stripeConnected = !!s.stripe_account_id;
+  // 3 états distincts (cf commit feat(db) ajoutant les 3 flags Stripe):
+  //   ready        = compte créé ET charges activées ET KYC soumis
+  //   pending      = compte créé mais onboarding incomplet (faux positif
+  //                  d'avant: stripe_account_id suffisait à afficher ready)
+  //   not-started  = aucun compte Stripe encore créé
+  const stripeReady =
+    !!s.stripe_account_id && s.stripe_charges_enabled && s.stripe_details_submitted;
+  const stripePending = !!s.stripe_account_id && !stripeReady;
 
   return (
     <ProducerLayout>
@@ -184,21 +200,40 @@ export default function ProducerSettingsPage() {
             <h2 className="font-serif text-[22px] text-green-900 mb-1">Paiements Stripe Connect</h2>
             <p className="text-[12px] text-dark/55 mb-4">Nécessaire pour recevoir vos virements hebdomadaires.</p>
             <div className={`flex items-start justify-between gap-4 rounded-xl border p-4 ${
-              stripeConnected ? 'bg-green-100/50 border-green-500' : 'bg-amber-50 border-amber-200'
+              stripeReady ? 'bg-green-100/50 border-green-500' : 'bg-amber-50 border-amber-200'
             }`}>
               <div>
                 <div className="text-[14px] font-semibold text-dark">
-                  {stripeConnected ? '✓ Compte Stripe connecté' : 'Compte Stripe non configuré'}
+                  {stripeReady
+                    ? '✓ Compte Stripe connecté'
+                    : stripePending
+                      ? '⚠ Onboarding Stripe en cours — complétez la vérification d\'identité'
+                      : 'Compte Stripe non configuré'}
                 </div>
-                {stripeConnected && <div className="text-[11px] mono text-dark/55 mt-1">{s.stripe_account_id}</div>}
+                {s.stripe_account_id && (
+                  <div className="text-[11px] mono text-dark/55 mt-1">{s.stripe_account_id}</div>
+                )}
                 <p className="text-[12px] text-dark/65 mt-1">
-                  {stripeConnected
+                  {stripeReady
                     ? 'Vous pouvez recevoir vos paiements. Mettez à jour vos informations si besoin.'
-                    : 'Démarrez l\'onboarding pour pouvoir recevoir vos premiers virements.'}
+                    : stripePending
+                      ? 'Reprenez le formulaire Stripe pour soumettre vos informations d\'identité et activer les virements.'
+                      : 'Démarrez l\'onboarding pour pouvoir recevoir vos premiers virements.'}
                 </p>
               </div>
-              <Button type="button" variant={stripeConnected ? 'secondary' : 'primary'} onClick={onboardStripe} disabled={connecting}>
-                {connecting ? 'Redirection…' : stripeConnected ? 'Mettre à jour' : 'Démarrer'}
+              <Button
+                type="button"
+                variant={stripeReady ? 'secondary' : 'primary'}
+                onClick={onboardStripe}
+                disabled={connecting}
+              >
+                {connecting
+                  ? 'Redirection…'
+                  : stripeReady
+                    ? 'Mettre à jour'
+                    : stripePending
+                      ? 'Reprendre l\'onboarding'
+                      : 'Démarrer'}
               </Button>
             </div>
           </section>
