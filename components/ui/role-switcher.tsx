@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useUserContext } from "@/components/providers/user-provider";
+import { NEXT_PUBLIC_APP_URL, NEXT_PUBLIC_PRODUCER_URL } from "@/lib/env/urls";
 
 // Switcher cross-subdomain pour les users ayant les deux casquettes
 // consumer ET producer (Chantier 6). Rendu uniquement si les deux rôles
@@ -38,8 +39,8 @@ export function RoleSwitcher({ current, variant }: RoleSwitcherProps) {
   const { roles } = useUserContext();
   if (!roles.includes("consumer") || !roles.includes("producer")) return null;
 
-  const consumerUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/compte`;
-  const producerUrl = `${process.env.NEXT_PUBLIC_PRODUCER_URL ?? "http://pro.localhost:3000"}/dashboard`;
+  const consumerUrl = `${NEXT_PUBLIC_APP_URL}/compte`;
+  const producerUrl = `${NEXT_PUBLIC_PRODUCER_URL}/dashboard`;
   const s = STYLES[variant];
 
   return (

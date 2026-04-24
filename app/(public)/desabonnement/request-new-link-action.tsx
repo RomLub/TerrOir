@@ -7,6 +7,7 @@ import { sendTemplate } from '@/lib/resend/send';
 import OptOutLink, {
   subject as optOutSubject,
 } from '@/lib/resend/templates/opt-out-link';
+import { NEXT_PUBLIC_APP_URL } from '@/lib/env/urls';
 
 // Réponse unique (enumeration-resistant) : quel que soit le résultat
 // réel (email dans la base ou non, échec Resend), on renvoie le même
@@ -42,9 +43,7 @@ export async function requestNewOptOutLinkAction(
     .maybeSingle();
 
   if (lead) {
-    const publicBase =
-      process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
-    const unsubscribeUrl = `${publicBase}/desabonnement?email=${encodeURIComponent(
+    const unsubscribeUrl = `${NEXT_PUBLIC_APP_URL}/desabonnement?email=${encodeURIComponent(
       email,
     )}&token=${generateOptOutToken(email)}`;
 

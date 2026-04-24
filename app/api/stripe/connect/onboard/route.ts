@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
+import { NEXT_PUBLIC_PRODUCER_URL } from "@/lib/env/urls";
 
 // Génère un lien d'onboarding Stripe Connect pour le producteur connecté.
 // Crée le compte Express si aucun n'existe encore et persiste le stripe_account_id.
@@ -53,13 +54,10 @@ export async function POST() {
     }
   }
 
-  const producerBase =
-    process.env.NEXT_PUBLIC_PRODUCER_URL ?? "http://pro.localhost:3000";
-
   const accountLink = await stripe.accountLinks.create({
     account: stripeAccountId,
-    refresh_url: `${producerBase}/connect/refresh`,
-    return_url: `${producerBase}/connect/done`,
+    refresh_url: `${NEXT_PUBLIC_PRODUCER_URL}/connect/refresh`,
+    return_url: `${NEXT_PUBLIC_PRODUCER_URL}/connect/done`,
     type: "account_onboarding",
   });
 

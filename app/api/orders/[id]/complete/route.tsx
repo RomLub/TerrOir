@@ -12,6 +12,7 @@ import { sendTemplate } from "@/lib/resend/send";
 import ReviewRequest, {
   subject as reviewSubject,
 } from "@/lib/resend/templates/review-request";
+import { NEXT_PUBLIC_APP_URL } from "@/lib/env/urls";
 
 const bodySchema = z.object({
   code_commande: z.string().trim().min(1),
@@ -94,11 +95,10 @@ export async function POST(request: Request, { params }: RouteContext) {
     .maybeSingle();
 
   if (consumer?.email && producer) {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
     const props = {
       codeCommande: order.code_commande,
       exploitation: producer.nom_exploitation,
-      reviewUrl: `${appUrl}/compte/commandes/${order.id}/avis`,
+      reviewUrl: `${NEXT_PUBLIC_APP_URL}/compte/commandes/${order.id}/avis`,
       dayOffset: 0 as const,
     };
     await sendTemplate({

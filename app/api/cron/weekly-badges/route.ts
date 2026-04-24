@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { assertCronAuth } from "@/lib/cron/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { NEXT_PUBLIC_APP_URL } from "@/lib/env/urls";
 
 // Cron hebdomadaire — appelle PATCH /api/producers/[id]/badges pour chaque
 // producteur actif. Séquentiel pour rester simple et éviter la pression
@@ -22,14 +23,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ processed: 0, errors: [] });
   }
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
   const cronSecret = process.env.CRON_SECRET!;
   const errors: Array<{ producer_id: string; error: string }> = [];
   let processed = 0;
 
   for (const p of producers) {
     try {
-      const res = await fetch(`${appUrl}/api/producers/${p.id}/badges`, {
+      const res = await fetch(`${NEXT_PUBLIC_APP_URL}/api/producers/${p.id}/badges`, {
         method: "PATCH",
         headers: { authorization: `Bearer ${cronSecret}` },
       });

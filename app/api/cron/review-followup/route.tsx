@@ -5,6 +5,7 @@ import { sendTemplate } from "@/lib/resend/send";
 import ReviewRequest, {
   subject as reviewSubject,
 } from "@/lib/resend/templates/review-request";
+import { NEXT_PUBLIC_APP_URL } from "@/lib/env/urls";
 
 // Envoie les relances review J+2 et J+7 pour les commandes completed
 // qui n'ont pas encore de review.
@@ -27,7 +28,6 @@ async function sendBatch(dayOffset: 2 | 7) {
 
   if (!orders) return { sent: 0, dayOffset };
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
   let sent = 0;
 
   for (const order of orders) {
@@ -54,7 +54,7 @@ async function sendBatch(dayOffset: 2 | 7) {
     const props = {
       codeCommande: order.code_commande,
       exploitation: producer.nom_exploitation,
-      reviewUrl: `${appUrl}/compte/commandes/${order.id}/avis`,
+      reviewUrl: `${NEXT_PUBLIC_APP_URL}/compte/commandes/${order.id}/avis`,
       dayOffset,
     } as const;
 

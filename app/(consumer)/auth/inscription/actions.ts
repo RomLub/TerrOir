@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { signupSchema } from "@/lib/auth/validators";
+import { NEXT_PUBLIC_APP_URL } from "@/lib/env/urls";
 
 export type SignupState = { error?: string };
 
@@ -27,13 +28,12 @@ export async function signupAction(
   const { prenom, nom, email, password, telephone, sms_optin } = parsed.data;
 
   const supabase = createSupabaseServerClient();
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
       data: { prenom, nom },
-      emailRedirectTo: `${appUrl}/auth/callback?next=/compte/commandes`,
+      emailRedirectTo: `${NEXT_PUBLIC_APP_URL}/auth/callback?next=/compte/commandes`,
     },
   });
 

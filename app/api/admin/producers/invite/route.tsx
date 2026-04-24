@@ -8,6 +8,10 @@ import { generateOptOutToken } from "@/lib/rgpd/opt-out-token";
 import ProducerInvitation, {
   subject as invitationSubject,
 } from "@/lib/resend/templates/producer-invitation";
+import {
+  NEXT_PUBLIC_APP_URL,
+  NEXT_PUBLIC_PRODUCER_URL,
+} from "@/lib/env/urls";
 
 const bodySchema = z.object({
   email: z.string().trim().email(),
@@ -79,9 +83,7 @@ export async function POST(request: Request) {
 
   // Lien opt-out RGPD embarqué dans le pied de l'email (token HMAC
   // déterministe, pointe sur www).
-  const publicBase =
-    process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-  const unsubscribeUrl = `${publicBase}/desabonnement?email=${encodeURIComponent(
+  const unsubscribeUrl = `${NEXT_PUBLIC_APP_URL}/desabonnement?email=${encodeURIComponent(
     input.email,
   )}&token=${generateOptOutToken(input.email)}`;
 
@@ -102,9 +104,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const producerBase =
-    process.env.NEXT_PUBLIC_PRODUCER_URL ?? "http://pro.localhost:3000";
-  const invitationUrl = `${producerBase}/invitation?token=${invitation.token}`;
+  const invitationUrl = `${NEXT_PUBLIC_PRODUCER_URL}/invitation?token=${invitation.token}`;
 
   // 4. Email via Resend. Wrap dans try/catch pour absorber tout throw
   //    imprévu (sendTemplate ne devrait pas throw, mais ceinture+bretelles).
