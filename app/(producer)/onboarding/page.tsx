@@ -57,7 +57,10 @@ export default async function OnboardingPage() {
   const initialPersonnel = { prenom, nom, telephone };
 
   const initialEntreprise = {
-    prenom_affichage: (producer.prenom_affichage as string) ?? "",
+    prenom_affichage:
+      producer.prenom_affichage === "À compléter"
+        ? ""
+        : ((producer.prenom_affichage as string) ?? ""),
     nom_exploitation:
       producer.nom_exploitation === "À compléter"
         ? ""
