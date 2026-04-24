@@ -100,5 +100,29 @@ export async function completeOnboardingAction(
       .eq("id", invitationId);
   }
 
+  // Bump du lead matching : producer_interests.statut 'contacted' → 'onboarded'.
+  // Match email case-insensitive (ilike sans wildcards), scope strict à 'contacted'
+  // pour rester cohérent avec le flow normal (new → contacted → onboarded).
+  // Si 0 rows (producer invité direct sans lead, ou déjà en 'onboarded'), no-op
+  // silencieux. Si échec DB, on log mais on ne bloque pas la finalisation
+  // wizard — l'onboarding producer a réussi, le bump lead est nice-to-have.
+  if (session.email) {
+    const { data: bumped, error: bumpError } = await admin
+      .from("producer_interests")
+      .update({ statut: "onboarded" })
+      .ilike("email", session.email)
+      .eq("statut", "contacted")
+      .select("id");
+    if (bumpError) {
+      console.warn(
+        `[LEAD_ONBOARDED_WARN] Failed to bump producer_interests for ${session.email}: ${bumpError.message}`,
+      );
+    } else if ((bumped?.length ?? 0) > 0) {
+      console.info(
+        `[LEAD_ONBOARDED] Bumped ${bumped?.length} lead(s) to 'onboarded' for ${session.email}`,
+      );
+    }
+  }
+
   redirect("/ma-page?onboarded=1");
 }
