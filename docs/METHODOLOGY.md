@@ -5,7 +5,7 @@
 
 ## Objectif
 
-Permettre à toute nouvelle instance Claude (chat web ou CC) de reprendre le travail sans perdre le tempo de collaboration établi. Ce document fixe **comment** on travaille ; `HANDOFF.md` fixe **sur quoi**.
+Permettre à toute nouvelle instance Claude (chat web ou CC) de reprendre le travail sans perdre le tempo de collaboration établi. Ce document fixe **comment** on travaille ; `docs/HANDOFF.md` fixe **sur quoi**. Voir `docs/README.md` pour l'index complet de la documentation.
 
 ## Rôles
 
@@ -22,8 +22,18 @@ Permettre à toute nouvelle instance Claude (chat web ou CC) de reprendre le tra
 - Si overlap possible → **séquencer** ou **fractionner** les prompts pour que chaque terminal ait son périmètre strict.
 - Avant de lancer un prompt en parallèle, Claude doit vérifier que les fichiers cibles sont disjoints des autres prompts en vol.
 
-### Leçon vécue (nuit 22→23/04/2026)
-TA (page admin leads) et TC (toggle `showAll`) ont tous les deux modifié `/gestion-producteurs/page.tsx`. Le commit TA a embarqué les modifs TC en cours → commit label « impur » (logique TC livrée sous message TA). Le code final est correct, mais l'historique git est confus et difficile à tracer. **Mitigation** : planifier les périmètres en amont et fractionner si collision possible.
+### Règle `git add` explicite (working tree partagé)
+
+Les 3 terminaux CC travaillent sur le même working tree local. Un terminal peut donc embarquer par accident des modifications en cours d'un autre terminal si le staging est imprécis.
+
+- **Toujours `git add <fichier-précis-1> <fichier-précis-2>`** avec des chemins explicites. **JAMAIS `git add .` ni `git add -A`.**
+- **`git status` systématique AVANT chaque `git push`** pour confirmer que seuls les fichiers attendus du chantier en cours sont stagés.
+- Si un fichier inattendu apparaît dans `git status` : ne pas l'inclure dans le commit, investiguer (probablement WIP d'un autre terminal ou modification système comme `tsconfig.tsbuildinfo`).
+
+### Incidents documentés
+
+- **Nuit 22→23/04/2026** : TA (page admin leads) et TC (toggle `showAll`) ont tous les deux modifié `/gestion-producteurs/page.tsx`. Le commit TA a embarqué les modifs TC en cours → commit label « impur » (logique TC livrée sous message TA). Code final correct, historique git confus. Mitigation : planifier les périmètres en amont et fractionner si collision possible.
+- **23/04/2026 soir** (commit `5e1a48a docs(todo)`) : le commit docs a embarqué par accident 3 migrations SQL WIP de TC (chantier conseil éleveur) parce que le terminal docs a staged large au lieu de cibler. Mitigation : règle `git add <fichier précis>` systématique + vérif `git status` avant push.
 
 ## Pattern de chantier CC
 
@@ -57,7 +67,7 @@ Types utilisés :
 | `fix` | Correction de bug |
 | `refactor` | Restructuration sans changer le comportement observable |
 | `chore` | Cleanup, suppressions, réorganisation fichiers |
-| `docs` | Documentation (README, TODO, HANDOFF, etc.) |
+| `docs` | Documentation projet (voir `docs/README.md` pour l'index) |
 | `test` | Ajout ou modification de tests |
 | `style` | Formatting, indentation (jamais de logique) |
 
@@ -99,7 +109,7 @@ Si erreur → fix puis re-run, OU rapport à Romain/Claude si blocage de concept
 - Fix uniquement si :
   - C'est un bug bloquant le chantier en cours.
   - Le fix est vraiment trivial (< 5 min, pas de risque de régression).
-- Priorisation dans `TODO.md` :
+- Priorisation dans `docs/TODO.md` :
   - 🔴 Bloquants lancement
   - 🟠 En cours
   - 🟡 Non bloquants
@@ -141,7 +151,7 @@ Les secrets (API keys, tokens, mots de passe, clés privées, service role keys)
 
 ## Configurations externes critiques
 
-Certaines configurations critiques vivent **hors du repo** et ne peuvent pas être versionnées. Elles doivent être documentées dans `HANDOFF.md` (section « Configurations externes critiques ») pour reproduction et audit.
+Certaines configurations critiques vivent **hors du repo** et ne peuvent pas être versionnées. Elles doivent être documentées dans `docs/HANDOFF.md` (section « Configurations externes critiques ») pour reproduction et audit.
 
 Périmètre typique :
 
@@ -151,7 +161,7 @@ Périmètre typique :
 - **Resend Dashboard** : domaines vérifiés, clés API.
 - **Vercel** : env vars, domaines.
 
-**Règle** : toute modification d'une de ces configs par Romain doit être reportée dans `HANDOFF.md` dans la session où elle a été faite. Sinon un Claude frais (ou Romain dans 3 mois) ne pourra pas reproduire l'environnement.
+**Règle** : toute modification d'une de ces configs par Romain doit être reportée dans `docs/HANDOFF.md` dans la session où elle a été faite. Sinon un Claude frais (ou Romain dans 3 mois) ne pourra pas reproduire l'environnement.
 
 ## Principes de code
 
@@ -181,3 +191,16 @@ CC (ou Claude chat) doit stopper et demander confirmation si :
 - Information manquante (schema DB, contrat API, décision produit non tranchée).
 - Décision à fort impact : migration destructive, rename de table / colonne publique, refonte de flow payment ou RGPD.
 - Détection de code sensible (auth, RLS, webhooks Stripe) qui n'était pas dans le scope annoncé.
+
+## Structure de la documentation
+
+La doc projet vit dans `/docs/`. Voir `docs/README.md` pour l'index complet. Les 5 fichiers :
+
+- **`docs/README.md`** : routeur + ordre de lecture recommandé.
+- **`docs/HANDOFF.md`** : snapshot projet (stack, schema, config externes, dettes techniques).
+- **`docs/METHODOLOGY.md`** : ce fichier — méthode de collaboration.
+- **`docs/TODO.md`** : priorités forward-looking (bloquants, non-bloquants, roadmap, idées).
+- **`docs/CHANGELOG.md`** : historique antichronologique des chantiers + commits structurants.
+- **`docs/LESSONS.md`** : leçons apprises / pitfalls organisés par thème.
+
+`CONTRIBUTING.md` reste à la racine du repo (guidelines PR, hors scope doc produit).

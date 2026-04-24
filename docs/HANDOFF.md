@@ -1,8 +1,9 @@
 # HANDOFF — TerrOir
 
-> À jour le **2026-04-23** après session soir (commits `dbe6360` auto-bump lead + `e93043e` Stripe Connect landings + `ef7f10b` robustesse Resend).
+> À jour le **2026-04-24** après hotfix post-migration `prenom_affichage`.
+> Commits récents : `ffea6b2` + `07a65d4` (chantier conseil éleveur), `95d0572` (hotfix INSERT prenom_affichage), `ef7f10b` (robustesse Resend), `e93043e` (landings Stripe Connect), `dbe6360` (auto-bump lead).
 >
-> Objectif : permettre à un Claude frais de reprendre le projet exactement où on en est, juste en lisant ce document (puis `METHODOLOGY.md` et `TODO.md`).
+> Objectif : permettre à un Claude frais de reprendre le projet exactement où on en est, juste en lisant ce document (puis `docs/METHODOLOGY.md` et `docs/TODO.md`). Voir `docs/README.md` pour l'index complet de la documentation.
 
 ## Projet : TerrOir
 
@@ -131,7 +132,7 @@ Gérées via Vercel Dashboard. Jamais dans le code.
 
 ## Chantiers majeurs clos
 
-(Résumé ; détails dans `TODO.md` section « ✅ Fait ».)
+(Résumé ; détails chronologiques complets dans `docs/CHANGELOG.md`.)
 
 - **Chantier 1 — Refactor rôles** : `admin_users` + `users.roles text[]` cumulables, exclusion mutuelle via triggers.
 - **Chantier 2 — Flux invitation producteur** (6 phases) : admin invitation → onboarding 3 étapes → validation admin → auto-promotion public au 1er produit.
@@ -156,6 +157,8 @@ Gérées via Vercel Dashboard. Jamais dans le code.
 - **Auto-bump lead `'contacted'` à l'envoi d'invitation admin** (commit `dbe6360`) : UPDATE conditionnel gaté sur `emailResult.ok` dans `invite/route.tsx` ; match email case-insensitive dans `producer_interests` en statut `'new'`. Corrige au passage un bug latent d'INSERT inconditionnel qui créait un doublon fantôme.
 - **Pages landing Stripe Connect onboarding** (commit `e93043e`) : `app/(producer)/connect/done/page.tsx` (return_url, auto-redirect `/parametres` 3s) + `app/(producer)/connect/refresh/page.tsx` (refresh_url, bouton « Reprendre l'onboarding »). Débloque le flow onboarding producer Stripe en prod.
 - **Robustesse flow Resend + invitation producer** (commit `ef7f10b`) : logging `[EMAIL_SEND_FAIL]` grep-able Vercel, `renderEmail` wrappé try/catch, appel `sendTemplate` wrappé côté route, tokens hoistés AVANT INSERT `producer_invitations`, fail-fast `RESEND_FROM_EMAIL` au module-load.
+- **Chantier « Conseil de l'éleveur »** (commits `ffea6b2` + `07a65d4` + migrations `20260423100000`/`110000`/`120000`) : colonne `producers.prenom_affichage` (1-50 char) REQUIRED côté wizard + édition onboarding, colonne `products.conseil` (280 char) côté éditeur producer, post-it manuscrit affiché côté consumer sur la fiche produit (tooltip desktop + post-it mobile). Défense `prenom_affichage=null` pour producers `deleted`. Migrations appliquées prod OK (add column nullable → backfill depuis `users.prenom` → SET NOT NULL).
+- **Hotfix INSERT `prenom_affichage`** (commit `95d0572`) : placeholder `"À compléter"` ajouté sur les 3 INSERT runtime de `producers` (`create-account.ts`, `login-and-upgrade.ts`, `invitation/page.tsx` SSR) + seed aligné sur `p.prenom`. La reprise d'onboarding traite `"À compléter"` comme vide. Débloque l'Étape 1 du wizard après apply de la migration C NOT NULL en prod.
 
 ## Chantiers en cours
 
@@ -168,11 +171,12 @@ _(rien en cours)_
 - **Framework de tests** : vitest couvre slots, HMAC opt-out, cookie-domain, formatters (77 tests). Reste à étendre à d'autres helpers critiques si besoin.
 - **Tests `fetch-public.ts` + `promote-to-public.ts`** : helpers producers non testés — nécessite des mocks Supabase non-triviaux. Non prioritaire.
 - **Phase B5 TableStatus** : livrée (commit `b89160f`), mais à vérifier que toutes les tables admin l'utilisent.
-- ~~**Marquer auto lead `'contacted'`** après envoi d'invitation~~ ✅ Fait (commit `dbe6360`).
 - **Stripe Link account-wide** : à désactiver manuellement dans Dashboard Stripe (action externe).
 - **Extraction helper `useLogoutFlow()`** : 2 call sites (`navbar-public.tsx`, `AdminHeader.tsx`) appliquent manuellement le pattern double signOut. À factoriser si un 3e call site apparaît (prévention DRY).
 - **Webhook Stripe `account.updated` manquant** : `producers.stripe_account_id` est set AVANT onboarding complété côté Stripe → le badge « ✓ Compte Stripe connecté » sur `/parametres` peut être un faux positif si le producer abandonne à mi-course. Chantier : ajouter handler webhook qui synchronise un flag `stripe_onboarding_completed` (ou équivalent) avec `charges_enabled` / `details_submitted` côté Stripe. Bloquant avant go-live public si on veut un statut Connect fiable.
 - **Logging email en clair RGPD** : préfixes `[EMAIL_SEND_FAIL]` + `[LEAD_BUMP_WARN]` + `notifications.metadata` contiennent des emails en clair. Incohérence RGPD à trancher globalement (masquage partiel, hash, ou conservation assumée). Chantier RGPD logs dédié à prévoir.
+- **Fail-fast env vars `NEXT_PUBLIC_APP_URL` + `NEXT_PUBLIC_PRODUCER_URL`** : même pattern que l'ex-fallback silencieux `RESEND_FROM_EMAIL` corrigé dans `ef7f10b`. Ces 2 env vars sont critiques pour la navigation cross-subdomain (role-switcher, redirects post-auth, liens emails). Candidat chantier avant bascule Stripe Live.
+- **Bug cosmétique reprise onboarding `prenom_affichage`** : `app/(producer)/onboarding/page.tsx` affiche `"À compléter"` au lieu du placeholder pour `prenom_affichage` lors d'une reprise mid-wizard. `app/(producer)/invitation/page.tsx` a déjà été corrigé dans le hotfix `95d0572` (pattern aligné sur `nom_exploitation`). Reste à dupliquer le même pattern dans `onboarding/page.tsx`. Bug bénin (Zod `min(1)` côté server bloque la finalisation).
 
 ## Users de test
 
@@ -214,11 +218,12 @@ _(rien en cours)_
 
 Pour un Claude frais qui hérite du projet :
 
-1. **Lire `HANDOFF.md`** (ce fichier) en entier.
-2. **Lire `METHODOLOGY.md`** pour la méthode de collaboration.
-3. **Lire `TODO.md`** pour la priorisation actuelle et l'historique détaillé.
-4. Consulter les **derniers commits git** (`git log --oneline -20`) pour le contexte récent.
-5. **Pas d'empilement** : max 3 chantiers en vol en parallèle (TA/TB/TC), périmètres de fichiers disjoints.
-6. Chaque chantier suit le pattern : **inspection → validation → code → auto-QA (`tsc --noEmit` + `npm run build`) → commit normé → push → rapport**.
-7. Toute migration DB doit être **rappelée explicitement à Romain en fin de rapport** pour apply manuelle via Supabase Studio SQL Editor.
-8. Toute modif auth / RLS / Stripe webhook / RGPD → demander validation explicite avant push.
+1. **Lire `docs/README.md`** d'abord (routeur vers l'ensemble de la doc).
+2. **Lire `docs/HANDOFF.md`** (ce fichier) en entier.
+3. **Lire `docs/METHODOLOGY.md`** pour la méthode de collaboration.
+4. **Lire `docs/TODO.md`** pour la priorisation forward-looking. Historique chronologique dans `docs/CHANGELOG.md`, leçons transversales dans `docs/LESSONS.md`.
+5. Consulter les **derniers commits git** (`git log --oneline -20`) pour le contexte récent.
+6. **Pas d'empilement** : max 3 chantiers en vol en parallèle (TA/TB/TC), périmètres de fichiers disjoints.
+7. Chaque chantier suit le pattern : **inspection → validation → code → auto-QA (`tsc --noEmit` + `npm run build`) → commit normé → push → rapport**.
+8. Toute migration DB doit être **rappelée explicitement à Romain en fin de rapport** pour apply manuelle via Supabase Studio SQL Editor.
+9. Toute modif auth / RLS / Stripe webhook / RGPD → demander validation explicite avant push.
