@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { stripe } from "@/lib/stripe/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { NEXT_PUBLIC_PRODUCER_URL } from "@/lib/env/urls";
 import { sendTemplate } from "@/lib/resend/send";
 import { sendNewOrderProducerSms } from "@/lib/twilio/sms";
 import OrderConfirmedProducer, {
@@ -98,9 +99,6 @@ export async function POST(request: Request) {
           .eq("id", producer.user_id)
           .maybeSingle();
 
-        const producerBase =
-          process.env.NEXT_PUBLIC_PRODUCER_URL ?? "http://pro.localhost:3000";
-
         const items: OrderItemLine[] = (lines ?? []).map(
           (l: {
             quantite: number;
@@ -134,8 +132,8 @@ export async function POST(request: Request) {
             heureRetrait: (order.heure_retrait ?? "").slice(0, 5),
             items,
             total: Number(order.montant_total),
-            confirmUrl: `${producerBase}/commandes/${order.id}?action=confirm`,
-            cancelUrl: `${producerBase}/commandes/${order.id}?action=cancel`,
+            confirmUrl: `${NEXT_PUBLIC_PRODUCER_URL}/commandes/${order.id}?action=confirm`,
+            cancelUrl: `${NEXT_PUBLIC_PRODUCER_URL}/commandes/${order.id}?action=cancel`,
           };
           await sendTemplate({
             to: producerUser.email,
