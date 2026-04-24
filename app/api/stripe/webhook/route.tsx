@@ -178,6 +178,33 @@ export async function POST(request: Request) {
         break;
       }
 
+      case "account.updated": {
+        // Émis à chaque changement d'état d'un compte Stripe Connect
+        // (onboarding progressant, KYC validé, capabilities activées…).
+        // On synchronise les 3 flags sur producers pour que /parametres
+        // reflète l'état réel et non plus juste "stripe_account_id présent".
+        const account = event.data.object as Stripe.Account;
+        const chargesEnabled = !!account.charges_enabled;
+        const payoutsEnabled = !!account.payouts_enabled;
+        const detailsSubmitted = !!account.details_submitted;
+
+        console.log(
+          `[STRIPE_ACCOUNT_UPDATED] account=${account.id} charges=${chargesEnabled} payouts=${payoutsEnabled} details=${detailsSubmitted}`,
+        );
+
+        // Pas d'erreur si aucun producer ne matche (account orphelin ou
+        // producer déjà anonymisé via RGPD) — return 200 quand même.
+        await admin
+          .from("producers")
+          .update({
+            stripe_charges_enabled: chargesEnabled,
+            stripe_payouts_enabled: payoutsEnabled,
+            stripe_details_submitted: detailsSubmitted,
+          })
+          .eq("stripe_account_id", account.id);
+        break;
+      }
+
       case "payout.paid": {
         // Émis quand un virement Stripe Connect → banque du producteur
         // est effectivement payé. event.account = Connect account id.
