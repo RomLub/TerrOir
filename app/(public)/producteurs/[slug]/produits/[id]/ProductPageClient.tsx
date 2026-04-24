@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Button, Badge, ProductCard } from '@/components/ui';
 import { useCartStore } from '@/lib/store/cart';
 import { formatSlotTime, formatSlotRange } from '@/lib/slots/format-slot-time';
+import { useUserContext } from '@/components/providers/user-provider';
 
 export type ProducerSummary = {
   id: string;
@@ -118,6 +119,14 @@ export function ProductPageClient({
 
   const addItem = useCartStore((s) => s.addItem);
 
+  // Guard UI anti-achat auto-référentiel : si le user logué est le
+  // producer propriétaire, on désactive le CTA. Double garde DB côté RPC
+  // create_order_with_items (bloc 2bis) si l'UI est contournée.
+  // Pendant le chargement du UserProvider (useUserContext().loading), on
+  // laisse le bouton actif : la RPC reste le filet de sécurité ultime.
+  const { producer: myProducer } = useUserContext();
+  const isOwnProduct = !!myProducer && myProducer.id === producer.id;
+
   const step = product.weightStep || 1;
   const weight = quantity * step;
   const total = weight * product.price;
@@ -130,7 +139,7 @@ export function ProductPageClient({
     return { variant: 'green' as const, text: `${product.stockLeft} ${product.unit} disponibles` };
   }, [product.stockLeft, product.stockUnlimited, product.unit]);
 
-  const canOrder = (product.stockUnlimited || product.stockLeft > 0) && slot !== null;
+  const canOrder = !isOwnProduct && (product.stockUnlimited || product.stockLeft > 0) && slot !== null;
 
   const handleAdd = () => {
     if (!slot) return;
@@ -288,7 +297,13 @@ export function ProductPageClient({
                 </span>
               </div>
               <Button size="lg" className="w-full" disabled={!canOrder} onClick={handleAdd}>
-                {added ? '✓ Ajouté au panier' : !slot ? 'Choisissez un créneau' : `Ajouter au panier`}
+                {isOwnProduct
+                  ? 'Votre produit'
+                  : added
+                    ? '✓ Ajouté au panier'
+                    : !slot
+                      ? 'Choisissez un créneau'
+                      : `Ajouter au panier`}
               </Button>
               <p className="text-[11px] text-dark/50 text-center mt-2">
                 Vous confirmez votre commande directement avec {producer.name.split(' ').slice(-2).join(' ')}.
