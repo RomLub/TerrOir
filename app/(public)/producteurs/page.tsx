@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Button, ProducerCard } from '@/components/ui';
+import { GEOLOC_FALLBACK } from '@/lib/geoloc/fallback';
 import { labelEspece, labelLabel } from '@/lib/producers/labels';
 
 type SearchResult = {
@@ -27,8 +28,6 @@ type SearchResult = {
 };
 
 type ApiResponse = { count: number; results: SearchResult[] } | { error: string };
-
-const LE_MANS = { lat: 48.0061, lng: 0.1996 };
 
 const ESPECE_OPTIONS: { value: string; label: string }[] = [
   { value: 'bovin', label: 'Bœuf' },
@@ -75,7 +74,7 @@ function ProducteursPageContent() {
 
   useEffect(() => {
     if (!('geolocation' in navigator)) {
-      setUserLoc(LE_MANS);
+      setUserLoc({ lat: GEOLOC_FALLBACK.lat, lng: GEOLOC_FALLBACK.lng });
       return;
     }
     setLocating(true);
@@ -85,8 +84,8 @@ function ProducteursPageContent() {
         setLocating(false);
       },
       () => {
-        setUserLoc(LE_MANS);
-        setLocError('Position indisponible — centré sur Le Mans');
+        setUserLoc({ lat: GEOLOC_FALLBACK.lat, lng: GEOLOC_FALLBACK.lng });
+        setLocError(`Position indisponible — centré sur ${GEOLOC_FALLBACK.label}`);
         setLocating(false);
       },
       { timeout: 8000 },

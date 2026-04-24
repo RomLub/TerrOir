@@ -7,6 +7,7 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 import { Button, ProducerCard } from '@/components/ui';
+import { GEOLOC_FALLBACK } from '@/lib/geoloc/fallback';
 import { labelEspece, labelLabel } from '@/lib/producers/labels';
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? '';
@@ -32,8 +33,6 @@ type SearchResult = {
 };
 
 type ApiResponse = { count: number; results: SearchResult[] } | { error: string };
-
-const LE_MANS = { lat: 48.0061, lng: 0.1996 };
 
 const ESPECE_OPTIONS: { value: string; label: string }[] = [
   { value: 'bovin', label: 'Bœuf' },
@@ -81,7 +80,7 @@ function CartePageContent() {
 
   useEffect(() => {
     if (!('geolocation' in navigator)) {
-      setUserLoc(LE_MANS);
+      setUserLoc({ lat: GEOLOC_FALLBACK.lat, lng: GEOLOC_FALLBACK.lng });
       return;
     }
     setLocating(true);
@@ -91,8 +90,8 @@ function CartePageContent() {
         setLocating(false);
       },
       () => {
-        setUserLoc(LE_MANS);
-        setLocError('Position indisponible — centré sur Le Mans');
+        setUserLoc({ lat: GEOLOC_FALLBACK.lat, lng: GEOLOC_FALLBACK.lng });
+        setLocError(`Position indisponible — centré sur ${GEOLOC_FALLBACK.label}`);
         setLocating(false);
       },
       { timeout: 8000 },
@@ -157,7 +156,7 @@ function CartePageContent() {
     const map = new mapboxgl.Map({
       container: mapContainer.current,
       style: 'mapbox://styles/mapbox/outdoors-v12',
-      center: [LE_MANS.lng, LE_MANS.lat],
+      center: [GEOLOC_FALLBACK.lng, GEOLOC_FALLBACK.lat],
       zoom: 8.4,
       attributionControl: false,
     });
@@ -364,8 +363,8 @@ function CartePageContent() {
           {userLoc && (
             <div className="absolute top-4 left-4 bg-white/95 backdrop-blur rounded-full shadow-soft px-3 py-1.5 text-[12px] text-dark/70 z-10 flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-              {userLoc.lat === LE_MANS.lat && userLoc.lng === LE_MANS.lng
-                ? 'Le Mans (par défaut)'
+              {userLoc.lat === GEOLOC_FALLBACK.lat && userLoc.lng === GEOLOC_FALLBACK.lng
+                ? `${GEOLOC_FALLBACK.label} (par défaut)`
                 : 'Votre position'}
             </div>
           )}
