@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Button, Badge, ProductCard } from '@/components/ui';
 import { useCartStore } from '@/lib/store/cart';
@@ -222,9 +222,17 @@ export function ProductPageClient({
             >
               {producer.name} · {producer.commune}
             </Link>
-            <h1 className="font-serif text-[40px] md:text-[48px] text-green-900 leading-[1.05] tracking-tight">
-              {product.name}
-            </h1>
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="font-serif text-[40px] md:text-[48px] text-green-900 leading-[1.05] tracking-tight">
+                {product.name}
+              </h1>
+              {product.conseil.active && product.conseil.texte && producer.firstName && (
+                <ConseilPopover
+                  texte={product.conseil.texte}
+                  firstName={producer.firstName}
+                />
+              )}
+            </div>
 
             <div className="mt-5 flex items-baseline gap-2">
               <span className="font-serif text-[40px] text-green-900 tabular-nums">
@@ -245,12 +253,6 @@ export function ProductPageClient({
                 {product.description.map((para, i) => <p key={i}>{para}</p>)}
               </div>
             )}
-
-            <ConseilPostIt
-              active={product.conseil.active}
-              texte={product.conseil.texte}
-              firstName={producer.firstName}
-            />
 
             <div className="mt-8">
               <div className="text-[11px] uppercase tracking-[0.14em] text-dark/60 font-semibold mb-2">
@@ -363,32 +365,146 @@ function Sep() {
   return <li aria-hidden className="text-dark/30">/</li>;
 }
 
-function ConseilPostIt({
-  active,
+// Popover "Conseil de l'éleveur" : icône cliquable à côté du h1 produit,
+// ouverte au clic (desktop + mobile unifié). Fermeture par Escape,
+// click-outside, ou bouton ×. Le focus revient sur le trigger après
+// fermeture clavier. ARIA dialog non-modal : le reste de la page reste
+// interactif pendant l'ouverture.
+function ConseilPopover({
   texte,
   firstName,
 }: {
-  active: boolean;
-  texte: string | null;
-  firstName: string | null;
+  texte: string;
+  firstName: string;
 }) {
-  // Early return null : pendant la fenêtre transitoire A→C, un producer
-  // peut avoir prenom_affichage=null. On n'affiche pas "Le conseil de null".
-  // Après migration C, firstName est toujours renseigné → ce check devient
-  // défensif sans effet visible.
-  if (!active || !texte || !firstName) return null;
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const dialogId = useId();
+  const titleId = useId();
+
+  const close = useCallback(() => {
+    setOpen(false);
+    buttonRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close();
+    };
+    const onDocMouseDown = (e: MouseEvent) => {
+      if (!wrapperRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.removeEventListener('mousedown', onDocMouseDown);
+    };
+  }, [open, close]);
+
   return (
-    <figure className="mt-6 relative rounded-lg bg-[#FFF7D6] border border-amber-200/60 shadow-sm px-5 py-4 -rotate-[0.6deg]">
-      <figcaption className="text-[11px] uppercase tracking-[0.14em] text-terra-700 font-semibold mb-1.5">
-        Le conseil de {firstName}
-      </figcaption>
-      <blockquote className="font-serif text-[15px] text-dark/85 leading-relaxed italic">
-        « {texte} »
-      </blockquote>
-      <div className="mt-2 text-right text-[13px] text-green-900 font-serif italic">
-        — {firstName}
-      </div>
-    </figure>
+    <div ref={wrapperRef} className="relative">
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        aria-controls={dialogId}
+        aria-label={`Voir le conseil de ${firstName}`}
+        className="inline-flex h-10 w-10 items-center justify-center rounded-full text-amber-500 transition-colors hover:bg-amber-50 hover:text-amber-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+      >
+        <PostItIcon />
+      </button>
+      {open && (
+        <div
+          id={dialogId}
+          role="dialog"
+          aria-modal="false"
+          aria-labelledby={titleId}
+          className="absolute left-0 top-full z-30 mt-2 w-[320px] max-w-[calc(100vw-3rem)] rounded-lg border border-amber-200/60 bg-[#FFF7D6] px-5 py-4 pr-8 shadow-lg"
+        >
+          <button
+            type="button"
+            onClick={close}
+            aria-label="Fermer"
+            className="absolute right-2 top-2 rounded-md p-1 text-dark/40 transition-colors hover:bg-amber-100/70 hover:text-dark/70"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+          <div
+            id={titleId}
+            className="text-[11px] font-semibold uppercase tracking-[0.14em] text-terra-700"
+          >
+            Le conseil de {firstName}
+          </div>
+          <blockquote className="mt-2 font-serif text-[15px] italic leading-relaxed text-dark/85">
+            « {texte} »
+          </blockquote>
+          <div className="mt-2 text-right font-serif text-[13px] italic text-green-900">
+            — {firstName}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PostItIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+      <g transform="rotate(-5 10 10)">
+        <path
+          d="M3 3 L14 3 L17 6 L17 17 L3 17 Z"
+          fill="#FEF3C7"
+          stroke="currentColor"
+          strokeWidth="1.3"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M14 3 L14 6 L17 6"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.3"
+          strokeLinejoin="round"
+        />
+        <line
+          x1="5.5"
+          y1="10"
+          x2="12"
+          y2="10"
+          stroke="currentColor"
+          strokeWidth="1"
+          strokeLinecap="round"
+          opacity="0.55"
+        />
+        <line
+          x1="5.5"
+          y1="13"
+          x2="13"
+          y2="13"
+          stroke="currentColor"
+          strokeWidth="1"
+          strokeLinecap="round"
+          opacity="0.55"
+        />
+      </g>
+    </svg>
   );
 }
 
