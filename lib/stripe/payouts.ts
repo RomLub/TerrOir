@@ -123,14 +123,18 @@ export async function processWeeklyPayouts(): Promise<{
 
     const { data: producer } = await admin
       .from("producers")
-      .select("stripe_account_id")
+      .select("stripe_account_id, stripe_payouts_enabled")
       .eq("id", producerId)
       .maybeSingle();
 
     let stripeTransferId: string | null = null;
     let errorMsg: string | undefined;
 
-    if (producer?.stripe_account_id) {
+    // Gate sur stripe_payouts_enabled en plus de stripe_account_id :
+    // avoir un account.id ne garantit pas que le compte soit prêt à
+    // recevoir des virements (KYC peut être incomplet). Évite un échec
+    // API Stripe silencieux et aligne la sémantique avec /parametres.
+    if (producer?.stripe_account_id && producer.stripe_payouts_enabled) {
       try {
         const transfer = await stripe.transfers.create({
           amount: Math.round(montantNet * 100),
@@ -146,6 +150,12 @@ export async function processWeeklyPayouts(): Promise<{
       } catch (e) {
         errorMsg = (e as Error).message;
       }
+    } else if (producer?.stripe_account_id) {
+      // Compte Stripe créé mais onboarding incomplet — audit trail.
+      console.warn(
+        `[PAYOUT_SKIP_NOT_READY] producer_id=${producerId} stripe_account_id=${producer.stripe_account_id} reason=payouts_not_enabled`,
+      );
+      errorMsg = "Producer Stripe account not ready for payouts";
     } else {
       errorMsg = "Producer has no stripe_account_id";
     }
