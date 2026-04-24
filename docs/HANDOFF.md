@@ -166,7 +166,6 @@ _(rien en cours)_
 
 ## Dettes techniques connues
 
-- **Doublon timestamp migration `20260422300000`** : utilisé pour `slot_rules_and_materialized_slots.sql` ET `add_stripe_customer_id_to_users.sql`. Ordonnancement alphabétique OK en pratique, mais convention à corriger un jour.
 - **Setup CLI Supabase pour migrations auto** : aujourd'hui apply manuel via SQL Editor. À automatiser si fréquence de migrations augmente.
 - **Framework de tests** : vitest couvre slots, HMAC opt-out, cookie-domain, formatters (77 tests). Reste à étendre à d'autres helpers critiques si besoin.
 - **Tests `fetch-public.ts` + `promote-to-public.ts`** : helpers producers non testés — nécessite des mocks Supabase non-triviaux. Non prioritaire.
