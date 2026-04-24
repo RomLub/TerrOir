@@ -28,7 +28,11 @@ export default function MotDePasseOubliePage() {
     setSubmitting(true);
 
     const supabase = createSupabaseBrowserClient();
-    const redirectTo = `${window.location.origin}/auth/callback?next=/reset-password`;
+    // Pas de `?next=...` ici : le template Supabase Recovery ajoute déjà
+    // `&next=/reset-password` en dur à la fin du href. En rajouter un côté
+    // code produirait un double `?` dans l'URL finale et casserait le parsing
+    // des query params côté /auth/callback.
+    const redirectTo = `${window.location.origin}/auth/callback`;
     await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
 
     setSent(true);
