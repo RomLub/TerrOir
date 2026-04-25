@@ -37,7 +37,10 @@ export function ConnexionForm({ redirectTo }: { redirectTo?: string }) {
       onSwitchToMagic={() => setMode("magic")}
     />
   ) : (
-    <MagicLinkForm onSwitchToPassword={() => setMode("password")} />
+    <MagicLinkForm
+      redirectTo={redirectTo}
+      onSwitchToPassword={() => setMode("password")}
+    />
   );
 }
 
@@ -112,8 +115,10 @@ function PasswordForm({
 }
 
 function MagicLinkForm({
+  redirectTo,
   onSwitchToPassword,
 }: {
+  redirectTo?: string;
   onSwitchToPassword: () => void;
 }) {
   const [state, formAction] = useFormState(
@@ -151,6 +156,10 @@ function MagicLinkForm({
         Saisissez votre email, nous vous enverrons un lien de connexion. Pas
         besoin de mot de passe.
       </p>
+
+      {redirectTo ? (
+        <input type="hidden" name="redirectTo" value={redirectTo} />
+      ) : null}
 
       <label className="block">
         <span className="text-sm font-medium">Email</span>

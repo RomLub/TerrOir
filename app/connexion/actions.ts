@@ -8,6 +8,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { loginSchema } from "@/lib/auth/validators";
 import { maskEmail } from "@/lib/rgpd/mask-email";
 import {
+  isValidRedirectPath,
   loadRoleSnapshot,
   resolvePostLoginPath,
 } from "@/lib/auth/post-login-redirect";
@@ -100,9 +101,19 @@ export async function requestMagicLinkAction(
     );
   }
 
-  const emailRedirectTo = isAdmin
-    ? MAGIC_LINK_ADMIN_CALLBACK
-    : MAGIC_LINK_DEFAULT_CALLBACK;
+  // redirectTo posé par le middleware (cf. loginAction). On le propage via
+  // query string sur l'emailRedirectTo : Supabase l'envoie tel quel dans
+  // l'email magic link, et le user atterrit sur /auth/callback?code=…&redirectTo=…
+  // Validation locale ici pour éviter d'embarquer un path malveillant
+  // jusqu'au callback (defense-in-depth — le callback re-valide aussi).
+  const rawRedirectTo = formData.get("redirectTo");
+  const redirectToParam = isValidRedirectPath(rawRedirectTo)
+    ? `?redirectTo=${encodeURIComponent(rawRedirectTo)}`
+    : "";
+
+  const emailRedirectTo =
+    (isAdmin ? MAGIC_LINK_ADMIN_CALLBACK : MAGIC_LINK_DEFAULT_CALLBACK) +
+    redirectToParam;
 
   // signInWithOtp avec shouldCreateUser=false : si l'email n'existe pas dans
   // auth.users, Supabase renvoie une erreur — on la swallow pour préserver

@@ -3,7 +3,7 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { cookieConfigForHost } from "@/lib/supabase/cookie-domain";
 import {
-  canonicalPostLoginUrl,
+  canonicalPostLoginUrlWithRedirect,
   loadRoleSnapshot,
 } from "@/lib/auth/post-login-redirect";
 
@@ -11,11 +11,13 @@ import {
 // magic link, signup). Deux formats supportés :
 //   - ?code=…        → PKCE, échangé contre une session cookie
 //   - ?token_hash=…&type=…  → OTP vérifié via verifyOtp
-// Paramètre optionnel ?next=/chemin/relatif pour personnaliser la destination.
+// Paramètre optionnel ?next=/chemin/relatif pour personnaliser la destination
+// (legacy — privilégier ?redirectTo).
+// Paramètre optionnel ?redirectTo=/chemin/relatif propagé depuis le form
+// magic link via emailRedirectTo : honoré sur le host canonique du rôle
+// (consumer demandant /panier → www.*/panier ; producer demandant /commandes
+// → pro.*/commandes). Path invalide ou absent → cible canonique du rôle.
 // Pour type=recovery, la destination par défaut est /reset-password.
-// Sans ?next ni recovery → routing rôle-aware cross-domain via
-// canonicalPostLoginUrl (un magic link reçu par un producer atterrit
-// directement sur pro.terroir-local.fr/dashboard, pas sur la home www).
 // Les cookies Supabase posés ici sont lus par le middleware dès la requête suivante.
 
 const ALLOWED_TYPES: EmailOtpType[] = [
@@ -44,6 +46,7 @@ export async function GET(request: NextRequest) {
       ? (rawType as EmailOtpType)
       : null;
   const next = sanitizeNext(url.searchParams.get("next"));
+  const redirectTo = url.searchParams.get("redirectTo");
 
   // setAll est appelé par Supabase après exchange/verifyOtp. On accumule
   // les cookies à poser dans un buffer pour pouvoir les attacher à la
@@ -99,8 +102,10 @@ export async function GET(request: NextRequest) {
   }
 
   // Cible : ?next= explicite > /reset-password (recovery) > routing
-  // rôle-aware cross-domain via canonicalPostLoginUrl. Le rôle est lu via
-  // le client Supabase qui voit déjà la session fraîchement créée.
+  // rôle-aware cross-domain via canonicalPostLoginUrlWithRedirect. Le rôle
+  // dicte le host (admin/pro/www) ; le path est ?redirectTo= s'il est valide,
+  // sinon la cible canonique du rôle. Le rôle est lu via le client Supabase
+  // qui voit déjà la session fraîchement créée.
   let targetUrl: URL | string;
   if (next) {
     targetUrl = new URL(next, url.origin);
@@ -112,7 +117,7 @@ export async function GET(request: NextRequest) {
     } = await supabase.auth.getUser();
     if (user) {
       const role = await loadRoleSnapshot(supabase, user.id);
-      targetUrl = canonicalPostLoginUrl(role);
+      targetUrl = canonicalPostLoginUrlWithRedirect(role, redirectTo);
     } else {
       targetUrl = new URL("/", url.origin);
     }

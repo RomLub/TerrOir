@@ -84,6 +84,21 @@ export function canonicalPostLoginUrl(role: RoleSnapshot): string {
   return `https://${host}${path}`;
 }
 
+// Variante cross-domain qui respecte un redirectTo path s'il est valide.
+// Le rôle dicte toujours le host (admin/pro/www) ; seul le path est
+// personnalisable via redirectTo. Si le path n'existe pas sur le host
+// canonique du rôle, le middleware redirigera (fallback sain).
+export function canonicalPostLoginUrlWithRedirect(
+  role: RoleSnapshot,
+  requestedRedirect: unknown,
+): string {
+  const { host, path } = canonicalPostLoginTarget(role);
+  const finalPath = isValidRedirectPath(requestedRedirect)
+    ? requestedRedirect
+    : path;
+  return `https://${host}${finalPath}`;
+}
+
 // Path post-login local : ne traverse pas de sous-domaine. Utilisé par
 // loginAction (form password) et le check session de /connexion.
 //   admin → /tableau-de-bord (toujours)
