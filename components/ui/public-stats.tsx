@@ -1,16 +1,24 @@
 import { getPublicStats } from "@/lib/stats/public-stats";
 
-// Bandeau "TerrOir en chiffres" affiché sur la home consumer.
+// Bandeau "En chiffres" affiché sur la home consumer.
 // Server Component : les counts sont fetchés au render (cachés 5 min via
 // unstable_cache dans getPublicStats).
 //
 // Affichage piloté par la crédibilité (credibility-driven display) :
-//  1. On filtre les stats à 0 — afficher "0 Commandes" sur la home tue le
-//     signal "marketplace active" qu'on cherche à donner.
-//  2. Si toutes les stats sont à 0 (cas pré-lancement), on skip la section
-//     entièrement plutôt que d'afficher un message "vide".
+//  1. Chaque stat a un seuil minimum d'affichage (PRODUCERS_THRESHOLD,
+//     PRODUCTS_THRESHOLD, ORDERS_THRESHOLD) : sous le seuil, la stat est
+//     skippée individuellement. Objectif : éviter l'effet "projet vide"
+//     ("1 producteur · 2 produits") qui dégrade la crédibilité plus qu'il
+//     ne l'augmente. Les seuils sont volontairement bas — guard pré-lancement
+//     uniquement, pas un filtre permanent.
+//  2. Si toutes les stats sont sous leur seuil (cas pré-lancement), on skip
+//     la section entièrement plutôt que d'afficher un bandeau vide.
 //  3. Le layout s'adapte au nombre de stats restantes (1, 2 ou 3 colonnes
 //     desktop ; toujours stack vertical mobile).
+
+export const PRODUCERS_THRESHOLD = 5;
+export const PRODUCTS_THRESHOLD = 10;
+export const ORDERS_THRESHOLD = 15;
 
 const NUMBER_FORMATTER = new Intl.NumberFormat("fr-FR");
 
@@ -21,6 +29,7 @@ function pluralize(count: number, singular: string, plural: string): string {
 
 type StatItem = {
   value: number;
+  minDisplay: number;
   singular: string;
   plural: string;
 };
@@ -39,22 +48,25 @@ export async function PublicStats() {
   const allItems: StatItem[] = [
     {
       value: producersCount,
+      minDisplay: PRODUCERS_THRESHOLD,
       singular: "Producteur actif",
       plural: "Producteurs actifs",
     },
     {
       value: ordersCount,
+      minDisplay: ORDERS_THRESHOLD,
       singular: "Commande passée",
       plural: "Commandes passées",
     },
     {
       value: productsCount,
+      minDisplay: PRODUCTS_THRESHOLD,
       singular: "Produit disponible",
       plural: "Produits disponibles",
     },
   ];
 
-  const items = allItems.filter((item) => item.value > 0);
+  const items = allItems.filter((item) => item.value >= item.minDisplay);
   if (items.length === 0) {
     return null;
   }
@@ -66,7 +78,7 @@ export async function PublicStats() {
       <div className="mx-auto max-w-6xl px-4 py-12 md:py-16">
         <div className="mb-8 flex flex-col gap-1 text-center md:mb-10">
           <span className="text-xs font-semibold uppercase tracking-[0.18em] text-terroir-green-700">
-            TerrOir en chiffres
+            En chiffres
           </span>
           <h2 className="font-serif text-3xl text-terroir-ink md:text-4xl">
             Une marketplace déjà active
