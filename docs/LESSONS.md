@@ -16,6 +16,17 @@ Pour le contexte chronologique des commits référencés, voir [`CHANGELOG.md`](
 - **Templates email Supabase Magic Link et Recovery** utilisent par défaut `{{ .SiteURL }}` hardcodé, ce qui court-circuite entièrement le `emailRedirectTo` passé via `signInWithOtp` / `resetPasswordForEmail`. Pour un routing subdomain-dépendant (admin vs www), remplacer par `{{ .RedirectTo }}`. Le serveur calcule le bon subdomain, le template le honore.
 - **Templates email Supabase `{{ .EmailActionType }}` peut renvoyer une string vide** et casser silencieusement le callback. Préférer hardcoder le type dans la querystring (ex: `&type=recovery&` en dur).
 
+### Post-login redirect cross-domain
+
+- **Pattern : helper centralisé `lib/auth/post-login-redirect.ts`** (commit `797c89f`) exposant 3 niveaux d'API :
+  1. `loadRoleSnapshot()` : lit le rôle de l'user juste après auth (admin > producer > consumer).
+  2. `canonicalPostLoginUrl(role)` : URL absolue cross-domain canonique (admin → `https://admin.terroir-local.fr/...`, producer → `pro.`, consumer → `www.`). À utiliser quand on doit changer de sous-domaine.
+  3. `localPostLoginPath(role)` : path relatif same-host. À utiliser quand on est déjà sur le bon sous-domaine.
+- **Cookies session Supabase** : `cookieConfigForHost()` (existant Chantier 4) définit `domain=.terroir-local.fr` pour partage cross-subdomain (www/pro), cookies posés sur 1 host visibles sur les 2. Admin reste isolé (`sb-admin-auth-token`, pas de domain). Le helper `post-login-redirect` ne marche bien qu'avec ce cookie config en place.
+- **Magic link callback rôle-aware** (commit `2e1a3e5`) : `app/auth/callback/route.ts` doit choisir la cible cross-domain APRÈS résolution du rôle (impossible upfront — le code de l'OTP est consommé pour identifier l'user). Pattern retenu : **cookie buffer** — `cookiesToWrite[]` accumulé pendant la séquence auth, puis attaché à la response finale après que le rôle soit résolu et la cible décidée. Sans ce pattern, la `NextResponse.redirect(...)` était créée upfront avec une URL figée, impossible de basculer la cible cross-domain en cours de route.
+- **Check session sur `/connexion`** (commit `8cb6114`) : un user déjà loggé qui clique « Connexion » par habitude → redirect immédiat vers `canonicalPostLoginUrl(role)`. Évite l'écran de login inutile et la boucle visuelle.
+- **Référence** : commits `2652e4d` + `797c89f` + `2e1a3e5` + `8cb6114`.
+
 ## RLS & permissions
 
 - **Les RLS policies peuvent filtrer silencieusement des données avant même que le code applicatif les lise.** Quand un bug de type « la donnée existe en DB mais n'apparaît nulle part dans l'UI », toujours vérifier les policies RLS sur la table concernée : `SELECT polname, pg_get_expr(polqual, polrelid) FROM pg_policy WHERE polrelid = 'table'::regclass;`. Incident : producteurs `pending` invisibles côté admin à cause d'une policy qui filtrait sur `statut='active'` (fix commit `52d8e4e`).
@@ -81,6 +92,30 @@ Pour le contexte chronologique des commits référencés, voir [`CHANGELOG.md`](
 - **Ne jamais supprimer un fichier de `_components/`** sans `grep` préalable sur tous ses imports. Incident 21/04 : suppression d'`AdminLayout.tsx` (commit `0aa2555`) qui était encore importé par 3 pages admin → build Vercel cassé en prod.
 - **`npm run build` obligatoire avant push** quand un refactor supprime, déplace ou renomme un fichier. `npx tsc --noEmit` ne reproduit pas la résolution de modules webpack et laisse passer les imports vers des fichiers inexistants.
 - **Quand un terminal pousse-back sur un chantier, écouter** (cas Phase C.4 `SuccessConfirmation` du 25/04, commit `ddb3a02`) : TA a refusé d'extraire le composant après inspection en démontrant que c'était une fausse piste — `ConfirmationClient` est déjà à 1 seul call site, pas de duplication ailleurs (grep checkmark + « Merci » : 0 hit), fragmenter ferait du churn pur. Décision YAGNI confirmée et tracée dans `CHANGELOG.md`. Pattern à valoriser : **un terminal qui sait dire « ça vaut pas le coup, voici pourquoi » est plus utile qu'un exécutant aveugle**. Côté Claude (chat), recevoir un push-back argumenté = revalider le scope, ne pas insister par défaut. Le chantier a été retiré du TODO sans 1 ligne de code écrite, ce qui est un succès.
+
+### Working tree partagé — règles complémentaires (consolidé 25/04)
+
+Récidive observée dans le commit `11b914e` (TT hotfix carte split hover layer). Pattern initial documenté pour l'incident `5e1a48a` : **« `git add <fichier précis>`, jamais `.` ni `-A` »**. Cette règle est **nécessaire mais non suffisante**.
+
+**Règle complémentaire** :
+
+- **Avant chaque `git add`, vérifier `git status`** pour observer l'état de l'index global.
+- Si `git status` liste des fichiers modifiés/staged que **TU n'as PAS modifiés** (= modifs d'un autre terminal pré-staged ou présentes non-commitées dans le working tree partagé) → **STOP**, signale, et attends que l'autre terminal commit avant de continuer. OU : `git reset HEAD <files>` préventif pour nettoyer l'index avant de stager les tiens.
+
+**Piège subtil** :
+
+- `npx tsc --noEmit` et `npm run build` **passent localement** parce que le working tree inclut les modifs incomplètes des autres terminaux qui se complètent mutuellement (ex : un rename + son update d'imports posés par 2 terminaux différents).
+- **Vercel rejoue chaque commit ISOLÉMENT**. Si le commit n'inclut pas l'ensemble cohérent des modifs (ex : rename sans son update d'imports), Vercel échoue silencieusement sur ce commit-là. Le HEAD master final peut être OK (les commits suivants finissent la cohérence) mais l'historique git devient bisect-unfriendly.
+
+**Détection avant commit** :
+
+- `git diff HEAD --name-only` → voir UNIQUEMENT mes vraies modifs (vs index).
+- `git status` → voir tout l'index (mes modifs + ce qui traîne).
+- Comparer les deux pour repérer ce qui m'appartient vraiment.
+
+**Référence** : incident `11b914e`. Le commit TT hotfix carte a embarqué les renames TA `app/(public)/connexion/*` → `app/connexion/*` via working tree partagé. Les imports périmés dans `lib/auth/use-logout-flow.ts` (et autres) ont fait crasher le build Vercel sur 2 deploys intermédiaires (`11b914e` + `e16459d`). Le HEAD master final `2652e4d` est OK car TA a fini son chantier et fixé les imports. **Pas d'impact prod**, mais 2 commits intermédiaires bisect-unfriendly dans l'historique git.
+
+**Bonne pratique observée le même jour** : TC (chantier 3 dettes invalidation public-stats) a détecté un fichier staged inattendu (pré-staging d'un autre terminal) et a fait `git reset HEAD <files>` préventif avant ses commits. Hygiène appliquée correctement = règle respectée. À répliquer systématiquement.
 
 ## Sécurité & secrets
 

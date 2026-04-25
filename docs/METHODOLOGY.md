@@ -22,18 +22,23 @@ Permettre à toute nouvelle instance Claude (chat web ou CC) de reprendre le tra
 - Si overlap possible → **séquencer** ou **fractionner** les prompts pour que chaque terminal ait son périmètre strict.
 - Avant de lancer un prompt en parallèle, Claude doit vérifier que les fichiers cibles sont disjoints des autres prompts en vol.
 
-### Règle `git add` explicite (working tree partagé)
+### Bonnes pratiques git en working tree partagé (consolidé 25/04)
 
-Les 3 terminaux CC travaillent sur le même working tree local. Un terminal peut donc embarquer par accident des modifications en cours d'un autre terminal si le staging est imprécis.
+Les 3 terminaux CC travaillent sur le même working tree local. Un terminal peut donc embarquer par accident des modifications en cours d'un autre terminal si le staging est imprécis. **5 règles à respecter dans l'ordre, sans en sauter** :
 
-- **Toujours `git add <fichier-précis-1> <fichier-précis-2>`** avec des chemins explicites. **JAMAIS `git add .` ni `git add -A`.**
-- **`git status` systématique AVANT chaque `git push`** pour confirmer que seuls les fichiers attendus du chantier en cours sont stagés.
-- Si un fichier inattendu apparaît dans `git status` : ne pas l'inclure dans le commit, investiguer (probablement WIP d'un autre terminal ou modification système comme `tsconfig.tsbuildinfo`).
+1. **`git add <fichier précis>` systématique.** JAMAIS `git add .` ni `git add -A`. Lister chaque chemin explicitement à la commande.
+2. **`git status` AVANT chaque `git add`** pour observer l'état de l'index global. Pas après — *avant*, pour anticiper ce que tu vas trouver.
+3. **Si fichiers staged qui ne sont pas les tiens** → `git reset HEAD <files>` préventif pour nettoyer l'index avant de stager les tiens. OU stop, signale, et attends que l'autre terminal commit.
+4. **`git diff HEAD --name-only` AVANT commit** pour confirmer que le diff correspond aux modifs que tu as **vraiment** faites. Comparer avec `git status` pour repérer ce qui ne t'appartient pas.
+5. **Si tu détectes un working tree avec WIP d'un autre terminal pré-staged** → STOP, signale, attends. Ne pas tenter de « commiter autour ».
+
+**Piège QA local** : `npx tsc --noEmit` et `npm run build` peuvent **passer localement** parce que le working tree inclut les modifs incomplètes des autres terminaux qui se complètent mutuellement (rename + update d'imports postés par 2 terminaux différents). **Vercel rejoue chaque commit ISOLÉMENT** — un commit qui n'embarque pas l'ensemble cohérent fera échouer le deploy de ce commit-là, même si HEAD master final est OK. Bisect-unfriendly.
 
 ### Incidents documentés
 
 - **Nuit 22→23/04/2026** : TA (page admin leads) et TC (toggle `showAll`) ont tous les deux modifié `/gestion-producteurs/page.tsx`. Le commit TA a embarqué les modifs TC en cours → commit label « impur » (logique TC livrée sous message TA). Code final correct, historique git confus. Mitigation : planifier les périmètres en amont et fractionner si collision possible.
 - **23/04/2026 soir** (commit `5e1a48a docs(todo)`) : le commit docs a embarqué par accident 3 migrations SQL WIP de TC (chantier conseil éleveur) parce que le terminal docs a staged large au lieu de cibler. Mitigation : règle `git add <fichier précis>` systématique + vérif `git status` avant push.
+- **25/04/2026 fin d'après-midi** (commit `11b914e fix(carte)`) : TT a embarqué par accident 3 renames du chantier connexion TA en cours (`app/(public)/connexion/*` → `app/connexion/*`) via working tree partagé. Build Vercel ko sur ce commit isolément à cause des imports périmés non encore fixés (TA finissait en parallèle). HEAD master final `2652e4d` OK, mais 2 commits intermédiaires bisect-unfriendly. **C'est cet incident qui a motivé la consolidation des 5 règles ci-dessus** (vs la règle initiale « `git add` précis » seule, jugée nécessaire mais non suffisante). Bonne pratique observée le même jour : TC a fait `git reset HEAD <files>` préventif après détection d'un staging inattendu — pattern à répliquer.
 
 ## Pattern de chantier CC
 
