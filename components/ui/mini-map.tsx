@@ -4,6 +4,13 @@ import { useEffect, useRef } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
+import {
+  createPinCanvas,
+  PIN_DIMENSIONS,
+  PIN_TERRA_300,
+  PIN_TERRA_500,
+} from '@/lib/maps/pin-image';
+
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? '';
 
 export type MiniMapProps = {
@@ -44,17 +51,14 @@ export function MiniMap({
     );
     mapRef.current = map;
 
-    const el = document.createElement('div');
-    el.setAttribute('aria-label', markerLabel ?? 'Localisation');
-    el.style.cssText = `
-      width: 36px; height: 36px; border-radius: 50% 50% 50% 0;
-      transform: rotate(-45deg); background: #2D6A4F; border: 3px solid #fff;
-      box-shadow: 0 4px 12px rgba(27,67,50,0.35);
-      display: flex; align-items: center; justify-content: center;
-    `;
-    el.innerHTML = `<span style="transform: rotate(45deg); color:#D4841A; font-weight:700; font-size:14px;">●</span>`;
+    const pin = createPinCanvas(PIN_TERRA_300, PIN_TERRA_500);
+    pin.setAttribute('aria-label', markerLabel ?? 'Localisation');
+    pin.setAttribute('role', 'img');
+    pin.style.width = `${PIN_DIMENSIONS.width}px`;
+    pin.style.height = `${PIN_DIMENSIONS.height}px`;
+    pin.style.filter = 'drop-shadow(0 4px 8px rgba(0,0,0,0.25))';
 
-    new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+    new mapboxgl.Marker({ element: pin, anchor: 'bottom' })
       .setLngLat([longitude, latitude])
       .addTo(map);
 

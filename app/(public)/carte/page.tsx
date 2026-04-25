@@ -8,6 +8,12 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 
 import { Button, ProducerCard } from '@/components/ui';
 import { GEOLOC_FALLBACK } from '@/lib/geoloc/fallback';
+import {
+  createPinImageData,
+  PIN_TERRA_300 as TERRA_300,
+  PIN_TERRA_500 as TERRA_500,
+  PIN_TERRA_700 as TERRA_700,
+} from '@/lib/maps/pin-image';
 import { labelEspece, labelLabel } from '@/lib/producers/labels';
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? '';
@@ -17,48 +23,7 @@ const PRODUCERS_LAYER_ID = 'producers-pins';
 const PRODUCERS_HOVER_LAYER_ID = 'producers-pins-hover';
 const PIN_IMAGE_ID = 'producer-pin';
 const PIN_IMAGE_HOVER_ID = 'producer-pin-hover';
-// Terra palette (tailwind.config.js)
-const TERRA_300 = '#D4A373';
-const TERRA_500 = '#B8713E';
-const TERRA_700 = '#A0522D';
 const COLOR_USER = '#1976D2';
-
-function createPinImage(fillTop: string, fillBottom: string): ImageData {
-  const dpr = 2;
-  const w = 32;
-  const h = 40;
-  const canvas = document.createElement('canvas');
-  canvas.width = w * dpr;
-  canvas.height = h * dpr;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('canvas 2d context unavailable');
-  ctx.scale(dpr, dpr);
-
-  ctx.beginPath();
-  ctx.moveTo(16, 2);
-  ctx.bezierCurveTo(9.4, 2, 4, 7.4, 4, 14);
-  ctx.bezierCurveTo(4, 23, 16, 38, 16, 38);
-  ctx.bezierCurveTo(16, 38, 28, 23, 28, 14);
-  ctx.bezierCurveTo(28, 7.4, 22.6, 2, 16, 2);
-  ctx.closePath();
-
-  const grad = ctx.createLinearGradient(16, 2, 16, 38);
-  grad.addColorStop(0, fillTop);
-  grad.addColorStop(1, fillBottom);
-  ctx.fillStyle = grad;
-  ctx.fill();
-
-  ctx.strokeStyle = '#FFFFFF';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.arc(16, 14, 4.5, 0, Math.PI * 2);
-  ctx.fillStyle = '#FFFFFF';
-  ctx.fill();
-
-  return ctx.getImageData(0, 0, w * dpr, h * dpr);
-}
 
 const USER_MARKER_CSS = `
 @keyframes terroir-user-pulse {
@@ -251,10 +216,10 @@ function CartePageContent() {
       });
 
       if (!map.hasImage(PIN_IMAGE_ID)) {
-        map.addImage(PIN_IMAGE_ID, createPinImage(TERRA_300, TERRA_500), { pixelRatio: 2 });
+        map.addImage(PIN_IMAGE_ID, createPinImageData(TERRA_300, TERRA_500), { pixelRatio: 2 });
       }
       if (!map.hasImage(PIN_IMAGE_HOVER_ID)) {
-        map.addImage(PIN_IMAGE_HOVER_ID, createPinImage(TERRA_500, TERRA_700), { pixelRatio: 2 });
+        map.addImage(PIN_IMAGE_HOVER_ID, createPinImageData(TERRA_500, TERRA_700), { pixelRatio: 2 });
       }
 
       const iconSize: mapboxgl.ExpressionSpecification = [
