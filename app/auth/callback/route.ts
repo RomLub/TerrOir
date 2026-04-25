@@ -2,6 +2,10 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { cookieConfigForHost } from "@/lib/supabase/cookie-domain";
+import {
+  canonicalPostLoginUrl,
+  loadRoleSnapshot,
+} from "@/lib/auth/post-login-redirect";
 
 // Gère le retour des emails transactionnels Supabase (recovery, invite,
 // magic link, signup). Deux formats supportés :
@@ -9,6 +13,9 @@ import { cookieConfigForHost } from "@/lib/supabase/cookie-domain";
 //   - ?token_hash=…&type=…  → OTP vérifié via verifyOtp
 // Paramètre optionnel ?next=/chemin/relatif pour personnaliser la destination.
 // Pour type=recovery, la destination par défaut est /reset-password.
+// Sans ?next ni recovery → routing rôle-aware cross-domain via
+// canonicalPostLoginUrl (un magic link reçu par un producer atterrit
+// directement sur pro.terroir-local.fr/dashboard, pas sur la home www).
 // Les cookies Supabase posés ici sont lus par le middleware dès la requête suivante.
 
 const ALLOWED_TYPES: EmailOtpType[] = [
@@ -38,9 +45,14 @@ export async function GET(request: NextRequest) {
       : null;
   const next = sanitizeNext(url.searchParams.get("next"));
 
-  const defaultPath = type === "recovery" ? "/reset-password" : "/";
-  const targetUrl = new URL(next ?? defaultPath, url.origin);
-  const response = NextResponse.redirect(targetUrl);
+  // setAll est appelé par Supabase après exchange/verifyOtp. On accumule
+  // les cookies à poser dans un buffer pour pouvoir les attacher à la
+  // réponse finale, peu importe la cible de redirect choisie ensuite.
+  const cookiesToWrite: {
+    name: string;
+    value: string;
+    options: CookieOptions;
+  }[] = [];
 
   const host = request.headers.get("host") ?? undefined;
   const cookieOptions = cookieConfigForHost(host);
@@ -59,9 +71,7 @@ export async function GET(request: NextRequest) {
             options: CookieOptions;
           }[],
         ) => {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            response.cookies.set(name, value, options);
-          });
+          cookiesToSet.forEach((c) => cookiesToWrite.push(c));
         },
       },
     },
@@ -88,5 +98,29 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(failUrl);
   }
 
+  // Cible : ?next= explicite > /reset-password (recovery) > routing
+  // rôle-aware cross-domain via canonicalPostLoginUrl. Le rôle est lu via
+  // le client Supabase qui voit déjà la session fraîchement créée.
+  let targetUrl: URL | string;
+  if (next) {
+    targetUrl = new URL(next, url.origin);
+  } else if (type === "recovery") {
+    targetUrl = new URL("/reset-password", url.origin);
+  } else {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (user) {
+      const role = await loadRoleSnapshot(supabase, user.id);
+      targetUrl = canonicalPostLoginUrl(role);
+    } else {
+      targetUrl = new URL("/", url.origin);
+    }
+  }
+
+  const response = NextResponse.redirect(targetUrl);
+  cookiesToWrite.forEach(({ name, value, options }) => {
+    response.cookies.set(name, value, options);
+  });
   return response;
 }
