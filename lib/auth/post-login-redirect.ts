@@ -108,3 +108,35 @@ export function localPostLoginPath(
   }
   return "/compte";
 }
+
+// Garde anti open-redirect : on n'accepte qu'un path local same-origin.
+//   - doit commencer par "/"
+//   - ne doit PAS commencer par "//" (URL protocol-relative → host arbitraire)
+//   - ne doit PAS commencer par "/\\" (certains browsers normalisent en "//")
+// Pas de cross-domain via redirectTo : si l'user est sur pro.*/connexion,
+// il reste sur pro.* — le routing cross-subdomain reste l'apanage du
+// callback magic link via canonicalPostLoginUrl.
+export function isValidRedirectPath(value: unknown): value is string {
+  if (typeof value !== "string" || value.length === 0) return false;
+  if (!value.startsWith("/")) return false;
+  if (value.startsWith("//") || value.startsWith("/\\")) return false;
+  return true;
+}
+
+// Résolution post-login : si l'user avait une intention de navigation
+// préservée par le middleware (?redirectTo=/panier), on la respecte.
+// Sinon fallback sur la cible canonique du rôle.
+//
+// Note rôle vs path : on ne vérifie pas que redirectTo est compatible avec
+// le rôle (ex: consumer demandant /tableau-de-bord). Le middleware rejettera
+// après auth, ce qui peut renvoyer sur /connexion → potentielle boucle si
+// le middleware a un bug. Acceptable : duplique pas la logique d'autorisation
+// ici, le middleware est la source de vérité.
+export function resolvePostLoginPath(
+  role: RoleSnapshot,
+  host: string,
+  requestedRedirect: unknown,
+): string {
+  if (isValidRedirectPath(requestedRedirect)) return requestedRedirect;
+  return localPostLoginPath(role, host);
+}

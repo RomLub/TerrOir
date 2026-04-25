@@ -9,7 +9,7 @@ import { loginSchema } from "@/lib/auth/validators";
 import { maskEmail } from "@/lib/rgpd/mask-email";
 import {
   loadRoleSnapshot,
-  localPostLoginPath,
+  resolvePostLoginPath,
 } from "@/lib/auth/post-login-redirect";
 
 export type LoginState = { error?: string };
@@ -36,7 +36,9 @@ export async function loginAction(
 
   const role = await loadRoleSnapshot(supabase, data.user.id);
   const host = headers().get("host") ?? "";
-  redirect(localPostLoginPath(role, host));
+  // redirectTo posé par le middleware quand un user anonyme a tapé une route
+  // protégée (cf. middleware.ts §2). Fallback canonique si absent/invalide.
+  redirect(resolvePostLoginPath(role, host, formData.get("redirectTo")));
 }
 
 // =============================================================================
