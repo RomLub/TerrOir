@@ -1,6 +1,6 @@
 "use client";
 
-const LABELS = ["Compte", "Vous", "Exploitation"];
+const LABELS = ["Compte", "Profil"];
 
 export function Progress({
   current,

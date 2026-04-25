@@ -43,17 +43,6 @@ export const invitationLoginAndUpgradeSchema = z.object({
   password: z.string().min(1, "Mot de passe requis"),
 });
 
-// Le token est optionnel ici : absent en mode reprise d'onboarding (Phase 4)
-// où la légitimité de la requête vient de la session + du producer draft
-// existant, pas d'une invitation valide. Si un token est fourni, l'action
-// le validera quand même (flux invitation classique).
-export const invitationPersonalInfoSchema = z.object({
-  token: z.string().optional(),
-  prenom: z.string().trim().min(1, "Prénom requis"),
-  nom: z.string().trim().min(1, "Nom requis"),
-  telephone: z.string().trim().min(1, "Téléphone requis"),
-});
-
 export const formeJuridiqueEnum = z.enum([
   "gaec",
   "earl",
@@ -77,9 +66,18 @@ export const typeProductionEnum = z.enum([
 
 export const invitationBusinessInfoSchema = z
   .object({
-    // Voir note sur invitationPersonalInfoSchema : optionnel pour le flux
-    // de reprise (Phase 4), contrôlé par la session côté action.
+    // Token optionnel : absent en mode reprise d'onboarding (Phase 4) où la
+    // légitimité vient de la session + du producer draft existant, pas
+    // d'une invitation valide. Si un token est fourni, l'action le validera
+    // quand même (flux invitation classique).
     token: z.string().optional(),
+    // Phase 2 du chantier "Vision funnel producteur" : fusion StepPersonnel
+    // dans cette étape unique. Les 3 champs perso (prenom/nom/telephone) sont
+    // collectés ici en plus des champs business — pré-remplis depuis le lead
+    // matching email côté page.tsx, écrits dans `users` côté action.
+    prenom: z.string().trim().min(1, "Prénom requis"),
+    nom: z.string().trim().min(1, "Nom requis"),
+    telephone: z.string().trim().min(1, "Téléphone requis"),
     prenom_affichage: z
       .string()
       .trim()

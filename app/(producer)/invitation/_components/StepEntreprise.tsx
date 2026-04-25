@@ -59,6 +59,9 @@ export function StepEntreprise({
 }: {
   token: string;
   initialValues: {
+    prenom: string;
+    nom: string;
+    telephone: string;
     prenom_affichage: string;
     nom_exploitation: string;
     forme_juridique: string;
@@ -79,6 +82,50 @@ export function StepEntreprise({
   return (
     <form action={action} className="space-y-4">
       <input type="hidden" name="token" value={token} />
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label className="mb-1 block text-sm font-medium text-gray-800">
+            Prénom
+          </label>
+          <input
+            name="prenom"
+            type="text"
+            required
+            autoComplete="given-name"
+            defaultValue={initialValues.prenom}
+            className={inputClass}
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium text-gray-800">
+            Nom
+          </label>
+          <input
+            name="nom"
+            type="text"
+            required
+            autoComplete="family-name"
+            defaultValue={initialValues.nom}
+            className={inputClass}
+          />
+        </div>
+      </div>
+
+      <div>
+        <label className="mb-1 block text-sm font-medium text-gray-800">
+          Téléphone
+        </label>
+        <input
+          name="telephone"
+          type="tel"
+          required
+          autoComplete="tel"
+          defaultValue={initialValues.telephone}
+          placeholder="06 12 34 56 78"
+          className={inputClass}
+        />
+      </div>
 
       <div>
         <label className="mb-1 block text-sm font-medium text-gray-800">

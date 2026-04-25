@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth/session";
+import { pickInitialInfos } from "@/lib/producers/pick-initial-infos";
 import { OnboardingWizard, type WizardCase } from "./_components/OnboardingWizard";
 
 interface PageProps {
@@ -142,25 +143,23 @@ export default async function InvitationPage({ searchParams }: PageProps) {
     redirect("/onboarding");
   }
 
+  // Lead matching pour pré-remplissage (Phase 2 du chantier "Vision funnel
+  // producteur"). On cherche le lead le plus récent en statut 'contacted' ou
+  // 'onboarded' (lifecycle post-invitation), match email case-insensitive.
+  // Si aucun lead matché : pas grave, le wizard démarre champs vides.
+  const { data: lead } = await admin
+    .from("producer_interests")
+    .select("prenom, nom, telephone, nom_exploitation, commune")
+    .ilike("email", email)
+    .in("statut", ["contacted", "onboarded"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   // Détermination du cas + préparation des valeurs initiales
   let caseKind: WizardCase;
-  let startStep: 1 | 2 | 3 = 1;
-  const initialPersonnel = {
-    prenom: existingUser?.prenom ?? "",
-    nom: existingUser?.nom ?? "",
-    telephone: existingUser?.telephone ?? "",
-  };
-  let initialEntreprise = {
-    prenom_affichage: "",
-    nom_exploitation: "",
-    forme_juridique: "",
-    siret: "",
-    adresse: "",
-    code_postal: "",
-    commune: "",
-    type_production: "",
-    type_production_precision: "",
-  };
+  let startStep: 1 | 2 = 1;
+  let producerForPick = existingProducer;
 
   if (!existingUser) {
     caseKind = "new";
@@ -177,9 +176,7 @@ export default async function InvitationPage({ searchParams }: PageProps) {
         .eq("id", existingUser.id);
     }
 
-    const producer = existingProducer;
-
-    if (!producer) {
+    if (!existingProducer) {
       await admin.from("producers").insert({
         user_id: existingUser.id,
         slug: slugFromEmail(email),
@@ -187,37 +184,24 @@ export default async function InvitationPage({ searchParams }: PageProps) {
         nom_exploitation: "À compléter",
         statut: "draft",
       });
-      startStep = 2;
-    } else {
-      initialEntreprise = {
-        prenom_affichage:
-          producer.prenom_affichage === "À compléter"
-            ? ""
-            : (producer.prenom_affichage as string) ?? "",
-        nom_exploitation:
-          producer.nom_exploitation === "À compléter"
-            ? ""
-            : (producer.nom_exploitation as string) ?? "",
-        forme_juridique: (producer.forme_juridique as string) ?? "",
-        siret: (producer.siret as string) ?? "",
-        adresse: (producer.adresse as string) ?? "",
-        code_postal: (producer.code_postal as string) ?? "",
-        commune: (producer.commune as string) ?? "",
-        type_production: (producer.type_production as string) ?? "",
-        type_production_precision:
-          (producer.type_production_precision as string) ?? "",
-      };
-
-      // Détection reprise : étape 2 si infos perso vides, sinon étape 3.
-      const hasPersonal =
-        !!initialPersonnel.prenom &&
-        !!initialPersonnel.nom &&
-        !!initialPersonnel.telephone;
-      startStep = hasPersonal ? 3 : 2;
+      producerForPick = null;
     }
+    startStep = 2;
   } else {
     caseKind = "consumer-login";
   }
+
+  const initialInfos = pickInitialInfos(
+    producerForPick,
+    existingUser
+      ? {
+          prenom: (existingUser.prenom as string | null) ?? null,
+          nom: (existingUser.nom as string | null) ?? null,
+          telephone: (existingUser.telephone as string | null) ?? null,
+        }
+      : null,
+    lead ?? null,
+  );
 
   return (
     <main className="flex min-h-screen items-center justify-center p-8">
@@ -226,8 +210,7 @@ export default async function InvitationPage({ searchParams }: PageProps) {
         email={email}
         caseKind={caseKind}
         startStep={startStep}
-        initialPersonnel={initialPersonnel}
-        initialEntreprise={initialEntreprise}
+        initialInfos={initialInfos}
       />
     </main>
   );

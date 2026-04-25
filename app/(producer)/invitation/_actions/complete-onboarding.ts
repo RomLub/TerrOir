@@ -17,6 +17,9 @@ export async function completeOnboardingAction(
 
   const parsed = invitationBusinessInfoSchema.safeParse({
     token: formData.get("token"),
+    prenom: formData.get("prenom"),
+    nom: formData.get("nom"),
+    telephone: formData.get("telephone"),
     prenom_affichage: formData.get("prenom_affichage"),
     nom_exploitation: formData.get("nom_exploitation"),
     forme_juridique: formData.get("forme_juridique"),
@@ -66,6 +69,23 @@ export async function completeOnboardingAction(
     if (producer.statut !== "draft") {
       return { error: "Profil producteur déjà finalisé" };
     }
+  }
+
+  // Étape unique post-compte (Phase 2 wizard 2 étapes) : on écrit d'abord les
+  // infos perso dans `users`, puis les infos business dans `producers`. Ordre
+  // important : si l'update users échoue, on n'a pas encore basculé le
+  // producer en 'pending', donc l'utilisateur peut retenter sans incohérence.
+  const { error: userError } = await admin
+    .from("users")
+    .update({
+      prenom: parsed.data.prenom,
+      nom: parsed.data.nom,
+      telephone: parsed.data.telephone,
+    })
+    .eq("id", session.id);
+
+  if (userError) {
+    return { error: `Mise à jour des infos personnelles échouée : ${userError.message}` };
   }
 
   const { error: producerError } = await admin
