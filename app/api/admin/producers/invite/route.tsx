@@ -16,6 +16,7 @@ import {
 
 const bodySchema = z.object({
   email: z.string().trim().email(),
+  prenom: z.string().trim().optional(),
   nom: z.string().trim().optional(),
   telephone: z.string().trim().optional(),
   nom_exploitation: z.string().trim().optional(),
@@ -186,6 +187,7 @@ export async function POST(request: Request) {
         .from("producer_interests")
         .insert({
           email: input.email,
+          prenom: input.prenom ?? null,
           nom: fallbackNom,
           telephone: input.telephone ?? null,
           nom_exploitation: input.nom_exploitation ?? null,

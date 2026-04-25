@@ -53,6 +53,7 @@ export function LeadsTable({
               const expanded = expandedId === lead.id;
               const city = lead.commune ?? "—";
               const exploitation = lead.nom_exploitation ?? "—";
+              const fullName = `${lead.prenom ?? ""} ${lead.nom}`.trim();
               return (
                 <Fragment key={lead.id}>
                   <tr
@@ -66,7 +67,7 @@ export function LeadsTable({
                     </td>
                     <td className="px-5 py-4">
                       <div className="font-serif text-[17px] leading-tight text-gray-900">
-                        {lead.nom}
+                        {fullName}
                       </div>
                       <div className="mt-0.5 text-[12px] text-gray-500">
                         {lead.email}

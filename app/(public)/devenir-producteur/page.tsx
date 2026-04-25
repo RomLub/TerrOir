@@ -1,10 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, Input, Select, Textarea } from '@/components/ui';
+import { Button, Input, Textarea } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
-
-const SPECIES_OPTIONS = ['Bœuf', 'Veau', 'Porc', 'Agneau', 'Volaille', 'Plusieurs espèces'];
 
 const ADVANTAGES = [
   { n: '6%', title: 'Commission unique', text: "Pas d'abonnement, pas de frais cachés. Vous payez 6% uniquement sur les commandes finalisées." },
@@ -13,15 +11,15 @@ const ADVANTAGES = [
 ];
 
 export default function DevenirProducteurPage() {
-  const [form, setForm] = useState({ name: '', email: '', phone: '', exploitation: '', commune: '', species: '', message: '' });
+  const [form, setForm] = useState({ prenom: '', nom: '', email: '', phone: '', exploitation: '', commune: '', message: '' });
   const [sent, setSent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const update = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
+  const update = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
-  const valid = form.name && form.email && form.phone && form.exploitation && form.commune && form.species;
+  const valid = form.prenom && form.nom && form.email && form.phone && form.exploitation && form.commune;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,12 +29,12 @@ export default function DevenirProducteurPage() {
 
     const supabase = createSupabaseBrowserClient();
     const { error: insertError } = await supabase.from('producer_interests').insert({
-      nom: form.name.trim(),
+      prenom: form.prenom.trim(),
+      nom: form.nom.trim(),
       email: form.email.trim().toLowerCase(),
       telephone: form.phone.trim(),
       nom_exploitation: form.exploitation.trim(),
       commune: form.commune.trim(),
-      especes: form.species ? [form.species] : null,
       message: form.message.trim() || null,
       statut: 'new',
     });
@@ -115,19 +113,16 @@ export default function DevenirProducteurPage() {
 
           <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-6 md:p-10 border border-dark/[0.06] shadow-soft space-y-5">
             <div className="grid sm:grid-cols-2 gap-4">
-              <Input label="Nom et prénom" value={form.name} onChange={update('name')} required />
-              <Input label="Email" type="email" value={form.email} onChange={update('email')} required />
+              <Input label="Prénom" value={form.prenom} onChange={update('prenom')} autoComplete="given-name" required />
+              <Input label="Nom" value={form.nom} onChange={update('nom')} autoComplete="family-name" required />
             </div>
             <div className="grid sm:grid-cols-2 gap-4">
-              <Input label="Téléphone" type="tel" value={form.phone} onChange={update('phone')} required />
+              <Input label="Email" type="email" value={form.email} onChange={update('email')} autoComplete="email" required />
+              <Input label="Téléphone" type="tel" value={form.phone} onChange={update('phone')} autoComplete="tel" required />
+            </div>
+            <div className="grid sm:grid-cols-2 gap-4">
               <Input label="Nom de l'exploitation" value={form.exploitation} onChange={update('exploitation')} required />
-            </div>
-            <div className="grid sm:grid-cols-2 gap-4">
-              <Input label="Commune" value={form.commune} onChange={update('commune')} required />
-              <Select label="Espèces élevées" value={form.species} onChange={update('species')} required>
-                <option value="">Sélectionner…</option>
-                {SPECIES_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-              </Select>
+              <Input label="Commune" value={form.commune} onChange={update('commune')} autoComplete="address-level2" required />
             </div>
             <Textarea label="Votre message (optionnel)" rows={5} value={form.message} onChange={update('message')}
                       placeholder="Parlez-nous de votre activité, vos labels, vos volumes…" />
