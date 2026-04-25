@@ -6,8 +6,13 @@ const PRODUCER_HOST = "pro.terroir-local.fr";
 const ADMIN_HOST = "admin.terroir-local.fr";
 const CONSUMER_PROTECTED_PREFIX = "/compte";
 const LOGIN_PATH = "/connexion";
+const PRO_LANDING_PATH = "/pro-accueil";
+const ADMIN_LANDING_PATH = "/admin-accueil";
+const APEX = "terroir-local.fr";
 
 // Chemins accessibles sans session, quel que soit le sous-domaine.
+// /pro-accueil et /admin-accueil sont les cibles de rewrite des landings
+// publiques servies sur pro.* et admin.* (cf. blocs spéciaux ci-dessous).
 const PUBLIC_PATHS = new Set<string>([
   "/",
   "/connexion",
@@ -16,6 +21,8 @@ const PUBLIC_PATHS = new Set<string>([
   "/reset-password",
   "/mot-de-passe-oublie",
   "/desabonnement",
+  PRO_LANDING_PATH,
+  ADMIN_LANDING_PATH,
 ]);
 
 function isPublicPath(pathname: string): boolean {
@@ -79,17 +86,32 @@ export async function middleware(request: NextRequest) {
 
   const needsAuth = isProducerHost || isAdminHost || isConsumerProtected;
 
+  // Canonicalisation cross-subdomain : /pro-accueil et /admin-accueil ne
+  // doivent répondre que sur leur sous-domaine respectif. Si on tape
+  // www.terroir-local.fr/pro-accueil, on 301 vers https://pro.../ (la
+  // landing y est servie via rewrite depuis "/"). Idem pour admin. On
+  // limite aux hosts en .terroir-local.fr pour ne pas casser le dev local.
+  const isTerroirHost = hostname === APEX || hostname.endsWith(`.${APEX}`);
+  if (isTerroirHost && !isProducerHost && pathname === PRO_LANDING_PATH) {
+    return NextResponse.redirect(`https://${PRODUCER_HOST}/`, 301);
+  }
+  if (isTerroirHost && !isAdminHost && pathname === ADMIN_LANDING_PATH) {
+    return NextResponse.redirect(`https://${ADMIN_HOST}/`, 301);
+  }
+
   // 0. Cas spécial admin.*/ : "/" est listé dans PUBLIC_PATHS (pour www/pro),
-  //    mais sur admin.* on ne veut jamais servir la home publique — on
-  //    redirige explicitement vers /connexion ou /tableau-de-bord.
+  //    mais sur admin.* on ne veut jamais servir la home publique consumer.
+  //    Visiteur anonyme → rewrite vers la landing admin (mono-écran sobre).
+  //    Utilisateur loggé → redirect /tableau-de-bord (admin) ou /connexion.
   if (isAdminHost && pathname === "/") {
+    if (!user) {
+      return NextResponse.rewrite(
+        new URL(ADMIN_LANDING_PATH, request.url),
+      );
+    }
+
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.search = "";
-
-    if (!user) {
-      redirectUrl.pathname = LOGIN_PATH;
-      return NextResponse.redirect(redirectUrl);
-    }
 
     const { data: adminRow } = await supabase
       .from("admin_users")
@@ -105,18 +127,20 @@ export async function middleware(request: NextRequest) {
 
   // 0b. Cas spécial pro.*/ : symétrique du bloc admin ci-dessus. "/" est dans
   //     PUBLIC_PATHS (pour www), donc pro.* tomberait sinon sur la home
-  //     consumer. On route par statut producteur : draft → /onboarding,
-  //     autres statuts actifs → /dashboard, deleted/no-row/non-producer →
-  //     /connexion. Admin sur pro.* n'existe pas en session (isolation
-  //     cookies Chantier 4 / 1d83f5d) → tombe dans le branch !user.
+  //     consumer. Visiteur anonyme → rewrite vers la landing pro (marketing
+  //     "Devenir producteur"). Utilisateur loggé → routing par statut :
+  //     draft → /onboarding, statuts actifs → /dashboard, deleted/no-row/
+  //     non-producer → /connexion. Admin sur pro.* n'existe pas en session
+  //     (isolation cookies Chantier 4 / 1d83f5d) → tombe dans le branch !user.
   if (isProducerHost && pathname === "/") {
+    if (!user) {
+      return NextResponse.rewrite(
+        new URL(PRO_LANDING_PATH, request.url),
+      );
+    }
+
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.search = "";
-
-    if (!user) {
-      redirectUrl.pathname = LOGIN_PATH;
-      return NextResponse.redirect(redirectUrl);
-    }
 
     const { data: profile } = await supabase
       .from("users")
