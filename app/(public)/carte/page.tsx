@@ -13,10 +13,51 @@ import { labelEspece, labelLabel } from '@/lib/producers/labels';
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? '';
 
 const PRODUCERS_SOURCE_ID = 'producers-source';
-const PRODUCERS_LAYER_ID = 'producers-circles';
-const COLOR_GREEN = '#2D6A4F';
-const COLOR_TERRA = '#D4841A';
+const PRODUCERS_LAYER_ID = 'producers-symbols';
+const PIN_IMAGE_ID = 'producer-pin';
+const PIN_IMAGE_HOVER_ID = 'producer-pin-hover';
+// Terra palette (tailwind.config.js)
+const TERRA_300 = '#D4A373';
+const TERRA_500 = '#B8713E';
+const TERRA_700 = '#A0522D';
 const COLOR_USER = '#1976D2';
+
+function createPinImage(fillTop: string, fillBottom: string): ImageData {
+  const dpr = 2;
+  const w = 32;
+  const h = 40;
+  const canvas = document.createElement('canvas');
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('canvas 2d context unavailable');
+  ctx.scale(dpr, dpr);
+
+  ctx.beginPath();
+  ctx.moveTo(16, 2);
+  ctx.bezierCurveTo(9.4, 2, 4, 7.4, 4, 14);
+  ctx.bezierCurveTo(4, 23, 16, 38, 16, 38);
+  ctx.bezierCurveTo(16, 38, 28, 23, 28, 14);
+  ctx.bezierCurveTo(28, 7.4, 22.6, 2, 16, 2);
+  ctx.closePath();
+
+  const grad = ctx.createLinearGradient(16, 2, 16, 38);
+  grad.addColorStop(0, fillTop);
+  grad.addColorStop(1, fillBottom);
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  ctx.strokeStyle = '#FFFFFF';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(16, 14, 4.5, 0, Math.PI * 2);
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fill();
+
+  return ctx.getImageData(0, 0, w * dpr, h * dpr);
+}
 
 const USER_MARKER_CSS = `
 @keyframes terroir-user-pulse {
@@ -208,30 +249,33 @@ function CartePageContent() {
         data: { type: 'FeatureCollection', features: [] },
       });
 
+      if (!map.hasImage(PIN_IMAGE_ID)) {
+        map.addImage(PIN_IMAGE_ID, createPinImage(TERRA_300, TERRA_500), { pixelRatio: 2 });
+      }
+      if (!map.hasImage(PIN_IMAGE_HOVER_ID)) {
+        map.addImage(PIN_IMAGE_HOVER_ID, createPinImage(TERRA_500, TERRA_700), { pixelRatio: 2 });
+      }
+
       map.addLayer({
         id: PRODUCERS_LAYER_ID,
-        type: 'circle',
+        type: 'symbol',
         source: PRODUCERS_SOURCE_ID,
-        paint: {
-          'circle-radius': [
+        layout: {
+          'icon-image': [
+            'case',
+            ['boolean', ['feature-state', 'hover'], false],
+            PIN_IMAGE_HOVER_ID,
+            PIN_IMAGE_ID,
+          ],
+          'icon-size': [
             'interpolate', ['linear'], ['zoom'],
-            6, 6,
-            10, 9,
-            14, 13,
+            6, 0.7,
+            10, 0.95,
+            14, 1.15,
           ],
-          'circle-color': [
-            'case',
-            ['boolean', ['feature-state', 'hover'], false],
-            COLOR_TERRA,
-            COLOR_GREEN,
-          ],
-          'circle-stroke-width': [
-            'case',
-            ['boolean', ['feature-state', 'hover'], false],
-            3,
-            2,
-          ],
-          'circle-stroke-color': '#FFFFFF',
+          'icon-anchor': 'bottom',
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
         },
       });
 
@@ -469,7 +513,17 @@ function CartePageContent() {
           <div className="absolute bottom-4 left-4 bg-white/95 backdrop-blur rounded-xl shadow-card p-3 text-[12px] z-10">
             <div className="font-semibold text-green-900 mb-2 text-[11px] uppercase tracking-[0.12em]">Légende</div>
             <div className="flex items-center gap-2 mb-1.5">
-              <span className="w-4 h-4 rounded-full bg-green-700 border-2 border-white shadow-soft" /> Producteur
+              <span className="inline-flex w-4 h-4 items-center justify-center">
+                <span
+                  className="block w-3.5 h-3.5 border-2 border-white shadow-soft"
+                  style={{
+                    background: `linear-gradient(180deg, ${TERRA_300} 0%, ${TERRA_500} 100%)`,
+                    borderRadius: '50% 50% 50% 0',
+                    transform: 'rotate(-45deg)',
+                  }}
+                />
+              </span>
+              Producteur
             </div>
             <div className="flex items-center gap-2">
               <span className="relative inline-flex w-4 h-4 items-center justify-center">
