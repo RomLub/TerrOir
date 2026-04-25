@@ -1,8 +1,14 @@
 import type { ReactNode } from "react";
+import { NEXT_PUBLIC_APP_URL } from "@/lib/env/urls";
 
 const TERROIR_GREEN = "#2D6A4F";
 const TERROIR_BG = "#F7F4EF";
 const TERROIR_TERRACOTTA = "#A0522D";
+
+// PNG @2x mono blanc (400×217), généré par scripts/generate-email-logo.mjs.
+// Hébergé statiquement, URL absolue obligatoire (clients email ne suivent pas
+// les chemins relatifs). Affiché à 200×108 sur fond vert TerrOir.
+const LOGO_URL = `${NEXT_PUBLIC_APP_URL}/email-assets/logo-email.png`;
 
 export const emailTheme = {
   green: TERROIR_GREEN,
@@ -58,15 +64,27 @@ export function EmailLayout({
                   <tbody>
                     <tr>
                       <td
+                        align="center"
                         style={{
                           backgroundColor: TERROIR_GREEN,
-                          padding: "20px 24px",
-                          color: "#fff",
-                          fontSize: 20,
-                          fontWeight: 700,
+                          padding: "24px",
                         }}
                       >
-                        TerrOir
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={LOGO_URL}
+                          alt="TerrOir"
+                          width={200}
+                          height={108}
+                          style={{
+                            display: "block",
+                            border: 0,
+                            outline: "none",
+                            textDecoration: "none",
+                            maxWidth: 200,
+                            height: "auto",
+                          }}
+                        />
                       </td>
                     </tr>
                     <tr>
