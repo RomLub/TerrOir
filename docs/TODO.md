@@ -150,4 +150,3 @@ Chantier à scoper en session dédiée (estimation : 1-2 jours de travail CC par
 - Gestion des litiges (retrait non effectué, marchandise abîmée).
 - Stats publiques sur la home (nb commandes, nb producteurs actifs).
 - **Post-it « Conseil éleveur » en icône cliquable avec popover** (décision Romain 2026-04-24) : au lieu d'un post-it permanent sur la fiche produit, icône discrète à côté du nom produit (ex: petite épingle ou bulle dialogue). Hover desktop → tooltip « Le conseil de [prenom] ». Tap mobile → popover avec le texte complet. Découvrabilité cross-device, fiche plus épurée en permanence.
-- **Phase C.4 `SuccessConfirmation`** : skippée aujourd'hui car 1 seul call site. À reconsidérer si un 2e pattern similaire apparaît.

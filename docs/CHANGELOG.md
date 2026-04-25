@@ -7,6 +7,10 @@ Pour les priorités forward-looking, voir [`TODO.md`](./TODO.md).
 
 ---
 
+## 2026-04-25
+
+- **Phase C.4 `SuccessConfirmation` clôturée définitivement (YAGNI confirmée)** : inspection post-skip a montré que `ConfirmationClient` (`app/(consumer)/compte/confirmation/[id]/ConfirmationClient.tsx`, 97 lignes) est déjà extrait dans son fichier dédié, à 1 seul call site, sans duplication ailleurs (grep checkmark + « Merci » : 0 hit similaire). Fragmenter en sous-composants (`SuccessHero`, `OrderRecap`, `PickupInfo`) créerait du churn pour 0 réutilisation. La consolidation admin Phases A+B+C1-C3 a couvert les composants à 2-11 call sites — C.4 était la fausse piste structurelle, pas la dernière dette à éponger. Item retiré de `TODO.md`.
+
 ## 2026-04-24
 
 - **Lien « Voir ma fiche publique » dans catalogue + édition producer** (commit `cfbabbe`) : lien header `target=_blank` à droite du « ← Retour au catalogue » sur la page d'édition produit. Icône ↗ discrète à droite de « Modifier → » sur chaque card du catalogue. Affichage conditionnel au `statut='public'` du producer (sinon la route consumer est en 404).
