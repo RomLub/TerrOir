@@ -356,7 +356,7 @@ function CartePageContent() {
           </div>
         </aside>
 
-        <div className="relative w-full h-[400px] shrink-0 bg-green-100/40 lg:h-auto lg:flex-1 lg:min-h-0">
+        <div className="relative w-full h-[400px] shrink-0 lg:h-auto lg:flex-1 lg:min-h-0">
           {mapboxgl.accessToken ? (
             <div ref={mapContainer} className="absolute inset-0" />
           ) : (
