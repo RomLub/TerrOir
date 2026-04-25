@@ -20,12 +20,12 @@ const sizePx: Record<LogoSize, number> = {
 const GREEN = "#2d6a4f";
 const SIENNA = "#a0522d";
 
-const FULL_VIEWBOX = "0 0 1415.9696 800";
-
-// Icon viewBox cropé sur path31 (rivière sienna) + path32 (O vert).
-// Bornes estimées par lecture des paths SVG source : x ~440-1010, y ~70-730.
-// À retoucher si rendu visuellement coupé ou trop espacé.
-const ICON_VIEWBOX = "430 60 600 680";
+// viewBox cropés sur la bbox réelle des paths (calcul script + 4 % padding) au
+// lieu de la page Inkscape source 0 0 1416 800. Le O stylisé domine : il occupe
+// toute la hauteur (y=42→751) alors que les lettres T/e/r/i sont y=287→565,
+// ratio final ≈ 1.84 (full) et ≈ 0.96 (icon, presque carré à cause du grand O).
+const FULL_VIEWBOX = "-13 13 1408 766";
+const ICON_VIEWBOX = "361 13 736 766";
 
 // Transform Inkscape appliqué aux glyphes T/e/r/i du SVG source (sauf path31/32,
 // qui sont en coordonnées absolues).
