@@ -13,7 +13,8 @@ import { labelEspece, labelLabel } from '@/lib/producers/labels';
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? '';
 
 const PRODUCERS_SOURCE_ID = 'producers-source';
-const PRODUCERS_LAYER_ID = 'producers-symbols';
+const PRODUCERS_LAYER_ID = 'producers-pins';
+const PRODUCERS_HOVER_LAYER_ID = 'producers-pins-hover';
 const PIN_IMAGE_ID = 'producer-pin';
 const PIN_IMAGE_HOVER_ID = 'producer-pin-hover';
 // Terra palette (tailwind.config.js)
@@ -256,26 +257,52 @@ function CartePageContent() {
         map.addImage(PIN_IMAGE_HOVER_ID, createPinImage(TERRA_500, TERRA_700), { pixelRatio: 2 });
       }
 
+      const iconSize: mapboxgl.ExpressionSpecification = [
+        'interpolate', ['linear'], ['zoom'],
+        6, 0.7,
+        10, 0.95,
+        14, 1.15,
+      ];
+
       map.addLayer({
         id: PRODUCERS_LAYER_ID,
         type: 'symbol',
         source: PRODUCERS_SOURCE_ID,
         layout: {
-          'icon-image': [
-            'case',
-            ['boolean', ['feature-state', 'hover'], false],
-            PIN_IMAGE_HOVER_ID,
-            PIN_IMAGE_ID,
-          ],
-          'icon-size': [
-            'interpolate', ['linear'], ['zoom'],
-            6, 0.7,
-            10, 0.95,
-            14, 1.15,
-          ],
+          'icon-image': PIN_IMAGE_ID,
+          'icon-size': iconSize,
           'icon-anchor': 'bottom',
           'icon-allow-overlap': true,
           'icon-ignore-placement': true,
+        },
+        paint: {
+          'icon-opacity': [
+            'case',
+            ['boolean', ['feature-state', 'hover'], false],
+            0,
+            1,
+          ],
+        },
+      });
+
+      map.addLayer({
+        id: PRODUCERS_HOVER_LAYER_ID,
+        type: 'symbol',
+        source: PRODUCERS_SOURCE_ID,
+        layout: {
+          'icon-image': PIN_IMAGE_HOVER_ID,
+          'icon-size': iconSize,
+          'icon-anchor': 'bottom',
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+        },
+        paint: {
+          'icon-opacity': [
+            'case',
+            ['boolean', ['feature-state', 'hover'], false],
+            1,
+            0,
+          ],
         },
       });
 
