@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 export type LogoVariant = "full" | "icon" | "mono";
-export type LogoSize = "sm" | "md" | "lg";
+export type LogoSize = "sm" | "md" | "xl" | "lg";
 
 export type LogoProps = {
   href?: string;
@@ -14,6 +14,7 @@ export type LogoProps = {
 const sizePx: Record<LogoSize, number> = {
   sm: 24,
   md: 40,
+  xl: 64,
   lg: 96,
 };
 

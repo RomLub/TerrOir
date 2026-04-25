@@ -114,8 +114,8 @@ export function NavbarPublic({
     <header
       className={`sticky top-0 z-40 w-full border-b border-terroir-border bg-terroir-bg/90 backdrop-blur ${className}`}
     >
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4">
-        <Logo size="md" />
+      <div className="mx-auto flex h-20 max-w-6xl items-center justify-between gap-4 px-4">
+        <Logo size="xl" />
         <nav
           className="hidden items-center gap-6 md:flex"
           aria-label="Navigation principale"
