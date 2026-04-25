@@ -74,3 +74,4 @@ export {
   type FooterLink,
 } from "./footer";
 export { RoleSwitcher, type RoleSwitcherProps } from "./role-switcher";
+export { MiniMap, type MiniMapProps } from "./mini-map";

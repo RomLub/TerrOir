@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Button, Badge, ProductCard } from '@/components/ui';
+import { Button, Badge, MiniMap, ProductCard } from '@/components/ui';
 import { useCartStore } from '@/lib/store/cart';
 import { formatSlotTime, formatSlotRange } from '@/lib/slots/format-slot-time';
 import { useUserContext } from '@/components/providers/user-provider';
@@ -324,7 +324,16 @@ export function ProductPageClient({
                 </Link>
               </div>
               <div className="relative h-44 bg-green-100/50">
-                <MiniMapPlaceholder />
+                {producer.lat != null && producer.lng != null ? (
+                  <MiniMap
+                    latitude={producer.lat}
+                    longitude={producer.lng}
+                    markerLabel={`${producer.name} — ${producer.commune}`}
+                    zoom={11}
+                  />
+                ) : (
+                  <MiniMapPlaceholder />
+                )}
               </div>
             </div>
           </div>
