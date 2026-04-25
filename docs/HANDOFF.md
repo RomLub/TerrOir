@@ -1,7 +1,7 @@
 # HANDOFF — TerrOir
 
-> À jour le **2026-04-24** après hotfix post-migration `prenom_affichage`.
-> Commits récents : `ffea6b2` + `07a65d4` (chantier conseil éleveur), `95d0572` (hotfix INSERT prenom_affichage), `ef7f10b` (robustesse Resend), `e93043e` (landings Stripe Connect), `dbe6360` (auto-bump lead).
+> À jour le **2026-04-25** après session matinée + après-midi (chantiers Mapbox, webhook decoupling, landings pro/admin, public stats).
+> Commits récents : `5dca301` (hover popover conseil), `22bf88e` (centralize geoloc fallback), `c3d62ee`+`83b5326`+`e03734e`+`3ea3555` (4 fixes carte Mapbox), `0761bbe`+`db63440` (webhook decoupling waitUntil), `f3fb891` (MiniMap Mapbox produit), `dcbc747`+`4b9f08d`+`ef6bfe4` (landings publiques pro/admin + middleware rewrites), `2e63dc5`+`0caf4c2`+`b07e8d8` (public stats home + revalidation cache), `6db046c` (carte WebGL markers), `ddb3a02` (Phase C.4 YAGNI clôt).
 >
 > Objectif : permettre à un Claude frais de reprendre le projet exactement où on en est, juste en lisant ce document (puis `docs/METHODOLOGY.md` et `docs/TODO.md`). Voir `docs/README.md` pour l'index complet de la documentation.
 
@@ -106,6 +106,7 @@ Gérées via Vercel Dashboard. Jamais dans le code.
 - `OPT_OUT_TOKEN_SECRET` (RGPD opt-out HMAC)
 - `NEXT_PUBLIC_APP_URL`
 - `NEXT_PUBLIC_PRODUCER_URL`
+- `NEXT_PUBLIC_MAPBOX_TOKEN` (carte producteurs + MiniMap fiche produit)
 
 ## Configurations externes critiques
 
@@ -129,6 +130,7 @@ Gérées via Vercel Dashboard. Jamais dans le code.
   - Mode Test actuel → Live à basculer avant go-live.
   - Webhook endpoint à pointer sur `https://www.terroir-local.fr/api/stripe/webhook` pour la prod.
   - Payment methods > Link : à désactiver account-wide avant lancement.
+- **Mapbox account** : token `NEXT_PUBLIC_MAPBOX_TOKEN` configuré sur Vercel **Production + Preview**. Restrictions URL configurées côté Mapbox account sur les 4 domaines : `https://www.terroir-local.fr/*`, `https://pro.terroir-local.fr/*`, `https://admin.terroir-local.fr/*`, `https://terroir-local.fr/*`, plus `http://localhost:3000/*` pour le dev local. Sans ces restrictions URL, le token serait utilisable depuis n'importe quel domaine si exfiltré (token public bundlé côté client).
 
 ## Chantiers majeurs clos
 
@@ -159,6 +161,15 @@ Gérées via Vercel Dashboard. Jamais dans le code.
 - **Robustesse flow Resend + invitation producer** (commit `ef7f10b`) : logging `[EMAIL_SEND_FAIL]` grep-able Vercel, `renderEmail` wrappé try/catch, appel `sendTemplate` wrappé côté route, tokens hoistés AVANT INSERT `producer_invitations`, fail-fast `RESEND_FROM_EMAIL` au module-load.
 - **Chantier « Conseil de l'éleveur »** (commits `ffea6b2` + `07a65d4` + migrations `20260423100000`/`110000`/`120000`) : colonne `producers.prenom_affichage` (1-50 char) REQUIRED côté wizard + édition onboarding, colonne `products.conseil` (280 char) côté éditeur producer, post-it manuscrit affiché côté consumer sur la fiche produit (tooltip desktop + post-it mobile). Défense `prenom_affichage=null` pour producers `deleted`. Migrations appliquées prod OK (add column nullable → backfill depuis `users.prenom` → SET NOT NULL).
 - **Hotfix INSERT `prenom_affichage`** (commit `95d0572`) : placeholder `"À compléter"` ajouté sur les 3 INSERT runtime de `producers` (`create-account.ts`, `login-and-upgrade.ts`, `invitation/page.tsx` SSR) + seed aligné sur `p.prenom`. La reprise d'onboarding traite `"À compléter"` comme vide. Débloque l'Étape 1 du wizard après apply de la migration C NOT NULL en prod.
+- **Conseil éleveur en icône cliquable popover (cross-device)** (commits `aa15782` + `5dca301`) : remplacement du post-it permanent par une icône discrète à côté du nom produit. Tap mobile → popover. Hover desktop → open via détection `matchMedia('(hover: hover) and (pointer: fine)')`. Fiche plus épurée + découvrabilité préservée.
+- **Centralize fallback géoloc Le Mans** (commit `22bf88e`) : `lib/geo/fallback.ts` exposant `GEOLOC_FALLBACK` + helper. 8 hardcodes Le Mans migrés sur 6 fichiers. Régionalisation future en 1 endroit.
+- **Carte Mapbox stabilisée — 4 fixes layout/canvas** (commits `c3d62ee` + `83b5326` + `e03734e` + `3ea3555`) : pattern `h-full w-full` (pas `absolute inset-0`) + `ResizeObserver` + pas de `bg-*` sur le wrapper. Voir `LESSONS.md` section « Mapbox / WebGL » pour le détail.
+- **Markers carte WebGL** (commit `6db046c`) : couche `circle` Mapbox + GeoJSON FeatureCollection (1 layer pour N producers, fini les N nœuds DOM SVG). Marker user en pulsing dot custom layer animé via `requestAnimationFrame`.
+- **Découplage notifications webhook Stripe** (commits `0761bbe` deps + `db63440` fix) : Resend + Twilio basculés en background via `@vercel/functions waitUntil()`. Ack 200 immédiat à Stripe. Résout les 13% de timeout webhook observés sur le Dashboard Stripe.
+- **MiniMap Mapbox sur fiche produit** (commit `f3fb891`) : composant partagé `components/ui/mini-map.tsx` réutilisable, fallback gracieux si coords absentes. Embarque le pattern Mapbox propre (cascade hauteurs + ResizeObserver + pas de bg).
+- **Pages landing publiques `pro` + `admin`** (commits `dcbc747` + `4b9f08d` + `ef6bfe4`) : `/pro-accueil` + `/admin-accueil` (chrome public, hero + value prop + CTA `/connexion`). Middleware rewrite `pro.*/` → `/pro-accueil` et `admin.*/` → `/admin-accueil` pour visiteurs anonymes uniquement (sessions actives → dashboard). 301 cross-subdomain bonus depuis `www`.
+- **Section « Stats publiques » home consumer** (commits `2e63dc5` + `0caf4c2` + `b07e8d8`) : Server Component `components/ui/public-stats.tsx` + helper `lib/stats/public-stats.ts` (counts producers/orders/products, cache 5 min via `unstable_cache`, fail-open par count). Skip individuel par stat sous seuil minimum (5/10/15) pour éviter l'effet « projet vide ». Cache invalidé via `revalidateTag('public-stats')` dans le webhook Stripe sur événement `confirmed`.
+- **Phase C.4 `SuccessConfirmation` clôturée YAGNI** (commit `ddb3a02`) : inspection a confirmé `ConfirmationClient` déjà extrait, 1 call site, 0 duplication. Décision YAGNI tracée. Item retiré du TODO.
 
 ## Chantiers en cours
 
@@ -167,15 +178,12 @@ _(rien en cours)_
 ## Dettes techniques connues
 
 - **Setup CLI Supabase pour migrations auto** : aujourd'hui apply manuel via SQL Editor. À automatiser si fréquence de migrations augmente.
-- **Framework de tests** : vitest couvre slots, HMAC opt-out, cookie-domain, formatters (77 tests). Reste à étendre à d'autres helpers critiques si besoin.
-- **Tests `fetch-public.ts` + `promote-to-public.ts`** : helpers producers non testés — nécessite des mocks Supabase non-triviaux. Non prioritaire.
+- **Framework de tests** : vitest couvre slots, HMAC opt-out, cookie-domain, formatters, fetch-public, promote-to-public, maskEmail (90+ tests). Reste à étendre à d'autres helpers critiques si besoin.
 - **Phase B5 TableStatus** : livrée (commit `b89160f`), mais à vérifier que toutes les tables admin l'utilisent.
 - **Stripe Link account-wide** : à désactiver manuellement dans Dashboard Stripe (action externe).
-- **Extraction helper `useLogoutFlow()`** : 2 call sites (`navbar-public.tsx`, `AdminHeader.tsx`) appliquent manuellement le pattern double signOut. À factoriser si un 3e call site apparaît (prévention DRY).
 - **Webhook Stripe `account.updated` manquant** : `producers.stripe_account_id` est set AVANT onboarding complété côté Stripe → le badge « ✓ Compte Stripe connecté » sur `/parametres` peut être un faux positif si le producer abandonne à mi-course. Chantier : ajouter handler webhook qui synchronise un flag `stripe_onboarding_completed` (ou équivalent) avec `charges_enabled` / `details_submitted` côté Stripe. Bloquant avant go-live public si on veut un statut Connect fiable.
-- **Logging email en clair RGPD** : préfixes `[EMAIL_SEND_FAIL]` + `[LEAD_BUMP_WARN]` + `notifications.metadata` contiennent des emails en clair. Incohérence RGPD à trancher globalement (masquage partiel, hash, ou conservation assumée). Chantier RGPD logs dédié à prévoir.
-- **Fail-fast env vars `NEXT_PUBLIC_APP_URL` + `NEXT_PUBLIC_PRODUCER_URL`** : même pattern que l'ex-fallback silencieux `RESEND_FROM_EMAIL` corrigé dans `ef7f10b`. Ces 2 env vars sont critiques pour la navigation cross-subdomain (role-switcher, redirects post-auth, liens emails). Candidat chantier avant bascule Stripe Live.
-- **Bug cosmétique reprise onboarding `prenom_affichage`** : `app/(producer)/onboarding/page.tsx` affiche `"À compléter"` au lieu du placeholder pour `prenom_affichage` lors d'une reprise mid-wizard. `app/(producer)/invitation/page.tsx` a déjà été corrigé dans le hotfix `95d0572` (pattern aligné sur `nom_exploitation`). Reste à dupliquer le même pattern dans `onboarding/page.tsx`. Bug bénin (Zod `min(1)` côté server bloque la finalisation).
+- **Mentions légales footer pro** : page absente, le footer pro pointe sur un href mort. À créer une fois le contenu juridique disponible (action externe Romain — pré-requis hors code).
+- **`PublicLayout` connexion sous-domaines** : la page `/connexion` rendue sur `pro.terroir-local.fr` et `admin.terroir-local.fr` doit adapter son chrome (navbar/footer) selon le hostname pour cohérence branding. Détection via `headers().get('host')` côté server component. À traiter dès qu'un terminal libre est dispo.
 
 ## Users de test
 

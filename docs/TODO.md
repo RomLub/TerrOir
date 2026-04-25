@@ -35,14 +35,10 @@ _(rien en cours)_
 - **Remplacer images Unsplash** provisoires par vraies photos producteurs.
 - **Flux invitation : cas "email déjà en base"** à détecter proprement côté UX (au-delà de la correction fonctionnelle du Chantier 2).
 - **Désactiver Stripe Link account-wide** dans le Dashboard Stripe (Settings > Payment methods > Link toggle off) — action externe. Nécessaire si Link persiste à apparaître malgré `payment_method_types: ['card']` côté intents.
-- **Extraction helper `useLogoutFlow()`** si un 3e bouton logout apparaît (DRY prévention). Aujourd'hui 2 call sites : `navbar-public.tsx` + `AdminHeader.tsx` appliquent le pattern double signOut manuellement.
-- **Tests supplémentaires sur `lib/producers/fetch-public.ts` + `promote-to-public.ts`** (nécessite mocks Supabase non-triviaux). Non prioritaire — les 77 tests existants couvrent les helpers critiques (slots, HMAC, cookie-domain, formatters).
 - **Webhook Stripe `account.updated` manquant** — conséquence : `producers.stripe_account_id` est set AVANT onboarding complété côté Stripe → faux positif badge « ✓ Compte Stripe connecté » sur `/parametres` si le producer abandonne le flux Stripe à mi-course. Chantier : handler webhook `account.updated` qui synchronise `producers.stripe_onboarding_completed` (ou équivalent) avec `charges_enabled` / `details_submitted` côté Stripe. **Bloquant avant go-live public** si on veut un statut Connect fiable.
-- **Logging email en clair RGPD** — `[EMAIL_SEND_FAIL]` + `[LEAD_BUMP_WARN]` + `notifications.metadata` contiennent des emails en clair. Incohérence RGPD à trancher globalement (masquage partiel `u***@domain.tld`, hash, ou conservation assumée selon finalité). Chantier RGPD logs dédié à prévoir avant go-live.
-- **Fail-fast env vars `NEXT_PUBLIC_APP_URL` + `NEXT_PUBLIC_PRODUCER_URL`** — même pattern que l'ex-fallback silencieux `RESEND_FROM_EMAIL` corrigé dans le commit `ef7f10b`. Ces 2 env vars sont critiques pour la navigation cross-subdomain (role-switcher, redirects post-auth, liens emails). Un fallback silencieux ou une absence non-détectée peut produire des bugs visuels difficiles à diagnostiquer. Candidat chantier avant bascule Stripe Live.
-- **Bug cosmétique reprise onboarding `prenom_affichage`** — le fichier `app/(producer)/onboarding/page.tsx` affiche `"À compléter"` au lieu du placeholder pour `prenom_affichage` lors d'une reprise mid-wizard. Le fichier `app/(producer)/invitation/page.tsx` a déjà été corrigé dans le hotfix `95d0572` (pattern aligné sur `nom_exploitation`). Il reste à dupliquer le même pattern dans `onboarding/page.tsx`. Bug bénin car le Zod `min(1)` côté server bloque la finalisation tant que le user n'a pas saisi une vraie valeur.
 - **Transition auto lead `'contacted'` → `'onboarded'`** quand le wizard est finalisé (Étape 3 soumise). Aujourd'hui la transition n'existe pas, les leads restent bloqués en `'contacted'` même après onboarding complet. À implémenter dans `complete-onboarding.ts` (server action Étape 3) : `UPDATE producer_interests SET statut='onboarded' WHERE email = session.email AND statut='contacted'` (no-op si pas de match, cohérent avec le bump auto de `dbe6360`).
-- **Taux d'erreur 13% webhook Stripe Test** — observé le 2026-04-24 sur Stripe Dashboard (Webhooks > endpoint `https://www.terroir-local.fr/api/stripe/webhook`). Causes probables : signature invalide suite à rotation de `STRIPE_WEBHOOK_SECRET`, 500 applicatif dans un handler, ou timeout Stripe. Investigation : consulter « Recent deliveries » du Dashboard pour identifier les events en erreur, leur code HTTP et leur cause. Fix selon diagnostic. À traiter avant bascule Stripe Live.
+- **Mentions légales footer pro** — page absente, le footer pro pointe sur un href mort. À créer une fois le contenu juridique disponible (action externe Romain).
+- **`PublicLayout` connexion sous-domaines** — la page `/connexion` rendue sur `pro.terroir-local.fr` et `admin.terroir-local.fr` doit adapter son chrome (navbar/footer) selon le hostname pour cohérence branding. Détection via `headers().get('host')` côté server component.
 
 ## 🗺️ Roadmap produit (vision Avril 2026)
 
@@ -142,11 +138,6 @@ Chantier à scoper en session dédiée (estimation : 1-2 jours de travail CC par
 
 ## 🔵 Idées / améliorations
 
-- Pages d'accueil dédiées pour `pro.terroir-local.fr/` et `admin.terroir-local.fr/` (actuellement fallback vers layout public côté pro ; côté admin, redirect middleware en place depuis le 22/04 mais pas de vraie landing).
-- MiniMap Mapbox sur fiche produit (non câblée).
-- Régionaliser le fallback géoloc (actuellement Le Mans en dur).
 - Notation/reviews producteurs (cadre existant via reviews mais flow à valider).
 - Export comptable consommateurs + producteurs.
 - Gestion des litiges (retrait non effectué, marchandise abîmée).
-- Stats publiques sur la home (nb commandes, nb producteurs actifs).
-- **Post-it « Conseil éleveur » en icône cliquable avec popover** (décision Romain 2026-04-24) : au lieu d'un post-it permanent sur la fiche produit, icône discrète à côté du nom produit (ex: petite épingle ou bulle dialogue). Hover desktop → tooltip « Le conseil de [prenom] ». Tap mobile → popover avec le texte complet. Découvrabilité cross-device, fiche plus épurée en permanence.

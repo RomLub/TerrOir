@@ -105,17 +105,39 @@ Si erreur → fix puis re-run, OU rapport à Romain/Claude si blocage de concept
 
 ## Gestion de la dette technique
 
-- Dettes identifiées pendant un chantier hors scope → **note en TODO**, pas de fix immédiat.
-- Fix uniquement si :
+### Pendant un chantier en cours
+
+- Dettes identifiées pendant un chantier hors scope → **note en TODO ou en dette HANDOFF**, pas de fix immédiat dans le commit en cours (pollution de scope).
+- Fix immédiat uniquement si :
   - C'est un bug bloquant le chantier en cours.
   - Le fix est vraiment trivial (< 5 min, pas de risque de régression).
-- Priorisation dans `docs/TODO.md` :
-  - 🔴 Bloquants lancement
-  - 🟠 En cours
-  - 🟡 Non bloquants
-  - 🔐 Avant lancement public (audit, sécurité, conformité)
-  - 🔵 Idées / améliorations
-  - 🗺️ Roadmap produit
+
+### Traitement systématique entre chantiers (décision Romain 2026-04-25)
+
+**Principe** : toute dette technique identifiée se traite **dès qu'un terminal CC est libre**, même si l'impact utilisateur est nul ou minime. Pas de « ça attendra » ni de classement « non prioritaire » qui s'éternise.
+
+**Raisons** :
+
+- La dette qui s'accumule devient une dette qui ne se traite jamais — l'inertie l'emporte.
+- Le coût marginal de fix immédiat est faible (terminal libre = ressource déjà allouée).
+- Le coût de revisite plus tard est élevé (re-charger le contexte, re-comprendre le pourquoi, re-tester).
+- L'objectif lancement = code aussi propre que possible le Day 1, pas de dette mentale qui pèse en background.
+
+**Application** :
+
+- Les dettes notées dans `HANDOFF.md` « Dettes techniques connues » → à traiter avant lancement.
+- Les dettes flaggées par les terminaux dans leurs rapports → à traiter dès que le terminal libre devient dispo.
+- Les pages/features incomplètes pour cause de pré-requis externe (ex: Mentions légales si la page n'existe pas) → exception : skip jusqu'à ce que le pré-requis soit prêt.
+- Si un chantier semble être « skip-justifié » (cas Phase C.4 `SuccessConfirmation`) : **faire l'inspection, prendre la décision argumentée, la tracer dans `CHANGELOG.md`, retirer du TODO**. C'est aussi traiter — clore une dette par décision YAGNI vaut autant que la fixer.
+
+### Priorisation dans `docs/TODO.md`
+
+- 🔴 Bloquants lancement
+- 🟠 En cours
+- 🟡 Non bloquants
+- 🔐 Avant lancement public (audit, sécurité, conformité)
+- 🔵 Idées / améliorations
+- 🗺️ Roadmap produit
 
 ## Communication
 
