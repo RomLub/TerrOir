@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { AdminModal, AdminPageHeader, Button, FilterTabs, ProducerStatusBadge, TableActionButton, TableStatus, type ProducerStatus } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { revalidatePublicStats } from '@/lib/stats/revalidate';
 import { formatDateFr } from '@/lib/format/date';
 
 // Statuts producers visibles côté admin. 'draft' et 'deleted' sont exclus
@@ -169,8 +170,19 @@ function AdminProducteursPageInner() {
     setError(null);
     const supabase = createSupabaseBrowserClient();
     const { error: upError } = await supabase.from('producers').update({ statut: status }).eq('id', id);
-    if (upError) setError(upError.message);
-    else setProducers((arr) => arr.map((p) => p.id === id ? { ...p, status } : p));
+    if (upError) {
+      setError(upError.message);
+    } else {
+      setProducers((arr) => arr.map((p) => p.id === id ? { ...p, status } : p));
+      // Toute transition admin peut faire entrer/sortir le producer du filtre
+      // statut='public' du cache public-stats (suspend, réactivate, validate
+      // si suivi d'une auto-promotion ailleurs). Inconditionnel pour simplifier.
+      try {
+        await revalidatePublicStats();
+      } catch (e) {
+        console.warn(`[STATS_REVAL_WARN] ${(e as Error).message}`);
+      }
+    }
     setBusy(null);
   };
 
