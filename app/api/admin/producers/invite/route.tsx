@@ -156,11 +156,61 @@ export async function POST(request: Request) {
     }
   }
 
+  // 6. Création d'un lead invitation_directe (chantier vision funnel, Phase 1).
+  //    Si l'email n'a matché aucun lead 'new' au bump ci-dessus ET qu'aucun
+  //    lead n'existe pour cet email tous statuts confondus, c'est que l'admin
+  //    invite un prospect direct (jamais passé par /devenir-producteur). On
+  //    crée alors le lead a posteriori avec source='invitation_directe' et
+  //    statut='contacted' (skip 'new' : il a déjà été contacté par
+  //    l'invitation qui vient de partir) pour que l'onglet Leads soit le
+  //    journal d'acquisition complet.
+  //
+  //    Fail-open : si la création échoue (réseau, RLS, contrainte), log
+  //    [LEAD_CREATE_WARN] et on ne bloque pas l'invitation déjà partie.
+  //    `nom` est NOT NULL en base : fallback sur la partie locale de l'email
+  //    quand l'admin n'a pas saisi de nom (champ optionnel côté UI).
+  let leadCreated = false;
+  if (emailResult.ok && leadUpdated === 0) {
+    const { data: existingLead, error: existingLeadError } = await admin
+      .from("producer_interests")
+      .select("id")
+      .ilike("email", input.email)
+      .maybeSingle();
+    if (existingLeadError) {
+      console.warn(
+        `[LEAD_CREATE_WARN] Failed to check existing lead for ${maskEmail(input.email)}: ${existingLeadError.message}`,
+      );
+    } else if (!existingLead) {
+      const fallbackNom = input.nom?.trim() || input.email.split("@")[0];
+      const { error: insertError } = await admin
+        .from("producer_interests")
+        .insert({
+          email: input.email,
+          nom: fallbackNom,
+          telephone: input.telephone ?? null,
+          nom_exploitation: input.nom_exploitation ?? null,
+          commune: input.commune ?? null,
+          especes: input.especes ?? null,
+          message: input.message ?? null,
+          statut: "contacted",
+          source: "invitation_directe",
+        });
+      if (insertError) {
+        console.warn(
+          `[LEAD_CREATE_WARN] Failed to create invitation_directe lead for ${maskEmail(input.email)}: ${insertError.message}`,
+        );
+      } else {
+        leadCreated = true;
+      }
+    }
+  }
+
   return NextResponse.json({
     url: invitationUrl,
     expires_at: invitation.expires_at,
     email_sent: emailResult.ok,
     email_error: emailResult.ok ? undefined : emailResult.error,
     lead_updated: leadUpdated,
+    lead_created: leadCreated,
   });
 }
