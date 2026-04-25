@@ -12,6 +12,40 @@ import { labelEspece, labelLabel } from '@/lib/producers/labels';
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? '';
 
+const PRODUCERS_SOURCE_ID = 'producers-source';
+const PRODUCERS_LAYER_ID = 'producers-circles';
+const COLOR_GREEN = '#2D6A4F';
+const COLOR_TERRA = '#D4841A';
+const COLOR_USER = '#1976D2';
+
+const USER_MARKER_CSS = `
+@keyframes terroir-user-pulse {
+  0%   { transform: scale(1);   opacity: 0.5; }
+  100% { transform: scale(2.6); opacity: 0;   }
+}
+.user-marker {
+  position: relative;
+  width: 18px;
+  height: 18px;
+  pointer-events: none;
+}
+.user-marker__halo {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: ${COLOR_USER};
+  animation: terroir-user-pulse 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+.user-marker__dot {
+  position: absolute;
+  inset: 2px;
+  border-radius: 9999px;
+  background: ${COLOR_USER};
+  border: 2.5px solid #FFFFFF;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.25);
+}
+`;
+
 type SearchResult = {
   id: string;
   slug: string;
@@ -147,7 +181,11 @@ function CartePageContent() {
 
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
-  const markersRef = useRef<Record<string, mapboxgl.Marker>>({});
+  const userMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const lastHoverRef = useRef<string | null>(null);
+  const routerRef = useRef(router);
+  routerRef.current = router;
+  const [mapReady, setMapReady] = useState(false);
 
   useEffect(() => {
     if (!mapContainer.current || mapRef.current) return;
@@ -164,22 +202,74 @@ function CartePageContent() {
     map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-right');
     mapRef.current = map;
 
-    // Backup resize après le 1er paint : si le conteneur n'avait pas encore
-    // ses dimensions finales à l'instant du new Map(), trackResize peut rater
-    // le 1er trigger. On force une resize() une fois la layout stabilisée.
-    const raf = requestAnimationFrame(() => map.resize());
+    const setup = () => {
+      map.addSource(PRODUCERS_SOURCE_ID, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
 
-    // Self-healing : un ResizeObserver explicite rattrape tous les cas où le
-    // canvas interne de Mapbox reste à 0 parce que le conteneur a grandi
-    // après l'init (cascade flex tardive, fonts qui décalent, etc.).
+      map.addLayer({
+        id: PRODUCERS_LAYER_ID,
+        type: 'circle',
+        source: PRODUCERS_SOURCE_ID,
+        paint: {
+          'circle-radius': [
+            'interpolate', ['linear'], ['zoom'],
+            6, 6,
+            10, 9,
+            14, 13,
+          ],
+          'circle-color': [
+            'case',
+            ['boolean', ['feature-state', 'hover'], false],
+            COLOR_TERRA,
+            COLOR_GREEN,
+          ],
+          'circle-stroke-width': [
+            'case',
+            ['boolean', ['feature-state', 'hover'], false],
+            3,
+            2,
+          ],
+          'circle-stroke-color': '#FFFFFF',
+        },
+      });
+
+      map.on('mousemove', PRODUCERS_LAYER_ID, (e) => {
+        const id = e.features?.[0]?.id;
+        if (id == null) return;
+        map.getCanvas().style.cursor = 'pointer';
+        setHoveredId(String(id));
+      });
+
+      map.on('mouseleave', PRODUCERS_LAYER_ID, () => {
+        map.getCanvas().style.cursor = '';
+        setHoveredId(null);
+      });
+
+      map.on('click', PRODUCERS_LAYER_ID, (e) => {
+        const slug = e.features?.[0]?.properties?.slug;
+        if (typeof slug === 'string') routerRef.current.push(`/producteurs/${slug}`);
+      });
+
+      setMapReady(true);
+    };
+
+    if (map.isStyleLoaded()) setup();
+    else map.once('load', setup);
+
+    const raf = requestAnimationFrame(() => map.resize());
     const resizeObserver = new ResizeObserver(() => map.resize());
     resizeObserver.observe(mapContainer.current);
 
     return () => {
       cancelAnimationFrame(raf);
       resizeObserver.disconnect();
+      userMarkerRef.current?.remove();
+      userMarkerRef.current = null;
       map.remove();
       mapRef.current = null;
+      setMapReady(false);
     };
   }, []);
 
@@ -190,62 +280,69 @@ function CartePageContent() {
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || !userLoc || !mapReady) return;
 
-    Object.values(markersRef.current).forEach((m) => m.remove());
-    markersRef.current = {};
-
-    results.forEach((p) => {
-      const el = document.createElement('button');
-      el.className = 'producer-marker';
-      el.setAttribute('aria-label', p.nom_exploitation);
-      el.style.cssText = `
-        width: 36px; height: 36px; border-radius: 50% 50% 50% 0;
-        transform: rotate(-45deg); background: #2D6A4F; border: 3px solid #fff;
-        box-shadow: 0 4px 12px rgba(27,67,50,0.35); cursor: pointer;
-        display: flex; align-items: center; justify-content: center;
-        transition: transform 180ms, background 180ms;
-      `;
-      el.innerHTML = `<span style="transform: rotate(45deg); color:#D4841A; font-weight:700; font-size:14px;">●</span>`;
-
-      el.addEventListener('mouseenter', () => setHoveredId(p.id));
-      el.addEventListener('mouseleave', () => setHoveredId(null));
-      el.addEventListener('click', () => {
-        window.location.href = `/producteurs/${p.slug}`;
-      });
-
-      const popup = new mapboxgl.Popup({ offset: 30, closeButton: false, className: 'terroir-popup' })
-        .setHTML(`
-          <div style="font-family: Inter, sans-serif; min-width: 200px;">
-            <div style="font-family: 'Cormorant Garamond', serif; font-size: 18px; color: #1B4332; font-weight: 600;">${p.nom_exploitation}</div>
-            <div style="font-size: 12px; color: #212529a0; margin-top: 2px;">${p.commune ?? ''} · ${p.distance_km.toFixed(1)} km</div>
-            <div style="margin-top: 8px; font-size: 13px; color: #2D6A4F; font-weight: 500;">Voir la ferme →</div>
-          </div>
-        `);
-
-      const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
-        .setLngLat([p.longitude, p.latitude])
-        .setPopup(popup)
+    if (!userMarkerRef.current) {
+      const el = document.createElement('div');
+      el.className = 'user-marker';
+      const halo = document.createElement('div');
+      halo.className = 'user-marker__halo';
+      const dot = document.createElement('div');
+      dot.className = 'user-marker__dot';
+      el.appendChild(halo);
+      el.appendChild(dot);
+      userMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: 'center' })
+        .setLngLat([userLoc.lng, userLoc.lat])
         .addTo(map);
-
-      markersRef.current[p.id] = marker;
-    });
-  }, [results]);
+    } else {
+      userMarkerRef.current.setLngLat([userLoc.lng, userLoc.lat]);
+    }
+  }, [userLoc, mapReady]);
 
   useEffect(() => {
-    Object.entries(markersRef.current).forEach(([id, m]) => {
-      const el = m.getElement() as HTMLElement;
-      if (id === hoveredId) {
-        el.style.background = '#D4841A';
-        el.style.transform = 'rotate(-45deg) scale(1.25)';
-        el.style.zIndex = '10';
-      } else {
-        el.style.background = '#2D6A4F';
-        el.style.transform = 'rotate(-45deg) scale(1)';
-        el.style.zIndex = '';
-      }
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    const source = map.getSource(PRODUCERS_SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
+    if (!source) return;
+
+    source.setData({
+      type: 'FeatureCollection',
+      features: results.map((p) => ({
+        type: 'Feature',
+        id: p.id,
+        geometry: { type: 'Point', coordinates: [p.longitude, p.latitude] },
+        properties: { slug: p.slug, name: p.nom_exploitation },
+      })),
     });
-  }, [hoveredId]);
+  }, [results, mapReady]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    if (lastHoverRef.current === hoveredId) return;
+
+    if (lastHoverRef.current) {
+      try {
+        map.setFeatureState(
+          { source: PRODUCERS_SOURCE_ID, id: lastHoverRef.current },
+          { hover: false },
+        );
+      } catch {
+        // feature may have been removed by a results refresh
+      }
+    }
+    if (hoveredId) {
+      try {
+        map.setFeatureState(
+          { source: PRODUCERS_SOURCE_ID, id: hoveredId },
+          { hover: true },
+        );
+      } catch {
+        // feature may have been removed by a results refresh
+      }
+    }
+    lastHoverRef.current = hoveredId;
+  }, [hoveredId, mapReady]);
 
   const toggle = <T extends string>(arr: T[], v: T, setter: (a: T[]) => void) =>
     setter(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
@@ -274,8 +371,14 @@ function CartePageContent() {
     },
   })), [results]);
 
+  const isFallbackLoc =
+    userLoc != null &&
+    userLoc.lat === GEOLOC_FALLBACK.lat &&
+    userLoc.lng === GEOLOC_FALLBACK.lng;
+
   return (
     <div className="bg-bg flex flex-col h-[calc(100dvh-4rem)] min-h-[600px]">
+      <style>{USER_MARKER_CSS}</style>
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
         <aside className="w-full lg:w-[40%] lg:max-w-[560px] border-r border-dark/[0.06] flex flex-col overflow-hidden flex-1 lg:flex-initial">
           <div className="p-6 border-b border-dark/[0.06]">
@@ -369,16 +472,18 @@ function CartePageContent() {
               <span className="w-4 h-4 rounded-full bg-green-700 border-2 border-white shadow-soft" /> Producteur
             </div>
             <div className="flex items-center gap-2">
-              <span className="w-4 h-4 rounded-full bg-terra-300 border-2 border-white shadow-soft" /> Au survol
+              <span className="relative inline-flex w-4 h-4 items-center justify-center">
+                <span className="absolute inset-0 rounded-full bg-[#1976D2]/30" />
+                <span className="w-2.5 h-2.5 rounded-full bg-[#1976D2] border-2 border-white" />
+              </span>
+              Votre position
             </div>
           </div>
 
-          {userLoc && (
+          {isFallbackLoc && (
             <div className="absolute top-4 left-4 bg-white/95 backdrop-blur rounded-full shadow-soft px-3 py-1.5 text-[12px] text-dark/70 z-10 flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-              {userLoc.lat === GEOLOC_FALLBACK.lat && userLoc.lng === GEOLOC_FALLBACK.lng
-                ? `${GEOLOC_FALLBACK.label} (par défaut)`
-                : 'Votre position'}
+              <span className="w-2 h-2 rounded-full bg-terra-500" />
+              {GEOLOC_FALLBACK.label} (par défaut)
             </div>
           )}
         </div>
