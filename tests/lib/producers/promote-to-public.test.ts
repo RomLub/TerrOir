@@ -1,21 +1,30 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { promoteProducerToPublicIfActive } from "@/lib/producers/promote-to-public";
+import { revalidatePublicStats } from "@/lib/stats/revalidate";
+
+// Mock isolation : on vérifie que le helper appelle la server action
+// d'invalidation cache UNIQUEMENT quand une vraie promotion a eu lieu.
+vi.mock("@/lib/stats/revalidate", () => ({
+  revalidatePublicStats: vi.fn(),
+}));
 
 // Mock Supabase client minimal : supporte la chaîne
-//   from('producers').update({ statut: 'public' }).eq('id', v).eq('statut', 'active')
-// La dernière .eq() renvoie une Promise (update terminal dans PostgREST).
+//   from('producers').update({ statut: 'public' }).eq('id', v).eq('statut', 'active').select('id')
+// Le `.select()` termine la chaîne (PostgREST renvoie les rows modifiées).
 // Chaque méthode est capturée pour asserter :
 //   - le payload d'update ({ statut: 'public' })
 //   - la garde d'idempotence (.eq('statut', 'active'))
 //   - la cible précise (.eq('id', producerId))
+//   - le `.select('id')` requis pour détecter une vraie promotion
 type Captured = {
   from: string[];
   update: unknown[];
   eq: Array<[string, unknown]>;
+  select: string[];
 };
 
-function makeSupabase(response: { error: unknown }): {
+function makeSupabase(response: { data: unknown; error: unknown }): {
   client: SupabaseClient;
   captured: Captured;
 } {
@@ -23,6 +32,7 @@ function makeSupabase(response: { error: unknown }): {
     from: [],
     update: [],
     eq: [],
+    select: [],
   };
 
   const builder: any = {};
@@ -30,14 +40,18 @@ function makeSupabase(response: { error: unknown }): {
     captured.update.push(payload);
     return builder;
   };
-  // La 2e .eq() termine la chaîne côté Supabase (update sans .select()).
-  // On la rend thenable pour matcher le `await` du helper.
   builder.eq = (col: string, val: unknown) => {
     captured.eq.push([col, val]);
     return builder;
   };
-  builder.then = (onFulfilled: (r: { error: unknown }) => unknown) =>
-    onFulfilled(response);
+  // .select() termine la chaîne : on rend le builder thenable à ce stade.
+  builder.select = (cols: string) => {
+    captured.select.push(cols);
+    return builder;
+  };
+  builder.then = (
+    onFulfilled: (r: { data: unknown; error: unknown }) => unknown,
+  ) => onFulfilled(response);
 
   const client = {
     from: (table: string) => {
@@ -53,6 +67,7 @@ let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  vi.mocked(revalidatePublicStats).mockClear();
 });
 
 afterEach(() => {
@@ -60,8 +75,11 @@ afterEach(() => {
 });
 
 describe("promoteProducerToPublicIfActive — cas nominal", () => {
-  it("émet UPDATE producers SET statut='public' WHERE id=? AND statut='active'", async () => {
-    const { client, captured } = makeSupabase({ error: null });
+  it("émet UPDATE producers SET statut='public' WHERE id=? AND statut='active' avec .select('id')", async () => {
+    const { client, captured } = makeSupabase({
+      data: [{ id: "producer-42" }],
+      error: null,
+    });
 
     await promoteProducerToPublicIfActive(client, "producer-42");
 
@@ -71,10 +89,14 @@ describe("promoteProducerToPublicIfActive — cas nominal", () => {
       ["id", "producer-42"],
       ["statut", "active"],
     ]);
+    expect(captured.select).toEqual(["id"]);
   });
 
   it("retourne void (Promise<void>) en cas de succès", async () => {
-    const { client } = makeSupabase({ error: null });
+    const { client } = makeSupabase({
+      data: [{ id: "producer-42" }],
+      error: null,
+    });
 
     const res = await promoteProducerToPublicIfActive(client, "producer-42");
 
@@ -82,7 +104,10 @@ describe("promoteProducerToPublicIfActive — cas nominal", () => {
   });
 
   it("ne log PAS console.warn quand l'update réussit", async () => {
-    const { client } = makeSupabase({ error: null });
+    const { client } = makeSupabase({
+      data: [{ id: "producer-42" }],
+      error: null,
+    });
 
     await promoteProducerToPublicIfActive(client, "producer-42");
 
@@ -95,7 +120,7 @@ describe("promoteProducerToPublicIfActive — idempotence (garde statut='active'
     // L'idempotence repose entièrement sur cette garde : si le producer n'est
     // pas 'active', l'UPDATE ne matche aucune ligne, donc pas de transition.
     // Sans cette clause, un producer 'suspended' pourrait être re-publié.
-    const { client, captured } = makeSupabase({ error: null });
+    const { client, captured } = makeSupabase({ data: [], error: null });
 
     await promoteProducerToPublicIfActive(client, "producer-42");
 
@@ -103,9 +128,45 @@ describe("promoteProducerToPublicIfActive — idempotence (garde statut='active'
   });
 });
 
+describe("promoteProducerToPublicIfActive — invalidation cache public-stats", () => {
+  it("appelle revalidatePublicStats quand une promotion réelle a eu lieu (data.length > 0)", async () => {
+    const { client } = makeSupabase({
+      data: [{ id: "producer-42" }],
+      error: null,
+    });
+
+    await promoteProducerToPublicIfActive(client, "producer-42");
+
+    expect(vi.mocked(revalidatePublicStats)).toHaveBeenCalledTimes(1);
+  });
+
+  it("n'appelle PAS revalidatePublicStats quand l'UPDATE est no-op (data.length = 0)", async () => {
+    // Cas typique : producer déjà 'public', la garde .eq('statut', 'active')
+    // ne matche aucune ligne, .select('id') renvoie []. Pas de changement
+    // observable côté DB → invalider le cache serait inutile.
+    const { client } = makeSupabase({ data: [], error: null });
+
+    await promoteProducerToPublicIfActive(client, "producer-42");
+
+    expect(vi.mocked(revalidatePublicStats)).not.toHaveBeenCalled();
+  });
+
+  it("n'appelle PAS revalidatePublicStats quand l'UPDATE retourne une erreur", async () => {
+    const { client } = makeSupabase({
+      data: null,
+      error: { message: "RLS policy violation" },
+    });
+
+    await promoteProducerToPublicIfActive(client, "producer-42");
+
+    expect(vi.mocked(revalidatePublicStats)).not.toHaveBeenCalled();
+  });
+});
+
 describe("promoteProducerToPublicIfActive — fail-open (cas erreur DB)", () => {
   it("ne throw PAS quand Supabase remonte une erreur", async () => {
     const { client } = makeSupabase({
+      data: null,
       error: { message: "RLS policy violation" },
     });
 
@@ -117,7 +178,7 @@ describe("promoteProducerToPublicIfActive — fail-open (cas erreur DB)", () => 
 
   it("log PROMOTE_PRODUCER_WARN via console.warn quand l'update échoue", async () => {
     const err = { message: "RLS policy violation" };
-    const { client } = makeSupabase({ error: err });
+    const { client } = makeSupabase({ data: null, error: err });
 
     await promoteProducerToPublicIfActive(client, "producer-42");
 
@@ -135,6 +196,7 @@ describe("promoteProducerToPublicIfActive — fail-open (cas erreur DB)", () => 
       .spyOn(console, "error")
       .mockImplementation(() => {});
     const { client } = makeSupabase({
+      data: null,
       error: { message: "network unreachable" },
     });
 
