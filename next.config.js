@@ -1,7 +1,8 @@
 // Assets logo disponibles :
-// /public/Logo_TerrOir.jpeg       → logo original vertical (navbar, footer)
-// /public/Logo_TerrOir_square.png → version carrée rognée (avatar, favicon)
+// /public/Logo_TerrOir.jpeg       → logo raster (OG meta tags, partage social)
+// /public/Logo_TerrOir_square.png → version carrée rognée (favicon, app icon iOS)
 // /app/icon.png                   → favicon 64x64 (auto-détecté par Next.js)
+// Composant React <Logo /> dans components/ui/logo.tsx → SVG inline (UI in-app)
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
