@@ -55,6 +55,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { createElement } from "react";
+import { revalidateTag } from "next/cache";
 import { z } from "zod";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -156,6 +157,16 @@ export async function deleteAccountAction(
     return {
       error: "Une erreur est survenue. Contactez le support.",
     };
+  }
+
+  // Si le user était producer, la RPC a anonymisé producers (statut='deleted')
+  // et hard-deleté ses products. Le cache public-stats (filtre statut='public')
+  // doit être invalidé. Inconditionnel : un consumer pur génère une invalidation
+  // no-op côté cache, coût négligeable.
+  try {
+    revalidateTag("public-stats");
+  } catch (e) {
+    console.warn(`[STATS_REVAL_WARN] user=${session.id} ${(e as Error).message}`);
   }
 
   // 5. Stripe Connect cleanup (fail-open + flag si échec)
