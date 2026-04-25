@@ -7,6 +7,7 @@ import { Button, Badge, Input, Select, Textarea, ProductCard } from '@/component
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { uploadProducerPhoto } from '@/lib/producers/upload';
 import { promoteProducerToPublicIfActive } from '@/lib/producers/promote-to-public';
+import { revalidatePublicStats } from '@/lib/stats/revalidate';
 import { ProducerLayout } from '../../_components/ProducerLayout';
 
 type Form = {
@@ -127,6 +128,14 @@ export default function ProductNewPage() {
       if (insertError || !inserted) throw insertError ?? new Error('Insertion impossible');
       if (form.active === true) {
         await promoteProducerToPublicIfActive(supabase, producerId);
+        // Nouveau produit actif → +1 productsCount (et possiblement +1
+        // producersCount via auto-promotion). Si form.active=false, le
+        // produit n'entre pas dans le filtre, pas besoin d'invalider.
+        try {
+          await revalidatePublicStats();
+        } catch (e) {
+          console.warn(`[STATS_REVAL_WARN] ${(e as Error).message}`);
+        }
       }
       router.push('/catalogue');
     } catch (err) {

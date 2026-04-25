@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { Button, Badge } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { promoteProducerToPublicIfActive } from '@/lib/producers/promote-to-public';
+import { revalidatePublicStats } from '@/lib/stats/revalidate';
 import { ProducerLayout } from '../_components/ProducerLayout';
 
 type Product = {
@@ -91,6 +92,13 @@ export default function ProducerCataloguePage() {
       setProducts((arr) => arr.map((p) => p.id === id ? { ...p, active: next } : p));
       if (next === true && producerId) {
         await promoteProducerToPublicIfActive(supabase, producerId);
+      }
+      // Toggle actif change toujours productsCount (et possiblement
+      // producersCount via l'auto-promotion).
+      try {
+        await revalidatePublicStats();
+      } catch (e) {
+        console.warn(`[STATS_REVAL_WARN] ${(e as Error).message}`);
       }
     } else {
       setError(upError.message);

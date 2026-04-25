@@ -7,6 +7,7 @@ import { Button, Badge, Input, Select, Textarea, ProductCard } from '@/component
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { uploadProducerPhoto } from '@/lib/producers/upload';
 import { promoteProducerToPublicIfActive } from '@/lib/producers/promote-to-public';
+import { revalidatePublicStats } from '@/lib/stats/revalidate';
 import { ProducerLayout } from '../../../_components/ProducerLayout';
 
 type Form = {
@@ -179,6 +180,14 @@ export default function ProductEditPage() {
       if (updateError) throw updateError;
       if (form.active === true) {
         await promoteProducerToPublicIfActive(supabase, producerId);
+      }
+      // Inconditionnel : on ne tracke pas l'état initial de form.active, donc
+      // un éventuel true→false (qui retire le produit du count) doit aussi
+      // invalider. Coût négligeable si rien n'a changé.
+      try {
+        await revalidatePublicStats();
+      } catch (e) {
+        console.warn(`[STATS_REVAL_WARN] ${(e as Error).message}`);
       }
       router.push('/catalogue');
     } catch (err) {
