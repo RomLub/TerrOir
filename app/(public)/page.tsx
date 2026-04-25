@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { PublicStats } from "@/components/ui/public-stats";
 
 const values = [
   {
@@ -47,6 +48,8 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      <PublicStats />
 
       <section className="mx-auto max-w-6xl px-4 py-20">
         <div className="mb-10 flex flex-col gap-2">
