@@ -31,14 +31,10 @@ function SubmitButton({ label, pendingLabel }: { label: string; pendingLabel: st
 export default function ConnexionPage() {
   const [mode, setMode] = useState<Mode>("password");
 
-  return (
-    <main className="flex min-h-screen items-center justify-center p-8">
-      {mode === "password" ? (
-        <PasswordForm onSwitchToMagic={() => setMode("magic")} />
-      ) : (
-        <MagicLinkForm onSwitchToPassword={() => setMode("password")} />
-      )}
-    </main>
+  return mode === "password" ? (
+    <PasswordForm onSwitchToMagic={() => setMode("magic")} />
+  ) : (
+    <MagicLinkForm onSwitchToPassword={() => setMode("password")} />
   );
 }
 

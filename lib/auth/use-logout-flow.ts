@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { logoutAction } from "@/app/(public)/connexion/logout-action";
+import { logoutAction } from "@/app/connexion/logout-action";
 
 // Double signOut logout pattern, factorisé depuis navbar-public.tsx et
 // AdminHeader.tsx (cf. docs/LESSONS.md).

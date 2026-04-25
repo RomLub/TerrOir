@@ -1,11 +1,14 @@
 "use server";
 
 import { z } from "zod";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { loginSchema } from "@/lib/auth/validators";
 import { maskEmail } from "@/lib/rgpd/mask-email";
+
+const PRODUCER_HOST = "pro.terroir-local.fr";
 
 export type LoginState = { error?: string };
 
@@ -29,16 +32,44 @@ export async function loginAction(
     return { error: "Identifiants invalides" };
   }
 
-  // Seul l'admin a une destination dédiée. Tous les autres users atterrissent
-  // sur /compte par défaut ; les producteurs basculent ensuite vers leur
-  // espace pro via le switcher de la nav.
+  const userId = data.user.id;
+
   const { data: adminRow } = await supabase
     .from("admin_users")
     .select("id")
-    .eq("id", data.user.id)
+    .eq("id", userId)
     .maybeSingle();
 
   if (adminRow) redirect("/tableau-de-bord");
+
+  // Sur pro.terroir-local.fr/connexion, un producer doit atterrir dans son
+  // espace pro et pas sur /compte (route consumer). On reproduit la logique
+  // du bloc spécial pro.*/ du middleware : draft → /onboarding, statut actif
+  // → /dashboard. Consumer sur pro.* ou statut deleted → fallback /compte.
+  const host = headers().get("host") ?? "";
+  if (host === PRODUCER_HOST) {
+    const { data: profile } = await supabase
+      .from("users")
+      .select("roles")
+      .eq("id", userId)
+      .maybeSingle();
+    const roles = (profile?.roles as string[] | undefined) ?? [];
+
+    if (roles.includes("producer")) {
+      const { data: producerRow } = await supabase
+        .from("producers")
+        .select("statut")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (producerRow && producerRow.statut !== "deleted") {
+        redirect(
+          producerRow.statut === "draft" ? "/onboarding" : "/dashboard",
+        );
+      }
+    }
+  }
+
   redirect("/compte");
 }
 
