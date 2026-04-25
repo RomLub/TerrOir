@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { waitUntil } from "@vercel/functions";
 import type Stripe from "stripe";
 import { stripe } from "@/lib/stripe/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -120,7 +121,15 @@ export async function POST(request: Request) {
           },
         );
 
-        // 1. Email producteur
+        // Notifications externes (Resend + Twilio) découplées via waitUntil :
+        // Stripe coupait à 10s sur cold start (HTTP timeout → retry → metric
+        // Dashboard polluée à 13%). On répond 200 dès que les opérations DB
+        // sont faites, et les envois email/SMS s'exécutent en background dans
+        // le même lifecycle serverless. Les helpers ne throw pas (try/catch
+        // interne + log [EMAIL_SEND_FAIL] / notifications.statut='failed'),
+        // donc le .catch ici est purement défensif.
+        const tasks: Promise<unknown>[] = [];
+
         if (producerUser?.email) {
           const props = {
             codeCommande: order.code_commande,
@@ -135,28 +144,41 @@ export async function POST(request: Request) {
             confirmUrl: `${NEXT_PUBLIC_PRODUCER_URL}/commandes/${order.id}?action=confirm`,
             cancelUrl: `${NEXT_PUBLIC_PRODUCER_URL}/commandes/${order.id}?action=cancel`,
           };
-          await sendTemplate({
-            to: producerUser.email,
-            userId: producer.user_id,
-            template: "order_confirmed_producer",
-            subject: producerSubject(props),
-            element: <OrderConfirmedProducer {...props} />,
-            metadata: {
-              order_id: order.id,
-              code_commande: order.code_commande,
-              payment_intent_id: pi.id,
-            },
-          });
+          tasks.push(
+            sendTemplate({
+              to: producerUser.email,
+              userId: producer.user_id,
+              template: "order_confirmed_producer",
+              subject: producerSubject(props),
+              element: <OrderConfirmedProducer {...props} />,
+              metadata: {
+                order_id: order.id,
+                code_commande: order.code_commande,
+                payment_intent_id: pi.id,
+              },
+            }),
+          );
         }
 
-        // 2. SMS backup producteur (systématique si téléphone dispo)
         if (producerUser?.telephone) {
-          await sendNewOrderProducerSms({
-            to: producerUser.telephone,
-            userId: producer.user_id,
-            customerPrenom: consumer?.prenom ?? "un client",
-            dateRetrait: order.date_retrait ?? "",
-          });
+          tasks.push(
+            sendNewOrderProducerSms({
+              to: producerUser.telephone,
+              userId: producer.user_id,
+              customerPrenom: consumer?.prenom ?? "un client",
+              dateRetrait: order.date_retrait ?? "",
+            }),
+          );
+        }
+
+        if (tasks.length > 0) {
+          waitUntil(
+            Promise.all(tasks).catch((err) => {
+              console.error(
+                `[STRIPE_WEBHOOK_BG_ERR] order=${order.id} payment_intent=${pi.id} error=${(err as Error).message}`,
+              );
+            }),
+          );
         }
         break;
       }
