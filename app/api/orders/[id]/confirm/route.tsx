@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { userOwnsProducer } from "@/lib/auth/producerOwnership";
@@ -61,6 +62,15 @@ export async function POST(_request: Request, { params }: RouteContext) {
     .eq("id", order.id);
   if (updateError) {
     return NextResponse.json({ error: updateError.message }, { status: 500 });
+  }
+
+  // Invalide le cache des stats publiques (ordersCount sur la home) :
+  // l'order vient d'entrer dans le filtre IN ('confirmed','ready','completed').
+  // Try/catch défensif — un échec d'invalidation ne doit pas 500 la confirmation.
+  try {
+    revalidateTag("public-stats");
+  } catch (e) {
+    console.warn(`[STATS_REVAL_WARN] order=${order.id} ${(e as Error).message}`);
   }
 
   // 1. Recalcul badge_confirmation_score du producteur (% confirmées ≤ 2h
