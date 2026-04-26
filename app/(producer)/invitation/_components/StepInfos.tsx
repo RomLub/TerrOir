@@ -52,7 +52,7 @@ function SubmitBtn({
   );
 }
 
-export function StepEntreprise({
+export function StepInfos({
   token,
   initialValues,
   onBack,

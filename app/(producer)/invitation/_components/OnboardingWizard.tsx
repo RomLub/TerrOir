@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Progress } from "./Progress";
 import { StepCompteNew, StepCompteLogin } from "./StepCompte";
-import { StepEntreprise } from "./StepEntreprise";
+import { StepInfos } from "./StepInfos";
 
 export type WizardCase = "new" | "consumer-login" | "consumer-loggedin";
 
@@ -63,7 +63,7 @@ export function OnboardingWizard(props: WizardProps) {
             />
           )
         ) : (
-          <StepEntreprise
+          <StepInfos
             token={props.token}
             initialValues={props.initialInfos}
             onBack={floorStep < 2 ? () => setStep(1) : undefined}
