@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useFormState, useFormStatus } from "react-dom";
 import {
@@ -9,6 +9,11 @@ import {
   type LoginState,
   type MagicLinkState,
 } from "./actions";
+import {
+  clearSavedEmail,
+  getSavedEmail,
+  setSavedEmail,
+} from "@/lib/storage/local-preferences";
 
 const initialLoginState: LoginState = {};
 const initialMagicLinkState: MagicLinkState = {};
@@ -25,6 +30,90 @@ function SubmitButton({ label, pendingLabel }: { label: string; pendingLabel: st
     >
       {pending ? pendingLabel : label}
     </button>
+  );
+}
+
+// Hook partagé : pré-remplit l'email depuis localStorage et gère la
+// case "Se souvenir de mon email". Persiste l'email au submit si la
+// case est cochée, sinon purge la clé.
+function useRememberedEmail() {
+  const [email, setEmail] = useState("");
+  const [remember, setRemember] = useState(false);
+
+  useEffect(() => {
+    const saved = getSavedEmail();
+    if (saved) {
+      setEmail(saved);
+      setRemember(true);
+    }
+  }, []);
+
+  const persistOnSubmit = () => {
+    if (remember && email) {
+      setSavedEmail(email);
+    } else {
+      clearSavedEmail();
+    }
+  };
+
+  const forget = () => {
+    clearSavedEmail();
+    setEmail("");
+    setRemember(false);
+  };
+
+  return { email, setEmail, remember, setRemember, persistOnSubmit, forget };
+}
+
+function RememberEmailFields({
+  email,
+  setEmail,
+  remember,
+  setRemember,
+  forget,
+}: {
+  email: string;
+  setEmail: (v: string) => void;
+  remember: boolean;
+  setRemember: (v: boolean) => void;
+  forget: () => void;
+}) {
+  return (
+    <>
+      <label className="block">
+        <span className="text-sm font-medium">Email</span>
+        <input
+          name="email"
+          type="email"
+          required
+          autoComplete="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+        />
+      </label>
+
+      <div className="flex items-center justify-between text-sm">
+        <label className="flex items-center gap-2 text-terroir-ink">
+          <input
+            type="checkbox"
+            checked={remember}
+            onChange={(e) => setRemember(e.target.checked)}
+            className="h-4 w-4 rounded border-gray-300"
+          />
+          <span>Se souvenir de mon adresse email</span>
+        </label>
+        {email ? (
+          <button
+            type="button"
+            onClick={forget}
+            className="text-xs text-terroir-muted underline hover:text-terroir-green"
+          >
+            Effacer
+          </button>
+        ) : null}
+      </div>
+    </>
   );
 }
 
@@ -61,10 +150,12 @@ function PasswordForm({
   onSwitchToMagic: () => void;
 }) {
   const [state, formAction] = useFormState(loginAction, initialLoginState);
+  const remembered = useRememberedEmail();
 
   return (
     <form
       action={formAction}
+      onSubmit={remembered.persistOnSubmit}
       className="w-full max-w-md space-y-4 rounded-lg bg-white p-8 shadow-sm"
     >
       <h1 className="text-2xl font-bold text-terroir-green">Connexion</h1>
@@ -89,16 +180,13 @@ function PasswordForm({
         <input type="hidden" name="redirectTo" value={redirectTo} />
       ) : null}
 
-      <label className="block">
-        <span className="text-sm font-medium">Email</span>
-        <input
-          name="email"
-          type="email"
-          required
-          autoComplete="email"
-          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-        />
-      </label>
+      <RememberEmailFields
+        email={remembered.email}
+        setEmail={remembered.setEmail}
+        remember={remembered.remember}
+        setRemember={remembered.setRemember}
+        forget={remembered.forget}
+      />
 
       <label className="block">
         <span className="text-sm font-medium">Mot de passe</span>
@@ -150,6 +238,7 @@ function MagicLinkForm({
     requestMagicLinkAction,
     initialMagicLinkState,
   );
+  const remembered = useRememberedEmail();
 
   if (state.message) {
     return (
@@ -172,6 +261,7 @@ function MagicLinkForm({
   return (
     <form
       action={formAction}
+      onSubmit={remembered.persistOnSubmit}
       className="w-full max-w-md space-y-4 rounded-lg bg-white p-8 shadow-sm"
     >
       <h1 className="text-2xl font-bold text-terroir-green">
@@ -186,16 +276,13 @@ function MagicLinkForm({
         <input type="hidden" name="redirectTo" value={redirectTo} />
       ) : null}
 
-      <label className="block">
-        <span className="text-sm font-medium">Email</span>
-        <input
-          name="email"
-          type="email"
-          required
-          autoComplete="email"
-          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-        />
-      </label>
+      <RememberEmailFields
+        email={remembered.email}
+        setEmail={remembered.setEmail}
+        remember={remembered.remember}
+        setRemember={remembered.setRemember}
+        forget={remembered.forget}
+      />
 
       {state.error ? (
         <p className="rounded-md bg-red-50 p-2 text-sm text-red-700">
