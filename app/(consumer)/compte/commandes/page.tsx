@@ -11,12 +11,21 @@ type OrderRow = {
   code_commande: string | null;
   created_at: string;
   statut: OrderStatus;
+  cancellation_reason: string | null;
   montant_total: number;
   producer_id: string;
   producer_name: string;
   producer_slug: string;
   item_count: number;
 };
+
+// Une commande annulée par échec de paiement (3DS-fail, fonds insuffisants…)
+// n'a jamais été engagée du point de vue consumer : pas d'argent débité, pas
+// de produit réservé. Filtre côté front pour ne pas polluer l'historique
+// (cf bug P2 commit 9482e5b qui pose cancellation_reason='payment_failed').
+function isPaymentFailedRow(o: { statut: OrderStatus; cancellation_reason: string | null }): boolean {
+  return o.statut === 'cancelled' && o.cancellation_reason === 'payment_failed';
+}
 
 type Filter = 'all' | 'active' | 'done' | 'cancelled';
 const FILTERS: { value: Filter; label: string }[] = [
@@ -53,7 +62,7 @@ export default function CommandesPage() {
       const { data, error: fetchError } = await supabase
         .from('orders')
         .select(`
-          id, code_commande, created_at, statut, montant_total, producer_id,
+          id, code_commande, created_at, statut, cancellation_reason, montant_total, producer_id,
           producers:producer_id ( nom_exploitation, slug ),
           order_items ( id )
         `)
@@ -68,21 +77,24 @@ export default function CommandesPage() {
         return;
       }
 
-      const rows: OrderRow[] = (data ?? []).map((o) => {
-        const prod = Array.isArray(o.producers) ? o.producers[0] : o.producers;
-        const itemsArr = Array.isArray(o.order_items) ? o.order_items : [];
-        return {
-          id: o.id as string,
-          code_commande: (o.code_commande as string | null) ?? null,
-          created_at: o.created_at as string,
-          statut: o.statut as OrderStatus,
-          montant_total: Number(o.montant_total ?? 0),
-          producer_id: o.producer_id as string,
-          producer_name: prod?.nom_exploitation ?? 'Producteur',
-          producer_slug: prod?.slug ?? '',
-          item_count: itemsArr.length,
-        };
-      });
+      const rows: OrderRow[] = (data ?? [])
+        .map((o) => {
+          const prod = Array.isArray(o.producers) ? o.producers[0] : o.producers;
+          const itemsArr = Array.isArray(o.order_items) ? o.order_items : [];
+          return {
+            id: o.id as string,
+            code_commande: (o.code_commande as string | null) ?? null,
+            created_at: o.created_at as string,
+            statut: o.statut as OrderStatus,
+            cancellation_reason: (o.cancellation_reason as string | null) ?? null,
+            montant_total: Number(o.montant_total ?? 0),
+            producer_id: o.producer_id as string,
+            producer_name: prod?.nom_exploitation ?? 'Producteur',
+            producer_slug: prod?.slug ?? '',
+            item_count: itemsArr.length,
+          };
+        })
+        .filter((r) => !isPaymentFailedRow(r));
 
       setOrders(rows);
       setLoading(false);
@@ -93,8 +105,24 @@ export default function CommandesPage() {
           'postgres_changes',
           { event: 'UPDATE', schema: 'public', table: 'orders', filter: `consumer_id=eq.${user.id}` },
           (payload) => {
-            const updated = payload.new as { id: string; statut: OrderStatus };
-            setOrders((prev) => prev.map((o) => (o.id === updated.id ? { ...o, statut: updated.statut } : o)));
+            const updated = payload.new as {
+              id: string;
+              statut: OrderStatus;
+              cancellation_reason: string | null;
+            };
+            // Si la commande visible bascule en payment_failed (UPDATE webhook
+            // 3DS-fail en temps réel), on la retire du state — du point de
+            // vue consumer elle n'a jamais été engagée. Sinon merge classique.
+            setOrders((prev) => {
+              if (isPaymentFailedRow(updated)) {
+                return prev.filter((o) => o.id !== updated.id);
+              }
+              return prev.map((o) =>
+                o.id === updated.id
+                  ? { ...o, statut: updated.statut, cancellation_reason: updated.cancellation_reason }
+                  : o,
+              );
+            });
           },
         )
         .subscribe();
