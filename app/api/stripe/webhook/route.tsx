@@ -3,6 +3,7 @@ import { waitUntil } from "@vercel/functions";
 import type Stripe from "stripe";
 import { stripe } from "@/lib/stripe/server";
 import { syncStripeAccountFlags } from "@/lib/stripe/sync-account-flags";
+import { syncStripePaymentFailed } from "@/lib/stripe/handle-payment-failed";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { NEXT_PUBLIC_PRODUCER_URL } from "@/lib/env/urls";
 import { sendTemplate } from "@/lib/resend/send";
@@ -185,17 +186,14 @@ export async function POST(request: Request) {
       }
 
       case "payment_intent.payment_failed": {
-        const pi = event.data.object as Stripe.PaymentIntent;
-        const orderId = pi.metadata?.order_id;
-        if (!orderId) break;
-
-        await admin
-          .from("orders")
-          .update({
-            statut: "cancelled",
-            cancelled_at: new Date().toISOString(),
-          })
-          .eq("id", orderId);
+        // Logique extraite dans `lib/stripe/handle-payment-failed.ts` :
+        // pose cancellation_reason='payment_failed', guard contre la
+        // rétrogradation confirmed/ready→cancelled (rejouage Stripe tardif),
+        // assertTransition + revalidatePublicStats. Cf doc fonction.
+        await syncStripePaymentFailed(
+          event.data.object as Stripe.PaymentIntent,
+          admin,
+        );
         break;
       }
 
