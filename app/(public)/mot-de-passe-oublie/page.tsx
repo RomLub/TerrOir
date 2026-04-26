@@ -2,18 +2,18 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { requestPasswordResetAction } from "@/app/connexion/actions";
 
 // Étape 1 du flow reset password : l'user saisit son email, Supabase envoie
 // un email avec un lien custom (template Supabase Reset Password) pointant
 // directement vers /reinitialiser-mot-de-passe?token_hash=…&type=recovery
 // (étape 2 — formulaire nouveau mot de passe).
 //
-// `redirectTo` dynamique basé sur window.location.origin : un admin qui
+// Server action requestPasswordResetAction : redirectTo dynamique calculé
+// côté serveur depuis headers() (host + x-forwarded-proto). Un admin qui
 // demande reset depuis admin.* revient sur admin.*/reinitialiser-mot-de-passe
-// et garde son cookie admin isolé (Chantier 4). Même logique pour www et pro.
-// Cette valeur est exposée à Supabase comme `{{ .RedirectTo }}` dans le
-// template — utilisée par le template custom pour composer le lien final.
+// et garde son cookie admin isolé (Chantier 4). Audit log écrit côté serveur
+// pour conformité (cf. lib/audit-logs/log-auth-event.ts).
 //
 // Enumeration-resistance : Supabase resetPasswordForEmail retourne success
 // même pour un email inexistant — on affiche toujours le même message
@@ -30,15 +30,9 @@ export default function MotDePasseOubliePage() {
     if (submitting || !email.includes("@")) return;
     setSubmitting(true);
 
-    const supabase = createSupabaseBrowserClient();
-    // Le template Supabase Reset Password est configuré pour pointer
-    // directement vers /reinitialiser-mot-de-passe avec ?token_hash=…&type=recovery,
-    // ce qui force l'user à passer par le formulaire de nouveau mot de passe
-    // avant tout login automatique. Cette URL est aussi exposée comme
-    // `{{ .RedirectTo }}` dans le template — elle sert de base host-aware
-    // (admin.* / pro.* / www.*) pour composer le lien final.
-    const redirectTo = `${window.location.origin}/reinitialiser-mot-de-passe`;
-    await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
+    const formData = new FormData();
+    formData.append("email", email.trim());
+    await requestPasswordResetAction({}, formData);
 
     setSent(true);
     setSubmitting(false);

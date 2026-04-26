@@ -7,6 +7,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { loginSchema } from "@/lib/auth/validators";
 import { maskEmail } from "@/lib/rgpd/mask-email";
+import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 import {
   loadRoleSnapshot,
   resolvePostLoginPath,
@@ -34,6 +35,11 @@ export async function loginAction(
   if (error || !data.user) {
     return { error: "Identifiants invalides" };
   }
+
+  await logAuthEvent({
+    eventType: "account_login_password",
+    userId: data.user.id,
+  });
 
   const role = await loadRoleSnapshot(supabase, data.user.id);
   const host = headers().get("host") ?? "";
@@ -132,8 +138,78 @@ export async function requestMagicLinkAction(
     );
   }
 
+  // Audit logué systématiquement (succès apparent ou pas) pour préserver
+  // l'enumeration-resistance : un attaquant qui inspecte la table audit_logs
+  // ne peut pas distinguer email valide vs invalide. metadata.email en clair
+  // côté DB (pas un log applicatif Vercel) — cohérent avec la convention
+  // notifications.metadata.email (cf. lib/rgpd/mask-email.ts).
+  await logAuthEvent({
+    eventType: "account_login_magic_link",
+    userId: null,
+    metadata: { email, isAdmin },
+  });
+
   return {
     message:
       "Si cette adresse est connue, un lien vous a été envoyé. Consultez vos emails.",
   };
+}
+
+// =============================================================================
+// Reset password (étape 1) — l'user saisit son email, Supabase envoie l'email
+// avec lien recovery → étape 2 dans /reinitialiser-mot-de-passe.
+//
+// Server action (vs précédent appel client) pour 2 raisons :
+//   1. Audit log côté serveur fiable (pas de bypass possible par client modifié).
+//   2. Cohérence avec requestMagicLinkAction (même surface).
+//
+// redirectTo dynamique calculé depuis headers() — équivalent
+// `${window.location.origin}` côté client. Sur Vercel: x-forwarded-proto=https
+// + host=admin.terroir-local.fr / pro.terroir-local.fr / www.terroir-local.fr.
+// En dev local: pas de x-forwarded-proto → fallback http (localhost).
+//
+// Enumeration-resistance : Supabase resetPasswordForEmail retourne success
+// même pour email inexistant. On retourne toujours le même message ambigu.
+// =============================================================================
+
+const passwordResetSchema = z.object({
+  email: z.string().trim().email("Email invalide"),
+});
+
+export type PasswordResetState = { error?: string; sent?: boolean };
+
+export async function requestPasswordResetAction(
+  _prev: PasswordResetState,
+  formData: FormData,
+): Promise<PasswordResetState> {
+  const parsed = passwordResetSchema.safeParse({
+    email: formData.get("email"),
+  });
+
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Email invalide" };
+  }
+
+  const email = parsed.data.email;
+  const h = headers();
+  const host = h.get("host") ?? "localhost:3000";
+  const proto = h.get("x-forwarded-proto") ?? "http";
+  const redirectTo = `${proto}://${host}/reinitialiser-mot-de-passe`;
+
+  try {
+    const supabase = createSupabaseServerClient();
+    await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+  } catch (err) {
+    console.warn(
+      `PASSWORD_RESET_SEND_WARN email=${maskEmail(email)} error=${(err as Error).message}`,
+    );
+  }
+
+  await logAuthEvent({
+    eventType: "password_reset_request",
+    userId: null,
+    metadata: { email },
+  });
+
+  return { sent: true };
 }

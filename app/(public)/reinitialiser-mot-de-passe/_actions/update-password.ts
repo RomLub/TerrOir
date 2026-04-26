@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 
 // Action serveur de l'étape 2 du flow reset password (étape 1 = email envoyé
 // depuis /mot-de-passe-oublie). Reçoit le token_hash recovery transmis par
@@ -60,15 +61,21 @@ export async function updatePasswordAction(
     };
   }
 
-  const { error: updateError } = await supabase.auth.updateUser({
-    password: parsed.data.password,
-  });
+  const { data: updateData, error: updateError } =
+    await supabase.auth.updateUser({
+      password: parsed.data.password,
+    });
 
   if (updateError) {
     return {
       error: "Impossible de mettre à jour le mot de passe. Réessayez.",
     };
   }
+
+  await logAuthEvent({
+    eventType: "password_changed",
+    userId: updateData.user?.id ?? null,
+  });
 
   redirect("/compte?password=updated");
 }
