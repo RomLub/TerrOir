@@ -8,16 +8,11 @@ _(rien en cours)_
 
 ## 🔴 Bugs ouverts
 
-- **Magic link PKCE — `code_challenge does not match`** (ouvert 26/04 fin de session) :
-  - **Symptôme** : l'utilisateur clique le bouton « Se connecter » dans l'email magic link et arrive sur `https://www.terroir-local.fr/connexion?error=auth_callback&reason=code+challenge+does+not+match` au lieu d'être loggé.
-  - **Workaround** : le login mdp classique reste fonctionnel.
-  - **Hypothèse principale** : le cookie `code_verifier` posé par `signInWithOtp` côté server n'est pas retrouvé par le callback. Causes plausibles : (1) email ouvert dans un client mail web qui lance un autre navigateur (cookies de session pas partagés), (2) cookies cross-subdomain bloqués si Supabase pose le cookie sur `<ref>.supabase.co` au lieu de `.terroir-local.fr`, (3) attribute `SameSite=Lax/Strict` qui bloque la lecture du cookie sur la requête initiale du callback.
-  - **Plan d'investigation** :
-    1. Inspecter `app/connexion/actions.ts:requestMagicLinkAction` + `app/auth/callback/route.ts` pour confirmer où est posé le `code_verifier`.
-    2. Vérifier les attributes du cookie `code_verifier` (Domain, SameSite, HttpOnly, Path) via DevTools Application > Cookies sur la requête `/auth/v1/otp` et la requête callback.
-    3. Tester scénarios : ouvrir mail dans même navigateur (Chrome desktop) vs autre navigateur (Firefox) vs mobile (client iOS Mail) vs client desktop (Outlook/Thunderbolt).
-    4. Si confirmé cross-context : envisager le flow OTP `?token_hash=&type=magiclink` (pas de PKCE, pas de cookie côté server) — le callback `app/auth/callback/route.ts:87-91` le supporte déjà via `verifyOtp`. Nécessite changer le template Supabase pour utiliser `{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&type=magiclink&next={{ .RedirectTo }}` (et adapter `emailRedirectTo` côté `actions.ts` pour ne pas embarquer de query string — cf bug `Missing+code+or+token_hash` documenté dans `LESSONS.md`).
-  - **Référence** : URL exemple `https://www.terroir-local.fr/connexion?error=auth_callback&reason=code+challenge+does+not+match`.
+_(rien d'ouvert)_
+
+> **Bug magic link PKCE** (ouvert 26/04 → résolu 26/04) — Option B retenue : bascule au flow OTP `token_hash` + cookie deep-link cross-subdomain HttpOnly (commit `09c219d`). Plan d'investigation initial devenu obsolète. Workarounds UX (commits `92bbff7` messages erreur + `6c2b5ef` bouton « demander nouveau lien magique ») conservés comme filet de sécurité pour autres causes possibles (lien expiré, lien invalide). Cf `CHANGELOG.md` section « Bug magic link PKCE — RÉSOLU » et `LESSONS.md` section « Auth & sessions ».
+>
+> **Bug navbar CTA disparition au hard refresh** (ouvert 26/04 → résolu 26/04) — Fix immédiat : retrait du branch `loading ?` (commit `209ce83`). Fix robuste : `initialUser` SSR passé du root layout au `UserProvider` (commit `6a9ebd3`) — élimine totalement le flash hydration côté visiteur anonyme.
 
 ## 🔴 À faire (bloquants lancement)
 
@@ -51,12 +46,15 @@ _(rien en cours)_
 - **Webhook Stripe `account.updated` manquant** — conséquence : `producers.stripe_account_id` est set AVANT onboarding complété côté Stripe → faux positif badge « ✓ Compte Stripe connecté » sur `/parametres` si le producer abandonne le flux Stripe à mi-course. Chantier : handler webhook `account.updated` qui synchronise `producers.stripe_onboarding_completed` (ou équivalent) avec `charges_enabled` / `details_submitted` côté Stripe. **Bloquant avant go-live public** si on veut un statut Connect fiable.
 - **Transition auto lead `'contacted'` → `'onboarded'`** quand le wizard est finalisé (Étape 3 soumise). Aujourd'hui la transition n'existe pas, les leads restent bloqués en `'contacted'` même après onboarding complet. À implémenter dans `complete-onboarding.ts` (server action Étape 3) : `UPDATE producer_interests SET statut='onboarded' WHERE email = session.email AND statut='contacted'` (no-op si pas de match, cohérent avec le bump auto de `dbe6360`).
 - **Mentions légales footer pro** — page absente, le footer pro pointe sur un href mort. À créer une fois le contenu juridique disponible (action externe Romain).
-- **Renommer `StepEntreprise.tsx` → `StepInfos.tsx`** — depuis la fusion `StepPersonnel` + `StepEntreprise` (commit `49b45d8`), le composant gère désormais perso ET entreprise. Le nom n'est plus aligné. Cosmétique trivial mais déféré pour ne pas mélanger refactor et delivery.
-- **Tests unitaires `isValidRedirectPath` + `resolvePostLoginPath`** — helpers ajoutés à `lib/auth/post-login-redirect.ts` aux commits `53f8f6a` + `d4088d5`, pas encore couverts par vitest. Critiques pour la sécurité (anti open-redirect) — à ajouter avant lancement public.
-- **UI `/producer-interests` afficher colonne `source`** (Phase 2bis funnel) — la colonne DB existe (commit `87bfff9`) et est alimentée correctement, mais le `LeadsTable` admin ne la montre pas encore. Petit chantier UX pour distinguer `formulaire_public` vs `invitation_directe`.
 - **Backfill producers `count = 0`** — réévaluer avant chaque lancement. Aujourd'hui négligeable (faible volume), à garder en tête si le funnel monte.
-- **SMTP custom Supabase à confirmer** — la doc HANDOFF mentionne le custom SMTP Resend configuré (23/04). Observation récente : mails Auth atterrissant en spam (peut-être lié au bug magic link PKCE ci-dessus). À vérifier dans Supabase Dashboard > Auth > SMTP que la config Resend est toujours active et la clé valide. Si pas configuré, configurer Resend en SMTP custom serait propre (rate limit Supabase built-in ~3-4/h).
-- **Templates Supabase Auth Email — passage `{{ .ConfirmationURL }}`** — à appliquer aux 5 templates customisés (Magic Link, Confirm Signup, Reset Password, Change Email, Invite User) suite au bug `Missing+code+or+token_hash` debug 26/04. Le pattern `{{ .RedirectTo }}?token_hash={{ .TokenHash }}` casse dès que `emailRedirectTo` contient une query string (cf `LESSONS.md` Auth & sessions). Action externe Romain via Dashboard.
+- **SMTP custom Supabase Resend à configurer (recommandé avant lancement)** — observation récente : mails Auth atterrissant en spam. Configurer Resend en SMTP custom (rate limit Supabase built-in ~3-4/h, non destiné à la production) serait propre. Action externe Romain via Dashboard.
+- **Templates Supabase Auth Email — validation visuelle complète** — Magic Link template à mettre à jour avec `{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=magiclink` (action Romain post-PKCE Option B, commit `09c219d`). Reset Password template à mettre à jour avec `${SITE_URL}/reinitialiser-mot-de-passe?token_hash={{ .TokenHash }}&type=recovery` (action Romain post-`5ff9394`). Confirm Signup, Change Email, Invite User pas testés visuellement (rendus mais flow end-to-end non validé). Action externe Romain via Dashboard.
+- **Suppression page legacy `/reset-password` (~1 semaine post-deploy)** — la nouvelle page dédiée `/reinitialiser-mot-de-passe` (commit `5ff9394`) la remplace. Garder la legacy ~1 semaine pour absorber les emails reset password en transit avec l'ancien template, puis supprimer.
+- **Code mort résiduel commit `d4088d5` (~1-2 semaines fenêtre rétro-compat PKCE)** — depuis la bascule OTP `token_hash` (commit `09c219d`), le flow PKCE magic link n'est plus utilisé. Code de gestion `?code=` côté `/auth/callback` devient mort à expiration de la fenêtre de rétro-compat (~1-2 semaines pour absorber les anciens emails magic link en transit). Purge prévue post-fenêtre.
+- **Phase 3 finale vision funnel — DROP COLUMN `prenom_affichage`** — sous-chantier `reads` livré post-marathon (commits `894fa5e` + `1110816`) : toutes les lectures publiques migrées vers `users.prenom`. Restent à faire : retirer les écritures `prenom_affichage = 'À compléter'` dans les 3 INSERT runtime (`create-account.ts`, `login-and-upgrade.ts`, `invitation/page.tsx` SSR), retirer le champ `prenom_affichage` du wizard + édition onboarding, retirer `producers.prenom_affichage` côté seed/cleanup, migration DROP NOT NULL puis DROP COLUMN. Chantier dédié (~10-15 fichiers).
+- **Robust fix navbar — enrichir `initialUser` SSR avec `isAdmin`** (déféré 26/04 post-`6a9ebd3`) — actuellement `loading=true` côté provider tant que le profile (roles/admin/producer) n'est pas chargé côté client → le badge Admin a un bref flash sans badge avant son apparition. Pour l'éliminer : pré-fetch `is_admin()` côté SSR dans `app/layout.tsx` et passer le flag au `UserProvider`. Non bloquant (flash très court).
+- **UI admin pour `audit_logs`** — la table existe et est alimentée (5 events auth instrumentés post-`acd8c03`), mais aucune page back-office pour consulter les logs côté admin. Chantier futur : page `/admin/audit-logs` avec filtres par event_type, user_id, date range, pagination.
+- **Events audit additionnels** — Phase 1 livrée couvre auth (5 events). Restent à instrumenter : `account_signup`, `email_change`, `account_deletion` (RGPD), `admin_login` (event distinct du password login pour traçabilité forensique admin spéciale), `role_change` (promotion consumer→producer, suspend/reactivate, etc.), Stripe events (charge, refund, dispute). Chantier futur Phase 2 audit logs.
 
 ## 🗺️ Roadmap produit (vision Avril 2026)
 
@@ -142,27 +140,31 @@ _(rien en cours)_
    - Au moins 1 créneau configuré
 6. Statuts ultérieurs : `"Suspendu"` / `"Supprimé"`.
 
-### Phase 3 — DROP `prenom_affichage` (reportée)
+### Phase 3 — DROP `prenom_affichage` (sous-chantier reads ✅, finale en attente)
 
-> Décision 24/04 : réutiliser `users.prenom` directement pour signer le post-it « Conseil de [prenom] » au lieu d'un champ dédié. Reportée 26/04 — chantier transversal ~19 fichiers (3 INSERT runtime, seed, wizard, édition onboarding, components consumer, tests). À traiter en session dédiée pour éviter une livraison half-baked.
+> Décision 24/04 : réutiliser `users.prenom` directement pour signer le post-it « Conseil de [prenom] » au lieu d'un champ dédié.
+>
+> **Sous-chantier `reads` ✅ livré post-marathon** (commits `894fa5e` helper + `1110816` lectures, 26/04) : helper `getProducerDisplayName(producer)` créé, toutes les lectures publiques + pré-fill wizard migrées vers `users.prenom`. `fetch-public` joint `users(prenom)` via la FK `user_id`. Les écritures restent conservées (placeholder `'À compléter'`) pour éviter une fenêtre rétro-incompat.
+>
+> **Phase 3 finale (DROP COLUMN) en attente** — chantier dédié futur (~10-15 fichiers).
 
-Plan de migration :
+Plan de migration finale :
 
-1. Migration SQL : DROP NOT NULL puis DROP COLUMN `producers.prenom_affichage`.
-2. Adapter les 3 INSERT runtime : `create-account.ts`, `login-and-upgrade.ts`, `invitation/page.tsx` SSR (retirer le placeholder `'À compléter'`).
-3. Adapter `StepEntreprise` (ex-Personnel/Entreprise) : retirer le champ + validation.
-4. Adapter `app/(producer)/onboarding/page.tsx` : retirer le champ d'édition.
-5. Adapter les components consumer qui affichent le post-it : remplacer `producer.prenom_affichage` par `producer.users?.prenom` (via join) ou pré-fetch.
-6. Mettre à jour les seeds + cleanup-seed.
+1. Retirer les écritures `prenom_affichage = 'À compléter'` dans les 3 INSERT runtime : `create-account.ts`, `login-and-upgrade.ts`, `invitation/page.tsx` SSR.
+2. Adapter `StepInfos` (ex-`StepEntreprise`, renommé commit `acc080b`) : retirer le champ + validation.
+3. Adapter `app/(producer)/onboarding/page.tsx` : retirer le champ d'édition.
+4. Mettre à jour les seeds + cleanup-seed (retirer les writes `prenom_affichage`).
+5. Migration SQL : DROP NOT NULL puis DROP COLUMN `producers.prenom_affichage`.
+6. Purger le fallback `producer.prenom_affichage` dans `getProducerDisplayName` (le helper devient un simple read sur `users.prenom`).
 7. Tests à refresh.
 
-### Phase 2bis — UI `/producer-interests` colonne `source` (à faire)
+### Phase 2bis — UI `/producer-interests` colonne `source` ✅ livré
 
-La colonne DB existe et est alimentée correctement, mais le `LeadsTable` admin ne la montre pas encore. Cf 🟡 dettes ci-dessus.
+Livré post-marathon (commit `e5c4234`) : badge vert « Public » / orange « Invité » à côté du nom de chaque lead pour distinguer `formulaire_public` vs `invitation_directe`. Composant `LeadSourceBadge` réutilise `StatusDotBadge`. Voir aussi note d'incident traçabilité commit `894fa5e` (CHANGELOG).
 
 ### Ordonnancement
 
-**Reste à scoper** : Phase 3 + Phase 2bis. **Prioriser après les bloquants lancement restants** (bascule Stripe Live, webhook `account.updated`, onboarder Julien) et le bug magic link PKCE.
+**Reste à scoper** : Phase 3 finale (DROP COLUMN `prenom_affichage`). **Prioriser après les bloquants lancement restants** (bascule Stripe Live, webhook `account.updated`, onboarder Julien). Le bug magic link PKCE est résolu (Option B retenue, commit `09c219d`).
 
 ## 🔵 Idées / améliorations
 
