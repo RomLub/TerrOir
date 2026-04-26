@@ -10,6 +10,8 @@ Pour les priorités forward-looking, voir [`TODO.md`](./TODO.md).
 ## 2026-04-26
 
 > Session marathon (suite 25/04 → 26/04, soir + nuit). 15 commits, 4 chantiers en parallèle (auth `redirectTo`, logo SVG vectoriel + emails, vision funnel producteur Phase 1+2, audit auto-promotion + purge panier logout). Migrations `20260426000000` + `20260427000000` apply. 5 templates Supabase Auth Email customisés via Dashboard (Magic Link, Confirm Signup, Reset Password, Change Email, Invite User) avec header logo TerrOir. Bug PKCE magic link émergé en fin de session (cf `TODO.md` 🔴 Bugs).
+>
+> ⚠️ **Incident traçabilité** : commit `894fa5e` a un message trompeur (sujet `feat(admin): show lead source column in /producer-interests` mais diff réel = `lib/producers/get-display-name.ts` + son test). Cause : race condition multi-terminal sur `git index` pendant la session marathon. Le commit suivant `e5c4234` rejoue le bon sujet sur les vrais fichiers UI. Code en master correct, traçabilité git dégradée (`git blame` sur le helper retombera sur un message incohérent). Voir `LESSONS.md` section « Working tree partagé — race condition message/diff incohérent (26/04) ».
 
 ### Chantier auth `redirectTo` (TA)
 

@@ -124,6 +124,34 @@ Récidive observée dans le commit `11b914e` (TT hotfix carte split hover layer)
 
 **Bonne pratique observée le même jour** : TC (chantier 3 dettes invalidation public-stats) a détecté un fichier staged inattendu (pré-staging d'un autre terminal) et a fait `git reset HEAD <files>` préventif avant ses commits. Hygiène appliquée correctement = règle respectée. À répliquer systématiquement.
 
+### Working tree partagé — race condition message/diff incohérent (26/04)
+
+Récidive d'un autre type observée sur le commit `894fa5e` pendant la session marathon multi-terminal (chantier rattrapage dettes, commits voisins `3b29c34`, `e5c4234`, `92bbff7`, `6c2b5ef`). **Pattern non couvert** par la règle 11b914e (qui visait des builds Vercel cassés sur commits intermédiaires) : ici le code en master est correct et fonctionnel, mais le **message du commit ne correspond pas à son diff réel**.
+
+**Symptôme** :
+
+- Commit `894fa5e` : sujet `feat(admin): show lead source column in /producer-interests` mais diff réel = `lib/producers/get-display-name.ts` + son test (helper `getProducerDisplayName`, périmètre TB Phase 3 sous-chantier).
+- Le commit suivant `e5c4234` reprend le même sujet avec les vrais fichiers UI `LeadSourceBadge` (résolution post-incident).
+- `git log` / `git blame` futurs sur `lib/producers/get-display-name.ts` retomberont sur un message incohérent → traçabilité historique dégradée.
+
+**Cause racine** : `git add` stage globalement, pas par terminal. Séquence reconstituée :
+
+1. TC stage ses 4 fichiers UI (`LeadSourceBadge` etc.).
+2. TB fait `git add lib/producers/get-display-name.ts tests/...` pour SON commit.
+3. Un `git reset HEAD` parallèle (TA ou autre) unstage les fichiers TC.
+4. Les fichiers TB restent stagés, les TC retombent en working tree non-stagés.
+5. TC fait `git commit -m "feat(admin): show lead source column..."` → embrasse les fichiers TB orphelins de l'index.
+6. TC re-commit `e5c4234` avec ses vrais fichiers UI re-stagés.
+
+**Pattern préventif (extension règle 11b914e)** :
+
+- **Avant chaque `git commit`, exécuter `git diff --cached --name-only`** pour valider mécaniquement la liste des fichiers stagés vs le scope attendu du commit.
+- Si fichiers étrangers détectés : `git reset HEAD <fichiers étrangers>` puis revérifier avant de committer.
+- `git add <fichier précis>` (jamais `.` ni `-A`) reste la règle de base — mais ne suffit pas si un autre terminal stage en parallèle entre ton add et ton commit.
+- En contexte multi-terminal long-running, garder une fenêtre add → commit la plus courte possible (commits atomiques par scope minimal).
+
+**Référence** : commit `894fa5e` (session marathon 26/04). Code en master correct, traçabilité git dégradée. Pas d'impact prod, impact bisect/blame futur.
+
 ## Sécurité & secrets
 
 - **Ne JAMAIS coller de clé API, token, mot de passe ou secret dans le chat avec Claude** (même dans un exemple `curl`). La clé devient compromise immédiatement et doit être rotée sans délai. Si un test `curl` est nécessaire : stocker la clé dans une variable PowerShell/bash locale et ne coller que la commande sans la valeur. Incident 23/04 : clé Resend Full Access collée dans le chat → révoquée immédiatement côté Resend Dashboard + nouvelle clé générée + utilisée uniquement via variable locale.
