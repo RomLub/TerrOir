@@ -6,6 +6,10 @@ import {
   canonicalPostLoginUrlWithRedirect,
   loadRoleSnapshot,
 } from "@/lib/auth/post-login-redirect";
+import {
+  clearRedirectAfterAuth,
+  readRedirectAfterAuth,
+} from "@/lib/auth/redirect-cookie";
 
 // Gère le retour des emails transactionnels Supabase (recovery, invite,
 // magic link, signup). Deux formats supportés :
@@ -46,7 +50,13 @@ export async function GET(request: NextRequest) {
       ? (rawType as EmailOtpType)
       : null;
   const next = sanitizeNext(url.searchParams.get("next"));
-  const redirectTo = url.searchParams.get("redirectTo");
+  // Deep-link post-auth : depuis la bascule au flow OTP token_hash, on ne
+  // passe plus le redirectTo en query string sur l'emailRedirectTo (cf.
+  // requestMagicLinkAction). Source primaire = cookie redirect_after_auth
+  // posé au moment du form submit. Fallback ?redirectTo= conservé pour les
+  // anciens emails encore en circulation pendant la fenêtre de bascule.
+  const redirectTo =
+    readRedirectAfterAuth(request) ?? url.searchParams.get("redirectTo");
 
   // setAll est appelé par Supabase après exchange/verifyOtp. On accumule
   // les cookies à poser dans un buffer pour pouvoir les attacher à la
@@ -127,5 +137,9 @@ export async function GET(request: NextRequest) {
   cookiesToWrite.forEach(({ name, value, options }) => {
     response.cookies.set(name, value, options);
   });
+  // Cookie deep-link consommé : on l'expire systématiquement (même quand il
+  // n'a pas été utilisé, ex. flow recovery où on force /reset-password).
+  // Évite qu'un redirectTo périmé persiste pour la session suivante.
+  clearRedirectAfterAuth(response, host);
   return response;
 }

@@ -8,10 +8,10 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { loginSchema } from "@/lib/auth/validators";
 import { maskEmail } from "@/lib/rgpd/mask-email";
 import {
-  isValidRedirectPath,
   loadRoleSnapshot,
   resolvePostLoginPath,
 } from "@/lib/auth/post-login-redirect";
+import { setRedirectAfterAuth } from "@/lib/auth/redirect-cookie";
 
 export type LoginState = { error?: string };
 
@@ -101,19 +101,18 @@ export async function requestMagicLinkAction(
     );
   }
 
-  // redirectTo posé par le middleware (cf. loginAction). On le propage via
-  // query string sur l'emailRedirectTo : Supabase l'envoie tel quel dans
-  // l'email magic link, et le user atterrit sur /auth/callback?code=…&redirectTo=…
-  // Validation locale ici pour éviter d'embarquer un path malveillant
-  // jusqu'au callback (defense-in-depth — le callback re-valide aussi).
-  const rawRedirectTo = formData.get("redirectTo");
-  const redirectToParam = isValidRedirectPath(rawRedirectTo)
-    ? `?redirectTo=${encodeURIComponent(rawRedirectTo)}`
-    : "";
+  // redirectTo posé par le middleware (cf. loginAction) : NE PAS le concaténer
+  // à emailRedirectTo. Le template Supabase magic link utilise
+  // `{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=magiclink` (flow OTP
+  // direct sans cookie code_verifier — fix bug PKCE cross-subdomain admin),
+  // et un second `?` dans RedirectTo casserait l'URL. À la place, on persiste
+  // le redirectTo dans un cookie HttpOnly (.terroir-local.fr en prod) lu par
+  // /auth/callback après verifyOtp.
+  setRedirectAfterAuth(formData.get("redirectTo"));
 
-  const emailRedirectTo =
-    (isAdmin ? MAGIC_LINK_ADMIN_CALLBACK : MAGIC_LINK_DEFAULT_CALLBACK) +
-    redirectToParam;
+  const emailRedirectTo = isAdmin
+    ? MAGIC_LINK_ADMIN_CALLBACK
+    : MAGIC_LINK_DEFAULT_CALLBACK;
 
   // signInWithOtp avec shouldCreateUser=false : si l'email n'existe pas dans
   // auth.users, Supabase renvoie une erreur — on la swallow pour préserver
