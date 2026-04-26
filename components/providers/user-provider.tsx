@@ -11,6 +11,11 @@ import type { User } from "@supabase/supabase-js";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { UserRole } from "@/lib/auth/roles";
 
+export interface InitialUserPayload {
+  user: User | null;
+  isAdmin: boolean;
+}
+
 export interface ProducerLite {
   id: string;
   slug: string;
@@ -34,22 +39,27 @@ const UserContext = createContext<UserContextValue>({
   loading: true,
 });
 
+const EMPTY_INITIAL: InitialUserPayload = { user: null, isAdmin: false };
+
 export function UserProvider({
   children,
-  initialUser = null,
+  initial = EMPTY_INITIAL,
 }: {
   children: React.ReactNode;
-  initialUser?: User | null;
+  initial?: InitialUserPayload;
 }) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
-  const [user, setUser] = useState<User | null>(initialUser);
+  const [user, setUser] = useState<User | null>(initial.user);
   const [roles, setRoles] = useState<UserRole[]>([]);
-  const [isAdmin, setIsAdmin] = useState(false);
+  // isAdmin SSR fourni par layout root via getInitialUserPayload() — élimine
+  // le flash badge Admin au hard refresh. loadProfile rafraîchit la valeur
+  // ensuite (couvre promotion/démotion en cours de session).
+  const [isAdmin, setIsAdmin] = useState(initial.isAdmin);
   const [producer, setProducer] = useState<ProducerLite | null>(null);
   // loading reflète le chargement profile/roles/producer côté client.
   // Si SSR a fourni un user, on doit encore résoudre roles/producer → true.
   // Sinon (anonyme) il n'y a rien à charger → false.
-  const [loading, setLoading] = useState(initialUser !== null);
+  const [loading, setLoading] = useState(initial.user !== null);
 
   useEffect(() => {
     let cancelled = false;

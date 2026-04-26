@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Inter, Cormorant_Garamond } from "next/font/google";
 import "./globals.css";
 import { UserProvider } from "@/components/providers/user-provider";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getInitialUserPayload } from "@/lib/auth/session";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -27,17 +27,15 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // Résolution server-side de la session pour éviter le flash CTA→user au
-  // hard refresh : le UserProvider démarre avec le bon `user` dès le SSR.
-  const supabase = createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Résolution server-side de la session + flag admin pour éviter le flash
+  // CTA→user et badge Admin au hard refresh : UserProvider démarre avec le
+  // bon état dès le SSR (extension du pattern initialUser, commit 6a9ebd3).
+  const initial = await getInitialUserPayload();
 
   return (
     <html lang="fr" className={`${inter.variable} ${cormorant.variable}`}>
       <body className="min-h-screen bg-terroir-bg font-sans text-terroir-ink antialiased">
-        <UserProvider initialUser={user}>{children}</UserProvider>
+        <UserProvider initial={initial}>{children}</UserProvider>
       </body>
     </html>
   );
