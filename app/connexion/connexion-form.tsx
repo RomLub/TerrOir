@@ -28,12 +28,19 @@ function SubmitButton({ label, pendingLabel }: { label: string; pendingLabel: st
   );
 }
 
-export function ConnexionForm({ redirectTo }: { redirectTo?: string }) {
+export function ConnexionForm({
+  redirectTo,
+  callbackError,
+}: {
+  redirectTo?: string;
+  callbackError?: string | null;
+}) {
   const [mode, setMode] = useState<Mode>("password");
 
   return mode === "password" ? (
     <PasswordForm
       redirectTo={redirectTo}
+      callbackError={callbackError}
       onSwitchToMagic={() => setMode("magic")}
     />
   ) : (
@@ -46,9 +53,11 @@ export function ConnexionForm({ redirectTo }: { redirectTo?: string }) {
 
 function PasswordForm({
   redirectTo,
+  callbackError,
   onSwitchToMagic,
 }: {
   redirectTo?: string;
+  callbackError?: string | null;
   onSwitchToMagic: () => void;
 }) {
   const [state, formAction] = useFormState(loginAction, initialLoginState);
@@ -59,6 +68,15 @@ function PasswordForm({
       className="w-full max-w-md space-y-4 rounded-lg bg-white p-8 shadow-sm"
     >
       <h1 className="text-2xl font-bold text-terroir-green">Connexion</h1>
+
+      {callbackError ? (
+        <div
+          role="alert"
+          className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+        >
+          {callbackError}
+        </div>
+      ) : null}
 
       {redirectTo ? (
         <input type="hidden" name="redirectTo" value={redirectTo} />
