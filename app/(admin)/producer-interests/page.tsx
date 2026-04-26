@@ -29,7 +29,7 @@ export default function AdminProducerInterestsPage() {
     const { data, error: fetchError } = await supabase
       .from("producer_interests")
       .select(
-        "id, created_at, prenom, nom, email, telephone, nom_exploitation, commune, especes, message, statut",
+        "id, created_at, prenom, nom, email, telephone, nom_exploitation, commune, especes, message, statut, source",
       )
       .order("created_at", { ascending: false });
     if (fetchError) {

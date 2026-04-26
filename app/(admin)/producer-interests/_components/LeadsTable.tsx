@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { StatusPanel, TableActionButton } from "@/components/ui";
 import { formatDateFr } from "@/lib/format/date";
 import { LeadStatusBadge } from "./LeadStatusBadge";
+import { LeadSourceBadge } from "./LeadSourceBadge";
 import type { Lead, LeadStatus } from "./types";
 
 export function LeadsTable({
@@ -66,8 +67,11 @@ export function LeadsTable({
                       {formatDateFr(lead.created_at)}
                     </td>
                     <td className="px-5 py-4">
-                      <div className="font-serif text-[17px] leading-tight text-gray-900">
-                        {fullName}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-serif text-[17px] leading-tight text-gray-900">
+                          {fullName}
+                        </span>
+                        <LeadSourceBadge source={lead.source} />
                       </div>
                       <div className="mt-0.5 text-[12px] text-gray-500">
                         {lead.email}

@@ -1,5 +1,7 @@
 export type LeadStatus = "new" | "contacted" | "onboarded";
 
+export type LeadSource = "formulaire_public" | "invitation_directe";
+
 export interface Lead {
   id: string;
   created_at: string;
@@ -12,4 +14,5 @@ export interface Lead {
   especes: string[] | null;
   message: string | null;
   statut: LeadStatus;
+  source: LeadSource;
 }
