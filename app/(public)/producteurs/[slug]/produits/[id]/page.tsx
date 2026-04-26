@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { generateSlotsForProducer } from '@/lib/slots/generate';
 import { fetchPublicProducerBySlug } from '@/lib/producers/fetch-public';
+import { getProducerDisplayName } from '@/lib/producers/get-display-name';
 import {
   ProductPageClient,
   type ProducerSummary,
@@ -108,7 +109,7 @@ export default async function ProductPage({ params }: { params: { slug: string; 
     id: producerRow.id,
     slug: producerRow.slug,
     name: producerRow.nom_exploitation,
-    firstName: producerRow.prenom_affichage,
+    firstName: getProducerDisplayName(producerRow.users),
     commune: commune || '—',
     address: address || '—',
     lat: producerRow.latitude,

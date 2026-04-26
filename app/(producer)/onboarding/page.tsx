@@ -38,7 +38,7 @@ export default async function OnboardingPage() {
       admin
         .from("producers")
         .select(
-          "prenom_affichage, nom_exploitation, forme_juridique, siret, adresse, code_postal, commune, type_production, type_production_precision, statut",
+          "nom_exploitation, forme_juridique, siret, adresse, code_postal, commune, type_production, type_production_precision, statut",
         )
         .eq("user_id", session.id)
         .maybeSingle(),

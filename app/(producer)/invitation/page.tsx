@@ -104,7 +104,7 @@ export default async function InvitationPage({ searchParams }: PageProps) {
         await admin
           .from("producers")
           .select(
-            "id, prenom_affichage, nom_exploitation, forme_juridique, siret, adresse, code_postal, commune, type_production, type_production_precision, statut",
+            "id, nom_exploitation, forme_juridique, siret, adresse, code_postal, commune, type_production, type_production_precision, statut",
           )
           .eq("user_id", existingUser.id)
           .maybeSingle()
@@ -177,6 +177,8 @@ export default async function InvitationPage({ searchParams }: PageProps) {
     }
 
     if (!existingProducer) {
+      // TODO Phase 3 finale : retirer prenom_affichage de cet INSERT après le
+      // DROP COLUMN producers.prenom_affichage.
       await admin.from("producers").insert({
         user_id: existingUser.id,
         slug: slugFromEmail(email),

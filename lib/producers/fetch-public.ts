@@ -1,18 +1,20 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 // Fields publics exposés côté consumer. Exclut les colonnes internes
-// (user_id, stripe_account_id, stripe_cleanup_pending, abonnement_*, siret,
+// (stripe_account_id, stripe_cleanup_pending, abonnement_*, siret,
 // forme_juridique, type_production, deleted_at, created_at) — le helper
-// les filtre à la lecture.
+// les filtre à la lecture. user_id est inclus uniquement pour permettre
+// la jointure embarquée vers public.users (prenom de la personne physique
+// derrière la ferme — utilisé par getProducerDisplayName côté UI).
 export interface ProducerPublic {
   id: string;
   slug: string;
   nom_exploitation: string;
-  // Nullable ici malgré le NOT NULL DB : pendant la fenêtre transitoire
-  // entre la migration A (ADD COLUMN nullable) et la migration C
-  // (SET NOT NULL), une ligne peut être null. Les consumers qui
-  // exploitent ce champ doivent gérer ce cas (cf. post-it fiche produit).
-  prenom_affichage: string | null;
+  // Jointure embarquée Supabase vers public.users via la FK
+  // producers.user_id → users.id. Source unique pour le prénom d'affichage
+  // depuis la suppression de la lecture de producers.prenom_affichage
+  // (DROP COLUMN prévu chantier suivant).
+  users: { prenom: string | null } | null;
   commune: string | null;
   code_postal: string | null;
   adresse: string | null;
@@ -34,7 +36,7 @@ export interface ProducerPublic {
 }
 
 const PUBLIC_COLUMNS =
-  "id, slug, nom_exploitation, prenom_affichage, commune, code_postal, adresse, latitude, longitude, photo_principale, photos, description, histoire, annee_creation, generations, especes, labels, badge_stock_score, badge_confirmation_score, badge_annulation_score, note_moyenne, nb_avis";
+  "id, slug, nom_exploitation, commune, code_postal, adresse, latitude, longitude, photo_principale, photos, description, histoire, annee_creation, generations, especes, labels, badge_stock_score, badge_confirmation_score, badge_annulation_score, note_moyenne, nb_avis, users:user_id(prenom)";
 
 // Helper canonical pour fetch un producer visible publiquement par son slug.
 // Garanties :
@@ -65,5 +67,15 @@ export async function fetchPublicProducerBySlug(
     );
     return null;
   }
-  return (data as ProducerPublic | null) ?? null;
+  if (!data) return null;
+  // Supabase JS peut typer une jointure FK 1:1 comme objet OU array selon la
+  // version du client. Normalisation systématique vers `{ prenom } | null`
+  // pour que l'interface ProducerPublic reste simple côté consumers.
+  const raw = data as Omit<ProducerPublic, "users"> & {
+    users: { prenom: string | null } | { prenom: string | null }[] | null;
+  };
+  const usersField = Array.isArray(raw.users)
+    ? (raw.users[0] ?? null)
+    : (raw.users ?? null);
+  return { ...raw, users: usersField };
 }

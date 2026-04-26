@@ -7,7 +7,6 @@ import {
 } from "@/lib/producers/pick-initial-infos";
 
 const fullProducer: ProducerSource = {
-  prenom_affichage: "Julien",
   nom_exploitation: "Ferme du Pré",
   forme_juridique: "gaec",
   siret: "12345678901234",
@@ -81,11 +80,19 @@ describe("pickInitialInfos", () => {
   it("treats 'À compléter' placeholder as empty", () => {
     const placeholderProducer: ProducerSource = {
       ...fullProducer,
-      prenom_affichage: "À compléter",
       nom_exploitation: "À compléter",
     };
-    const result = pickInitialInfos(placeholderProducer, null, fullLead);
-    expect(result.prenom_affichage).toBe("");
+    const placeholderUser: UserSource = {
+      prenom: "À compléter",
+      nom: "À compléter",
+      telephone: "0612345678",
+    };
+    const result = pickInitialInfos(
+      placeholderProducer,
+      placeholderUser,
+      fullLead,
+    );
+    expect(result.prenom_affichage).toBe("Julien-Lead");
     expect(result.nom_exploitation).toBe("Ferme du Pré (lead)");
   });
 
@@ -118,5 +125,19 @@ describe("pickInitialInfos", () => {
   it("normalises null type_production_precision to empty string", () => {
     const result = pickInitialInfos(fullProducer, null, null);
     expect(result.type_production_precision).toBe("");
+  });
+
+  it("derives prenom_affichage from user.prenom (source unique post-cleanup)", () => {
+    // Depuis la centralisation sur users.prenom : prenom_affichage suit la
+    // même règle que prenom (user > lead). Le wizard pré-remplit ce champ
+    // avec la même valeur que "Prénom" — l'utilisateur peut overrider avant
+    // soumission. Source historique producer.prenom_affichage retirée.
+    const result = pickInitialInfos(fullProducer, fullUser, fullLead);
+    expect(result.prenom_affichage).toBe("Julien");
+  });
+
+  it("falls back to lead.prenom for prenom_affichage when user is null", () => {
+    const result = pickInitialInfos(fullProducer, null, fullLead);
+    expect(result.prenom_affichage).toBe("Julien-Lead");
   });
 });

@@ -88,6 +88,9 @@ export async function completeOnboardingAction(
     return { error: `Mise à jour des infos personnelles échouée : ${userError.message}` };
   }
 
+  // TODO Phase 3 finale : retirer prenom_affichage de cet UPDATE après le
+  // DROP COLUMN producers.prenom_affichage. Source de vérité côté lecture
+  // déjà migrée vers users.prenom (cf. getProducerDisplayName).
   const { error: producerError } = await admin
     .from("producers")
     .update({

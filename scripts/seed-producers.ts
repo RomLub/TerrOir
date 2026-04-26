@@ -525,6 +525,9 @@ async function ensureAuthAndUser(p: ProducerSeed): Promise<string> {
 
 async function ensureProducer(p: ProducerSeed, userId: string): Promise<string> {
   const cover = coverUrl(p.coverPhotoId);
+  // TODO Phase 3 finale : retirer prenom_affichage du seed après le
+  // DROP COLUMN producers.prenom_affichage. Le seed users plus haut
+  // remplit déjà users.prenom (source de vérité côté lecture).
   const base = {
     user_id: userId,
     slug: p.slug,

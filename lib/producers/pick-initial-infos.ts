@@ -18,7 +18,6 @@
 // chercher dans les sources suivantes.
 
 export interface ProducerSource {
-  prenom_affichage: string | null;
   nom_exploitation: string | null;
   forme_juridique: string | null;
   siret: string | null;
@@ -76,7 +75,11 @@ export function pickInitialInfos(
     prenom: pick(user?.prenom, lead?.prenom),
     nom: pick(user?.nom, lead?.nom),
     telephone: pick(user?.telephone, lead?.telephone),
-    prenom_affichage: pick(producer?.prenom_affichage),
+    // prenom_affichage : dérivé de users.prenom (source unique). Le wizard
+    // continue d'écrire dans producers.prenom_affichage pour compat avec le
+    // schéma DB courant (DROP COLUMN prévu chantier suivant), mais la lecture
+    // ne remonte plus la colonne.
+    prenom_affichage: pick(user?.prenom, lead?.prenom),
     nom_exploitation: pick(producer?.nom_exploitation, lead?.nom_exploitation),
     forme_juridique: pick(producer?.forme_juridique),
     siret: pick(producer?.siret),

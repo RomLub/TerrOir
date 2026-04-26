@@ -64,7 +64,7 @@ function makeProducer(overrides: Partial<ProducerPublic> = {}): ProducerPublic {
     id: "producer-1",
     slug: "ferme-test",
     nom_exploitation: "Ferme Test",
-    prenom_affichage: "Alice",
+    users: { prenom: "Alice" },
     commune: "Lyon",
     code_postal: "69001",
     adresse: "1 rue Test",
@@ -177,7 +177,11 @@ describe("fetchPublicProducerBySlug — défense en profondeur (sécurité)", ()
 
     const cols = captured.select[0] ?? "";
     // Colonnes internes qui ne doivent jamais fuiter côté consumer.
-    expect(cols).not.toContain("user_id");
+    // user_id apparaît uniquement dans la jointure FK `users:user_id(prenom)` :
+    // on vérifie qu'il n'est PAS exposé comme colonne scalaire propre, en
+    // retirant la sous-string de la jointure avant l'assertion.
+    const colsWithoutJoin = cols.replace(/users:user_id\([^)]*\)/g, "");
+    expect(colsWithoutJoin).not.toContain("user_id");
     expect(cols).not.toContain("stripe_account_id");
     expect(cols).not.toContain("stripe_cleanup_pending");
     expect(cols).not.toContain("abonnement_");
@@ -199,6 +203,38 @@ describe("fetchPublicProducerBySlug — défense en profondeur (sécurité)", ()
     expect(cols).toContain("id");
     expect(cols).toContain("slug");
     expect(cols).toContain("nom_exploitation");
+  });
+
+  it("joint users.prenom via la FK user_id pour l'affichage public", async () => {
+    // Source unique du prénom d'affichage côté lecture publique depuis le
+    // chantier de centralisation sur users.prenom (cf. getProducerDisplayName).
+    const { client, captured } = makeSupabase({
+      data: makeProducer(),
+      error: null,
+    });
+
+    await fetchPublicProducerBySlug(client, "ferme-bio");
+
+    const cols = captured.select[0] ?? "";
+    expect(cols).toContain("users:user_id(prenom)");
+  });
+
+  it("normalise users array (Supabase peut typer la jointure FK comme array) en objet", async () => {
+    // Selon la version du client supabase-js, une jointure FK 1:1 peut être
+    // typée objet OU array. Le helper normalise systématiquement en objet
+    // pour que les consumers manipulent une forme stable.
+    const rawWithArray = {
+      ...makeProducer(),
+      users: [{ prenom: "Bob" }],
+    };
+    const { client } = makeSupabase({
+      data: rawWithArray as unknown,
+      error: null,
+    });
+
+    const res = await fetchPublicProducerBySlug(client, "ferme-bio");
+
+    expect(res?.users).toEqual({ prenom: "Bob" });
   });
 });
 
