@@ -10,11 +10,7 @@ import {
 import type { User } from "@supabase/supabase-js";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { UserRole } from "@/lib/auth/roles";
-
-export interface InitialUserPayload {
-  user: User | null;
-  isAdmin: boolean;
-}
+import type { InitialUserPayload } from "@/lib/auth/types";
 
 export interface ProducerLite {
   id: string;
@@ -28,6 +24,7 @@ export interface UserContextValue {
   producer: ProducerLite | null;
   roles: UserRole[];
   isAdmin: boolean;
+  isProducer: boolean;
   loading: boolean;
 }
 
@@ -36,10 +33,15 @@ const UserContext = createContext<UserContextValue>({
   producer: null,
   roles: [],
   isAdmin: false,
+  isProducer: false,
   loading: true,
 });
 
-const EMPTY_INITIAL: InitialUserPayload = { user: null, isAdmin: false };
+const EMPTY_INITIAL: InitialUserPayload = {
+  user: null,
+  isAdmin: false,
+  isProducer: false,
+};
 
 export function UserProvider({
   children,
@@ -51,10 +53,12 @@ export function UserProvider({
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [user, setUser] = useState<User | null>(initial.user);
   const [roles, setRoles] = useState<UserRole[]>([]);
-  // isAdmin SSR fourni par layout root via getInitialUserPayload() — élimine
-  // le flash badge Admin au hard refresh. loadProfile rafraîchit la valeur
-  // ensuite (couvre promotion/démotion en cours de session).
+  // isAdmin / isProducer SSR fournis par layout root via getInitialUserPayload()
+  // — élimine le flash badge Admin et le flash placeholder ProducerLayout au
+  // hard refresh. loadProfile rafraîchit les valeurs ensuite (couvre
+  // promotion/démotion en cours de session).
   const [isAdmin, setIsAdmin] = useState(initial.isAdmin);
+  const [isProducer, setIsProducer] = useState(initial.isProducer);
   const [producer, setProducer] = useState<ProducerLite | null>(null);
   // loading reflète le chargement profile/roles/producer côté client.
   // Si SSR a fourni un user, on doit encore résoudre roles/producer → true.
@@ -69,6 +73,7 @@ export function UserProvider({
         if (!cancelled) {
           setRoles([]);
           setIsAdmin(false);
+          setIsProducer(false);
           setProducer(null);
         }
         return;
@@ -95,7 +100,9 @@ export function UserProvider({
       if (cancelled) return;
       setRoles((userRes.data?.roles as UserRole[] | undefined) ?? []);
       setIsAdmin(!!adminRes.data);
-      setProducer((producerRes.data as ProducerLite | null) ?? null);
+      const producerData = (producerRes.data as ProducerLite | null) ?? null;
+      setProducer(producerData);
+      setIsProducer(producerData !== null);
     }
 
     // onAuthStateChange émet INITIAL_SESSION dès l'abonnement → couvre la
@@ -118,8 +125,8 @@ export function UserProvider({
   }, [supabase]);
 
   const value: UserContextValue = useMemo(
-    () => ({ user, producer, roles, isAdmin, loading }),
-    [user, producer, roles, isAdmin, loading],
+    () => ({ user, producer, roles, isAdmin, isProducer, loading }),
+    [user, producer, roles, isAdmin, isProducer, loading],
   );
 
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
