@@ -5,12 +5,15 @@ import Link from "next/link";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 // Étape 1 du flow reset password : l'user saisit son email, Supabase envoie
-// un magic link vers /auth/callback?type=recovery qui pose une session
-// temporaire puis redirige vers /reset-password (étape 2).
+// un email avec un lien custom (template Supabase Reset Password) pointant
+// directement vers /reinitialiser-mot-de-passe?token_hash=…&type=recovery
+// (étape 2 — formulaire nouveau mot de passe).
 //
 // `redirectTo` dynamique basé sur window.location.origin : un admin qui
-// demande reset depuis admin.* revient sur admin.*/auth/callback et garde
-// son cookie admin isolé (Chantier 4). Même logique pour www et pro.
+// demande reset depuis admin.* revient sur admin.*/reinitialiser-mot-de-passe
+// et garde son cookie admin isolé (Chantier 4). Même logique pour www et pro.
+// Cette valeur est exposée à Supabase comme `{{ .RedirectTo }}` dans le
+// template — utilisée par le template custom pour composer le lien final.
 //
 // Enumeration-resistance : Supabase resetPasswordForEmail retourne success
 // même pour un email inexistant — on affiche toujours le même message
@@ -28,11 +31,13 @@ export default function MotDePasseOubliePage() {
     setSubmitting(true);
 
     const supabase = createSupabaseBrowserClient();
-    // Pas de `?next=...` ici : le template Supabase Recovery ajoute déjà
-    // `&next=/reset-password` en dur à la fin du href. En rajouter un côté
-    // code produirait un double `?` dans l'URL finale et casserait le parsing
-    // des query params côté /auth/callback.
-    const redirectTo = `${window.location.origin}/auth/callback`;
+    // Le template Supabase Reset Password est configuré pour pointer
+    // directement vers /reinitialiser-mot-de-passe avec ?token_hash=…&type=recovery,
+    // ce qui force l'user à passer par le formulaire de nouveau mot de passe
+    // avant tout login automatique. Cette URL est aussi exposée comme
+    // `{{ .RedirectTo }}` dans le template — elle sert de base host-aware
+    // (admin.* / pro.* / www.*) pour composer le lien final.
+    const redirectTo = `${window.location.origin}/reinitialiser-mot-de-passe`;
     await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
 
     setSent(true);
