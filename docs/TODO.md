@@ -43,7 +43,6 @@ _(rien d'ouvert)_
 - **Remplacer images Unsplash** provisoires par vraies photos producteurs.
 - **Flux invitation : cas "email déjà en base"** à détecter proprement côté UX (au-delà de la correction fonctionnelle du Chantier 2).
 - **Désactiver Stripe Link account-wide** dans le Dashboard Stripe (Settings > Payment methods > Link toggle off) — action externe. Nécessaire si Link persiste à apparaître malgré `payment_method_types: ['card']` côté intents.
-- **Webhook Stripe `account.updated` manquant** — conséquence : `producers.stripe_account_id` est set AVANT onboarding complété côté Stripe → faux positif badge « ✓ Compte Stripe connecté » sur `/parametres` si le producer abandonne le flux Stripe à mi-course. Chantier : handler webhook `account.updated` qui synchronise `producers.stripe_onboarding_completed` (ou équivalent) avec `charges_enabled` / `details_submitted` côté Stripe. **Bloquant avant go-live public** si on veut un statut Connect fiable.
 - **Transition auto lead `'contacted'` → `'onboarded'`** quand le wizard est finalisé (Étape 3 soumise). Aujourd'hui la transition n'existe pas, les leads restent bloqués en `'contacted'` même après onboarding complet. À implémenter dans `complete-onboarding.ts` (server action Étape 3) : `UPDATE producer_interests SET statut='onboarded' WHERE email = session.email AND statut='contacted'` (no-op si pas de match, cohérent avec le bump auto de `dbe6360`).
 - **Mentions légales footer pro** — page absente, le footer pro pointe sur un href mort. À créer une fois le contenu juridique disponible (action externe Romain).
 - **Backfill producers `count = 0`** — réévaluer avant chaque lancement. Aujourd'hui négligeable (faible volume), à garder en tête si le funnel monte.
@@ -164,7 +163,7 @@ Livré post-marathon (commit `e5c4234`) : badge vert « Public » / orange « In
 
 ### Ordonnancement
 
-**Reste à scoper** : Phase 3 finale (DROP COLUMN `prenom_affichage`). **Prioriser après les bloquants lancement restants** (bascule Stripe Live, webhook `account.updated`, onboarder Julien). Le bug magic link PKCE est résolu (Option B retenue, commit `09c219d`).
+**Reste à scoper** : Phase 3 finale (DROP COLUMN `prenom_affichage`). **Prioriser après les bloquants lancement restants** (bascule Stripe Live, onboarder Julien). Le bug magic link PKCE est résolu (Option B retenue, commit `09c219d`).
 
 ## 🔵 Idées / améliorations
 
