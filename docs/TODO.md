@@ -6,6 +6,19 @@ Priorités forward-looking uniquement. Pour l'historique complet des commits / c
 
 _(rien en cours)_
 
+## 🔴 Bugs ouverts
+
+- **Magic link PKCE — `code_challenge does not match`** (ouvert 26/04 fin de session) :
+  - **Symptôme** : l'utilisateur clique le bouton « Se connecter » dans l'email magic link et arrive sur `https://www.terroir-local.fr/connexion?error=auth_callback&reason=code+challenge+does+not+match` au lieu d'être loggé.
+  - **Workaround** : le login mdp classique reste fonctionnel.
+  - **Hypothèse principale** : le cookie `code_verifier` posé par `signInWithOtp` côté server n'est pas retrouvé par le callback. Causes plausibles : (1) email ouvert dans un client mail web qui lance un autre navigateur (cookies de session pas partagés), (2) cookies cross-subdomain bloqués si Supabase pose le cookie sur `<ref>.supabase.co` au lieu de `.terroir-local.fr`, (3) attribute `SameSite=Lax/Strict` qui bloque la lecture du cookie sur la requête initiale du callback.
+  - **Plan d'investigation** :
+    1. Inspecter `app/connexion/actions.ts:requestMagicLinkAction` + `app/auth/callback/route.ts` pour confirmer où est posé le `code_verifier`.
+    2. Vérifier les attributes du cookie `code_verifier` (Domain, SameSite, HttpOnly, Path) via DevTools Application > Cookies sur la requête `/auth/v1/otp` et la requête callback.
+    3. Tester scénarios : ouvrir mail dans même navigateur (Chrome desktop) vs autre navigateur (Firefox) vs mobile (client iOS Mail) vs client desktop (Outlook/Thunderbolt).
+    4. Si confirmé cross-context : envisager le flow OTP `?token_hash=&type=magiclink` (pas de PKCE, pas de cookie côté server) — le callback `app/auth/callback/route.ts:87-91` le supporte déjà via `verifyOtp`. Nécessite changer le template Supabase pour utiliser `{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&type=magiclink&next={{ .RedirectTo }}` (et adapter `emailRedirectTo` côté `actions.ts` pour ne pas embarquer de query string — cf bug `Missing+code+or+token_hash` documenté dans `LESSONS.md`).
+  - **Référence** : URL exemple `https://www.terroir-local.fr/connexion?error=auth_callback&reason=code+challenge+does+not+match`.
+
 ## 🔴 À faire (bloquants lancement)
 
 - **Onboarder Julien (GAEC du Rheu)** — pages landing Stripe Connect `/connect/done` + `/connect/refresh` désormais en place (commit `e93043e`), mais onboarding end-to-end Stripe Live pas encore testé en situation réelle. À garder bloquant tant que le flow n'est pas validé avec un vrai producer.
@@ -38,7 +51,12 @@ _(rien en cours)_
 - **Webhook Stripe `account.updated` manquant** — conséquence : `producers.stripe_account_id` est set AVANT onboarding complété côté Stripe → faux positif badge « ✓ Compte Stripe connecté » sur `/parametres` si le producer abandonne le flux Stripe à mi-course. Chantier : handler webhook `account.updated` qui synchronise `producers.stripe_onboarding_completed` (ou équivalent) avec `charges_enabled` / `details_submitted` côté Stripe. **Bloquant avant go-live public** si on veut un statut Connect fiable.
 - **Transition auto lead `'contacted'` → `'onboarded'`** quand le wizard est finalisé (Étape 3 soumise). Aujourd'hui la transition n'existe pas, les leads restent bloqués en `'contacted'` même après onboarding complet. À implémenter dans `complete-onboarding.ts` (server action Étape 3) : `UPDATE producer_interests SET statut='onboarded' WHERE email = session.email AND statut='contacted'` (no-op si pas de match, cohérent avec le bump auto de `dbe6360`).
 - **Mentions légales footer pro** — page absente, le footer pro pointe sur un href mort. À créer une fois le contenu juridique disponible (action externe Romain).
-- **`?redirectTo` non lu par `loginAction`** — `app/connexion/page.tsx` accepte une querystring `?redirectTo=<path>` (ex: user clique « Se connecter » depuis `/panier`, on ajoute `?redirectTo=/compte/panier` au lien) mais `loginAction` ne lit pas ce param et redirige toujours sur `canonicalPostLoginUrl(role)`. Conséquence : l'user atterrit sur sa home rôle au lieu de reprendre où il voulait aller. Flagué par TA dans le rapport du commit `8cb6114`. Dette UX non bloquante mais à traiter pour un flow login-then-action propre.
+- **Renommer `StepEntreprise.tsx` → `StepInfos.tsx`** — depuis la fusion `StepPersonnel` + `StepEntreprise` (commit `49b45d8`), le composant gère désormais perso ET entreprise. Le nom n'est plus aligné. Cosmétique trivial mais déféré pour ne pas mélanger refactor et delivery.
+- **Tests unitaires `isValidRedirectPath` + `resolvePostLoginPath`** — helpers ajoutés à `lib/auth/post-login-redirect.ts` aux commits `53f8f6a` + `d4088d5`, pas encore couverts par vitest. Critiques pour la sécurité (anti open-redirect) — à ajouter avant lancement public.
+- **UI `/producer-interests` afficher colonne `source`** (Phase 2bis funnel) — la colonne DB existe (commit `87bfff9`) et est alimentée correctement, mais le `LeadsTable` admin ne la montre pas encore. Petit chantier UX pour distinguer `formulaire_public` vs `invitation_directe`.
+- **Backfill producers `count = 0`** — réévaluer avant chaque lancement. Aujourd'hui négligeable (faible volume), à garder en tête si le funnel monte.
+- **SMTP custom Supabase à confirmer** — la doc HANDOFF mentionne le custom SMTP Resend configuré (23/04). Observation récente : mails Auth atterrissant en spam (peut-être lié au bug magic link PKCE ci-dessus). À vérifier dans Supabase Dashboard > Auth > SMTP que la config Resend est toujours active et la clé valide. Si pas configuré, configurer Resend en SMTP custom serait propre (rate limit Supabase built-in ~3-4/h).
+- **Templates Supabase Auth Email — passage `{{ .ConfirmationURL }}`** — à appliquer aux 5 templates customisés (Magic Link, Confirm Signup, Reset Password, Change Email, Invite User) suite au bug `Missing+code+or+token_hash` debug 26/04. Le pattern `{{ .RedirectTo }}?token_hash={{ .TokenHash }}` casse dès que `emailRedirectTo` contient une query string (cf `LESSONS.md` Auth & sessions). Action externe Romain via Dashboard.
 
 ## 🗺️ Roadmap produit (vision Avril 2026)
 
@@ -108,33 +126,43 @@ _(rien en cours)_
     *Impact : SEO long terme, éducation consumer, autorité éditoriale terroir sarthois.*
     (SEO · Contenu · Pages statiques)
 
-## 🗺️ Vision funnel producteur (chantier à scoper)
+## 🗺️ Vision funnel producteur (Phase 1 + 2 livrées, Phase 3 reportée)
 
-> Refonte cohérence admin leads / producteurs décidée 2026-04-24 après analyse de la confusion entre les 2 espaces admin (`/producer-interests` et `/gestion-producteurs`).
+> Refonte cohérence admin leads / producteurs décidée 2026-04-24 après analyse de la confusion entre les 2 espaces admin (`/producer-interests` et `/gestion-producteurs`). Phase 1 + 2 livrées 26/04 (cf `CHANGELOG.md` 2026-04-26). Phase 3 (DROP `prenom_affichage`) reportée à une session dédiée.
 
 ### Parcours cible
 
-1. Formulaire `/devenir-producteur` → lead `statut='new'` (**Nouveau**).
-2. Admin clique « Inviter » → lead `statut='contacted'` (**Contacté**) + email envoyé.
-3. Producteur remplit wizard (simplifié à 2 étapes : compte + infos exploitation, avec champs du lead pré-remplis) → lead passe `'onboarded'` + producer apparaît dans Gestion `statut="En attente de validation"`.
+1. Formulaire `/devenir-producteur` → lead `statut='new'` `source='formulaire_public'` (**Nouveau**). ✅ livré (Phase 2)
+2. Admin clique « Inviter » → lead `statut='contacted'` (**Contacté**) + email envoyé. Si l'email n'est pas déjà en base, création auto d'un lead `source='invitation_directe' statut='contacted'`. ✅ livré (Phase 1)
+3. Producteur remplit wizard (2 étapes : compte + infos exploitation, avec champs du lead pré-remplis) → lead passe `'onboarded'` + producer apparaît dans Gestion `statut="En attente de validation"`. ✅ livré (Phase 2 — wizard 2 étapes + pre-fill via `pick-initial-infos`)
 4. Admin valide dans Gestion → producer `statut="Inactif"` (peut accéder à son espace, pas encore visible publique).
-5. 3 conditions remplies → producer passe `"Public"` automatique :
+5. 3 conditions remplies → producer passe `"Public"` automatique : ✅ livré (commit `4911401` 26/04 — 3 conditions cumulatives auditées + 21 tests)
    - Au moins 1 produit publié
    - Stripe Connect actif (`charges_enabled=true` via webhook `account.updated`)
    - Au moins 1 créneau configuré
 6. Statuts ultérieurs : `"Suspendu"` / `"Supprimé"`.
 
-### Décisions subsidiaires
+### Phase 3 — DROP `prenom_affichage` (reportée)
 
-- **Simplifier formulaire public `/devenir-producteur`** : champs essentiels uniquement (prénom, nom, email, téléphone, nom exploitation, commune, message libre).
-- **Wizard simplifié à 2 étapes** au lieu de 3 : compte (mdp uniquement, email en lecture seule) + exploitation (forme juridique, SIRET, adresse, code postal, type production). Tout ce qui est dans le lead est pré-rempli sans ressaisie.
-- **Supprimer le champ `prenom_affichage`** : réutiliser `users.prenom` directement pour signer le post-it « Conseil de [prenom] ». Évite un doublon sémantique (et supprime la dette du bug cosmétique reprise onboarding).
-- **Invitation admin directe** : créer automatiquement un lead `statut='contacted'` si l'email n'existe pas déjà dans `producer_interests`, pour que l'onglet Leads soit le journal d'acquisition complet.
-- **Ajouter champ `source` sur le lead** (`formulaire_public` / `invitation_directe`) pour tracer l'origine.
+> Décision 24/04 : réutiliser `users.prenom` directement pour signer le post-it « Conseil de [prenom] » au lieu d'un champ dédié. Reportée 26/04 — chantier transversal ~19 fichiers (3 INSERT runtime, seed, wizard, édition onboarding, components consumer, tests). À traiter en session dédiée pour éviter une livraison half-baked.
+
+Plan de migration :
+
+1. Migration SQL : DROP NOT NULL puis DROP COLUMN `producers.prenom_affichage`.
+2. Adapter les 3 INSERT runtime : `create-account.ts`, `login-and-upgrade.ts`, `invitation/page.tsx` SSR (retirer le placeholder `'À compléter'`).
+3. Adapter `StepEntreprise` (ex-Personnel/Entreprise) : retirer le champ + validation.
+4. Adapter `app/(producer)/onboarding/page.tsx` : retirer le champ d'édition.
+5. Adapter les components consumer qui affichent le post-it : remplacer `producer.prenom_affichage` par `producer.users?.prenom` (via join) ou pré-fetch.
+6. Mettre à jour les seeds + cleanup-seed.
+7. Tests à refresh.
+
+### Phase 2bis — UI `/producer-interests` colonne `source` (à faire)
+
+La colonne DB existe et est alimentée correctement, mais le `LeadsTable` admin ne la montre pas encore. Cf 🟡 dettes ci-dessus.
 
 ### Ordonnancement
 
-Chantier à scoper en session dédiée (estimation : 1-2 jours de travail CC parallélisé). À traiter avant go-live public si possible pour avoir un admin cohérent. **Prioriser après les bloquants lancement restants** (bascule Stripe Live, webhook `account.updated`, onboarder Julien).
+**Reste à scoper** : Phase 3 + Phase 2bis. **Prioriser après les bloquants lancement restants** (bascule Stripe Live, webhook `account.updated`, onboarder Julien) et le bug magic link PKCE.
 
 ## 🔵 Idées / améliorations
 

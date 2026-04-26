@@ -7,6 +7,70 @@ Pour les priorités forward-looking, voir [`TODO.md`](./TODO.md).
 
 ---
 
+## 2026-04-26
+
+> Session marathon (suite 25/04 → 26/04, soir + nuit). 15 commits, 4 chantiers en parallèle (auth `redirectTo`, logo SVG vectoriel + emails, vision funnel producteur Phase 1+2, audit auto-promotion + purge panier logout). Migrations `20260426000000` + `20260427000000` apply. 5 templates Supabase Auth Email customisés via Dashboard (Magic Link, Confirm Signup, Reset Password, Change Email, Invite User) avec header logo TerrOir. Bug PKCE magic link émergé en fin de session (cf `TODO.md` 🔴 Bugs).
+
+### Chantier auth `redirectTo` (TA)
+
+- **`?redirectTo` honoré par le password login** (commit `53f8f6a`, 25/04 fin de journée) : `loginAction` lit désormais le param posé par le middleware sur les routes protégées plutôt que de toujours router vers `canonicalPostLoginUrl(role)`. Validation defense-in-depth via nouveau helper `isValidRedirectPath` (path local uniquement, rejette `//` et `/\` pour bloquer protocol-relative). `app/connexion/page.tsx` reste server component, le switcher form/magic est extrait dans `connexion-form.tsx` (client) avec input hidden `redirectTo`. Helpers ajoutés à `lib/auth/post-login-redirect.ts` (`isValidRedirectPath`, `resolvePostLoginPath`).
+- **`?redirectTo` honoré par le magic link** (commit `d4088d5`) : le param est désormais propagé jusqu'au callback magic link. `ConnexionForm` transmet `redirectTo` au `MagicLinkForm` via input hidden. `requestMagicLinkAction` valide le path puis l'embarque en query string sur `emailRedirectTo` (Supabase le renvoie tel quel dans l'email). `/auth/callback` lit `?redirectTo`, délègue à un nouveau helper `canonicalPostLoginUrlWithRedirect` (rôle dicte le host, path validé sinon fallback canonique). Le callback supporte les 2 formats (`?code=` PKCE et `?token_hash=&type=` OTP). Validation defense-in-depth côté action ET côté callback (un email forgé `?redirectTo=//evil.com` retombe sur le path canonique). Clôt la dette flaggée par TA dans le rapport du commit `8cb6114`.
+
+### Chantier logo SVG vectoriel + emails (TB)
+
+- **Refactor logo SVG vectoriel** (commit `51d409b`) : `components/ui/logo.tsx` étendu avec 3 variants (`full` / `icon` / `mono`) + 4 sizes (`sm` / `md` / `lg` / `xl` ajouté plus tard via `e523357`). Ancien `Logo_TerrOir_transparent.png` retiré, remplacé par `Logo_TerrOir.svg`. `next.config.js` ajusté pour servir le SVG.
+- **Itérations layout SVG (3 fixes successifs)** :
+  - `0fd3f54` `fix(logo): tighten viewBox` — réduction du whitespace causant un render oversized.
+  - `cb3ebab` `fix(logo): use size=md for navbar contexts` — corrige la hauteur en `h-16`.
+  - `71905d2` `refactor(logo): use cropped SVG from Inkscape` — fix définitif après que les 3 itérations précédentes n'ont pas convergé. Pattern : modifier l'asset source (Inkscape resize-to-drawing) plutôt que de continuer à patcher le composant. Voir `LESSONS.md` section « Assets vectoriels ».
+- **Navbar consumer agrandie** (commit `e523357`) : `Logo` size `xl` (64px) ajouté + `navbar-public.tsx` passe de `h-16` à `h-20` pour brand presence renforcée. Autres navbars (pro mini-header, sidebar producer, footer, admin) inchangées.
+- **Logo dans header emails Resend** (commit `67e40fc`) : `lib/resend/templates/layout.tsx` étend le layout avec un header logo TerrOir sur fond crème (mockup visuel comparatif vert vs crème → choix crème pour cohérence brand). Asset PNG `public/email-assets/logo-email.png` généré via nouveau script `scripts/generate-email-logo.mjs` (les clients mail ne supportent pas SVG, d'où l'export PNG).
+
+### Chantier vision funnel producteur Phase 1 + Phase 2 (TA + TC)
+
+> Phase 1 = traçabilité origine lead. Phase 2 = friction publique réduite + wizard 2 étapes avec pré-remplissage. Phase 3 (DROP `prenom_affichage`, ~19 fichiers transversaux) reportée à une session dédiée.
+
+#### Phase 1 — Traçabilité source des leads
+
+- **Colonne `source` sur `producer_interests`** (commit `87bfff9` + migration `20260426000000`) : `source` ∈ (`formulaire_public`, `invitation_directe`). DEFAULT `formulaire_public` (backfill implicite — tous les leads existants viennent du formulaire public, seul point d'entrée jusqu'ici).
+- **Création auto de lead sur invitation directe admin** (commit `9e78ea4`) : quand un admin invite un prospect dont l'email n'est pas en base, on insère désormais un lead `source='invitation_directe'` `statut='contacted'` après envoi email réussi. Pattern fail-open : un échec d'INSERT loggé `[LEAD_CREATE_WARN]` ne bloque pas l'invitation déjà partie. Garde anti-doublon via `maybeSingle` sur `ilike(email)` avant insert. L'onglet Leads devient le journal d'acquisition complet.
+
+#### Phase 2 — Public form simplifié + wizard 2 étapes
+
+- **Colonne `prenom` sur `producer_interests`** (commit `783e071` + migration `20260427000000`) : nullable (legacy leads gardent `prenom NULL`, admin UI gère gracefully). Permet de pré-remplir le wizard sans heuristique de split nom/prénom.
+- **Formulaire public `/devenir-producteur` simplifié** (commit `a895ed2`) : split « Nom et prénom » en 2 inputs `prenom` + `nom`. Drop required « Espèces élevées » (signal non qualifiant à ce stade — `type_production` capturé dans le wizard). `LeadsTable` admin rend le full name graceful (`${prenom ?? ''} ${nom}`.trim()). Route invite admin accepte `prenom` optionnel et le propage au lead `invitation_directe`.
+- **Wizard onboarding redesigné en 2 étapes** (commit `49b45d8`) : `StepPersonnel` fusionné dans `StepEntreprise` (renommage déféré, cf `TODO.md`). Wizard passe de 3 à 2 étapes (Compte / Profil). Nouveau helper `lib/producers/pick-initial-infos.ts` qui merge 3 sources par priorité (producer draft > user > lead). `'À compléter'` traité comme empty pour ne pas leak dans les inputs pré-remplis. `/invitation` et `/onboarding` fetch désormais le lead matching (statut `contacted` ou `onboarded`, ilike email, plus récent) et passent les infos mergées au wizard. `complete-onboarding` valide les 3 perso fields, écrit `users` AVANT `producers` (partial failure laisse le draft retryable plutôt que half-committed). 7 tests vitest sur `pick-initial-infos`.
+
+### Chantier audit auto-promotion (TC)
+
+- **`promoteProducerToPublicIfActive` vérifie les 3 conditions cumulatives** (commit `4911401`) : avant le fix, seule la garde `statut='active'` côté UPDATE était checkée — un producer pouvait apparaître sur `/producteurs` et la carte sans Stripe Connect prêt ou sans aucun créneau, laissant le consumer cliquer sur une fiche impossible à commander. Désormais 3 pré-checks cumulatifs avant la transition `active → public` :
+  1. `producer.statut === 'active'` ET `stripe_charges_enabled === true`
+  2. ≥ 1 produit avec `active = true`
+  3. ≥ 1 slot avec `active = true` ET `excluded_at IS NULL` (symétrique au filter consumer dans `create_order_with_items`)
+  Si une condition manque, no-op silencieux (fail-open préservé). Garde finale `.eq('statut','active')` conservée pour idempotence (race condition). Aucune dépublication automatique : `public → active` reste hors-scope (cf `suspendProducer` / `reactivateProducer`). Tests vitest étendus à 21 cas (vs 10 avant) couvrant le cas nominal, 5 chemins no-op et fail-open sur chaque étape DB.
+
+### Chantier purge panier logout (TA)
+
+- **Cart state cleared on logout** (commit `a08a56e`) : `lib/auth/use-logout-flow.ts` purge désormais le state panier au logout pour éviter la fuite entre sessions sur même device (un user A se déconnecte → user B se connecte → panier de A persiste en local storage). Bug observé en pré-prod par Romain.
+
+### Configurations externes (Supabase Dashboard)
+
+> Modifications côté Dashboard non reflétées dans le code mais critiques pour le go-live. À reproduire en cas de migration provider / nouvel environnement.
+
+- **5 templates Auth Email customisés** : Magic Link, Confirm Signup, Reset Password, Change Email, Invite User. Header logo TerrOir, fond crème cohérent avec emails Resend. Détail des href par template à confirmer via Dashboard (cf `HANDOFF.md` section Configurations externes critiques).
+- **Migrations `20260426000000` + `20260427000000`** apply prod via Supabase Studio SQL Editor.
+
+### Bug ouvert en fin de session
+
+- **🔴 Magic link PKCE — `error=auth_callback&reason=code+challenge+does+not+match`** : l'utilisateur clique le bouton « Se connecter » dans l'email magic link et arrive sur `/connexion?error=auth_callback&reason=code+challenge+does+not+match` au lieu d'être loggé. Hypothèse principale : le cookie `code_verifier` posé par `signInWithOtp` côté server n'est pas retrouvé par le callback (cross-domain ou cross-context — client mail web ouvre nouveau navigateur, ou cookies cross-subdomain bloqués). Workaround temporaire : le login mdp classique reste fonctionnel. Cf `TODO.md` 🔴 Bugs pour le plan d'investigation.
+
+### Leçons consolidées
+
+- **Itérations CSS qui ne convergent pas → modifier l'asset source.** 3 fixes layout SVG (`0fd3f54`, `cb3ebab`) ont jonglé entre `viewBox`, `size` et hauteurs avant que le 4ᵉ (`71905d2`) ne reparte de l'asset Inkscape (resize-to-drawing). Pattern retenu : **après 2 itérations infructueuses sur un layout SVG, suspecter le whitespace de l'asset plutôt que continuer à patcher le composant.** Voir `LESSONS.md` section « Assets vectoriels ».
+- **Découpage gros chantier en phases bornées.** Vision funnel producteur scopé à 3 phases (24/04). Phase 1 + 2 livrées en cohésion forte. Phase 3 (DROP `prenom_affichage`, ~19 fichiers transversaux) reportée → un terminal qui sait s'arrêter à la phase qui rentre dans le timebox vaut mieux qu'un terminal qui démarre Phase 3 en fin de session et la livre half-baked. À tracer comme exemple méthodologique.
+- **Mockup visuel comparatif avant décision design.** Header email vert vs crème — comparaison côte à côte avant choix → décision rapide et défendable. Pattern à répliquer pour tout choix design hors-trivial.
+- **Templates Supabase `{{ .RedirectTo }}?{{ .TokenHash }}` est brittle quand `emailRedirectTo` a déjà une query string.** Cf `LESSONS.md` section « Auth & sessions ». Pattern observé en debug du bug magic link consumer (URL `?Missing+code+or+token_hash`) : la double `?` casse `URLSearchParams`. Recommandation : `{{ .ConfirmationURL }}` pour les 5 templates.
+
 ## 2026-04-25
 
 ### Matinée
