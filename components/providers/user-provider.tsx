@@ -34,13 +34,22 @@ const UserContext = createContext<UserContextValue>({
   loading: true,
 });
 
-export function UserProvider({ children }: { children: React.ReactNode }) {
+export function UserProvider({
+  children,
+  initialUser = null,
+}: {
+  children: React.ReactNode;
+  initialUser?: User | null;
+}) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(initialUser);
   const [roles, setRoles] = useState<UserRole[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [producer, setProducer] = useState<ProducerLite | null>(null);
-  const [loading, setLoading] = useState(true);
+  // loading reflète le chargement profile/roles/producer côté client.
+  // Si SSR a fourni un user, on doit encore résoudre roles/producer → true.
+  // Sinon (anonyme) il n'y a rien à charger → false.
+  const [loading, setLoading] = useState(initialUser !== null);
 
   useEffect(() => {
     let cancelled = false;
@@ -79,26 +88,16 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       setProducer((producerRes.data as ProducerLite | null) ?? null);
     }
 
-    supabase.auth
-      .getSession()
-      .then(({ data }) => {
-        if (cancelled) return;
-        const current = data.session?.user ?? null;
-        setUser(current);
-        loadProfile(current).finally(() => {
-          if (!cancelled) setLoading(false);
-        });
-      })
-      .catch((err) => {
-        console.error("[UserProvider] getSession failed:", err);
-        if (!cancelled) setLoading(false);
-      });
-
+    // onAuthStateChange émet INITIAL_SESSION dès l'abonnement → couvre la
+    // résolution initiale, plus tous les login/logout ultérieurs (multi-tab,
+    // expiration token). Pas besoin d'appel getSession() séparé.
     const { data: listener } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         const current = session?.user ?? null;
         setUser(current);
-        loadProfile(current);
+        loadProfile(current).finally(() => {
+          if (!cancelled) setLoading(false);
+        });
       },
     );
 
