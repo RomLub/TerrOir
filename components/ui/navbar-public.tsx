@@ -104,7 +104,7 @@ export function NavbarPublic({
   className = "",
 }: NavbarPublicProps) {
   const pathname = usePathname();
-  const { user, isAdmin, loading } = useUserContext();
+  const { user, isAdmin } = useUserContext();
   const { logout, isLoggingOut } = useLogoutFlow();
 
   const prenom = user?.user_metadata?.prenom as string | undefined;
@@ -140,9 +140,7 @@ export function NavbarPublic({
         </nav>
         <div className="flex items-center gap-2">
           {!isAdmin && <CartNavButton />}
-          {loading ? (
-            <div className="h-8 w-24" aria-hidden="true" />
-          ) : user ? (
+          {user ? (
             <>
               <Link
                 href={isAdmin ? "/tableau-de-bord" : "/compte"}
