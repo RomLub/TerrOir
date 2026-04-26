@@ -72,9 +72,16 @@ function PasswordForm({
       {callbackError ? (
         <div
           role="alert"
-          className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+          className="space-y-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700"
         >
-          {callbackError}
+          <p>{callbackError}</p>
+          <button
+            type="button"
+            onClick={onSwitchToMagic}
+            className="font-medium underline hover:opacity-80"
+          >
+            Demander un nouveau lien magique
+          </button>
         </div>
       ) : null}
 
