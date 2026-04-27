@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, Cormorant_Garamond } from "next/font/google";
+import { Inter, Cormorant_Garamond, Caveat } from "next/font/google";
 import "./globals.css";
 import { UserProvider } from "@/components/providers/user-provider";
 import { getInitialUserPayload } from "@/lib/auth/session";
@@ -14,6 +14,13 @@ const cormorant = Cormorant_Garamond({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
   variable: "--font-cormorant",
+  display: "swap",
+});
+
+const caveat = Caveat({
+  subsets: ["latin"],
+  weight: ["500", "600"],
+  variable: "--font-caveat",
   display: "swap",
 });
 
@@ -33,7 +40,10 @@ export default async function RootLayout({
   const initial = await getInitialUserPayload();
 
   return (
-    <html lang="fr" className={`${inter.variable} ${cormorant.variable}`}>
+    <html
+      lang="fr"
+      className={`${inter.variable} ${cormorant.variable} ${caveat.variable}`}
+    >
       <body className="min-h-screen bg-terroir-bg font-sans text-terroir-ink antialiased">
         <UserProvider initial={initial}>{children}</UserProvider>
       </body>

@@ -22,11 +22,22 @@ module.exports = {
           900: "#081C15",
         },
         terra: {
+          50: "#FBF6F1",
           100: "#F5E6DC",
+          200: "#E8C9B5",
           300: "#D4A373",
+          400: "#C08552",
           500: "#B8713E",
+          600: "#8B4513",
           700: "#A0522D",
+          800: "#804A20",
           900: "#6B3620",
+        },
+        postit: {
+          bg: "#FFF7D6",
+          fill: "#FEF3C7",
+          border: "#FDE68A",
+          icon: "#F59E0B",
         },
         terroir: {
           green: "#2D6A4F",
@@ -46,10 +57,16 @@ module.exports = {
       boxShadow: {
         soft: "0 2px 12px rgba(27, 67, 50, 0.06)",
         card: "0 4px 16px rgba(27, 67, 50, 0.08)",
+        lift: "0 12px 32px rgba(27, 67, 50, 0.12)",
+      },
+      borderRadius: {
+        "2xl": "20px",
+        "3xl": "24px",
       },
       fontFamily: {
         sans: ["var(--font-inter)", "system-ui", "-apple-system", "Segoe UI", "sans-serif"],
         serif: ["var(--font-cormorant)", "Cormorant Garamond", "Georgia", "serif"],
+        hand: ["var(--font-caveat)", "Caveat", "cursive"],
       },
     },
   },
