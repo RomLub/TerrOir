@@ -12,13 +12,20 @@ _(rien d'ouvert)_
 
 > **Bug magic link PKCE** (ouvert 26/04 → résolu 26/04) — Option B retenue : bascule au flow OTP `token_hash` + cookie deep-link cross-subdomain HttpOnly (commit `09c219d`). Plan d'investigation initial devenu obsolète. Workarounds UX (commits `92bbff7` messages erreur + `6c2b5ef` bouton « demander nouveau lien magique ») conservés comme filet de sécurité pour autres causes possibles (lien expiré, lien invalide). Cf `CHANGELOG.md` section « Bug magic link PKCE — RÉSOLU » et `LESSONS.md` section « Auth & sessions ».
 >
-> **Bug navbar CTA disparition au hard refresh** (ouvert 26/04 → résolu 26/04) — Fix immédiat : retrait du branch `loading ?` (commit `209ce83`). Fix robuste : `initialUser` SSR passé du root layout au `UserProvider` (commit `6a9ebd3`) — élimine totalement le flash hydration côté visiteur anonyme.
+> **Bug navbar CTA disparition au hard refresh** (ouvert 26/04 → résolu 26/04) — Fix immédiat : retrait du branch `loading ?` (commit `209ce83`). Fix robuste : `initialUser` SSR passé du root layout au `UserProvider` (commit `6a9ebd3`) — élimine totalement le flash hydration côté visiteur anonyme. Pattern étendu ensuite à `isAdmin` (commit `404bb0d`) puis `isProducer` (commit `20304e9`).
+>
+> **Bug stock non restauré à l'annulation (P0)** (ouvert 26/04 → résolu 26/04) — RPC `create_order_with_items` décrémentait le stock à l'INSERT mais aucun chemin ne ré-incrémentait à l'annulation (3DS-fail webhook, cron timeout, cancel route, refund route). Fix via trigger DB `orders_restore_stock_after_cancel` (commit `4584139` + migration `20260427200000`). Apply prod 26/04. Validation prod end-to-end OK (Salade mesclun stock 50→47→50 sur 3DS-fail).
+>
+> **Bug commande fantôme à l'échec 3DS (P2)** (ouvert 26/04 → résolu 26/04) — webhook `payment_intent.payment_failed` ne posait pas `cancellation_reason`, bypassait `assertTransition`, n'invalidait pas `public-stats`, et pouvait rétrograder une commande `confirmed` si Stripe émettait `failed` après `succeeded`. Fix via extraction `lib/stripe/handle-payment-failed.ts` (return enum 5 valeurs + 7 tests vitest, commit `9482e5b`) + UI exclusion consumer `payment_failed` + badge admin "Tentative échouée" distinct (commit `56ab733`). Backfill TRR-AM2UN apply 26/04. Validation prod end-to-end OK.
+>
+> **Bug idempotence retentative paiement (P1)** (ouvert 26/04 → résolu 26/04) — webhook `payment_intent.succeeded` rejetait la transition `cancelled → confirmed` en `webhook_anomaly`, laissant l'order figée alors que Stripe avait encaissé le 2e paiement. Fix via résurrection conditionnelle `cancelled+payment_failed → pending` dans `lib/stripe/handle-payment-succeeded.ts` (commit `49c0f1b`, return enum 6 valeurs + 8 tests vitest). Cible `pending` (pas `confirmed`) — corrige le brief initial après push back terminal CC. Reset `cancellation_reason` et `cancelled_at` à NULL pour préserver l'invariant projet. Validation prod end-to-end OK (commande TRR-7235E).
+>
+> **Bug stock non re-décrémenté à la résurrection (P1 résiduel)** (ouvert 27/04 matin → résolu 27/04 matin) — détecté en validation prod end-to-end après commit `49c0f1b` : la résurrection `cancelled → pending` ne re-décrémentait pas le stock (UPDATE direct sans toucher products, et le trigger DB de restauration ne couvre pas le sens inverse intentionnellement). État pathologique : order TRR-7235E pending avec quantité 3 mais stock affiché 50 au lieu de 47. Fix via chantier P1 robuste 3 commits successifs (`6b4a835` RPC SQL atomique + `9d6cb13` webhook handler avec refund Stripe automatique sur paths bloqués + `5a572b2` UI consumer revival_blocked + extension filtre). Validation prod end-to-end OK (commande TRR-KKKDL : stock Salade mesclun 50→47, audit_logs `order_payment_failed` + `order_revival_succeeded` 5s d'écart).
 
 ## 🔴 À faire (bloquants lancement)
 
 - **Onboarder Julien (GAEC du Rheu)** — pages landing Stripe Connect `/connect/done` + `/connect/refresh` désormais en place (commit `e93043e`), mais onboarding end-to-end Stripe Live pas encore testé en situation réelle. À garder bloquant tant que le flow n'est pas validé avec un vrai producer.
-- **Basculer Stripe en mode Live** (aujourd'hui en Test) + tester scénario 3DS (SCA).
-- **Webhook Stripe vers `www.terroir-local.fr`** : à confirmer pointer sur la bonne URL (actuellement potentiellement `terr-oir-21cl.vercel.app`). À valider avant go-live.
+- **Basculer Stripe en mode Live** (aujourd'hui en Test). Mode Test entièrement validé 26-27/04 : webhook URL ✅, désactivation Link account-wide ✅, scénarios 3DS complete + fail ✅, retentative paiement après 3DS-fail ✅. Au moment de la bascule Live, créer un nouveau webhook endpoint dans Stripe Dashboard pointant sur `https://www.terroir-local.fr/api/stripe/webhook` en mode Live (le webhook actuel est en mode Test).
 
 ## 🔐 Avant lancement public
 
@@ -37,23 +44,49 @@ _(rien d'ouvert)_
 
 ## 🟡 À faire (non bloquants)
 
+### Externes / config
+
 - **Mapbox** : en attente retour CB.
 - **Twilio SMS** : numéro FR à régler.
 - **Vectormagic logo SVG** (8,99€).
 - **Remplacer images Unsplash** provisoires par vraies photos producteurs.
-- **Flux invitation : cas "email déjà en base"** à détecter proprement côté UX (au-delà de la correction fonctionnelle du Chantier 2).
-- **Désactiver Stripe Link account-wide** dans le Dashboard Stripe (Settings > Payment methods > Link toggle off) — action externe. Nécessaire si Link persiste à apparaître malgré `payment_method_types: ['card']` côté intents.
-- **Transition auto lead `'contacted'` → `'onboarded'`** quand le wizard est finalisé (Étape 3 soumise). Aujourd'hui la transition n'existe pas, les leads restent bloqués en `'contacted'` même après onboarding complet. À implémenter dans `complete-onboarding.ts` (server action Étape 3) : `UPDATE producer_interests SET statut='onboarded' WHERE email = session.email AND statut='contacted'` (no-op si pas de match, cohérent avec le bump auto de `dbe6360`).
 - **Mentions légales footer pro** — page absente, le footer pro pointe sur un href mort. À créer une fois le contenu juridique disponible (action externe Romain).
-- **Backfill producers `count = 0`** — réévaluer avant chaque lancement. Aujourd'hui négligeable (faible volume), à garder en tête si le funnel monte.
 - **SMTP custom Supabase Resend à configurer (recommandé avant lancement)** — observation récente : mails Auth atterrissant en spam. Configurer Resend en SMTP custom (rate limit Supabase built-in ~3-4/h, non destiné à la production) serait propre. Action externe Romain via Dashboard.
 - **Templates Supabase Auth Email — validation visuelle complète** — Magic Link template à mettre à jour avec `{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=magiclink` (action Romain post-PKCE Option B, commit `09c219d`). Reset Password template à mettre à jour avec `${SITE_URL}/reinitialiser-mot-de-passe?token_hash={{ .TokenHash }}&type=recovery` (action Romain post-`5ff9394`). Confirm Signup, Change Email, Invite User pas testés visuellement (rendus mais flow end-to-end non validé). Action externe Romain via Dashboard.
+- **Branding Stripe Connect** — flag pendant la session 27/04 pour ne pas mélanger avec les bugs critiques. Investigation dédiée future avec accès doc Stripe à jour (logo, couleurs, pages `/connect/*`, branding marketplace).
+- **Webhook Stripe mode Live** — créer un nouveau webhook endpoint dans Stripe Dashboard pointant sur `https://www.terroir-local.fr/api/stripe/webhook` au moment de la bascule Test → Live. Mode Test confirmé déjà OK (validation 27/04 matin).
+
+### Chantiers code futurs
+
+- **Chantier "alignement routes orders"** — recoller 3 dettes liées sur les routes d'annulation/refund (flag par rapports TB `799bf71` et `f32d083`) :
+  - `app/api/stripe/refund/route.ts` : `assertTransition` + `revalidateTag('public-stats')` + suite vitest manquantes.
+  - `app/api/cron/order-timeout/route.tsx` : check d'erreur UPDATE silencieuse (B1+B2 documentés via `it.todo` dans tests `f32d083`) + `revalidateTag` (B3 absent vs webhook payment_failed).
+  - 3 routes d'annulation à harmoniser avec les mêmes patterns (state machine + stats invalidation + error handling).
+- **Pré-fetch SSR `ProducerLite` pour éliminer flash placeholder ProducerLayout** — flag boolean `isProducer` SSR (commit `20304e9`) résout le flash CTA mais `ProducerLayout` dépend de l'objet producer complet (`nom_exploitation`, `slug`, `statut`). Pré-fetch d'un objet allégé `ProducerLite` côté SSR éliminerait aussi ce flash. Pattern réplicable. Non bloquant — flash très court.
+- **Cron retry-failed-refunds** (chantier dédié futur) — détecter via `audit_logs.event_type` les `*_refund_failed` non réconciliés (refund admin manuel route `/api/stripe/refund`, refund cron `order-timeout`, refund résurrection P1 robuste) et retenter automatiquement, ou alerter admin pour intervention. Couverture forensique `logPaymentEvent` posée par chantier P1 robuste 27/04 sert de base de détection (`order_revival_refund_failed` event type).
+- **Dédup webhook notifications** (chantier dédié futur) — table `webhook_events_processed(event_id, processed_at)` avec INSERT ON CONFLICT pour bloquer le rejouage Stripe côté code applicatif. Couvre tous les webhook handlers Stripe (`succeeded`, `payment_failed`, `account.updated`, `payout.paid`). Pertinent à instrumenter avant volume significatif (rejouage Stripe rare aujourd'hui, mais double email producer possible si ça arrive).
+- **Migration `transformWithEsbuild` deprecated → `transformWithOxc`** (warning vitest 4 / rolldown-vite, commit `f32d083`) — non bloquant, à migrer quand l'API `transformWithOxc` est stable.
+- **Transition auto lead `'contacted'` → `'onboarded'`** quand le wizard est finalisé (Étape 3 soumise). Aujourd'hui la transition n'existe pas, les leads restent bloqués en `'contacted'` même après onboarding complet. À implémenter dans `complete-onboarding.ts` (server action Étape 3) : `UPDATE producer_interests SET statut='onboarded' WHERE email = session.email AND statut='contacted'` (no-op si pas de match, cohérent avec le bump auto de `dbe6360`).
+- **Flux invitation : cas "email déjà en base"** à détecter proprement côté UX (au-delà de la correction fonctionnelle du Chantier 2).
+- **Backfill producers `count = 0`** — réévaluer avant chaque lancement. Aujourd'hui négligeable (faible volume), à garder en tête si le funnel monte.
+
+### Investigations produit (à trancher)
+
+- **Consumer cancel route** — la route `/api/orders/[id]/cancel/route.tsx` interdit aujourd'hui au consumer d'annuler sa propre commande (403). Voulu (philosophie anti-abus) ou trou (oubli) ? Si décision = autoriser, ajouter check `session.id === order.consumer_id`. Le test D1 (commit `280ff69`) deviendra un FAIL volontaire qui guidera le fix. Cf rapport TC inspection cancel route 27/04.
+- **Transition `ready → refunded` illégale** — fallback à `cancelled` via `canTransition()` dans cancel route (lignes 97-99). Décision produit à prendre : doit-elle être légale ? Cas concret : un client demande remboursement après que le producer a marqué la commande prête à retirer mais avant le retrait effectif. Implique modif `lib/orders/stateMachine.ts` + tests + handler. Cf rapport TC commit `f57d5ad`.
+- **Aligner guards `canTransition` vs `isTerminal`** — asymétrie API state machine : `canTransition` tolère statut invalide via `?.` (ligne 27), `isTerminal` accès direct (ligne 47, crasherait sur statut invalide). Soit garder l'asymétrie volontaire avec commentaire JSDoc explicatif, soit ajouter un guard. Cf rapport TC commit `f57d5ad`.
+- **Confirm route sans garde rôle explicite** — asymétrie vs cancel route : un admin non-owner d'aucun producer ne peut pas confirmer au nom d'un producer absent. Voulu (philosophie séparation des rôles) ou trou ? Cf rapport TB commit `81b3c1a`.
+
+### Audit logs
+
+- **UI admin pour `audit_logs`** — la table existe et est alimentée (5 events auth Phase 1 instrumentés post-`acd8c03` + 6 events payment Phase 2 instrumentés post-chantier P1 robuste 27/04), mais aucune page back-office pour consulter les logs côté admin. Chantier futur : page `/admin/audit-logs` avec filtres par event_type, user_id, date range, pagination. D'autant plus utile maintenant que la table contient aussi les events payment forensiques (refunds, résurrections, blocages).
+- **Events audit additionnels Phase 3** — Phase 1 (auth, 5 events) ✅ + Phase 2 (payment, 6 events : `order_payment_succeeded` / `order_payment_failed` / `order_revival_succeeded` / `order_revival_blocked_stock` / `order_revival_blocked_slot` / `order_revival_refund_failed`) ✅. Restent à instrumenter en Phase 3 : `account_signup`, `email_change`, `account_deletion` (RGPD), `admin_login` (event distinct du password login pour traçabilité forensique admin spéciale), `role_change` (promotion consumer→producer, suspend/reactivate, etc.), Stripe events spécifiques (charge, dispute, payout completed/failed). Chantier futur dédié.
+
+### Auth / cleanup
+
 - **Suppression page legacy `/reset-password` (~1 semaine post-deploy)** — la nouvelle page dédiée `/reinitialiser-mot-de-passe` (commit `5ff9394`) la remplace. Garder la legacy ~1 semaine pour absorber les emails reset password en transit avec l'ancien template, puis supprimer.
 - **Code mort résiduel commit `d4088d5` (~1-2 semaines fenêtre rétro-compat PKCE)** — depuis la bascule OTP `token_hash` (commit `09c219d`), le flow PKCE magic link n'est plus utilisé. Code de gestion `?code=` côté `/auth/callback` devient mort à expiration de la fenêtre de rétro-compat (~1-2 semaines pour absorber les anciens emails magic link en transit). Purge prévue post-fenêtre.
 - **Phase 3 finale vision funnel — DROP COLUMN `prenom_affichage`** — sous-chantier `reads` livré post-marathon (commits `894fa5e` + `1110816`) : toutes les lectures publiques migrées vers `users.prenom`. Restent à faire : retirer les écritures `prenom_affichage = 'À compléter'` dans les 3 INSERT runtime (`create-account.ts`, `login-and-upgrade.ts`, `invitation/page.tsx` SSR), retirer le champ `prenom_affichage` du wizard + édition onboarding, retirer `producers.prenom_affichage` côté seed/cleanup, migration DROP NOT NULL puis DROP COLUMN. Chantier dédié (~10-15 fichiers).
-- **Robust fix navbar — enrichir `initialUser` SSR avec `isAdmin`** (déféré 26/04 post-`6a9ebd3`) — actuellement `loading=true` côté provider tant que le profile (roles/admin/producer) n'est pas chargé côté client → le badge Admin a un bref flash sans badge avant son apparition. Pour l'éliminer : pré-fetch `is_admin()` côté SSR dans `app/layout.tsx` et passer le flag au `UserProvider`. Non bloquant (flash très court).
-- **UI admin pour `audit_logs`** — la table existe et est alimentée (5 events auth instrumentés post-`acd8c03`), mais aucune page back-office pour consulter les logs côté admin. Chantier futur : page `/admin/audit-logs` avec filtres par event_type, user_id, date range, pagination.
-- **Events audit additionnels** — Phase 1 livrée couvre auth (5 events). Restent à instrumenter : `account_signup`, `email_change`, `account_deletion` (RGPD), `admin_login` (event distinct du password login pour traçabilité forensique admin spéciale), `role_change` (promotion consumer→producer, suspend/reactivate, etc.), Stripe events (charge, refund, dispute). Chantier futur Phase 2 audit logs.
 
 ## 🗺️ Roadmap produit (vision Avril 2026)
 
