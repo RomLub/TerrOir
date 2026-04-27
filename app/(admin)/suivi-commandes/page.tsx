@@ -12,10 +12,20 @@ import { AdminPageHeader, MetricCard, StatusDotBadge, TableStatus } from '@/comp
 
 type Status = 'pending' | 'confirmed' | 'ready' | 'completed' | 'cancelled' | 'refunded';
 
-// Pseudo-statut UI : commandes cancelled+payment_failed affichées avec
-// un badge dédié (gris doux) pour les distinguer des annulations volontaires
-// (rouge "danger"). Visible côté admin uniquement, le consumer ne les voit pas.
-type DisplayStatus = Status | 'payment_failed_pseudo';
+// Pseudo-statuts UI : commandes cancelled avec cancellation_reason
+// spécifiques au flow Stripe webhook, affichées avec badges distincts
+// (gris doux pour payment_failed, terra clair pour les revival_blocked_*)
+// pour drill-down admin. Visible côté admin uniquement, le consumer ne
+// les voit pas (filtre `isVoidOrderRow` côté consumer commit 3).
+//
+// 2 pseudo-statuts distincts pour revival_blocked_* (vs 1 générique) :
+// permet l'analytics fine "combien de blocages stock vs slot ce mois-ci"
+// et la cohérence avec le drill-down par cancellation_reason.
+type DisplayStatus =
+  | Status
+  | 'payment_failed_pseudo'
+  | 'revival_blocked_stock_pseudo'
+  | 'revival_blocked_slot_pseudo';
 
 type Order = {
   id: string;
@@ -30,9 +40,15 @@ type Order = {
   cancellation_reason: string | null;
 };
 
-// `payment_failed` est une pseudo-valeur UI (pas un statut DB) qui filtre
-// sur (status='cancelled' AND cancellation_reason='payment_failed').
-type Filter = 'all' | Status | 'payment_failed';
+// Pseudo-valeurs UI (pas des statuts DB) qui filtrent sur des couples
+// (status, cancellation_reason) spécifiques. Drill-down admin séparé pour
+// chaque type de blocage Stripe.
+type Filter =
+  | 'all'
+  | Status
+  | 'payment_failed'
+  | 'revival_blocked_stock'
+  | 'revival_blocked_slot';
 const FILTERS: { value: Filter; label: string }[] = [
   { value: 'all', label: 'Toutes' },
   { value: 'pending', label: 'À confirmer' },
@@ -41,20 +57,44 @@ const FILTERS: { value: Filter; label: string }[] = [
   { value: 'completed', label: 'Terminées' },
   { value: 'cancelled', label: 'Annulées' },
   { value: 'payment_failed', label: 'Tentatives échouées' },
+  { value: 'revival_blocked_stock', label: 'Bloquées (stock)' },
+  { value: 'revival_blocked_slot', label: 'Bloquées (créneau)' },
 ];
 
 const STATUS_META: Record<DisplayStatus, { label: string; dot: string; bg: string; text: string }> = {
-  pending:                { label: 'En attente',        dot: 'bg-amber-500',         bg: 'bg-amber-50',          text: 'text-amber-800' },
-  confirmed:              { label: 'Confirmée',         dot: 'bg-amber-600',         bg: 'bg-amber-100',         text: 'text-amber-900' },
-  ready:                  { label: 'Prête',             dot: 'bg-terroir-green-700', bg: 'bg-terroir-green-100', text: 'text-terroir-green-700' },
-  completed:              { label: 'Retirée',           dot: 'bg-terroir-green-700', bg: 'bg-terroir-green-100', text: 'text-terroir-green-700' },
-  cancelled:              { label: 'Annulée',           dot: 'bg-red-500',           bg: 'bg-red-100',           text: 'text-red-700' },
-  refunded:               { label: 'Remboursée',        dot: 'bg-red-500',           bg: 'bg-red-100',           text: 'text-red-700' },
-  payment_failed_pseudo:  { label: 'Tentative échouée', dot: 'bg-gray-400',          bg: 'bg-gray-100',          text: 'text-gray-700' },
+  pending:                       { label: 'En attente',         dot: 'bg-amber-500',         bg: 'bg-amber-50',          text: 'text-amber-800' },
+  confirmed:                     { label: 'Confirmée',          dot: 'bg-amber-600',         bg: 'bg-amber-100',         text: 'text-amber-900' },
+  ready:                         { label: 'Prête',              dot: 'bg-terroir-green-700', bg: 'bg-terroir-green-100', text: 'text-terroir-green-700' },
+  completed:                     { label: 'Retirée',            dot: 'bg-terroir-green-700', bg: 'bg-terroir-green-100', text: 'text-terroir-green-700' },
+  cancelled:                     { label: 'Annulée',            dot: 'bg-red-500',           bg: 'bg-red-100',           text: 'text-red-700' },
+  refunded:                      { label: 'Remboursée',         dot: 'bg-red-500',           bg: 'bg-red-100',           text: 'text-red-700' },
+  payment_failed_pseudo:         { label: 'Tentative échouée',  dot: 'bg-gray-400',          bg: 'bg-gray-100',          text: 'text-gray-700' },
+  revival_blocked_stock_pseudo:  { label: 'Bloquée (stock)',    dot: 'bg-terroir-terra-700', bg: 'bg-terroir-terra-100', text: 'text-terroir-terra-700' },
+  revival_blocked_slot_pseudo:   { label: 'Bloquée (créneau)',  dot: 'bg-terroir-terra-700', bg: 'bg-terroir-terra-100', text: 'text-terroir-terra-700' },
 };
 
 function isPaymentFailedOrder(o: { status: Status; cancellation_reason: string | null }): boolean {
   return o.status === 'cancelled' && o.cancellation_reason === 'payment_failed';
+}
+
+function isRevivalBlockedStockOrder(o: { status: Status; cancellation_reason: string | null }): boolean {
+  return o.status === 'cancelled' && o.cancellation_reason === 'revival_blocked_stock';
+}
+
+function isRevivalBlockedSlotOrder(o: { status: Status; cancellation_reason: string | null }): boolean {
+  return o.status === 'cancelled' && o.cancellation_reason === 'revival_blocked_slot';
+}
+
+// Une order est "void" du point de vue métier : pas d'engagement réel
+// (paiement non finalisé ou refundé automatiquement par le webhook).
+// Couvre les 3 reasons générées par le flow Stripe webhook, exclues des
+// metrics today + completion (commit 3 chantier résurrection robuste).
+function isVoidOrder(o: { status: Status; cancellation_reason: string | null }): boolean {
+  return (
+    isPaymentFailedOrder(o) ||
+    isRevivalBlockedStockOrder(o) ||
+    isRevivalBlockedSlotOrder(o)
+  );
 }
 
 function startOfWeek(d: Date): Date {
@@ -142,20 +182,20 @@ export default function AdminCommandesPage() {
     const todayStart = startOfDay(now).getTime();
     const weekStart = startOfWeek(now).getTime();
 
-    // Les payment_failed ne sont pas de vraies commandes (paiement non
-    // finalisé) → exclues des compteurs métier. weekRevenue les exclut
-    // déjà par effet de bord (filtre cancelled/refunded global) ; on
-    // étend la cohérence à `today` et au denominateur de `completion`
-    // (option (a) du chantier P2 : strict scope payment_failed).
+    // Les void orders (payment_failed, revival_blocked_*) ne sont pas
+    // de vraies commandes (paiement non finalisé OU refundé automatiquement
+    // par le webhook) → exclues des compteurs métier. weekRevenue les
+    // exclut déjà par effet de bord (filtre cancelled/refunded global) ;
+    // cohérence étendue à `today` et au denominateur de `completion`.
     const today = orders.filter((o) =>
-      new Date(o.created_at).getTime() >= todayStart && !isPaymentFailedOrder(o),
+      new Date(o.created_at).getTime() >= todayStart && !isVoidOrder(o),
     ).length;
     const weekOrders = orders.filter((o) => new Date(o.created_at).getTime() >= weekStart && o.status !== 'cancelled' && o.status !== 'refunded');
     const weekRevenue = weekOrders.reduce((s, o) => s + o.total, 0);
     const finished = orders.filter((o) => o.status === 'completed').length;
     const closed = orders.filter((o) =>
       (o.status === 'completed' || o.status === 'cancelled' || o.status === 'refunded')
-      && !isPaymentFailedOrder(o),
+      && !isVoidOrder(o),
     ).length;
     const completion = closed > 0 ? (finished / closed) * 100 : 0;
     return { today, weekRevenue, completion };
@@ -166,10 +206,15 @@ export default function AdminCommandesPage() {
     return orders.filter((o) => {
       if (filter === 'payment_failed') {
         if (!isPaymentFailedOrder(o)) return false;
+      } else if (filter === 'revival_blocked_stock') {
+        if (!isRevivalBlockedStockOrder(o)) return false;
+      } else if (filter === 'revival_blocked_slot') {
+        if (!isRevivalBlockedSlotOrder(o)) return false;
       } else if (filter === 'cancelled') {
-        // Le filtre 'cancelled' classique exclut maintenant les
-        // payment_failed (qui ont leur tab dédié pour drill-down).
-        if (o.status !== 'cancelled' || isPaymentFailedOrder(o)) return false;
+        // Le filtre 'cancelled' classique exclut les void orders Stripe
+        // (payment_failed, revival_blocked_*) qui ont leur tab dédié
+        // pour drill-down.
+        if (o.status !== 'cancelled' || isVoidOrder(o)) return false;
       } else if (filter !== 'all' && o.status !== filter) {
         return false;
       }
@@ -262,7 +307,11 @@ export default function AdminCommandesPage() {
               ) : filtered.map((o) => {
                 const meta = isPaymentFailedOrder(o)
                   ? STATUS_META.payment_failed_pseudo
-                  : STATUS_META[o.status];
+                  : isRevivalBlockedStockOrder(o)
+                    ? STATUS_META.revival_blocked_stock_pseudo
+                    : isRevivalBlockedSlotOrder(o)
+                      ? STATUS_META.revival_blocked_slot_pseudo
+                      : STATUS_META[o.status];
                 return (
                   <tr key={o.id} className="border-b border-gray-200 last:border-0 hover:bg-gray-50">
                     <td className="px-5 py-4 font-mono text-[12px] text-gray-700">{o.code_commande ?? '—'}</td>

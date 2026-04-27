@@ -7,15 +7,114 @@ import { Button, CodeCommande } from '@/components/ui';
 export type ConfirmationProps = {
   orderId: string;
   codeCommande: string;
+  statut: string;
+  cancellationReason: string | null;
   items: { name: string; qty: string; price: number }[];
   producer: { name: string; address: string };
   slot: { dateLabel: string; timeLabel: string; dateISO: string; startISO: string; endISO: string };
   total: number;
 };
 
-export function ConfirmationClient({ orderId, codeCommande, items, producer, slot, total }: ConfirmationProps) {
+// Cas pathologique : commande arrivée jusqu'à la page confirmation mais
+// la résurrection 3DS-retry a été bloquée (stock épuisé ou slot saturé
+// entre temps). Stripe a refundé automatiquement (cf webhook commit
+// 9d6cb13), on doit afficher un message clair plutôt que le banner
+// "Merci, c'est payé." qui serait trompeur.
+function RevivalBlockedView({
+  codeCommande,
+  cancellationReason,
+  producer,
+  items,
+  total,
+}: {
+  codeCommande: string;
+  cancellationReason: 'revival_blocked_stock' | 'revival_blocked_slot';
+  producer: { name: string };
+  items: { name: string; qty: string; price: number }[];
+  total: number;
+}) {
+  const isStock = cancellationReason === 'revival_blocked_stock';
+  const headline = 'Commande non honorée';
+  const reasonText = isStock
+    ? 'Le stock du produit a été épuisé entre votre tentative initiale de paiement et la validation finale.'
+    : 'Le créneau de retrait a été pris par un autre client entre votre tentative initiale et la validation finale.';
+  const fixSuggestion = isStock
+    ? 'Vous pouvez repasser commande chez ce producteur ou un autre.'
+    : 'Vous pouvez choisir un autre créneau ou un autre producteur.';
+
+  return (
+    <section className="max-w-3xl mx-auto py-8 text-center">
+      <div className="w-24 h-24 mx-auto rounded-full bg-terra-100 border-2 border-terra-700 flex items-center justify-center">
+        <span className="text-terra-700 text-5xl leading-none" aria-hidden>!</span>
+      </div>
+      <span className="mt-6 inline-block text-[11px] uppercase tracking-[0.2em] text-terra-700 font-semibold">Paiement remboursé</span>
+      <h1 className="mt-2 font-serif text-[44px] md:text-[56px] text-green-900 leading-tight">{headline}</h1>
+      <p className="mt-3 text-[16px] text-dark/70 max-w-xl mx-auto">
+        {reasonText}{' '}
+        <strong>Un remboursement intégral a été initié</strong> sur votre moyen de paiement
+        (3 à 5 jours ouvrés). {fixSuggestion}
+      </p>
+
+      <div className="mt-12 text-left bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6 md:p-8">
+        <div className="text-[11px] uppercase tracking-[0.14em] text-terra-700 font-semibold">
+          Détails de la tentative
+        </div>
+        {codeCommande && (
+          <div className="mt-2 text-[12px] mono text-dark/55">Code : {codeCommande}</div>
+        )}
+        <div className="mt-1 font-serif text-[18px] text-green-900">{producer.name}</div>
+
+        <ul className="mt-4 divide-y divide-dark/[0.06]">
+          {items.map((it, i) => (
+            <li key={i} className="py-3 flex items-center justify-between gap-4">
+              <div>
+                <div className="text-[15px] text-dark font-medium">{it.name}</div>
+                <div className="text-[12px] text-dark/50 mono">{it.qty}</div>
+              </div>
+              <div className="font-serif text-[18px] text-green-900 tabular-nums">{it.price.toFixed(2).replace('.', ',')} €</div>
+            </li>
+          ))}
+        </ul>
+        <div className="border-t border-dark/[0.08] mt-3 pt-3 flex items-baseline justify-between">
+          <span className="font-serif text-[18px] text-green-900">Montant remboursé</span>
+          <span className="font-serif text-[24px] text-green-900 tabular-nums">{total.toFixed(2).replace('.', ',')} €</span>
+        </div>
+      </div>
+
+      <div className="mt-8 flex items-center justify-center gap-3 flex-wrap">
+        <Link href="/carte"><Button size="lg">Trouver un autre producteur →</Button></Link>
+        <Link href="/compte/commandes"><Button variant="secondary" size="lg">Voir mes commandes</Button></Link>
+      </div>
+    </section>
+  );
+}
+
+export function ConfirmationClient({ orderId, codeCommande, statut, cancellationReason, items, producer, slot, total }: ConfirmationProps) {
+  // Hooks d'animation du path nominal — déclarés AVANT le branchement
+  // conditionnel pour respecter les rules-of-hooks (mêmes hooks dans le
+  // même ordre à chaque render). Inutilisés sur le path RevivalBlockedView
+  // mais le coût est négligeable et la conformité ESLint est nécessaire.
   const [animate, setAnimate] = useState(false);
   useEffect(() => { const t = setTimeout(() => setAnimate(true), 80); return () => clearTimeout(t); }, []);
+
+  // Cas pathologique : la commande a été refusée à la résurrection
+  // (stock épuisé ou slot saturé entre temps). Affiche un message clair
+  // au lieu du banner "Merci, c'est payé." qui serait trompeur.
+  if (
+    statut === 'cancelled' &&
+    (cancellationReason === 'revival_blocked_stock' ||
+      cancellationReason === 'revival_blocked_slot')
+  ) {
+    return (
+      <RevivalBlockedView
+        codeCommande={codeCommande}
+        cancellationReason={cancellationReason}
+        producer={{ name: producer.name }}
+        items={items}
+        total={total}
+      />
+    );
+  }
 
   const icsUrl = () => {
     const ics = [

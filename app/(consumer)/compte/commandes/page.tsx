@@ -19,12 +19,33 @@ type OrderRow = {
   item_count: number;
 };
 
-// Une commande annulée par échec de paiement (3DS-fail, fonds insuffisants…)
-// n'a jamais été engagée du point de vue consumer : pas d'argent débité, pas
-// de produit réservé. Filtre côté front pour ne pas polluer l'historique
-// (cf bug P2 commit 9482e5b qui pose cancellation_reason='payment_failed').
-function isPaymentFailedRow(o: { statut: OrderStatus; cancellation_reason: string | null }): boolean {
-  return o.statut === 'cancelled' && o.cancellation_reason === 'payment_failed';
+// Une commande annulée pour cause de paiement non finalisé n'a jamais été
+// engagée du point de vue consumer : pas d'argent débité (ou refundé), pas
+// de produit réservé. Filtre côté front pour ne pas polluer l'historique.
+//
+// Couvre 3 cancellation_reason générés par le flow Stripe webhook :
+//   - 'payment_failed'          : 3DS-fail / fonds insuffisants / carte
+//                                 refusée (commit P2 9482e5b).
+//   - 'revival_blocked_stock'   : 3DS-retry succeeded mais stock épuisé
+//                                 entre temps, refund auto (commit 9d6cb13).
+//   - 'revival_blocked_slot'    : idem mais slot saturé entre temps.
+//
+// Les autres reasons ('consumer_cancel', 'producer_cancel', 'timeout',
+// 'stock' rupture post-confirmed, 'admin_refund', 'other') restent
+// visibles : elles documentent un engagement qui a EU lieu puis a été
+// annulé, légitime à l'historique consumer.
+const VOID_ORDER_REASONS: ReadonlySet<string> = new Set([
+  'payment_failed',
+  'revival_blocked_stock',
+  'revival_blocked_slot',
+]);
+
+function isVoidOrderRow(o: { statut: OrderStatus; cancellation_reason: string | null }): boolean {
+  return (
+    o.statut === 'cancelled' &&
+    o.cancellation_reason !== null &&
+    VOID_ORDER_REASONS.has(o.cancellation_reason)
+  );
 }
 
 type Filter = 'all' | 'active' | 'done' | 'cancelled';
@@ -94,7 +115,7 @@ export default function CommandesPage() {
             item_count: itemsArr.length,
           };
         })
-        .filter((r) => !isPaymentFailedRow(r));
+        .filter((r) => !isVoidOrderRow(r));
 
       setOrders(rows);
       setLoading(false);
@@ -110,11 +131,12 @@ export default function CommandesPage() {
               statut: OrderStatus;
               cancellation_reason: string | null;
             };
-            // Si la commande visible bascule en payment_failed (UPDATE webhook
-            // 3DS-fail en temps réel), on la retire du state — du point de
-            // vue consumer elle n'a jamais été engagée. Sinon merge classique.
+            // Si la commande visible bascule en void (payment_failed,
+            // revival_blocked_stock, revival_blocked_slot — UPDATE webhook
+            // en temps réel), on la retire du state : du point de vue
+            // consumer elle n'a jamais été engagée. Sinon merge classique.
             setOrders((prev) => {
-              if (isPaymentFailedRow(updated)) {
+              if (isVoidOrderRow(updated)) {
                 return prev.filter((o) => o.id !== updated.id);
               }
               return prev.map((o) =>

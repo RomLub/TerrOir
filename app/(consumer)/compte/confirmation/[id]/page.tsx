@@ -35,7 +35,7 @@ export default async function ConfirmationPage({ params }: { params: { id: strin
     .from('orders')
     .select(`
       id, code_commande, consumer_id, producer_id, slot_id,
-      date_retrait, heure_retrait, montant_total, statut,
+      date_retrait, heure_retrait, montant_total, statut, cancellation_reason,
       producers:producer_id ( nom_exploitation, adresse, commune, code_postal ),
       slots:slot_id ( starts_at, ends_at ),
       order_items ( quantite, prix_unitaire, sous_total, products:product_id ( nom, unite ) )
@@ -81,6 +81,8 @@ export default async function ConfirmationPage({ params }: { params: { id: strin
     <ConfirmationClient
       orderId={order.id}
       codeCommande={order.code_commande ?? ''}
+      statut={order.statut as string}
+      cancellationReason={(order.cancellation_reason as string | null) ?? null}
       items={items}
       producer={{ name: producerRow?.nom_exploitation ?? 'Producteur', address: address || '—' }}
       slot={{

@@ -12,6 +12,9 @@ import { sendNewOrderProducerSms } from "@/lib/twilio/sms";
 import OrderConfirmedProducer, {
   subject as producerSubject,
 } from "@/lib/resend/templates/order-confirmed-producer";
+import OrderRevivalBlocked, {
+  subject as revivalBlockedSubject,
+} from "@/lib/resend/templates/order-revival-blocked";
 import type { OrderItemLine } from "@/lib/resend/templates/order-confirmed-consumer";
 
 // Route Handler: on lit le body brut avec request.text() pour que
@@ -82,15 +85,72 @@ export async function POST(request: Request) {
 
         // Résurrection bloquée stock/slot : refund Stripe OK + UPDATE
         // cancellation_reason déjà fait dans syncStripePaymentSucceeded.
-        // Audit log déjà poussé. Email consumer "résurrection bloquée"
-        // sera ajouté dans le commit 3 du chantier (template Resend
-        // order-revival-blocked + sendTemplate via waitUntil).
+        // Audit log déjà poussé. Reste à notifier le consumer par email
+        // pour fermer proprement le flow (le client a vu son paiement
+        // s'effectuer, doit comprendre qu'il a été remboursé).
         if (
           result === "revival_blocked_stock" ||
           result === "revival_blocked_slot"
         ) {
-          // TODO commit 3 : fetch order détails + sendTemplate
-          // order-revival-blocked au consumer via waitUntil.
+          if (!orderId) break;
+
+          // Fetch détails order pour composer l'email (montant + nom
+          // exploitation + email consumer + code commande).
+          const { data: order } = await admin
+            .from("orders")
+            .select(
+              "id, code_commande, consumer_id, producer_id, montant_total",
+            )
+            .eq("id", orderId)
+            .maybeSingle();
+
+          if (!order) break;
+
+          const [{ data: consumerUser }, { data: producer }] = await Promise.all([
+            admin
+              .from("users")
+              .select("email")
+              .eq("id", order.consumer_id)
+              .maybeSingle(),
+            admin
+              .from("producers")
+              .select("nom_exploitation")
+              .eq("id", order.producer_id)
+              .maybeSingle(),
+          ]);
+
+          if (consumerUser?.email && producer) {
+            const blockedReason: "stock" | "slot" =
+              result === "revival_blocked_stock" ? "stock" : "slot";
+            const props = {
+              codeCommande: order.code_commande ?? "",
+              exploitation: producer.nom_exploitation as string,
+              amount: Number(order.montant_total),
+              blockedReason,
+            };
+            // Découplage notification via waitUntil (cohérent avec le
+            // pattern producer notif). Stripe ack 200 immédiat ; envoi
+            // email asynchrone, helper sendTemplate ne throw pas.
+            waitUntil(
+              sendTemplate({
+                to: consumerUser.email,
+                userId: order.consumer_id as string | null,
+                template: "order_revival_blocked",
+                subject: revivalBlockedSubject(props),
+                element: <OrderRevivalBlocked {...props} />,
+                metadata: {
+                  order_id: order.id,
+                  code_commande: order.code_commande,
+                  payment_intent_id: pi.id,
+                  blocked_reason: result,
+                },
+              }).catch((err) => {
+                console.error(
+                  `[STRIPE_WEBHOOK_BG_ERR] order=${order.id} payment_intent=${pi.id} error=${(err as Error).message}`,
+                );
+              }),
+            );
+          }
           break;
         }
 
