@@ -10,14 +10,9 @@ import {
 import type { User } from "@supabase/supabase-js";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { UserRole } from "@/lib/auth/roles";
-import type { InitialUserPayload } from "@/lib/auth/types";
+import type { InitialUserPayload, ProducerLite } from "@/lib/auth/types";
 
-export interface ProducerLite {
-  id: string;
-  slug: string;
-  nom_exploitation: string;
-  statut: string;
-}
+export type { ProducerLite };
 
 export interface UserContextValue {
   user: User | null;
@@ -41,6 +36,7 @@ const EMPTY_INITIAL: InitialUserPayload = {
   user: null,
   isAdmin: false,
   isProducer: false,
+  producerLite: null,
 };
 
 export function UserProvider({
@@ -53,13 +49,15 @@ export function UserProvider({
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [user, setUser] = useState<User | null>(initial.user);
   const [roles, setRoles] = useState<UserRole[]>([]);
-  // isAdmin / isProducer SSR fournis par layout root via getInitialUserPayload()
-  // — élimine le flash badge Admin et le flash placeholder ProducerLayout au
-  // hard refresh. loadProfile rafraîchit les valeurs ensuite (couvre
-  // promotion/démotion en cours de session).
+  // isAdmin / isProducer / producerLite SSR fournis par layout root via
+  // getInitialUserPayload() — élimine le flash badge Admin et le flash
+  // placeholder ProducerLayout au hard refresh. loadProfile rafraîchit les
+  // valeurs ensuite (couvre promotion/démotion en cours de session).
   const [isAdmin, setIsAdmin] = useState(initial.isAdmin);
   const [isProducer, setIsProducer] = useState(initial.isProducer);
-  const [producer, setProducer] = useState<ProducerLite | null>(null);
+  const [producer, setProducer] = useState<ProducerLite | null>(
+    initial.producerLite,
+  );
   // loading reflète le chargement profile/roles/producer côté client.
   // Si SSR a fourni un user, on doit encore résoudre roles/producer → true.
   // Sinon (anonyme) il n'y a rien à charger → false.

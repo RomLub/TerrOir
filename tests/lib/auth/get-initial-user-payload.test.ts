@@ -62,19 +62,31 @@ afterEach(() => {
   consoleErrorSpy.mockRestore();
 });
 
+const fakeProducerLite = {
+  id: "producer-1",
+  slug: "ferme-x",
+  nom_exploitation: "Ferme X",
+  statut: "public",
+};
+
 describe("getInitialUserPayload", () => {
-  it("retourne { user: null, isAdmin: false, isProducer: false } pour un visiteur anonyme", async () => {
+  it("retourne payload anonyme avec producerLite=null pour un visiteur non authentifié", async () => {
     authGetUserMock.mockResolvedValue({ data: { user: null }, error: null });
 
     const res = await getInitialUserPayload();
 
-    expect(res).toEqual({ user: null, isAdmin: false, isProducer: false });
+    expect(res).toEqual({
+      user: null,
+      isAdmin: false,
+      isProducer: false,
+      producerLite: null,
+    });
     // Pas de lookup si pas de user → court-circuit avant Promise.all.
     expect(adminMaybeSingleMock).not.toHaveBeenCalled();
     expect(producerMaybeSingleMock).not.toHaveBeenCalled();
   });
 
-  it("retourne isAdmin=false isProducer=false pour un user authentifié consumer pur", async () => {
+  it("retourne isAdmin=false isProducer=false producerLite=null pour un consumer pur", async () => {
     authGetUserMock.mockResolvedValue({
       data: { user: fakeUser },
       error: null,
@@ -84,10 +96,15 @@ describe("getInitialUserPayload", () => {
 
     const res = await getInitialUserPayload();
 
-    expect(res).toEqual({ user: fakeUser, isAdmin: false, isProducer: false });
+    expect(res).toEqual({
+      user: fakeUser,
+      isAdmin: false,
+      isProducer: false,
+      producerLite: null,
+    });
   });
 
-  it("retourne isAdmin=true isProducer=false pour un user admin", async () => {
+  it("retourne isAdmin=true isProducer=false producerLite=null pour un user admin", async () => {
     authGetUserMock.mockResolvedValue({
       data: { user: fakeUser },
       error: null,
@@ -100,26 +117,36 @@ describe("getInitialUserPayload", () => {
 
     const res = await getInitialUserPayload();
 
-    expect(res).toEqual({ user: fakeUser, isAdmin: true, isProducer: false });
+    expect(res).toEqual({
+      user: fakeUser,
+      isAdmin: true,
+      isProducer: false,
+      producerLite: null,
+    });
   });
 
-  it("retourne isProducer=true isAdmin=false pour un user producer non-admin", async () => {
+  it("retourne producerLite complet et isProducer=true pour un user producer non-admin", async () => {
     authGetUserMock.mockResolvedValue({
       data: { user: fakeUser },
       error: null,
     });
     adminMaybeSingleMock.mockResolvedValue({ data: null, error: null });
     producerMaybeSingleMock.mockResolvedValue({
-      data: { id: "producer-1" },
+      data: fakeProducerLite,
       error: null,
     });
 
     const res = await getInitialUserPayload();
 
-    expect(res).toEqual({ user: fakeUser, isAdmin: false, isProducer: true });
+    expect(res).toEqual({
+      user: fakeUser,
+      isAdmin: false,
+      isProducer: true,
+      producerLite: fakeProducerLite,
+    });
   });
 
-  it("fail-safe granulaire : si admin lookup throw, isProducer reste correct", async () => {
+  it("fail-safe granulaire : si admin lookup throw, producerLite reste correct", async () => {
     // Validation cruciale du pattern fail-safe PAR lookup (vs global) :
     // un throw côté admin ne doit pas masquer le résultat producer.
     authGetUserMock.mockResolvedValue({
@@ -128,20 +155,27 @@ describe("getInitialUserPayload", () => {
     });
     adminMaybeSingleMock.mockRejectedValue(new Error("admin network fail"));
     producerMaybeSingleMock.mockResolvedValue({
-      data: { id: "producer-1" },
+      data: fakeProducerLite,
       error: null,
     });
 
     const res = await getInitialUserPayload();
 
-    expect(res).toEqual({ user: fakeUser, isAdmin: false, isProducer: true });
+    expect(res).toEqual({
+      user: fakeUser,
+      isAdmin: false,
+      isProducer: true,
+      producerLite: fakeProducerLite,
+    });
     expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
     const logged = String(consoleErrorSpy.mock.calls[0]?.[0] ?? "");
     expect(logged).toContain("GET_INITIAL_USER_PAYLOAD_WARN");
     expect(logged).toContain("admin lookup failed");
   });
 
-  it("fail-safe granulaire : si producer lookup throw, isAdmin reste correct", async () => {
+  it("fail-safe granulaire : si producer lookup throw, isAdmin reste correct et producerLite=null", async () => {
+    // Invariant fusion : un throw producer doit rendre isProducer=false ET
+    // producerLite=null cohérents (les deux dérivent du même lookup).
     authGetUserMock.mockResolvedValue({
       data: { user: fakeUser },
       error: null,
@@ -156,11 +190,16 @@ describe("getInitialUserPayload", () => {
 
     const res = await getInitialUserPayload();
 
-    expect(res).toEqual({ user: fakeUser, isAdmin: true, isProducer: false });
+    expect(res).toEqual({
+      user: fakeUser,
+      isAdmin: true,
+      isProducer: false,
+      producerLite: null,
+    });
     expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
     const logged = String(consoleErrorSpy.mock.calls[0]?.[0] ?? "");
     expect(logged).toContain("GET_INITIAL_USER_PAYLOAD_WARN");
-    expect(logged).toContain("producer lookup failed");
+    expect(logged).toContain("producerLite lookup failed");
   });
 
   it("fail-safe : si admin_users renvoie une error Supabase, fallback isAdmin=false", async () => {
@@ -176,11 +215,16 @@ describe("getInitialUserPayload", () => {
 
     const res = await getInitialUserPayload();
 
-    expect(res).toEqual({ user: fakeUser, isAdmin: false, isProducer: false });
+    expect(res).toEqual({
+      user: fakeUser,
+      isAdmin: false,
+      isProducer: false,
+      producerLite: null,
+    });
     expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("fail-safe : si producers renvoie une error Supabase, fallback isProducer=false", async () => {
+  it("fail-safe : si producers renvoie une error Supabase, fallback isProducer=false producerLite=null", async () => {
     authGetUserMock.mockResolvedValue({
       data: { user: fakeUser },
       error: null,
@@ -193,7 +237,12 @@ describe("getInitialUserPayload", () => {
 
     const res = await getInitialUserPayload();
 
-    expect(res).toEqual({ user: fakeUser, isAdmin: false, isProducer: false });
+    expect(res).toEqual({
+      user: fakeUser,
+      isAdmin: false,
+      isProducer: false,
+      producerLite: null,
+    });
     expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
   });
 });

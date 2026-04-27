@@ -2,9 +2,9 @@ import "server-only";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { UserRole } from "./roles";
-import type { InitialUserPayload } from "./types";
+import type { InitialUserPayload, ProducerLite } from "./types";
 
-export type { InitialUserPayload };
+export type { InitialUserPayload, ProducerLite };
 
 export interface SessionUser {
   id: string;
@@ -62,6 +62,12 @@ export async function isAdmin(userId: string): Promise<boolean> {
 // Fail-safe PAR lookup : si l'un throw, l'autre flag reste correct. Le client
 // corrigera de toute façon via onAuthStateChange → loadProfile au mount.
 //
+// Le 2e lookup retourne directement un `ProducerLite | null` (id, slug,
+// nom_exploitation, statut) — invariant `isProducer === (producerLite !== null)`,
+// fusion en 1 round-trip vs 2 lookups distincts (cf. plan session 27/04).
+// Le client ProducerLayout démarre avec un producer non-null dès le SSR →
+// élimine le flash placeholder « — » au hard refresh.
+//
 // Note archi : isAdmin && isProducer === true est impossible côté DB
 // (triggers users_exclusive_with_admin / admin_users_exclusive_with_users,
 // migration 20260421100000) — mais on garde les 2 lookups indépendants par
@@ -72,9 +78,11 @@ export async function getInitialUserPayload(): Promise<InitialUserPayload> {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) return { user: null, isAdmin: false, isProducer: false };
+  if (!user) {
+    return { user: null, isAdmin: false, isProducer: false, producerLite: null };
+  }
 
-  const [isAdmin, isProducer] = await Promise.all([
+  const [isAdmin, producerLite] = await Promise.all([
     (async () => {
       try {
         const { data, error } = await supabase
@@ -96,20 +104,20 @@ export async function getInitialUserPayload(): Promise<InitialUserPayload> {
       try {
         const { data, error } = await supabase
           .from("producers")
-          .select("id")
+          .select("id, slug, nom_exploitation, statut")
           .eq("user_id", user.id)
           .maybeSingle();
         if (error) throw error;
-        return !!data;
+        return (data as ProducerLite | null) ?? null;
       } catch (err) {
         console.error(
-          "[GET_INITIAL_USER_PAYLOAD_WARN] producer lookup failed",
+          "[GET_INITIAL_USER_PAYLOAD_WARN] producerLite lookup failed",
           err,
         );
-        return false;
+        return null;
       }
     })(),
   ]);
 
-  return { user, isAdmin, isProducer };
+  return { user, isAdmin, isProducer: producerLite !== null, producerLite };
 }
