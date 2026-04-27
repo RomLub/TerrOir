@@ -17,6 +17,10 @@ vi.mock("@/lib/stripe/server", () => ({
   },
 }));
 
+vi.mock("next/cache", () => ({
+  revalidateTag: vi.fn(),
+}));
+
 vi.mock("@/lib/resend/send", () => ({
   sendTemplate: vi.fn(),
 }));
@@ -31,6 +35,7 @@ import { POST } from "@/app/api/cron/order-timeout/route";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
 import { sendTemplate } from "@/lib/resend/send";
+import { revalidateTag } from "next/cache";
 
 // =============================================================================
 // Mock Supabase admin — chaque appel `from(table)` retourne un builder neuf.
@@ -159,6 +164,8 @@ const ORIGINAL_CRON_SECRET = process.env.CRON_SECRET;
 const FROZEN_NOW = new Date("2026-04-27T12:00:00.000Z");
 const EXPECTED_CUTOFF = "2026-04-26T12:00:00.000Z";
 
+let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+
 beforeEach(() => {
   process.env.CRON_SECRET = "test-secret";
 
@@ -174,10 +181,15 @@ beforeEach(() => {
   vi.mocked(sendTemplate).mockResolvedValue({ ok: true, id: "email_id" });
 
   vi.mocked(createSupabaseAdminClient).mockReset();
+
+  vi.mocked(revalidateTag).mockReset();
+
+  consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 });
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
   if (ORIGINAL_CRON_SECRET === undefined) {
     delete process.env.CRON_SECRET;
   } else {
@@ -451,15 +463,134 @@ describe("POST /api/cron/order-timeout — email notification", () => {
 });
 
 // =============================================================================
-// Dérives latentes documentées (B1 / B2). À traiter dans le chantier
-// "alignement routes orders" qui couvrira aussi les asymétries déjà flag
-// sur app/api/stripe/refund/route.ts.
+// B1-B2. Robustesse UPDATE (anciennement it.todo, désormais couverts)
 // =============================================================================
-describe("POST /api/cron/order-timeout — dérives connues (it.todo)", () => {
-  it.todo(
-    "B1: UPDATE error doit remonter dans results — actuellement dérive silencieuse (route.tsx ~L59-66, pas de check error)",
-  );
-  it.todo(
-    "B2: UPDATE en échec après refund Stripe réussi → prochain run retente le refund (route.tsx ~L44-66, refund avant UPDATE)",
-  );
+describe("POST /api/cron/order-timeout — UPDATE error handling", () => {
+  it("B1 UPDATE error remonte dans results.db_error, status 200, sendTemplate skipped pour cet order", async () => {
+    const order = makeOrder({ id: "order-db-fail", paymentIntent: null });
+    const { client, captured } = makeSupabase({
+      selectOrders: { data: [order], error: null },
+      updateOrders: { data: null, error: { message: "RLS denied" } },
+    });
+    vi.mocked(createSupabaseAdminClient).mockReturnValue(client);
+
+    const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      processed: number;
+      results: Array<Record<string, unknown>>;
+    };
+
+    // L'UPDATE a bien été tenté (capturé) et a échoué.
+    expect(captured.updates.find((u) => u.table === "orders")).toBeDefined();
+
+    // L'erreur DB remonte explicitement dans results.
+    expect(body.processed).toBe(1);
+    expect(body.results).toEqual([
+      {
+        order_id: "order-db-fail",
+        refunded: false,
+        db_error: "RLS denied",
+      },
+    ]);
+
+    // Email skip (continue dans la boucle après UPDATE error).
+    expect(vi.mocked(sendTemplate)).not.toHaveBeenCalled();
+  });
+
+  it("B2 refund Stripe OK + UPDATE error → console.warn [REFUND_DB_DRIFT] grep-able avec order_id+pi", async () => {
+    const order = makeOrder({ id: "order-drift", paymentIntent: "pi_drift" });
+    const { client } = makeSupabase({
+      selectOrders: { data: [order], error: null },
+      updateOrders: { data: null, error: { message: "constraint violation" } },
+    });
+    vi.mocked(createSupabaseAdminClient).mockReturnValue(client);
+
+    const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
+    expect(res.status).toBe(200);
+
+    // Le refund Stripe a bien été émis (avant l'UPDATE).
+    expect(vi.mocked(stripe.refunds.create)).toHaveBeenCalledTimes(1);
+
+    // Warning de drift Stripe/DB capturé avec préfixe grep-able + order_id + pi.
+    const driftWarnings = consoleWarnSpy.mock.calls
+      .map((c: unknown[]) => String(c[0] ?? ""))
+      .filter((m: string) => m.includes("[REFUND_DB_DRIFT]"));
+    expect(driftWarnings).toHaveLength(1);
+    expect(driftWarnings[0]).toContain("order=order-drift");
+    expect(driftWarnings[0]).toContain("pi=pi_drift");
+    expect(driftWarnings[0]).toContain("constraint violation");
+  });
+
+  it("B2bis pas de refund Stripe (no PI) + UPDATE error → pas de [REFUND_DB_DRIFT] (drift impossible)", async () => {
+    const order = makeOrder({ id: "order-no-pi", paymentIntent: null });
+    const { client } = makeSupabase({
+      selectOrders: { data: [order], error: null },
+      updateOrders: { data: null, error: { message: "RLS denied" } },
+    });
+    vi.mocked(createSupabaseAdminClient).mockReturnValue(client);
+
+    await POST(makeRequest({ auth: "Bearer test-secret" }));
+
+    const driftWarnings = consoleWarnSpy.mock.calls
+      .map((c: unknown[]) => String(c[0] ?? ""))
+      .filter((m: string) => m.includes("[REFUND_DB_DRIFT]"));
+    expect(driftWarnings).toHaveLength(0);
+  });
+});
+
+// =============================================================================
+// B3-B5. revalidateTag('public-stats') en sortie de boucle
+// =============================================================================
+describe("POST /api/cron/order-timeout — revalidateTag", () => {
+  it("B3 cas nominal (≥1 UPDATE OK) → revalidateTag('public-stats') appelé une seule fois", async () => {
+    const orderA = makeOrder({ id: "order-A", paymentIntent: null });
+    const orderB = makeOrder({ id: "order-B", paymentIntent: "pi_ok" });
+    const { client } = makeSupabase({
+      selectOrders: { data: [orderA, orderB], error: null },
+    });
+    vi.mocked(createSupabaseAdminClient).mockReturnValue(client);
+
+    await POST(makeRequest({ auth: "Bearer test-secret" }));
+
+    // Une seule invalidation atomique pour tout le batch (pas N).
+    expect(vi.mocked(revalidateTag)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(revalidateTag)).toHaveBeenCalledWith("public-stats");
+  });
+
+  it("B4 revalidateTag throw → 200 conservé + console.warn [STATS_REVAL_WARN]", async () => {
+    const order = makeOrder({ id: "order-1", paymentIntent: null });
+    const { client } = makeSupabase({
+      selectOrders: { data: [order], error: null },
+    });
+    vi.mocked(createSupabaseAdminClient).mockReturnValue(client);
+    vi.mocked(revalidateTag).mockImplementation(() => {
+      throw new Error("cache down");
+    });
+
+    const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
+    expect(res.status).toBe(200);
+
+    const revalWarnings = consoleWarnSpy.mock.calls
+      .map((c: unknown[]) => String(c[0] ?? ""))
+      .filter((m: string) => m.includes("[STATS_REVAL_WARN]"));
+    expect(revalWarnings).toHaveLength(1);
+    expect(revalWarnings[0]).toContain("cron=order-timeout");
+    expect(revalWarnings[0]).toContain("cache down");
+  });
+
+  it("B5 toutes les UPDATE échouent → revalidateTag PAS appelé (no-op silent)", async () => {
+    const orderA = makeOrder({ id: "order-A", paymentIntent: null });
+    const orderB = makeOrder({ id: "order-B", paymentIntent: null });
+    const { client } = makeSupabase({
+      selectOrders: { data: [orderA, orderB], error: null },
+      updateOrders: { data: null, error: { message: "RLS denied" } },
+    });
+    vi.mocked(createSupabaseAdminClient).mockReturnValue(client);
+
+    await POST(makeRequest({ auth: "Bearer test-secret" }));
+
+    // Aucune UPDATE n'a réussi → cache non invalidé (cache stale > flap à vide).
+    expect(vi.mocked(revalidateTag)).not.toHaveBeenCalled();
+  });
 });

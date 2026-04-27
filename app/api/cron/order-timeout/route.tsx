@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { assertCronAuth } from "@/lib/cron/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
@@ -36,6 +37,7 @@ export async function POST(request: Request) {
     order_id: string;
     refunded: boolean;
     error?: string;
+    db_error?: string;
   }> = [];
 
   for (const order of orders) {
@@ -56,7 +58,7 @@ export async function POST(request: Request) {
 
     assertTransition("pending", nextStatus);
 
-    await admin
+    const { error: updateError } = await admin
       .from("orders")
       .update({
         statut: nextStatus,
@@ -64,6 +66,23 @@ export async function POST(request: Request) {
         cancelled_at: new Date().toISOString(),
       })
       .eq("id", order.id);
+
+    if (updateError) {
+      // Drift Stripe/DB : refund déjà émis chez Stripe mais statut DB
+      // toujours pending → prochain run du cron retentera + risque de
+      // double refund. Préfixe grep-able pour réconciliation manuelle.
+      if (order.stripe_payment_intent_id && !refundError) {
+        console.warn(
+          `[REFUND_DB_DRIFT] order=${order.id} pi=${order.stripe_payment_intent_id} ${updateError.message}`,
+        );
+      }
+      results.push({
+        order_id: order.id,
+        refunded: false,
+        db_error: updateError.message,
+      });
+      continue;
+    }
 
     // Producteur + email consommateur
     const { data: producer } = await admin
@@ -98,6 +117,20 @@ export async function POST(request: Request) {
       refunded: !refundError && Boolean(order.stripe_payment_intent_id),
       error: refundError,
     });
+  }
+
+  // Une seule invalidation atomique en sortie de boucle si au moins un
+  // UPDATE a réussi : évite N invalidations sur un batch large + no-op
+  // silent si toutes les UPDATE échouent (cache stale est préférable à
+  // une invalidation à vide).
+  if (results.some((r) => !r.db_error)) {
+    try {
+      revalidateTag("public-stats");
+    } catch (e) {
+      console.warn(
+        `[STATS_REVAL_WARN] cron=order-timeout ${(e as Error).message}`,
+      );
+    }
   }
 
   return NextResponse.json({ processed: results.length, results });
