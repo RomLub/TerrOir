@@ -80,6 +80,38 @@ export async function POST(request: Request) {
           break;
         }
 
+        // Résurrection bloquée stock/slot : refund Stripe OK + UPDATE
+        // cancellation_reason déjà fait dans syncStripePaymentSucceeded.
+        // Audit log déjà poussé. Email consumer "résurrection bloquée"
+        // sera ajouté dans le commit 3 du chantier (template Resend
+        // order-revival-blocked + sendTemplate via waitUntil).
+        if (
+          result === "revival_blocked_stock" ||
+          result === "revival_blocked_slot"
+        ) {
+          // TODO commit 3 : fetch order détails + sendTemplate
+          // order-revival-blocked au consumer via waitUntil.
+          break;
+        }
+
+        // Résurrection bloquée + refund Stripe a échoué : alerte admin
+        // pour retry manuel. État DB préservé (cancelled+payment_failed)
+        // pour permettre un nouveau passage de la RPC après remédiation.
+        if (result === "revival_refund_failed") {
+          await admin.from("notifications").insert({
+            user_id: null,
+            type: "email",
+            template: "webhook_anomaly_refund_failed",
+            statut: "failed",
+            metadata: {
+              order_id: orderId,
+              event: "payment_intent.succeeded",
+              payment_intent_id: pi.id,
+            },
+          });
+          break;
+        }
+
         // result === "pending_to_notify" || "revived_to_notify" :
         // dans les deux cas, orderId est non-null et l'order est
         // maintenant en statut='pending'. Le producer doit être notifié

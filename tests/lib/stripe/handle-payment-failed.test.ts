@@ -3,12 +3,20 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type Stripe from "stripe";
 import { syncStripePaymentFailed } from "@/lib/stripe/handle-payment-failed";
 import { revalidatePublicStats } from "@/lib/stats/revalidate";
+import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
 
 // Mock du wrapper server action — pas besoin d'invalider un vrai cache
 // next/cache dans des tests vitest, on vérifie juste qu'il est appelé
 // (resp. PAS appelé) selon le chemin pris.
 vi.mock("@/lib/stats/revalidate", () => ({
   revalidatePublicStats: vi.fn(),
+}));
+
+// Mock audit log pour vérifier l'instrumentation Phase 2 (commit 2 chantier
+// résurrection robuste). Le helper réel est testé séparément
+// (tests/lib/audit-logs/log-payment-event.test.ts, commit 6b4a835).
+vi.mock("@/lib/audit-logs/log-payment-event", () => ({
+  logPaymentEvent: vi.fn(),
 }));
 
 // Mock Supabase. Le helper effectue jusqu'à 2 chaînes :
@@ -27,7 +35,7 @@ type Captured = {
 };
 
 const DEFAULT_FETCH: Resp = {
-  data: { id: "order-42", statut: "pending" },
+  data: { id: "order-42", statut: "pending", consumer_id: "user-7" },
   error: null,
 };
 const DEFAULT_UPDATE: Resp = { data: null, error: null };
@@ -104,6 +112,7 @@ let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
   consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
   vi.mocked(revalidatePublicStats).mockClear();
+  vi.mocked(logPaymentEvent).mockClear();
 });
 
 afterEach(() => {
@@ -242,5 +251,73 @@ describe("syncStripePaymentFailed — Cas 7 : cancelled (cas nominal pending)", 
     // Cache public-stats invalidé (count public dépend du statut).
     expect(vi.mocked(revalidatePublicStats)).toHaveBeenCalledTimes(1);
     expect(consoleWarnSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("syncStripePaymentFailed — Cas 8 : audit log Phase 2 (path nominal)", () => {
+  it("path cancelled → log order_payment_failed avec userId=consumer_id + metadata", async () => {
+    const { client } = makeSupabase();
+    const pi = makePaymentIntent({ id: "pi_failed_audit", orderId: "order-42" });
+
+    await syncStripePaymentFailed(pi, client);
+
+    expect(vi.mocked(logPaymentEvent)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(logPaymentEvent)).toHaveBeenCalledWith({
+      eventType: "order_payment_failed",
+      userId: "user-7", // consumer_id du DEFAULT_FETCH
+      metadata: {
+        order_id: "order-42",
+        payment_intent_id: "pi_failed_audit",
+      },
+    });
+  });
+
+  it("consumer_id null sur l'order → audit log poussé avec userId=null (defensive)", async () => {
+    const { client } = makeSupabase({
+      fetchResp: {
+        data: { id: "order-42", statut: "pending", consumer_id: null },
+        error: null,
+      },
+    });
+    const pi = makePaymentIntent({ orderId: "order-42" });
+
+    await syncStripePaymentFailed(pi, client);
+
+    expect(vi.mocked(logPaymentEvent)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "order_payment_failed",
+        userId: null,
+      }),
+    );
+  });
+});
+
+describe("syncStripePaymentFailed — Cas 9 : pas d'audit log sur paths idempotents", () => {
+  it("already_terminal (cancelled rejoué) → PAS d'audit log (évite duplication)", async () => {
+    const { client } = makeSupabase({
+      fetchResp: {
+        data: { id: "order-42", statut: "cancelled", consumer_id: "user-7" },
+        error: null,
+      },
+    });
+    const pi = makePaymentIntent({ orderId: "order-42" });
+
+    await syncStripePaymentFailed(pi, client);
+
+    expect(vi.mocked(logPaymentEvent)).not.toHaveBeenCalled();
+  });
+
+  it("guard_confirmed (rétrogradation refusée) → PAS d'audit log (visible dans console.warn)", async () => {
+    const { client } = makeSupabase({
+      fetchResp: {
+        data: { id: "order-42", statut: "confirmed", consumer_id: "user-7" },
+        error: null,
+      },
+    });
+    const pi = makePaymentIntent({ orderId: "order-42" });
+
+    await syncStripePaymentFailed(pi, client);
+
+    expect(vi.mocked(logPaymentEvent)).not.toHaveBeenCalled();
   });
 });

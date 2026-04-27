@@ -5,6 +5,7 @@ import {
   type OrderStatus,
 } from "@/lib/orders/stateMachine";
 import { revalidatePublicStats } from "@/lib/stats/revalidate";
+import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
 
 // Extrait du handler webhook `payment_intent.payment_failed` (cf
 // app/api/stripe/webhook/route.tsx). Sortie en module séparé pour pouvoir
@@ -31,10 +32,13 @@ import { revalidatePublicStats } from "@/lib/stats/revalidate";
 // Logs préfixés grep-able pour Vercel (cohérent avec le pattern projet
 // [STRIPE_*], [WEBHOOK_*], [STATS_REVAL_WARN], etc.).
 //
-// Pas d'audit_logs orders/payment dans ce commit : le helper auth-only
-// `logAuthEvent` a un type union ferme qui n'inclut pas 'order_payment_failed'.
-// Extension prévue Phase 2 audit_logs (cf migration 20260427100000 périmètre
-// futur "payment_*, refund_*"), chantier dédié.
+// Audit log Phase 2 (commit 2 chantier "résurrection robuste") : sur le
+// path nominal `cancelled` (pending → cancelled+payment_failed), un event
+// `order_payment_failed` est poussé dans audit_logs pour traçabilité
+// forensique (PCI DSS 10.x). Pas de log sur les paths idempotents
+// (already_terminal, guard_confirmed) pour ne pas dupliquer la trace au
+// rejouage. Les paths techniques (no_metadata, order_not_found) loguent
+// déjà via console.warn préfixé grep-able, suffisant pour Vercel logs.
 
 export type PaymentFailedResult =
   | "no_metadata"
@@ -54,7 +58,7 @@ export async function syncStripePaymentFailed(
 
   const { data: order, error: fetchError } = await admin
     .from("orders")
-    .select("id, statut")
+    .select("id, statut, consumer_id")
     .eq("id", orderId)
     .maybeSingle();
 
@@ -108,6 +112,16 @@ export async function syncStripePaymentFailed(
 
   // Le count public dépend du statut → invalidation cache.
   await revalidatePublicStats();
+
+  // Audit log forensique (Phase 2 audit_logs payment events).
+  await logPaymentEvent({
+    eventType: "order_payment_failed",
+    userId: (order.consumer_id as string | null) ?? null,
+    metadata: {
+      order_id: orderId,
+      payment_intent_id: paymentIntent.id,
+    },
+  });
 
   return { result: "cancelled", orderId };
 }

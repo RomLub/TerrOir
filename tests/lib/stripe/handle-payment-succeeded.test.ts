@@ -3,15 +3,35 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type Stripe from "stripe";
 import { syncStripePaymentSucceeded } from "@/lib/stripe/handle-payment-succeeded";
 import { revalidatePublicStats } from "@/lib/stats/revalidate";
+import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
+import { stripe } from "@/lib/stripe/server";
 
 vi.mock("@/lib/stats/revalidate", () => ({
   revalidatePublicStats: vi.fn(),
 }));
 
-// Mock Supabase. Le helper effectue jusqu'à 2 chaînes :
-//   1. from('orders').select('id, statut, cancellation_reason').eq('id', X).maybeSingle()
+// Mock audit log (chantier résurrection robuste). Helper réel testé
+// séparément (tests/lib/audit-logs/log-payment-event.test.ts).
+vi.mock("@/lib/audit-logs/log-payment-event", () => ({
+  logPaymentEvent: vi.fn(),
+}));
+
+// Mock Stripe SDK : seul `stripe.refunds.create` est appelé par la fonction.
+// Re-mocké par scénario via vi.mocked(stripe.refunds.create).mockResolved/Rejected.
+vi.mock("@/lib/stripe/server", () => ({
+  stripe: {
+    refunds: {
+      create: vi.fn(),
+    },
+  },
+}));
+
+// Mock Supabase. Le helper effectue jusqu'à 3 chaînes selon le path :
+//   1. from('orders').select('id, statut, cancellation_reason, consumer_id').eq.maybeSingle()
 //        → fetchResp
-//   2. from('orders').update({...}).eq('id', X)        (cas résurrection only)
+//   2. (résurrection) admin.rpc('revive_order_with_stock_check', ...)
+//        → rpcResp
+//   3. (blocked + refund OK) from('orders').update({...}).eq()
 //        → updateResp
 type Resp = { data?: unknown; error?: unknown };
 
@@ -21,10 +41,16 @@ type Captured = {
   eq: Array<[string, unknown]>;
   select: string[];
   maybeSingle: number;
+  rpcCalls: Array<{ fn: string; params: unknown }>;
 };
 
 const DEFAULT_FETCH_PENDING: Resp = {
-  data: { id: "order-42", statut: "pending", cancellation_reason: null },
+  data: {
+    id: "order-42",
+    statut: "pending",
+    cancellation_reason: null,
+    consumer_id: "user-7",
+  },
   error: null,
 };
 const DEFAULT_UPDATE: Resp = { data: null, error: null };
@@ -32,9 +58,11 @@ const DEFAULT_UPDATE: Resp = { data: null, error: null };
 function makeSupabase(opts: {
   fetchResp?: Resp;
   updateResp?: Resp;
+  rpcResp?: Resp;
 } = {}): { client: SupabaseClient; captured: Captured } {
   const fetchResp = opts.fetchResp ?? DEFAULT_FETCH_PENDING;
   const updateResp = opts.updateResp ?? DEFAULT_UPDATE;
+  const rpcResp = opts.rpcResp ?? { data: null, error: null };
 
   const captured: Captured = {
     from: [],
@@ -42,6 +70,7 @@ function makeSupabase(opts: {
     eq: [],
     select: [],
     maybeSingle: 0,
+    rpcCalls: [],
   };
 
   let ordersCallCount = 0;
@@ -76,6 +105,10 @@ function makeSupabase(opts: {
       const isFirst = ordersCallCount === 1;
       return makeBuilder(() => (isFirst ? fetchResp : updateResp));
     },
+    rpc: (fn: string, params: unknown) => {
+      captured.rpcCalls.push({ fn, params });
+      return Promise.resolve(rpcResp);
+    },
   } as unknown as SupabaseClient;
 
   return { client, captured };
@@ -95,17 +128,27 @@ function makePaymentIntent(opts: {
 
 let consoleLogSpy: ReturnType<typeof vi.spyOn>;
 let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
   consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
   vi.mocked(revalidatePublicStats).mockClear();
+  vi.mocked(logPaymentEvent).mockClear();
+  vi.mocked(stripe.refunds.create).mockReset();
 });
 
 afterEach(() => {
   consoleLogSpy.mockRestore();
   consoleWarnSpy.mockRestore();
+  consoleErrorSpy.mockRestore();
 });
+
+// =============================================================================
+// Cas 1-8 : paths existants (P1 commit 49c0f1b), mis à jour pour vérifier
+// l'instrumentation audit log Phase 2.
+// =============================================================================
 
 describe("syncStripePaymentSucceeded — Cas 1 : no_metadata", () => {
   it("PI sans metadata.order_id → no-op + return no_metadata", async () => {
@@ -116,14 +159,16 @@ describe("syncStripePaymentSucceeded — Cas 1 : no_metadata", () => {
 
     expect(res).toEqual({ result: "no_metadata", orderId: null });
     expect(captured.from).toEqual([]);
+    expect(captured.rpcCalls).toEqual([]);
     expect(captured.update).toEqual([]);
     expect(consoleWarnSpy).not.toHaveBeenCalled();
     expect(vi.mocked(revalidatePublicStats)).not.toHaveBeenCalled();
+    expect(vi.mocked(logPaymentEvent)).not.toHaveBeenCalled();
   });
 });
 
 describe("syncStripePaymentSucceeded — Cas 2 : order_not_found", () => {
-  it("order DB miss → log [WEBHOOK_SUCCEEDED_NO_ORDER] + return order_not_found", async () => {
+  it("order DB miss → log [WEBHOOK_SUCCEEDED_NO_ORDER] + return order_not_found, pas d'audit", async () => {
     const { client, captured } = makeSupabase({
       fetchResp: { data: null, error: null },
     });
@@ -138,30 +183,43 @@ describe("syncStripePaymentSucceeded — Cas 2 : order_not_found", () => {
     expect(String(consoleWarnSpy.mock.calls[0]?.[0])).toContain(
       "[WEBHOOK_SUCCEEDED_NO_ORDER]",
     );
-    expect(vi.mocked(revalidatePublicStats)).not.toHaveBeenCalled();
+    expect(vi.mocked(logPaymentEvent)).not.toHaveBeenCalled();
   });
 });
 
 describe("syncStripePaymentSucceeded — Cas 3 : pending_to_notify (cas nominal)", () => {
-  it("statut='pending' → pending_to_notify + revalidatePublicStats, pas d'UPDATE", async () => {
+  it("statut='pending' → revalidate + audit log order_payment_succeeded + return enum", async () => {
     const { client, captured } = makeSupabase();
-    const pi = makePaymentIntent({ orderId: "order-42" });
+    const pi = makePaymentIntent({ id: "pi_succ", orderId: "order-42" });
 
     const res = await syncStripePaymentSucceeded(pi, client);
 
     expect(res).toEqual({ result: "pending_to_notify", orderId: "order-42" });
     expect(captured.from).toEqual(["orders"]); // SELECT only, pas d'UPDATE
     expect(captured.update).toEqual([]);
+    expect(captured.rpcCalls).toEqual([]); // pas de résurrection
     expect(vi.mocked(revalidatePublicStats)).toHaveBeenCalledTimes(1);
+
+    expect(vi.mocked(logPaymentEvent)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(logPaymentEvent)).toHaveBeenCalledWith({
+      eventType: "order_payment_succeeded",
+      userId: "user-7",
+      metadata: { order_id: "order-42", payment_intent_id: "pi_succ" },
+    });
     expect(consoleWarnSpy).not.toHaveBeenCalled();
   });
 });
 
 describe("syncStripePaymentSucceeded — Cas 4 : already_confirmed (statut=confirmed)", () => {
-  it("statut='confirmed' → already_confirmed (idempotent webhook rejoué après confirm manuel)", async () => {
+  it("statut='confirmed' → already_confirmed (idempotent), pas d'audit log dupliqué", async () => {
     const { client, captured } = makeSupabase({
       fetchResp: {
-        data: { id: "order-42", statut: "confirmed", cancellation_reason: null },
+        data: {
+          id: "order-42",
+          statut: "confirmed",
+          cancellation_reason: null,
+          consumer_id: "user-7",
+        },
         error: null,
       },
     });
@@ -171,8 +229,9 @@ describe("syncStripePaymentSucceeded — Cas 4 : already_confirmed (statut=confi
 
     expect(res).toEqual({ result: "already_confirmed", orderId: "order-42" });
     expect(captured.update).toEqual([]);
+    expect(captured.rpcCalls).toEqual([]);
     expect(vi.mocked(revalidatePublicStats)).not.toHaveBeenCalled();
-    expect(consoleWarnSpy).not.toHaveBeenCalled();
+    expect(vi.mocked(logPaymentEvent)).not.toHaveBeenCalled();
   });
 });
 
@@ -180,7 +239,12 @@ describe("syncStripePaymentSucceeded — Cas 5 : already_confirmed (statut=compl
   it("statut='completed' → already_confirmed (cas progression rapide)", async () => {
     const { client, captured } = makeSupabase({
       fetchResp: {
-        data: { id: "order-42", statut: "completed", cancellation_reason: null },
+        data: {
+          id: "order-42",
+          statut: "completed",
+          cancellation_reason: null,
+          consumer_id: "user-7",
+        },
         error: null,
       },
     });
@@ -190,21 +254,27 @@ describe("syncStripePaymentSucceeded — Cas 5 : already_confirmed (statut=compl
 
     expect(res).toEqual({ result: "already_confirmed", orderId: "order-42" });
     expect(captured.update).toEqual([]);
-    expect(consoleWarnSpy).not.toHaveBeenCalled();
+    expect(vi.mocked(logPaymentEvent)).not.toHaveBeenCalled();
   });
 });
 
-describe("syncStripePaymentSucceeded — Cas 6 : revived_to_notify (résurrection 3DS-retry)", () => {
-  it("cancelled+payment_failed → UPDATE statut=pending, reset reason+cancelled_at, revalidate, log [REVIVAL]", async () => {
+// =============================================================================
+// Cas 6+ : paths résurrection avec RPC + refund (chantier résurrection robuste).
+// =============================================================================
+
+describe("syncStripePaymentSucceeded — Cas 6 : revived_to_notify (RPC=revived)", () => {
+  it("cancelled+payment_failed + RPC retourne 'revived' → audit log + revalidate + return enum", async () => {
     const { client, captured } = makeSupabase({
       fetchResp: {
         data: {
           id: "order-42",
           statut: "cancelled",
           cancellation_reason: "payment_failed",
+          consumer_id: "user-7",
         },
         error: null,
       },
+      rpcResp: { data: "revived", error: null },
     });
     const pi = makePaymentIntent({ id: "pi_retry", orderId: "order-42" });
 
@@ -212,48 +282,289 @@ describe("syncStripePaymentSucceeded — Cas 6 : revived_to_notify (résurrectio
 
     expect(res).toEqual({ result: "revived_to_notify", orderId: "order-42" });
 
-    // 1 SELECT + 1 UPDATE.
-    expect(captured.from).toEqual(["orders", "orders"]);
-
-    // Payload UPDATE : 3 champs reset à leurs valeurs canoniques pre-cancellation.
-    expect(captured.update).toEqual([
-      {
-        statut: "pending",
-        cancellation_reason: null,
-        cancelled_at: null,
-      },
+    // RPC appelée avec le bon nom + params.
+    expect(captured.rpcCalls).toEqual([
+      { fn: "revive_order_with_stock_check", params: { p_order_id: "order-42" } },
     ]);
 
-    // Filtres .eq sur les 2 chaînes.
-    expect(captured.eq).toEqual([
-      ["id", "order-42"],
-      ["id", "order-42"],
-    ]);
+    // PAS d'UPDATE direct côté JS : la RPC s'en charge atomiquement.
+    expect(captured.update).toEqual([]);
 
-    // Cache public-stats invalidé (count public dépend du statut).
+    // Cache public-stats invalidé.
     expect(vi.mocked(revalidatePublicStats)).toHaveBeenCalledTimes(1);
 
-    // Log REVIVAL grep-able pour Vercel.
-    expect(consoleLogSpy).toHaveBeenCalledTimes(1);
-    const logged = String(consoleLogSpy.mock.calls[0]?.[0]);
-    expect(logged).toContain("[WEBHOOK_SUCCEEDED_REVIVAL]");
-    expect(logged).toContain("order=order-42");
-    expect(logged).toContain("pi=pi_retry");
-    expect(logged).toContain("cancelled+payment_failed → pending");
+    // Audit log Phase 2.
+    expect(vi.mocked(logPaymentEvent)).toHaveBeenCalledWith({
+      eventType: "order_revival_succeeded",
+      userId: "user-7",
+      metadata: { order_id: "order-42", payment_intent_id: "pi_retry" },
+    });
 
-    // Pas de warn (path "happy" résurrection).
-    expect(consoleWarnSpy).not.toHaveBeenCalled();
+    // Log REVIVAL grep-able.
+    expect(consoleLogSpy).toHaveBeenCalledTimes(1);
+    expect(String(consoleLogSpy.mock.calls[0]?.[0])).toContain(
+      "[WEBHOOK_SUCCEEDED_REVIVAL]",
+    );
   });
 });
 
-describe("syncStripePaymentSucceeded — Cas 7 : anomaly (cancelled non-payment_failed)", () => {
-  it("cancelled+consumer_cancel → anomaly + log [WEBHOOK_SUCCEEDED_ANOMALY], pas d'UPDATE ni revalidate", async () => {
+describe("syncStripePaymentSucceeded — Cas 7 : revival_blocked_stock + refund OK", () => {
+  it("RPC blocked_stock + Stripe refund OK → UPDATE cancellation_reason + audit log + log warn", async () => {
+    vi.mocked(stripe.refunds.create).mockResolvedValue({
+      id: "re_123",
+    } as never);
+
+    const { client, captured } = makeSupabase({
+      fetchResp: {
+        data: {
+          id: "order-42",
+          statut: "cancelled",
+          cancellation_reason: "payment_failed",
+          consumer_id: "user-7",
+        },
+        error: null,
+      },
+      rpcResp: { data: "blocked_stock", error: null },
+    });
+    const pi = makePaymentIntent({ id: "pi_blocked_s", orderId: "order-42" });
+
+    const res = await syncStripePaymentSucceeded(pi, client);
+
+    expect(res).toEqual({
+      result: "revival_blocked_stock",
+      orderId: "order-42",
+    });
+
+    // Refund Stripe appelé avec le bon PI.
+    expect(vi.mocked(stripe.refunds.create)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(stripe.refunds.create)).toHaveBeenCalledWith({
+      payment_intent: "pi_blocked_s",
+    });
+
+    // UPDATE cancellation_reason='revival_blocked_stock' (statut reste
+    // cancelled, cancelled_at reste figé).
+    expect(captured.update).toEqual([
+      { cancellation_reason: "revival_blocked_stock" },
+    ]);
+
+    // Audit log avec metadata refund='ok'.
+    expect(vi.mocked(logPaymentEvent)).toHaveBeenCalledWith({
+      eventType: "order_revival_blocked_stock",
+      userId: "user-7",
+      metadata: {
+        order_id: "order-42",
+        payment_intent_id: "pi_blocked_s",
+        refund: "ok",
+      },
+    });
+
+    // Log warn grep-able.
+    expect(consoleWarnSpy).toHaveBeenCalledTimes(1);
+    expect(String(consoleWarnSpy.mock.calls[0]?.[0])).toContain(
+      "[WEBHOOK_SUCCEEDED_REVIVAL_BLOCKED]",
+    );
+  });
+});
+
+describe("syncStripePaymentSucceeded — Cas 8 : revival_blocked_slot + refund OK", () => {
+  it("RPC blocked_slot + Stripe refund OK → cancellation_reason='revival_blocked_slot' + audit", async () => {
+    vi.mocked(stripe.refunds.create).mockResolvedValue({ id: "re_456" } as never);
+
+    const { client, captured } = makeSupabase({
+      fetchResp: {
+        data: {
+          id: "order-42",
+          statut: "cancelled",
+          cancellation_reason: "payment_failed",
+          consumer_id: "user-7",
+        },
+        error: null,
+      },
+      rpcResp: { data: "blocked_slot", error: null },
+    });
+    const pi = makePaymentIntent({ id: "pi_blocked_t", orderId: "order-42" });
+
+    const res = await syncStripePaymentSucceeded(pi, client);
+
+    expect(res).toEqual({
+      result: "revival_blocked_slot",
+      orderId: "order-42",
+    });
+    expect(captured.update).toEqual([
+      { cancellation_reason: "revival_blocked_slot" },
+    ]);
+    expect(vi.mocked(logPaymentEvent)).toHaveBeenCalledWith({
+      eventType: "order_revival_blocked_slot",
+      userId: "user-7",
+      metadata: {
+        order_id: "order-42",
+        payment_intent_id: "pi_blocked_t",
+        refund: "ok",
+      },
+    });
+  });
+});
+
+describe("syncStripePaymentSucceeded — Cas 9 : revival_refund_failed (stock blocked, Stripe throw)", () => {
+  it("RPC blocked_stock + Stripe refund throw → audit log refund_failed + NO UPDATE order", async () => {
+    vi.mocked(stripe.refunds.create).mockRejectedValue(
+      new Error("Stripe API timeout"),
+    );
+
+    const { client, captured } = makeSupabase({
+      fetchResp: {
+        data: {
+          id: "order-42",
+          statut: "cancelled",
+          cancellation_reason: "payment_failed",
+          consumer_id: "user-7",
+        },
+        error: null,
+      },
+      rpcResp: { data: "blocked_stock", error: null },
+    });
+    const pi = makePaymentIntent({ id: "pi_refund_fail", orderId: "order-42" });
+
+    const res = await syncStripePaymentSucceeded(pi, client);
+
+    expect(res).toEqual({
+      result: "revival_refund_failed",
+      orderId: "order-42",
+    });
+
+    // Refund tenté (et a throw).
+    expect(vi.mocked(stripe.refunds.create)).toHaveBeenCalledTimes(1);
+
+    // ⚠️ Critique : NE PAS UPDATE l'order. État cancelled+payment_failed
+    // préservé pour permettre retry admin manuel.
+    expect(captured.update).toEqual([]);
+
+    // Audit log avec metadata error pour traçabilité.
+    expect(vi.mocked(logPaymentEvent)).toHaveBeenCalledWith({
+      eventType: "order_revival_refund_failed",
+      userId: "user-7",
+      metadata: {
+        order_id: "order-42",
+        payment_intent_id: "pi_refund_fail",
+        blocked_reason: "blocked_stock",
+        refund_error: "Stripe API timeout",
+      },
+    });
+
+    // Log error grep-able [REFUND_FAILED] côté Vercel.
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+    expect(String(consoleErrorSpy.mock.calls[0]?.[0])).toContain(
+      "[WEBHOOK_SUCCEEDED_REFUND_FAILED]",
+    );
+  });
+});
+
+describe("syncStripePaymentSucceeded — Cas 10 : revival_refund_failed (slot blocked, Stripe throw)", () => {
+  it("RPC blocked_slot + Stripe refund throw → audit log avec blocked_reason='blocked_slot'", async () => {
+    vi.mocked(stripe.refunds.create).mockRejectedValue(
+      new Error("Idempotency key conflict"),
+    );
+
+    const { client, captured } = makeSupabase({
+      fetchResp: {
+        data: {
+          id: "order-42",
+          statut: "cancelled",
+          cancellation_reason: "payment_failed",
+          consumer_id: "user-7",
+        },
+        error: null,
+      },
+      rpcResp: { data: "blocked_slot", error: null },
+    });
+    const pi = makePaymentIntent({ orderId: "order-42" });
+
+    const res = await syncStripePaymentSucceeded(pi, client);
+
+    expect(res.result).toBe("revival_refund_failed");
+    expect(captured.update).toEqual([]);
+
+    expect(vi.mocked(logPaymentEvent)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "order_revival_refund_failed",
+        metadata: expect.objectContaining({
+          blocked_reason: "blocked_slot",
+          refund_error: "Idempotency key conflict",
+        }),
+      }),
+    );
+  });
+});
+
+describe("syncStripePaymentSucceeded — Cas 11 : RPC retourne error (PostgREST)", () => {
+  it("RPC error → log [RPC_ERR] + return anomaly, pas de refund, pas d'audit", async () => {
+    const { client, captured } = makeSupabase({
+      fetchResp: {
+        data: {
+          id: "order-42",
+          statut: "cancelled",
+          cancellation_reason: "payment_failed",
+          consumer_id: "user-7",
+        },
+        error: null,
+      },
+      rpcResp: { data: null, error: { message: "function does not exist" } },
+    });
+    const pi = makePaymentIntent({ orderId: "order-42" });
+
+    const res = await syncStripePaymentSucceeded(pi, client);
+
+    expect(res).toEqual({ result: "anomaly", orderId: "order-42" });
+    expect(vi.mocked(stripe.refunds.create)).not.toHaveBeenCalled();
+    expect(captured.update).toEqual([]);
+    expect(vi.mocked(logPaymentEvent)).not.toHaveBeenCalled();
+    expect(consoleWarnSpy).toHaveBeenCalledTimes(1);
+    expect(String(consoleWarnSpy.mock.calls[0]?.[0])).toContain(
+      "[WEBHOOK_SUCCEEDED_RPC_ERR]",
+    );
+  });
+});
+
+describe("syncStripePaymentSucceeded — Cas 12 : RPC retourne valeur inattendue", () => {
+  it("RPC retourne 'unknown_value' → log [RPC_UNKNOWN] + return anomaly", async () => {
+    const { client } = makeSupabase({
+      fetchResp: {
+        data: {
+          id: "order-42",
+          statut: "cancelled",
+          cancellation_reason: "payment_failed",
+          consumer_id: "user-7",
+        },
+        error: null,
+      },
+      rpcResp: { data: "something_else", error: null },
+    });
+    const pi = makePaymentIntent({ orderId: "order-42" });
+
+    const res = await syncStripePaymentSucceeded(pi, client);
+
+    expect(res).toEqual({ result: "anomaly", orderId: "order-42" });
+    expect(consoleWarnSpy).toHaveBeenCalledTimes(1);
+    expect(String(consoleWarnSpy.mock.calls[0]?.[0])).toContain(
+      "[WEBHOOK_SUCCEEDED_RPC_UNKNOWN]",
+    );
+  });
+});
+
+// =============================================================================
+// Cas 13-14 : anomaly (cancelled non-payment_failed et refunded), inchangés
+// par le chantier résurrection robuste.
+// =============================================================================
+
+describe("syncStripePaymentSucceeded — Cas 13 : anomaly (cancelled+consumer_cancel)", () => {
+  it("cancelled avec autre reason → anomaly + log warn, pas d'audit log", async () => {
     const { client, captured } = makeSupabase({
       fetchResp: {
         data: {
           id: "order-42",
           statut: "cancelled",
           cancellation_reason: "consumer_cancel",
+          consumer_id: "user-7",
         },
         error: null,
       },
@@ -264,22 +575,26 @@ describe("syncStripePaymentSucceeded — Cas 7 : anomaly (cancelled non-payment_
 
     expect(res).toEqual({ result: "anomaly", orderId: "order-42" });
     expect(captured.update).toEqual([]);
-    expect(vi.mocked(revalidatePublicStats)).not.toHaveBeenCalled();
+    expect(captured.rpcCalls).toEqual([]); // pas d'appel RPC pour ce cas
+    expect(vi.mocked(logPaymentEvent)).not.toHaveBeenCalled();
 
     expect(consoleWarnSpy).toHaveBeenCalledTimes(1);
     const warned = String(consoleWarnSpy.mock.calls[0]?.[0]);
     expect(warned).toContain("[WEBHOOK_SUCCEEDED_ANOMALY]");
-    expect(warned).toContain("order=order-42");
-    expect(warned).toContain("statut=cancelled");
     expect(warned).toContain("reason=consumer_cancel");
   });
 });
 
-describe("syncStripePaymentSucceeded — Cas 8 : anomaly (refunded)", () => {
+describe("syncStripePaymentSucceeded — Cas 14 : anomaly (refunded)", () => {
   it("refunded → anomaly + log warn", async () => {
     const { client, captured } = makeSupabase({
       fetchResp: {
-        data: { id: "order-42", statut: "refunded", cancellation_reason: null },
+        data: {
+          id: "order-42",
+          statut: "refunded",
+          cancellation_reason: null,
+          consumer_id: "user-7",
+        },
         error: null,
       },
     });
