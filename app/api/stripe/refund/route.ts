@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
+import {
+  InvalidOrderTransitionError,
+  assertTransition,
+  type OrderStatus,
+} from "@/lib/orders/stateMachine";
 
 const bodySchema = z.object({ order_id: z.string().uuid() });
 
@@ -64,6 +70,19 @@ export async function POST(request: Request) {
     );
   }
 
+  // Filet état machine AVANT le refund Stripe : refuser une transition
+  // invalide ici évite d'émettre un refund Stripe irrécupérable. Refund
+  // admin = action explicite ; pas de fallback cancelled comme la route
+  // cancel (cf décision produit "ready→refunded" tracée en TODO).
+  try {
+    assertTransition(order.statut as OrderStatus, "refunded");
+  } catch (e) {
+    if (e instanceof InvalidOrderTransitionError) {
+      return NextResponse.json({ error: e.message }, { status: 409 });
+    }
+    throw e;
+  }
+
   const refund = await stripe.refunds.create({
     payment_intent: order.stripe_payment_intent_id,
   });
@@ -78,13 +97,24 @@ export async function POST(request: Request) {
     .eq("id", order.id);
 
   if (updateError) {
+    // Drift Stripe/DB : refund émis chez Stripe mais statut DB non mis à
+    // jour. Préfixe grep-able pour réconciliation manuelle en prod.
     return NextResponse.json(
       {
         refund_id: refund.id,
-        warning: `Refund issued but order not updated: ${updateError.message}`,
+        warning: `[REFUND_DB_DRIFT] order=${order.id} refund_id=${refund.id} ${updateError.message}`,
       },
       { status: 500 },
     );
+  }
+
+  // Refunded sort le filtre IN ('confirmed','ready','completed') du cache
+  // public-stats → invalidation requise. Try/catch : un cache flapping ne
+  // doit pas faire échouer le 200 vers l'admin.
+  try {
+    revalidateTag("public-stats");
+  } catch (e) {
+    console.warn(`[STATS_REVAL_WARN] order=${order.id} ${(e as Error).message}`);
   }
 
   if (order.consumer_id) {
