@@ -48,7 +48,7 @@ export default function ConnectDonePage() {
           </p>
 
           <div className="flex justify-end mt-6">
-            <Button type="button" onClick={() => router.push('/parametres')}>
+            <Button type="button" variant="accent" onClick={() => router.push('/parametres')}>
               Accéder à mes paramètres
             </Button>
           </div>

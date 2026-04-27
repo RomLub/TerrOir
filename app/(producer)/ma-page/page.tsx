@@ -417,7 +417,7 @@ export default function MaPagePage() {
                 <p className="text-[12px] text-dark/55 max-w-sm">
                   {saved ? '✓ Modifications enregistrées.' : 'Vos modifications ne sont pas encore enregistrées.'}
                 </p>
-                <Button size="lg" onClick={save} disabled={saving}>
+                <Button variant="accent" size="lg" onClick={save} disabled={saving}>
                   {saving ? 'Enregistrement…' : 'Enregistrer'}
                 </Button>
               </div>

@@ -87,7 +87,7 @@ export default function ExceptionsList({
         >
           + Annuler un créneau
         </Button>
-        <Button size="lg" onClick={() => setBulkModalOpen(true)}>
+        <Button variant="accent" size="lg" onClick={() => setBulkModalOpen(true)}>
           + Annuler une plage
         </Button>
       </div>

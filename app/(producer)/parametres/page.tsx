@@ -223,7 +223,7 @@ export default function ProducerSettingsPage() {
               </div>
               <Button
                 type="button"
-                variant={stripeReady ? 'secondary' : 'primary'}
+                variant="accent"
                 onClick={onboardStripe}
                 disabled={connecting}
               >
@@ -260,7 +260,7 @@ export default function ProducerSettingsPage() {
 
           <div className="flex items-center justify-end gap-3 pt-2">
             {saved && <span className="text-[13px] text-green-700 font-medium">✓ Modifications enregistrées</span>}
-            <Button type="submit" size="lg" disabled={saving}>
+            <Button type="submit" variant="accent" size="lg" disabled={saving}>
               {saving ? 'Enregistrement…' : 'Enregistrer'}
             </Button>
           </div>

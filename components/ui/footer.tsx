@@ -1,7 +1,11 @@
 import Link from "next/link";
 import { Logo } from "./logo";
 
-export type FooterLink = { href: string; label: string };
+export type FooterLink = {
+  href: string;
+  label: string;
+  external?: boolean;
+};
 export type FooterColumn = { title: string; links: FooterLink[] };
 
 export type FooterProps = {
@@ -11,56 +15,113 @@ export type FooterProps = {
 
 const defaultColumns: FooterColumn[] = [
   {
-    title: "Découvrir",
+    title: "Acheter",
     links: [
       { href: "/producteurs", label: "Producteurs" },
       { href: "/carte", label: "Carte" },
       { href: "/comment-ca-marche", label: "Comment ça marche" },
+      { href: "/a-propos", label: "À propos" },
     ],
   },
   {
-    title: "TerrOir",
+    title: "Producteurs",
     links: [
-      { href: "/a-propos", label: "À propos" },
       { href: "/devenir-producteur", label: "Devenir producteur" },
+      {
+        href: "https://pro.terroir-local.fr",
+        label: "Espace producteur ↗",
+        external: true,
+      },
+      { href: "/connexion", label: "Connexion" },
     ],
   },
 ];
 
-export function Footer({ columns = defaultColumns, className = "" }: FooterProps) {
+export function Footer({
+  columns = defaultColumns,
+  className = "",
+}: FooterProps) {
   const year = new Date().getFullYear();
   return (
     <footer
-      className={`mt-16 border-t border-terroir-border bg-white ${className}`}
+      className={`bg-green-900 text-white/65 ${className}`}
     >
-      <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 md:grid-cols-3">
-        <div className="md:col-span-1">
-          <Logo size="md" withTagline />
-        </div>
-        {columns.map((col) => (
-          <div key={col.title}>
-            <h4 className="mb-3 font-serif text-lg text-terroir-ink">
-              {col.title}
+      <div className="mx-auto max-w-6xl px-4 py-16">
+        <div className="grid gap-10 md:grid-cols-4">
+          {/* Brand */}
+          <div className="md:col-span-1">
+            <Logo size="md" variant="wordmark-dark" />
+            <p className="mt-4 max-w-[280px] text-sm leading-relaxed text-white/65">
+              La marketplace des producteurs sarthois. Du pré à votre table,
+              en trois étapes.
+            </p>
+            <p className="mt-4 max-w-[280px] text-xs italic leading-relaxed text-white/45">
+              TerrOir prélève une petite commission pour faire vivre la
+              marketplace.
+            </p>
+          </div>
+
+          {/* Standard cols (Acheter + Producteurs) */}
+          {columns.map((col) => (
+            <div key={col.title}>
+              <h4 className="mb-4 text-xs font-semibold uppercase tracking-[0.14em] text-white/45">
+                {col.title}
+              </h4>
+              <ul className="flex flex-col gap-2.5">
+                {col.links.map((l) =>
+                  l.external ? (
+                    <li key={l.href}>
+                      <a
+                        href={l.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-white/80 transition-colors hover:text-white"
+                      >
+                        {l.label}
+                      </a>
+                    </li>
+                  ) : (
+                    <li key={l.href}>
+                      <Link
+                        href={l.href}
+                        className="text-sm text-white/80 transition-colors hover:text-white"
+                      >
+                        {l.label}
+                      </Link>
+                    </li>
+                  ),
+                )}
+              </ul>
+            </div>
+          ))}
+
+          {/* TerrOir : contact + mentions légales pending (pas de href mort) */}
+          <div>
+            <h4 className="mb-4 text-xs font-semibold uppercase tracking-[0.14em] text-white/45">
+              TerrOir
             </h4>
-            <ul className="flex flex-col gap-2">
-              {col.links.map((l) => (
-                <li key={l.href}>
-                  <Link
-                    href={l.href}
-                    className="text-sm text-terroir-ink/80 hover:text-terroir-green-700"
-                  >
-                    {l.label}
-                  </Link>
-                </li>
-              ))}
+            <ul className="flex flex-col gap-2.5">
+              <li>
+                <a
+                  href="mailto:contact@terroir-local.fr"
+                  className="text-sm text-white/80 transition-colors hover:text-white"
+                >
+                  Contact
+                </a>
+              </li>
+              <li className="text-xs italic leading-relaxed text-white/40">
+                Mentions légales · CGU · CGV · Politique de confidentialité{" "}
+                <span className="not-italic">— à venir</span>
+              </li>
             </ul>
           </div>
-        ))}
-      </div>
-      <div className="border-t border-terroir-border">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 text-xs text-terroir-muted">
-          <span>© {year} TerrOir. Tous droits réservés.</span>
-          <span>Fait avec soin en France.</span>
+        </div>
+
+        {/* Footer bottom */}
+        <div className="mt-12 border-t border-white/10 pt-6">
+          <p className="text-xs text-white/45">
+            © {year} TerrOir · Sarthe
+          </p>
         </div>
       </div>
     </footer>

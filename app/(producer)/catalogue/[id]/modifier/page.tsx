@@ -211,7 +211,7 @@ export default function ProductEditPage() {
         <div className="max-w-3xl mx-auto px-8 py-20 text-center">
           <h1 className="font-serif text-[36px] text-green-900">Produit introuvable</h1>
           <p className="mt-2 text-[14px] text-dark/60">Ce produit n&apos;existe pas ou n&apos;est pas le vôtre.</p>
-          <div className="mt-6"><Link href="/catalogue"><Button>Retour au catalogue</Button></Link></div>
+          <div className="mt-6"><Link href="/catalogue"><Button variant="accent">Retour au catalogue</Button></Link></div>
         </div>
       </ProducerLayout>
     );
@@ -380,7 +380,7 @@ export default function ProductEditPage() {
 
             <div className="flex gap-3 justify-end pt-2">
               <Link href="/catalogue"><Button variant="ghost" size="lg" type="button">Annuler</Button></Link>
-              <Button size="lg" type="submit" disabled={saving}>
+              <Button variant="accent" size="lg" type="submit" disabled={saving}>
                 {saving ? 'Enregistrement…' : 'Enregistrer les modifications'}
               </Button>
             </div>

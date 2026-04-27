@@ -75,3 +75,5 @@ export {
 } from "./footer";
 export { RoleSwitcher, type RoleSwitcherProps } from "./role-switcher";
 export { MiniMap, type MiniMapProps } from "./mini-map";
+export { PostIt, type PostItProps } from "./post-it";
+export { MapSarthe, type MapSartheProps } from "./map-sarthe";

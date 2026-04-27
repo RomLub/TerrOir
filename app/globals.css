@@ -7,6 +7,24 @@
   --color-terroir-green-light: #d8f3dc;
   --color-terroir-terracotta: #a0522d;
   --color-terroir-bg: #f7f4ef;
+
+  --terra-50: #fbf6f1;
+  --terra-100: #f5e6dc;
+  --terra-200: #e8c9b5;
+  --terra-300: #d4a373;
+  --terra-400: #c08552;
+  --terra-500: #b8713e;
+  --terra-600: #8b4513;
+  --terra-700: #a0522d;
+  --terra-800: #804a20;
+  --terra-900: #6b3620;
+
+  --postit-bg: #fff7d6;
+  --postit-fill: #fef3c7;
+  --postit-border: #fde68a;
+  --postit-icon: #f59e0b;
+
+  --shadow-lift: 0 12px 32px rgba(27, 67, 50, 0.12);
 }
 
 html,

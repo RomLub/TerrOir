@@ -194,7 +194,7 @@ function AdminProducteursPageInner() {
           title="Gestion des producteurs"
           subtitle={`${counts.active} actifs · ${counts.pending} en attente · ${counts.suspended} suspendus`}
           error={error}
-          right={<Button size="lg" onClick={() => setInviting(true)}>+ Inviter un producteur</Button>}
+          right={<Button variant="accent" size="lg" onClick={() => setInviting(true)}>+ Inviter un producteur</Button>}
         />
 
         <div className="mb-6 flex flex-wrap items-end justify-between gap-3 border-b border-gray-200">
