@@ -4,6 +4,7 @@ import type Stripe from "stripe";
 import { stripe } from "@/lib/stripe/server";
 import { syncStripeAccountFlags } from "@/lib/stripe/sync-account-flags";
 import { syncStripePaymentFailed } from "@/lib/stripe/handle-payment-failed";
+import { syncStripePaymentSucceeded } from "@/lib/stripe/handle-payment-succeeded";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { NEXT_PUBLIC_PRODUCER_URL } from "@/lib/env/urls";
 import { sendTemplate } from "@/lib/resend/send";
@@ -44,13 +45,49 @@ export async function POST(request: Request) {
     switch (event.type) {
       case "payment_intent.succeeded": {
         const pi = event.data.object as Stripe.PaymentIntent;
-        const orderId = pi.metadata?.order_id;
-        if (!orderId) break;
 
-        // La commande est créée avec statut='pending' par défaut.
-        // Ici on vérifie la cohérence et on notifie — on NE réécrit PAS
-        // le statut (évite d'écraser une transition déjà effectuée, ex.
-        // cancelled en cas de race avec /orders/[id]/cancel).
+        // Logique de transition extraite dans `lib/stripe/handle-payment-succeeded.ts` :
+        // distingue cas nominal (pending), résurrection 3DS-retry
+        // (cancelled+payment_failed → pending), idempotence (déjà
+        // confirmed/ready/completed) et anomaly (refunded ou cancelled
+        // avec autre cancellation_reason). Cf doc fonction.
+        const { result, orderId } = await syncStripePaymentSucceeded(pi, admin);
+
+        // No-op paths : pas de notif ni d'anomaly à écrire.
+        if (
+          result === "no_metadata" ||
+          result === "order_not_found" ||
+          result === "already_confirmed"
+        ) {
+          break;
+        }
+
+        // Anomaly : Stripe a encaissé mais l'order est terminée côté
+        // plateforme pour une raison incompatible (refunded, cancel
+        // volontaire). Trace pour investigation admin.
+        if (result === "anomaly") {
+          await admin.from("notifications").insert({
+            user_id: null,
+            type: "email",
+            template: "webhook_anomaly",
+            statut: "failed",
+            metadata: {
+              order_id: orderId,
+              event: "payment_intent.succeeded",
+              payment_intent_id: pi.id,
+            },
+          });
+          break;
+        }
+
+        // result === "pending_to_notify" || "revived_to_notify" :
+        // dans les deux cas, orderId est non-null et l'order est
+        // maintenant en statut='pending'. Le producer doit être notifié
+        // (premier moment où il y a une commande à honorer pour lui ;
+        // sur le path résurrection, rien n'avait été envoyé lors du
+        // payment_failed initial).
+        if (!orderId) break; // défensif (typage : revived/pending → orderId non-null)
+
         const { data: order } = await admin
           .from("orders")
           .select(
@@ -59,21 +96,7 @@ export async function POST(request: Request) {
           .eq("id", orderId)
           .maybeSingle();
 
-        if (!order || order.statut !== "pending") {
-          await admin.from("notifications").insert({
-            user_id: null,
-            type: "email",
-            template: "webhook_anomaly",
-            statut: "failed",
-            metadata: {
-              order_id: orderId,
-              statut_actuel: order?.statut ?? null,
-              event: "payment_intent.succeeded",
-              payment_intent_id: pi.id,
-            },
-          });
-          break;
-        }
+        if (!order) break;
 
         // Lookups parallèles pour composer l'email producteur
         const [{ data: consumer }, { data: producer }, { data: lines }] =
