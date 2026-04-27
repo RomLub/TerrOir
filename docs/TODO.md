@@ -4,7 +4,7 @@ Priorités forward-looking uniquement. Pour l'historique complet des commits / c
 
 ## 🟠 En cours
 
-_(rien en cours)_
+- **Refonte homepage consumer (Phase 1)** — implémentation Next.js de la maquette livrée par Claude Design (session 27/04). Branche `feature/home-refonte`, terminal CC en Phase C (PUSH 1-7). Inputs : bundle `~/Downloads/design_handoff_terroir/` (19 cards design system + screens desktop/mobile + tokens) + fichier source `~/Desktop/Logo.svg` (8 paths vectoriels propres + calque JPEG modèle masqué à nettoyer). Migration Button.primary green-700 → terra-700 + ajout variants `success` (green-700, validations métier) et `accent` (green-700, transitional pour call sites admin/producer). 14 fichiers consommateurs à auditer. Phase 2 (fiches produit, panier, checkout, refonte UI kits producer/admin) reportée à sessions dédiées ultérieures.
 
 ## 🔴 Bugs ouverts
 
@@ -34,29 +34,23 @@ _(rien d'ouvert)_
 
 ### Externes / config
 
-- **Mapbox** : en attente retour CB.
 - **Twilio SMS** : numéro FR à régler.
-- **Vectormagic logo SVG** (8,99€).
-- **Remplacer images Unsplash** provisoires par vraies photos producteurs.
 - **Mentions légales footer pro** — page absente, le footer pro pointe sur un href mort. À créer une fois le contenu juridique disponible (action externe Romain).
 - **SMTP custom Supabase Resend à configurer (recommandé avant lancement)** — observation récente : mails Auth atterrissant en spam. Configurer Resend en SMTP custom (rate limit Supabase built-in ~3-4/h, non destiné à la production) serait propre. Action externe Romain via Dashboard.
 - **Templates Supabase Auth Email — validation visuelle complète** — Magic Link template à mettre à jour avec `{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=magiclink` (action Romain post-PKCE Option B, commit `09c219d`). Reset Password template à mettre à jour avec `${SITE_URL}/reinitialiser-mot-de-passe?token_hash={{ .TokenHash }}&type=recovery` (action Romain post-`5ff9394`). Confirm Signup, Change Email, Invite User pas testés visuellement (rendus mais flow end-to-end non validé). Action externe Romain via Dashboard.
 - **Branding Stripe Connect** — flag pendant la session 27/04 pour ne pas mélanger avec les bugs critiques. Investigation dédiée future avec accès doc Stripe à jour (logo, couleurs, pages `/connect/*`, branding marketplace).
 - **Webhook Stripe mode Live** — créer un nouveau webhook endpoint dans Stripe Dashboard pointant sur `https://www.terroir-local.fr/api/stripe/webhook` au moment de la bascule Test → Live. Mode Test confirmé déjà OK (validation 27/04 matin).
+- **Mentions légales / CGU / CGV / Politique de confidentialité — pages publiques** — affichées « à venir » en italique muted dans le footer consumer refondu (session 27/04 design Claude Design). Action externe Romain (juridique) avant go-live public. Le footer pointera vers les vraies pages une fois rédigées.
 
 ### Chantiers code futurs
 
-- **Chantier "alignement routes orders"** — recoller 3 dettes liées sur les routes d'annulation/refund (flag par rapports TB `799bf71` et `f32d083`) :
-  - `app/api/stripe/refund/route.ts` : `assertTransition` + `revalidateTag('public-stats')` + suite vitest manquantes.
-  - `app/api/cron/order-timeout/route.tsx` : check d'erreur UPDATE silencieuse (B1+B2 documentés via `it.todo` dans tests `f32d083`) + `revalidateTag` (B3 absent vs webhook payment_failed).
-  - 3 routes d'annulation à harmoniser avec les mêmes patterns (state machine + stats invalidation + error handling).
-- **Pré-fetch SSR `ProducerLite` pour éliminer flash placeholder ProducerLayout** — flag boolean `isProducer` SSR (commit `20304e9`) résout le flash CTA mais `ProducerLayout` dépend de l'objet producer complet (`nom_exploitation`, `slug`, `statut`). Pré-fetch d'un objet allégé `ProducerLite` côté SSR éliminerait aussi ce flash. Pattern réplicable. Non bloquant — flash très court.
 - **Cron retry-failed-refunds** (chantier dédié futur) — détecter via `audit_logs.event_type` les `*_refund_failed` non réconciliés (refund admin manuel route `/api/stripe/refund`, refund cron `order-timeout`, refund résurrection P1 robuste) et retenter automatiquement, ou alerter admin pour intervention. Couverture forensique `logPaymentEvent` posée par chantier P1 robuste 27/04 sert de base de détection (`order_revival_refund_failed` event type).
 - **Dédup webhook notifications** (chantier dédié futur) — table `webhook_events_processed(event_id, processed_at)` avec INSERT ON CONFLICT pour bloquer le rejouage Stripe côté code applicatif. Couvre tous les webhook handlers Stripe (`succeeded`, `payment_failed`, `account.updated`, `payout.paid`). Pertinent à instrumenter avant volume significatif (rejouage Stripe rare aujourd'hui, mais double email producer possible si ça arrive).
 - **Migration `transformWithEsbuild` deprecated → `transformWithOxc`** (warning vitest 4 / rolldown-vite, commit `f32d083`) — non bloquant, à migrer quand l'API `transformWithOxc` est stable.
-- **Transition auto lead `'contacted'` → `'onboarded'`** quand le wizard est finalisé (Étape 3 soumise). Aujourd'hui la transition n'existe pas, les leads restent bloqués en `'contacted'` même après onboarding complet. À implémenter dans `complete-onboarding.ts` (server action Étape 3) : `UPDATE producer_interests SET statut='onboarded' WHERE email = session.email AND statut='contacted'` (no-op si pas de match, cohérent avec le bump auto de `dbe6360`).
 - **Flux invitation : cas "email déjà en base"** à détecter proprement côté UX (au-delà de la correction fonctionnelle du Chantier 2).
 - **Backfill producers `count = 0`** — réévaluer avant chaque lancement. Aujourd'hui négligeable (faible volume), à garder en tête si le funnel monte.
+- **Design system — Phase 2 (extension)** — une fois la home consumer refondue stabilisée (Phase 1 livrée par session 27/04), étendre la migration design system terra-primary au reste du repo : refonte fiche produit (`/producteurs/[slug]/produits/[id]`), refonte panier + checkout (`/panier`, `/checkout`), refonte UI kit producer (`pro.terroir-local.fr`), refonte UI kit admin (`admin.terroir-local.fr`). Migration variant `accent` (transitionnel green sur call sites admin/producer) → `primary` terra ou `success` green selon sémantique métier. Bundle Claude Design contient des références preview pour ces écrans (cards `metric-tile.html`, `product-card.html`, `dayslots.html`) déjà alignés sur le DS.
+- **Logo SVG vectoriel — vrais variants pour usages externes** — fichier source `~/Desktop/Logo.svg` officiel intégré dans le repo via la session refonte home (`public/logo/logo-source.svg`, ~10KB après nettoyage du calque JPEG modèle). Pour usages externes futurs : générer favicon `.ico` (haute-res depuis le SVG), OG image (1200x630 PNG dérivé du wordmark), version email (PNG fond crème actuel maintenu en `public/email-assets/logo-email.png`). Variants dark BG / icon-only sont en SVG inline dans le composant `Logo.tsx`, pas en fichiers `.svg` séparés.
 
 ### Investigations produit (à trancher)
 

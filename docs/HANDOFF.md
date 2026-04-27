@@ -1,8 +1,11 @@
 # HANDOFF — TerrOir
 
-> À jour le **2026-04-27 (matin, post-session marathon orders + paiement)**. Suite directe de la session 26/04 nuit qui a couvert 3 bugs critiques orders/paiement (P0 stock non restauré, P2 commande fantôme 3DS, P1 idempotence retentative paiement) + extension massive de la couverture vitest sur les routes orders + finalisation navbar SSR-aware (`isAdmin` + `isProducer`). Suite session 27/04 matin : chantier P1 robuste résurrection paiement avec RPC SQL atomique + refund Stripe automatique + audit_logs Phase 2 payment events.
+> À jour le **2026-04-27 (fin de journée, post-session complète)**. Suite directe de la session 26/04 nuit qui a couvert 3 bugs critiques orders/paiement (P0 stock non restauré, P2 commande fantôme 3DS, P1 idempotence retentative paiement) + extension massive de la couverture vitest sur les routes orders + finalisation navbar SSR-aware (`isAdmin` + `isProducer`). Suite session 27/04 matin : chantier P1 robuste résurrection paiement avec RPC SQL atomique + refund Stripe automatique + audit_logs Phase 2 payment events. **Suite session 27/04 après-midi/soir** : (1) chantier alignement routes orders TA (refund + cron-timeout), (2) chantier pré-fetch SSR ProducerLite TC (élimination flash placeholder ProducerLayout), (3) push back TB auto-bump lead onboarded (chantier déjà livré matin), (4) refonte design system + homepage consumer via Claude Design (~3h, 19 blocs DS validés + bundle handoff vers terminal CC pour implémentation Next.js sur branche `feature/home-refonte`).
 >
 > Commits récents (15 derniers) :
+> - `1ef2d0d` test+fix(cron) : cron order-timeout durci avec check error UPDATE + drift detection + revalidateTag batch + 6 tests (TA)
+> - `9ed9b0d` feat(navbar) : pré-fetch SSR ProducerLite — élimination flash placeholder ProducerLayout (TC, 4 fichiers, +109/-40)
+> - `6bcc185` test+fix(refund) : refund admin route alignée sur patterns canoniques (assertTransition strict 409 + revalidateTag + 15 tests) (TA)
 > - `5a572b2` feat(orders) : UI consumer revival_blocked + extension filtre payment_failed → revival_blocked_* (commit 3/3 chantier P1 robuste)
 > - `9d6cb13` fix(webhook) : refund Stripe automatique si résurrection bloquée + audit logs payment events complets (commit 2/3)
 > - `6b4a835` feat(orders) : RPC atomique résurrection avec check stock + slot + helper logPaymentEvent (commit 1/3)
@@ -15,15 +18,15 @@
 > - `4584139` fix(orders) : trigger DB restauration stock à l'annulation (P0)
 > - `799bf71` fix(refund) : pose cancellation_reason='admin_refund'
 > - `f57d5ad` test(orders) : vitest matrice transitions state machine (89 tests)
-> - `20304e9` feat(navbar) : isProducer SSR + factorisation type InitialUserPayload
-> - `d0c87d2` test(producer) : vitest auto-bump lead onboarded (7 tests)
-> - `404bb0d` feat(navbar) : isAdmin SSR pour éliminer flash badge admin
 >
-> 🟢 **Chantiers majeurs clos cette session** :
-> - **3 bugs 🔴 critiques résolus** : P0 stock non restauré, P2 commande fantôme 3DS, P1 idempotence retentative paiement.
+> 🟢 **Chantiers majeurs clos cette session (full 27/04)** :
+> - **3 bugs 🔴 critiques résolus** : P0 stock non restauré, P2 commande fantôme 3DS, P1 idempotence retentative paiement (matin).
 > - **Chantier P1 robuste** (matin 27/04) : RPC SQL atomique `revive_order_with_stock_check` + refund Stripe automatique sur paths bloqués + audit_logs Phase 2 payment events (6 events) + UI consumer page confirmation + extension filtre `isVoidOrderRow`. Bug stock résiduel détecté en validation P1 entièrement résolu.
-> - **Couverture vitest passe de 207 à 411+ tests** (+98%) : state machine matrice 6×6, cron timeout, cancel route, confirm + complete routes, handle-payment-failed, handle-payment-succeeded, log-payment-event.
-> - **Navbar SSR-aware étendue** : pré-fetch `isAdmin` puis `isProducer` côté server, type `InitialUserPayload` factorisé dans `lib/auth/types.ts`.
+> - **Chantier alignement routes orders TA** (après-midi 27/04) : 2 commits `6bcc185` + `1ef2d0d` qui recolent les 3 dernières dettes flag par TB (`799bf71` + `f32d083`). Refund admin et cron-timeout alignés sur les patterns canoniques (assertTransition strict 409 + revalidateTag batch + tests vitest exhaustifs). 432/432 tests verts, 0 `it.todo` restant.
+> - **Chantier pré-fetch SSR ProducerLite TC** (après-midi 27/04) : commit `9ed9b0d` qui fusionne les 2 lookups producers en 1 SELECT enrichi côté SSR. `ProducerLayout` initialise `producer` non-null dès le premier render — placeholder « — » devient inatteignable au hard refresh d'un user producer. Patch chirurgical : `ProducerLite` déplacé en client-safe partagé dans `lib/auth/types.ts`, invariant `isProducer === (producerLite !== null)`, fail-safe préservé. Hors périmètre `app/layout.tsx` et `ProducerLayout.tsx` non touchés.
+> - **Refonte design system + homepage consumer** (après-midi 27/04) : première utilisation de **Claude Design** (Anthropic Labs research preview). Session de ~3h sur 19 blocs DS validés (Colors terra primary + Type Cormorant/Inter + Spacing/Radii/Elevation + Identité Logo lockups + Components atomic & composés). Homepage consumer maquettée desktop + mobile 375px en 8 sections cohérentes. Logo officiel Romain (8 paths vectoriels Inkscape) intégré. Bundle handoff `design_handoff_terroir.zip` exporté vers terminal CC (39 fichiers, ~21KB). Implémentation Next.js en cours sur branche `feature/home-refonte` (terminal TT, plan 7 pushes validé). Phase 2 (fiches produit, panier/checkout, UI kits producer & admin) reportée à sessions ultérieures.
+> - **Couverture vitest passe de 207 à 432+ tests** (+108%) : state machine matrice 6×6, cron timeout, cancel route, confirm + complete routes, handle-payment-failed, handle-payment-succeeded, log-payment-event, refund admin (TA), get-initial-user-payload (TC).
+> - **Navbar SSR-aware finalisée** : pré-fetch `isAdmin` puis `isProducer` (matin) puis `producerLite` complet (après-midi via TC). Type `InitialUserPayload` factorisé dans `lib/auth/types.ts`. Plus aucun flash CTA ni placeholder « — » au hard refresh.
 >
 > **Configurations externes Stripe Dashboard validées (mode Test)** :
 > - Webhook URL pointe sur `https://www.terroir-local.fr/api/stripe/webhook` ✅
@@ -34,6 +37,8 @@
 > **Validations prod end-to-end** : P0 + P2 + P1 simultanés sur commande TRR-7235E (carte 4000-0027-6000-3184 puis 4242-4242-4242-4242). P1 robuste validé sur commande TRR-KKKDL (stock Salade mesclun 50→47 + audit_logs `order_payment_failed` + `order_revival_succeeded`).
 >
 > **Migrations apply confirmées prod** : `20260424000000` (Stripe Connect flags), `20260427100000` (audit_logs), `20260427200000` (trigger stock à l'annulation), `20260427300000` (RPC résurrection avec check stock + slot).
+>
+> **En cours sur branche feature** : `feature/home-refonte` (terminal TT, implémentation Next.js de la home consumer refondue depuis bundle Claude Design). Pas encore mergée sur master. Preview Vercel attendue. 7 pushes prévus (tokens DS + logo source + composants atomic + composants composés + navbar/footer + homepage finale).
 >
 > Objectif : permettre à un Claude frais de reprendre le projet exactement où on en est, juste en lisant ce document (puis `docs/METHODOLOGY.md` et `docs/TODO.md`). Voir `docs/README.md` pour l'index complet de la documentation.
 
