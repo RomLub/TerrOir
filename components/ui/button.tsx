@@ -1,6 +1,28 @@
 import type { ButtonHTMLAttributes } from "react";
 
-export type ButtonVariant = "primary" | "secondary" | "ghost";
+/**
+ * Bouton sémantique aligné DS terra-primary (cf. design_system_cards/buttons.html).
+ *
+ * - `primary`   : terra-700 filled — CTA métier (Ajouter au panier, Commander,
+ *                 Payer, S'inscrire, Devenir producteur, Explorer…). Default.
+ * - `secondary` : terra-100/terra-700 — action secondaire (Voir mes commandes,
+ *                 Itinéraire, Voir plus d'avis…).
+ * - `ghost`     : transparent/terra-700 — action tertiaire (Réinitialiser,
+ *                 Annuler dans un form, etc.).
+ * - `success`   : green-700 filled — validation métier explicite (Confirmer la
+ *                 commande, Marquer livrée, Approuver, Publier).
+ * - `accent`    : @deprecated — green-700 filled. Variant transitional pour
+ *                 back-compat dashboards admin/producer pendant la migration
+ *                 sémantique terra. À reclasser en Phase 2 vers `primary`,
+ *                 `success`, ou `secondary` selon la sémantique métier réelle
+ *                 du call site.
+ */
+export type ButtonVariant =
+  | "primary"
+  | "secondary"
+  | "ghost"
+  | "success"
+  | "accent";
 export type ButtonSize = "sm" | "md" | "lg";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -10,11 +32,15 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 
 const variantStyles: Record<ButtonVariant, string> = {
   primary:
-    "bg-terroir-green-700 text-white hover:bg-terroir-green-700/90 disabled:bg-terroir-green-700/50",
+    "bg-terra-700 text-white hover:bg-terra-800 disabled:bg-terra-700/50",
   secondary:
-    "bg-terroir-green-100 text-terroir-green-700 hover:bg-terroir-green-100/70",
+    "bg-terra-100 text-terra-700 hover:bg-terra-100/70",
   ghost:
-    "bg-transparent text-terroir-green-700 hover:bg-terroir-green-100",
+    "bg-transparent text-terra-700 hover:bg-terra-100",
+  success:
+    "bg-green-700 text-white hover:bg-green-800 disabled:bg-green-700/50",
+  accent:
+    "bg-green-700 text-white hover:bg-green-700/90 disabled:bg-green-700/50",
 };
 
 const sizeStyles: Record<ButtonSize, string> = {
@@ -30,7 +56,7 @@ export function Button({
   ...props
 }: ButtonProps) {
   const base =
-    "inline-flex items-center justify-center rounded-md font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-terroir-green-700 disabled:cursor-not-allowed disabled:opacity-60";
+    "inline-flex items-center justify-center rounded-md font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-terra-700 disabled:cursor-not-allowed disabled:opacity-60";
   return (
     <button
       className={`${base} ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}

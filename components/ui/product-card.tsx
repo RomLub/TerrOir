@@ -78,10 +78,10 @@ export function ProductCard({
             {product.producer}
           </p>
         ) : null}
-        <p className="mt-auto pt-2 font-medium text-terroir-green-700">
+        <p className="mt-auto pt-2 font-medium text-terra-700 tabular-nums">
           {formatPrice(product.price)}
           {product.unit ? (
-            <span className="text-sm text-terroir-muted"> / {product.unit}</span>
+            <span className="text-sm font-normal text-terroir-muted"> / {product.unit}</span>
           ) : null}
         </p>
       </div>

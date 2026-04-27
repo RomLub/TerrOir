@@ -227,13 +227,13 @@ export default function ProducerCommandesPage() {
                     <Button variant="ghost" size="sm" disabled={working === o.id} onClick={() => actOnOrder(o.id, 'cancel')}>
                       Annuler
                     </Button>
-                    <Button size="sm" disabled={working === o.id} onClick={() => actOnOrder(o.id, 'confirm')}>
+                    <Button variant="success" size="sm" disabled={working === o.id} onClick={() => actOnOrder(o.id, 'confirm')}>
                       {working === o.id ? '…' : 'Confirmer la commande'}
                     </Button>
                   </>
                 )}
                 {(o.status === 'confirmed' || o.status === 'ready') && (
-                  <Link href={`/commandes/${o.id}`}><Button size="sm">Voir le détail</Button></Link>
+                  <Link href={`/commandes/${o.id}`}><Button variant="accent" size="sm">Voir le détail</Button></Link>
                 )}
                 {(o.status === 'completed' || o.status === 'cancelled' || o.status === 'refunded') && (
                   <Link href={`/commandes/${o.id}`}><Button variant="ghost" size="sm">Voir le détail</Button></Link>

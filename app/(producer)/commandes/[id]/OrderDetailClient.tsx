@@ -178,7 +178,7 @@ export function OrderDetailClient({ data }: { data: OrderDetailData }) {
                   />
                   {codeError && <p className="mt-3 text-[13px] text-terra-700 font-medium">{codeError}</p>}
                   <div className="mt-5 flex gap-2 justify-end">
-                    <Button type="submit" size="lg" disabled={busy === 'complete'}>
+                    <Button type="submit" variant="success" size="lg" disabled={busy === 'complete'}>
                       {busy === 'complete' ? 'Validation…' : 'Valider le retrait'}
                     </Button>
                   </div>
@@ -216,7 +216,7 @@ export function OrderDetailClient({ data }: { data: OrderDetailData }) {
             <div className="flex flex-col gap-2">
               {order.status === 'pending' && (
                 <>
-                  <Button size="lg" disabled={busy !== null} onClick={() => call('confirm')}>
+                  <Button variant="success" size="lg" disabled={busy !== null} onClick={() => call('confirm')}>
                     {busy === 'confirm' ? 'Confirmation…' : 'Confirmer la commande'}
                   </Button>
                   <Button variant="ghost" size="lg" disabled={busy !== null} onClick={() => call('cancel', { reason: 'producer_cancel' })}>
