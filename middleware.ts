@@ -18,7 +18,7 @@ const PUBLIC_PATHS = new Set<string>([
   "/connexion",
   "/invitation",
   "/auth/inscription",
-  "/reset-password",
+  "/reinitialiser-mot-de-passe",
   "/mot-de-passe-oublie",
   "/desabonnement",
   PRO_LANDING_PATH,
