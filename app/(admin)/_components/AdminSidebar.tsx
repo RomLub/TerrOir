@@ -93,12 +93,29 @@ const ReviewsIcon = (
   </svg>
 );
 
+const GmsPricesIcon = (
+  <svg
+    aria-hidden="true"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="h-4 w-4"
+  >
+    <path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+    <line x1="7" y1="7" x2="7.01" y2="7" />
+  </svg>
+);
+
 const NAV: NavItem[] = [
   { href: "/tableau-de-bord", label: "Tableau de bord", icon: DashboardIcon },
   { href: "/producer-interests", label: "Leads producteurs", icon: LeadsIcon },
   { href: "/gestion-producteurs", label: "Gestion producteurs", icon: ProducersIcon },
   { href: "/suivi-commandes", label: "Suivi commandes", icon: OrdersIcon },
   { href: "/avis", label: "Avis", icon: ReviewsIcon },
+  { href: "/gms-prices", label: "Prix GMS", icon: GmsPricesIcon },
 ];
 
 function isActive(pathname: string | null, href: string): boolean {
