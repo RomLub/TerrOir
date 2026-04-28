@@ -347,6 +347,12 @@ function InviteModal({
   const [sent, setSent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Capture du flag renvoyé par la route quand l'email correspond à un
+  // users row role='consumer' (sans 'producer'). L'acceptation de
+  // l'invitation déclenchera loginAndUpgradeAction côté /invitation page,
+  // pas une création de compte from scratch. On le surface dans le sent
+  // view pour que l'admin ait la confirmation visuelle de ce qu'il a fait.
+  const [existingAccount, setExistingAccount] = useState<'consumer' | null>(null);
   // Friction UX : quand la route renvoie 409 kind='draft_resend_confirm_required'
   // (email correspond à un producer en statut='draft' = onboarding abandonné),
   // on bascule en mode confirmation : encadré informatif orange + bouton
@@ -379,9 +385,12 @@ function InviteModal({
         setError(body.error ?? 'Invitation impossible');
         return;
       }
+      setExistingAccount(body.existing_account ?? null);
       setSent(true);
       onSuccess();
-      setTimeout(onClose, 1400);
+      // Délai allongé quand un encart info est affiché : l'admin a
+      // besoin de plus de temps pour lire le message upgrade-rôles.
+      setTimeout(onClose, body.existing_account === 'consumer' ? 3200 : 1400);
     } catch {
       setError('Erreur de connexion');
     } finally {
@@ -404,6 +413,19 @@ function InviteModal({
             </svg>
           </div>
           <p className="mt-3 text-[13px] text-gray-600">Un email vient de partir à {email}.</p>
+          {existingAccount === 'consumer' && (
+            <div
+              className="mx-auto mt-4 max-w-md rounded-md border border-blue-300 bg-blue-50 px-4 py-3 text-left text-[13px] text-blue-900"
+              role="status"
+            >
+              <p className="font-semibold">Compte consumer existant détecté</p>
+              <p className="mt-1 leading-relaxed">
+                Cet email correspond déjà à un compte client TerrOir. À l&apos;acceptation de
+                l&apos;invitation, le rôle producteur sera ajouté à son compte existant
+                (pas de création d&apos;un nouveau compte).
+              </p>
+            </div>
+          )}
         </div>
       </AdminModal>
     );

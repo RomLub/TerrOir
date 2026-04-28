@@ -483,3 +483,32 @@ describe("F. Edge cases", () => {
     expect(consoleWarnSpy).not.toHaveBeenCalled();
   });
 });
+
+// --- G. UX admin enrichie — flag existing_account ------------------------
+// Permet à l'UI admin de distinguer un consumer pré-existant (toast info
+// upgrade-rôles) d'un prospect direct/lead (toast succès classique).
+// Note : cas draft_resend (roles=['consumer','producer']) → null car le
+// compte est déjà producer côté roles, pas de toast info nécessaire.
+
+describe("G. existing_account flag", () => {
+  it("G1 prospect direct (pas de users row) → existing_account=null", async () => {
+    pushResp("admin_users", "select", { data: null, error: null });
+    pushResp("users", "select", { data: null, error: null });
+    const res = await POST(makeRequest(VALID_BODY));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.existing_account).toBeNull();
+  });
+
+  it("G2 consumer existant (roles=['consumer']) → existing_account='consumer'", async () => {
+    pushResp("admin_users", "select", { data: null, error: null });
+    pushResp("users", "select", {
+      data: { id: "user-1", roles: ["consumer"] },
+      error: null,
+    });
+    const res = await POST(makeRequest(VALID_BODY));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.existing_account).toBe("consumer");
+  });
+});
