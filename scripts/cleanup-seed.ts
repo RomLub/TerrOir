@@ -16,8 +16,14 @@
  */
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { config as loadEnv } from "dotenv";
 import readline from "node:readline/promises";
+import { resolve } from "node:path";
 import { stdin as input, stdout as output } from "node:process";
+
+// Charge .env.local depuis la racine du repo AVANT toute lecture process.env.
+// Ergonomie Windows PowerShell — pas besoin de sourcer manuellement.
+loadEnv({ path: resolve(process.cwd(), ".env.local") });
 
 const DRY_RUN = process.argv.includes("--dry-run");
 const EMAIL_SUFFIX = "@seed.terroir-local.fr";

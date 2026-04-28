@@ -23,7 +23,13 @@
  */
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { config as loadEnv } from "dotenv";
+import { resolve } from "node:path";
 import type { UserRole } from "@/lib/auth/roles";
+
+// Charge .env.local depuis la racine du repo AVANT toute lecture process.env.
+// Ergonomie Windows PowerShell — pas besoin de sourcer manuellement.
+loadEnv({ path: resolve(process.cwd(), ".env.local") });
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
