@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Logo } from "@/components/ui/logo";
 import { Badge } from "@/components/ui/badge";
+import { RoleToggle } from "@/components/ui/role-toggle";
 import { useUserContext } from "@/components/providers/user-provider";
 import { useCartStore } from "@/lib/store/cart";
 import { useLogoutFlow } from "@/lib/auth/use-logout-flow";
@@ -275,6 +276,10 @@ export function NavbarPublic({
               Connexion
             </Link>
           )}
+          {/* Toggle multi-rôle : rendu null si l'user n'a pas les deux rôles
+              consumer ET producer. Position : après le bloc user, avant le
+              panier — directement visible pour les multi-rôles. */}
+          <RoleToggle current="consumer" />
           {!isAdmin ? <CartNavButton variant="desktop" /> : null}
         </div>
       </div>
@@ -308,6 +313,12 @@ export function NavbarPublic({
           >
             <CloseIcon className="h-6 w-6" />
           </button>
+        </div>
+
+        {/* Toggle multi-rôle dans le drawer mobile : rendu null si pas de
+            dual-rôle. Position en tête du drawer pour visibilité immédiate. */}
+        <div className="mb-4">
+          <RoleToggle current="consumer" />
         </div>
 
         <nav

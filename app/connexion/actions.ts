@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { loginSchema } from "@/lib/auth/validators";
@@ -43,6 +44,16 @@ export async function loginAction(
 
   const role = await loadRoleSnapshot(supabase, data.user.id);
   const host = headers().get("host") ?? "";
+  // Invalide le cache RSC du root layout AVANT redirect : sans ça, Next 14
+  // navigue côté client vers la cible (ex: /compte) en réutilisant le
+  // RootLayout déjà rendu pré-login (avec initial.user=null). Résultat
+  // observé : navbar affiche "Connexion" alors que la session est OK
+  // (sidebar /compte affiche le user). F5 ne corrige pas (cache RSC client
+  // persiste), seul Ctrl+F5 forçait la re-évaluation SSR.
+  // revalidatePath("/", "layout") force la ré-exécution de getInitialUserPayload()
+  // sur la nouvelle navigation, avec les cookies auth fraîchement posés
+  // par signInWithPassword.
+  revalidatePath("/", "layout");
   // redirectTo posé par le middleware quand un user anonyme a tapé une route
   // protégée (cf. middleware.ts §2). Fallback canonique si absent/invalide.
   redirect(resolvePostLoginPath(role, host, formData.get("redirectTo")));
