@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { signupSchema } from "@/lib/auth/validators";
@@ -59,5 +60,13 @@ export async function signupAction(
     return { error: `Profil non créé : ${profileError.message}` };
   }
 
+  // Invalide le cache RSC du root layout AVANT redirect — supabase config
+  // enable_confirmations=false (cf. supabase/config.toml) → signUp pose les
+  // cookies de session immédiatement. Sans revalidatePath, RSC nav vers
+  // /compte/commandes réutilise le RootLayout cached pré-signup avec
+  // initial.user=null, navbar affiche "Connexion" alors que l'user est loggé.
+  // Pattern strictement identique au fix login PR #13. Le sync useEffect
+  // PR #14 dans UserProvider tirera ensuite sur la transition initial.user?.id.
+  revalidatePath("/", "layout");
   redirect("/compte/commandes");
 }

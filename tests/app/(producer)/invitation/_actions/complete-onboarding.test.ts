@@ -10,6 +10,13 @@ vi.mock("next/navigation", () => ({
   },
 }));
 
+// revalidatePath() requiert un static generation store en runtime — absent en
+// test (env=node). Mock en no-op : la sémantique cache-bust n'a pas d'incidence
+// sur les assertions métier de ce fichier (DB writes, redirect path, lead bump).
+vi.mock("next/cache", () => ({
+  revalidatePath: vi.fn(),
+}));
+
 type SessionUser = {
   id: string;
   email: string | null;
