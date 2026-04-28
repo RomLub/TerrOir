@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import {
@@ -143,6 +144,15 @@ export function StepCompteLogin({
         required
         autoComplete="current-password"
       />
+
+      <div className="text-right">
+        <Link
+          href="/mot-de-passe-oublie"
+          className="text-sm text-terroir-green-700 underline hover:text-terroir-green-700/80"
+        >
+          Mot de passe oublié&nbsp;?
+        </Link>
+      </div>
 
       {state.error ? (
         <p className="text-sm text-red-700" role="alert">
