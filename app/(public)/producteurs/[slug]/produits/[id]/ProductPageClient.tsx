@@ -6,6 +6,7 @@ import { Button, Badge, MiniMap, ProductCard } from '@/components/ui';
 import { useCartStore } from '@/lib/store/cart';
 import { formatSlotTime, formatSlotRange } from '@/lib/slots/format-slot-time';
 import { useUserContext } from '@/components/providers/user-provider';
+import { StockAlertForm } from './_components/StockAlertForm';
 
 export type ProducerSummary = {
   id: string;
@@ -292,24 +293,30 @@ export function ProductPageClient({
             </div>
 
             <div className="mt-8 sticky bottom-0 bg-bg pt-4 pb-2 -mx-1 px-1 lg:static">
-              <div className="flex items-center justify-between mb-3 px-1">
-                <span className="text-[13px] text-dark/60">Total estimé</span>
-                <span className="font-serif text-[28px] text-green-900 tabular-nums">
-                  {total.toFixed(2).replace('.', ',')}&nbsp;€
-                </span>
-              </div>
-              <Button size="lg" className="w-full" disabled={!canOrder} onClick={handleAdd}>
-                {isOwnProduct
-                  ? 'Votre produit'
-                  : added
-                    ? '✓ Ajouté au panier'
-                    : !slot
-                      ? 'Choisissez un créneau'
-                      : `Ajouter au panier`}
-              </Button>
-              <p className="text-[11px] text-dark/50 text-center mt-2">
-                Vous confirmez votre commande directement avec {producer.name.split(' ').slice(-2).join(' ')}.
-              </p>
+              {!isOwnProduct && !product.stockUnlimited && product.stockLeft === 0 ? (
+                <StockAlertForm productId={product.id} productName={product.name} />
+              ) : (
+                <>
+                  <div className="flex items-center justify-between mb-3 px-1">
+                    <span className="text-[13px] text-dark/60">Total estimé</span>
+                    <span className="font-serif text-[28px] text-green-900 tabular-nums">
+                      {total.toFixed(2).replace('.', ',')}&nbsp;€
+                    </span>
+                  </div>
+                  <Button size="lg" className="w-full" disabled={!canOrder} onClick={handleAdd}>
+                    {isOwnProduct
+                      ? 'Votre produit'
+                      : added
+                        ? '✓ Ajouté au panier'
+                        : !slot
+                          ? 'Choisissez un créneau'
+                          : `Ajouter au panier`}
+                  </Button>
+                  <p className="text-[11px] text-dark/50 text-center mt-2">
+                    Vous confirmez votre commande directement avec {producer.name.split(' ').slice(-2).join(' ')}.
+                  </p>
+                </>
+              )}
             </div>
 
             <div className="mt-10 rounded-2xl overflow-hidden border border-dark/[0.06] bg-white">
