@@ -1,4 +1,5 @@
 import type { ButtonHTMLAttributes } from "react";
+import { cn } from "@/lib/utils";
 
 /**
  * Bouton sémantique aligné DS terra-primary (cf. design_system_cards/buttons.html).
@@ -59,7 +60,7 @@ export function Button({
     "inline-flex items-center justify-center rounded-md font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-terra-700 disabled:cursor-not-allowed disabled:opacity-60";
   return (
     <button
-      className={`${base} ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}
+      className={cn(base, variantStyles[variant], sizeStyles[size], className)}
       {...props}
     />
   );
