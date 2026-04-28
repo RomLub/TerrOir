@@ -125,6 +125,52 @@ describe("logPaymentEvent — insert nominal", () => {
       }),
     );
   });
+
+  it("insère un event order_admin_refund_failed (T-107 path admin manuel)", async () => {
+    await logPaymentEvent({
+      eventType: "order_admin_refund_failed",
+      userId: "user-21",
+      metadata: {
+        order_id: "order-admin",
+        payment_intent_id: "pi_admin",
+        refund_error: "card_declined",
+      },
+    });
+
+    expect(insertSpy).toHaveBeenCalledWith(
+      "audit_logs",
+      expect.objectContaining({
+        event_type: "order_admin_refund_failed",
+        metadata: expect.objectContaining({
+          refund_error: "card_declined",
+          payment_intent_id: "pi_admin",
+        }),
+      }),
+    );
+  });
+
+  it("insère un event order_timeout_refund_failed (T-107 path cron timeout)", async () => {
+    await logPaymentEvent({
+      eventType: "order_timeout_refund_failed",
+      userId: "user-22",
+      metadata: {
+        order_id: "order-timeout",
+        payment_intent_id: "pi_timeout",
+        refund_error: "Stripe network timeout",
+      },
+    });
+
+    expect(insertSpy).toHaveBeenCalledWith(
+      "audit_logs",
+      expect.objectContaining({
+        event_type: "order_timeout_refund_failed",
+        metadata: expect.objectContaining({
+          refund_error: "Stripe network timeout",
+          payment_intent_id: "pi_timeout",
+        }),
+      }),
+    );
+  });
 });
 
 describe("logPaymentEvent — defaults", () => {

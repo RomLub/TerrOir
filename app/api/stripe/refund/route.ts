@@ -4,6 +4,7 @@ import { z } from "zod";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
+import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
 import {
   InvalidOrderTransitionError,
   assertTransition,
@@ -83,9 +84,26 @@ export async function POST(request: Request) {
     throw e;
   }
 
-  const refund = await stripe.refunds.create({
-    payment_intent: order.stripe_payment_intent_id,
-  });
+  // Instrumentation T-107 : capture l'échec Stripe dans audit_logs avant
+  // de propager le 500. Pré-requis pour qu'un cron retry futur (extension
+  // T-102) puisse réconcilier les `order_admin_refund_failed` orphelins.
+  let refund;
+  try {
+    refund = await stripe.refunds.create({
+      payment_intent: order.stripe_payment_intent_id,
+    });
+  } catch (e) {
+    await logPaymentEvent({
+      eventType: "order_admin_refund_failed",
+      userId: order.consumer_id,
+      metadata: {
+        order_id: order.id,
+        payment_intent_id: order.stripe_payment_intent_id,
+        refund_error: (e as Error).message,
+      },
+    });
+    throw e;
+  }
 
   const { error: updateError } = await admin
     .from("orders")

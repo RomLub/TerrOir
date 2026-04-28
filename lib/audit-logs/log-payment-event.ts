@@ -46,7 +46,15 @@ export type PaymentEventType =
   // `_retry_exhausted` (3 attempts épuisés, alerte admin via notifications
   // template='refund_retry_exhausted').
   | "order_refund_retried_succeeded"
-  | "order_refund_retry_exhausted";
+  | "order_refund_retry_exhausted"
+  // Paths refund autres que résurrection (chantier T-107 instrumentation
+  // pré-requis avant extension du cron retry-failed-refunds aux 3 paths).
+  // Aujourd'hui pure instrumentation forensique : le cron retry actuel ne
+  // les consomme pas encore. Posent un audit_log à chaque échec
+  // `stripe.refunds.create` sur leur path respectif pour permettre la
+  // détection background ultérieure.
+  | "order_admin_refund_failed"
+  | "order_timeout_refund_failed";
 
 type LogPaymentEventParams = {
   eventType: PaymentEventType;
