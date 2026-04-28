@@ -24,9 +24,30 @@ const caveat = Caveat({
   display: "swap",
 });
 
+// Assets brand externes : Next 14 détecte automatiquement app/icon.png,
+// app/apple-icon.png, app/opengraph-image.png, app/twitter-image.png et injecte
+// les <link rel="icon"> + <meta property="og:image"> appropriés. Inutile de
+// déclarer metadata.icons / openGraph.images / twitter.images ici.
+// Régénération : `node scripts/generate-brand-assets.mjs`.
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(APP_URL),
   title: "TerrOir",
   description: "La marketplace des produits du terroir.",
+  openGraph: {
+    title: "TerrOir",
+    description: "La marketplace des produits du terroir.",
+    url: APP_URL,
+    siteName: "TerrOir",
+    locale: "fr_FR",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "TerrOir",
+    description: "La marketplace des produits du terroir.",
+  },
 };
 
 export default async function RootLayout({
