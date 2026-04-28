@@ -37,7 +37,16 @@ export type PaymentEventType =
   // Paths résurrection bloquée (chantier en cours).
   | "order_revival_blocked_stock"
   | "order_revival_blocked_slot"
-  | "order_revival_refund_failed";
+  | "order_revival_refund_failed"
+  // Path retry cron daily (chantier retry-failed-refunds — scope minimal
+  // résurrection bloquée). Cron `/api/cron/retry-failed-refunds` retente
+  // jusqu'à 3 fois les refunds bloqués sur le path résurrection. Idempotency
+  // Stripe key dérivée de l'order_id + attempt pour empêcher double refund.
+  // Sortie de boucle : `_retried_succeeded` (refund OK enfin) OU
+  // `_retry_exhausted` (3 attempts épuisés, alerte admin via notifications
+  // template='refund_retry_exhausted').
+  | "order_refund_retried_succeeded"
+  | "order_refund_retry_exhausted";
 
 type LogPaymentEventParams = {
   eventType: PaymentEventType;
