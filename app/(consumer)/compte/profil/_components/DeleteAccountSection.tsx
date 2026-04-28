@@ -5,6 +5,7 @@ import { useFormState, useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useUserContext } from "@/components/providers/user-provider";
+import { PasswordInput } from "@/components/ui";
 import {
   deleteAccountAction,
   type DeleteAccountState,
@@ -137,23 +138,14 @@ function DeleteModal({ onClose }: { onClose: () => void }) {
                 readOnly
               />
 
-              <div className="flex flex-col gap-1">
-                <label
-                  htmlFor="delete-password"
-                  className="text-sm font-medium text-terroir-ink"
-                >
-                  Mot de passe
-                </label>
-                <input
-                  ref={passwordRef}
-                  id="delete-password"
-                  name="password"
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                  className="w-full rounded-md border border-terroir-border bg-white px-3 py-2 text-sm text-terroir-ink focus:outline-none focus:ring-2 focus:ring-terroir-green-700 focus:border-terroir-green-700"
-                />
-              </div>
+              <PasswordInput
+                ref={passwordRef}
+                id="delete-password"
+                label="Mot de passe"
+                name="password"
+                autoComplete="current-password"
+                required
+              />
 
               <div className="flex flex-col gap-1">
                 <label

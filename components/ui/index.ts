@@ -12,6 +12,13 @@ export {
 export { Card, type CardProps } from "./card";
 export { Input, type InputProps } from "./input";
 export {
+  PasswordInput,
+  type PasswordInputProps,
+  PASSWORD_TOGGLE_LABEL_SHOW,
+  PASSWORD_TOGGLE_LABEL_HIDE,
+  getPasswordToggleLabel,
+} from "./password-input";
+export {
   Select,
   type SelectProps,
   type SelectOption,

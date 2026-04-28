@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useFormState, useFormStatus } from "react-dom";
-import { Button, Input } from "@/components/ui";
+import { Button, PasswordInput } from "@/components/ui";
 import {
   updatePasswordAction,
   type UpdatePasswordState,
@@ -26,18 +26,16 @@ export function ResetPasswordForm({ tokenHash }: { tokenHash: string }) {
     <form action={formAction} className="space-y-4">
       <input type="hidden" name="token_hash" value={tokenHash} />
 
-      <Input
+      <PasswordInput
         label="Nouveau mot de passe"
         name="password"
-        type="password"
         autoComplete="new-password"
         minLength={8}
         required
       />
-      <Input
+      <PasswordInput
         label="Confirmer le mot de passe"
         name="passwordConfirm"
-        type="password"
         autoComplete="new-password"
         minLength={8}
         required

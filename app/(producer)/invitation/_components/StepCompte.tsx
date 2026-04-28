@@ -10,6 +10,7 @@ import {
   loginAndUpgradeAction,
   type State as LoginState,
 } from "../_actions/login-and-upgrade";
+import { PasswordInput } from "@/components/ui";
 
 const initialCreate: CreateState = {};
 const initialLogin: LoginState = {};
@@ -32,9 +33,6 @@ function PrimaryButton({
     </button>
   );
 }
-
-const inputClass =
-  "w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-terroir-green-700 focus:outline-none focus:ring-2 focus:ring-terroir-green-700";
 
 const readOnlyClass =
   "w-full rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-700";
@@ -73,33 +71,21 @@ export function StepCompteNew({
         <input type="email" value={email} readOnly disabled className={readOnlyClass} />
       </div>
 
-      <div>
-        <label className="mb-1 block text-sm font-medium text-gray-800">
-          Mot de passe
-        </label>
-        <input
-          name="password"
-          type="password"
-          required
-          minLength={8}
-          autoComplete="new-password"
-          className={inputClass}
-        />
-      </div>
+      <PasswordInput
+        label="Mot de passe"
+        name="password"
+        required
+        minLength={8}
+        autoComplete="new-password"
+      />
 
-      <div>
-        <label className="mb-1 block text-sm font-medium text-gray-800">
-          Confirmer le mot de passe
-        </label>
-        <input
-          name="passwordConfirm"
-          type="password"
-          required
-          minLength={8}
-          autoComplete="new-password"
-          className={inputClass}
-        />
-      </div>
+      <PasswordInput
+        label="Confirmer le mot de passe"
+        name="passwordConfirm"
+        required
+        minLength={8}
+        autoComplete="new-password"
+      />
 
       {state.error ? (
         <p className="text-sm text-red-700" role="alert">
@@ -151,18 +137,12 @@ export function StepCompteLogin({
         <input type="email" value={email} readOnly disabled className={readOnlyClass} />
       </div>
 
-      <div>
-        <label className="mb-1 block text-sm font-medium text-gray-800">
-          Mot de passe
-        </label>
-        <input
-          name="password"
-          type="password"
-          required
-          autoComplete="current-password"
-          className={inputClass}
-        />
-      </div>
+      <PasswordInput
+        label="Mot de passe"
+        name="password"
+        required
+        autoComplete="current-password"
+      />
 
       {state.error ? (
         <p className="text-sm text-red-700" role="alert">
