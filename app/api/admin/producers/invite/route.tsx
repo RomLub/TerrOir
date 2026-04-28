@@ -119,6 +119,21 @@ export async function POST(request: Request) {
     isDraftResend = true;
   }
 
+  // Détection compte consumer pré-existant : le user va pouvoir se logger
+  // avec ses creds existants et loginAndUpgradeAction ajoutera le rôle
+  // 'producer' à l'acceptation. On expose le flag à l'UI admin pour
+  // afficher un toast info distinct (l'admin a la confirmation visuelle
+  // que le flow upgrade-rôles va se déclencher, pas une création
+  // de compte from scratch). Note : un draft_resend a roles=['consumer','producer']
+  // → existing_account=null (le compte est déjà producer côté roles).
+  const existingAccount: "consumer" | null =
+    existingUser &&
+    Array.isArray(existingUser.roles) &&
+    existingUser.roles.includes("consumer") &&
+    !existingUser.roles.includes("producer")
+      ? "consumer"
+      : null;
+
   // 2. Préparer TOUS les tokens AVANT le moindre write DB. Si un token
   //    échoue (OPT_OUT_TOKEN_SECRET absent → generateOptOutToken throw),
   //    on 500 proprement sans laisser d'invitation orpheline en base.
@@ -256,5 +271,6 @@ export async function POST(request: Request) {
     lead_updated: leadUpdated,
     lead_created: leadCreated,
     draft_resend: isDraftResend,
+    existing_account: existingAccount,
   });
 }
