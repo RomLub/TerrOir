@@ -12,9 +12,8 @@ import {
 } from "@/lib/auth/redirect-cookie";
 
 // Gère le retour des emails transactionnels Supabase (recovery, invite,
-// magic link, signup). Deux formats supportés :
-//   - ?code=…        → PKCE, échangé contre une session cookie
-//   - ?token_hash=…&type=…  → OTP vérifié via verifyOtp
+// magic link, signup) au format ?token_hash=…&type=… → OTP vérifié via
+// verifyOtp.
 // Paramètre optionnel ?next=/chemin/relatif pour personnaliser la destination
 // (legacy — privilégier ?redirectTo).
 // Paramètre optionnel ?redirectTo=/chemin/relatif propagé depuis le form
@@ -47,7 +46,6 @@ function sanitizeNext(raw: string | null): string | null {
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
-  const code = url.searchParams.get("code");
   const tokenHash = url.searchParams.get("token_hash");
   const rawType = url.searchParams.get("type");
   const type =
@@ -63,7 +61,7 @@ export async function GET(request: NextRequest) {
   const redirectTo =
     readRedirectAfterAuth(request) ?? url.searchParams.get("redirectTo");
 
-  // setAll est appelé par Supabase après exchange/verifyOtp. On accumule
+  // setAll est appelé par Supabase après verifyOtp. On accumule
   // les cookies à poser dans un buffer pour pouvoir les attacher à la
   // réponse finale, peu importe la cible de redirect choisie ensuite.
   const cookiesToWrite: {
@@ -96,17 +94,14 @@ export async function GET(request: NextRequest) {
   );
 
   let authError: string | null = null;
-  if (code) {
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (error) authError = error.message;
-  } else if (tokenHash && type) {
+  if (tokenHash && type) {
     const { error } = await supabase.auth.verifyOtp({
       token_hash: tokenHash,
       type,
     });
     if (error) authError = error.message;
   } else {
-    authError = "Missing code or token_hash";
+    authError = "Missing token_hash";
   }
 
   if (authError) {
