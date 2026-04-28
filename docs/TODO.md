@@ -4,7 +4,10 @@ Priorités forward-looking uniquement. Pour l'historique complet des commits / c
 
 ## 🟠 En cours
 
-_(rien en cours)_
+- **Chantier "Notre démarche" — page pédagogique GMS** (refonte item roadmap "Prix GMS sur chaque fiche produit" décidée session 28/04 après-midi).
+  - ✅ **Phase A livrée 28/04** (PR #2 + extension dotenv PR #6) — DB tables `gms_prices` + `gms_prices_history` + RLS public read + 10 références seed initial (4 bovin + 3 porcin + 3 ovin) + helper `lib/gms-prices/fetch-active.ts` + 9 tests vitest. Migration `20260428000000_gms_prices` apply confirmée prod, seed apply confirmée prod (10 références actives, breakdown filière OK).
+  - 🔲 **Phase B à venir** — Interface admin `/admin/gms-prices` (CRUD références + workflow update mensuel via RPC INSERT history + UPDATE live en transaction).
+  - 🔲 **Phase C à venir** — Page publique `/notre-demarche` (graphique circuit interactif `<CircuitVisualizer>` 8 maillons GMS / 5 maillons TerrOir avec désactivation maillon par maillon + redistribution éleveur + tooltip sources, tableau comparaison 10 références, hero chiffre choc, encart home teaser, navbar primaire). **Full Claude Code** (Claude Design indispo cette session — itération visuelle CD repassera plus tard pour polish). Décisions tranchées : slug `/notre-demarche`, données graphique placeholder à calibrer plus tard sur sources OFPM/Idele/CGAAER, item navbar primaire, encart home entre Steps et Products grid.
 
 ## 🔴 Bugs ouverts
 
@@ -27,6 +30,8 @@ _(rien d'ouvert)_
 - Review de la conformité RGPD (registre, consentements, droits)
 - Tests de charge sur endpoints critiques (`create-payment-intent`, `create-order-with-items` RPC, `search_producers`)
 - Vérification absence d'injections SQL latentes
+- **Audit npm vulnérabilités pré-existantes** (5 vulnerabilities détectées 28/04 sur le repo : 1 critical + 3 high + 1 moderate, indépendantes de tout chantier session). Lancer `npm audit` détaillé puis traiter en chantier dédié + revue manuelle des breaking changes potentiels avant `npm audit fix --force`.
+- **Validation juridique page `/notre-demarche`** (livraison Phase C ultérieure) — avocat spécialisé droit de la concurrence/conso à embarquer pour wording exact + disclaimers + représentation visuelle des marges intermédiaires (risque dénigrement implicite). Pattern défensif déjà cadré (pas de mention nominale concurrent, source FranceAgriMer/OFPM citée systématiquement, mise en contexte qualité, pas de "Économisez X€"), à valider en audit.
 
 À déclencher avant le go-live public (avant premiers clients payants). Prévoir avant la bascule Stripe Test → Live.
 
@@ -44,13 +49,14 @@ _(rien d'ouvert)_
 
 ### Chantiers code futurs
 
-- **Cron retry-failed-refunds** (chantier dédié futur) — détecter via `audit_logs.event_type` les `*_refund_failed` non réconciliés (refund admin manuel route `/api/stripe/refund`, refund cron `order-timeout`, refund résurrection P1 robuste) et retenter automatiquement, ou alerter admin pour intervention. Couverture forensique `logPaymentEvent` posée par chantier P1 robuste 27/04 sert de base de détection (`order_revival_refund_failed` event type).
+- **Instrumentation `*_refund_failed` audit_logs sur paths refund admin manuel + cron order-timeout** (pré-requis avant extension du cron retry-failed-refunds aux 3 paths). Aujourd'hui seul le path résurrection bloquée P1 robuste pose `order_revival_refund_failed` (chantier P1 robuste 27/04). Les 2 autres paths refund (`/api/stripe/refund` admin manuel, cron `order-timeout`) ne posent aucun event audit `*_refund_failed` exploitable. Pré-requis avant extension du cron retry-failed-refunds (PR #5 mergée 28/04, scope minimal résurrection bloquée only). Chantier dédié futur.
 - **Dédup webhook notifications** (chantier dédié futur) — table `webhook_events_processed(event_id, processed_at)` avec INSERT ON CONFLICT pour bloquer le rejouage Stripe côté code applicatif. Couvre tous les webhook handlers Stripe (`succeeded`, `payment_failed`, `account.updated`, `payout.paid`). Pertinent à instrumenter avant volume significatif (rejouage Stripe rare aujourd'hui, mais double email producer possible si ça arrive).
 - **Migration `transformWithEsbuild` deprecated → `transformWithOxc`** (warning vitest 4 / rolldown-vite, commit `f32d083`) — non bloquant, à migrer quand l'API `transformWithOxc` est stable.
-- **Flux invitation : cas "email déjà en base"** à détecter proprement côté UX (au-delà de la correction fonctionnelle du Chantier 2).
+- **UX admin invite — réponse enrichie + toasts distincts par cas** (R2 du rapport TB invite session 28/04). Aujourd'hui la réponse 200 ne signale pas si l'email correspondait à un consumer existant (qui va être upgrade) vs un prospect direct. Enrichir route avec `existing_account: 'consumer' | null` dans la réponse 200, et ajouter dans `InviteModal` un toast info distinct (« Cet email existe déjà comme consumer — l'invitation va déclencher un upgrade rôles ») vs un toast succès classique. Améliore prévisibilité côté admin.
+- **Invalidation auto des invitations actives à chaque nouvel envoi** (R4 du rapport TB invite session 28/04). Migration SQL : à chaque INSERT `producer_invitations`, faire un UPDATE `producer_invitations SET expires_at=now() WHERE email=$1 AND used_at IS NULL AND expires_at > now()`. Optionnellement : ajouter un UNIQUE partial index `(email) WHERE used_at IS NULL AND expires_at > now()`. Inclure migration SQL + adapter route + tests.
+- **Casse email normalisée `ilike` sur tous les lookups admin_users / users / producers / producer_interests** (chantier transversal détecté pendant inspection TB invite 28/04). Aujourd'hui certaines routes font `eq("email", input.email)` (case-sensitive) alors que `producer_interests` utilise déjà `ilike`. Si l'admin saisit `Bob@example.fr` mais `users.email='bob@example.fr'`, les pré-checks foirent silencieusement. À normaliser : soit `ilike` partout, soit `lower` au save côté DB via trigger. Audit nécessaire de tous les call sites email-keyed dans le repo.
 - **Backfill producers `count = 0`** — réévaluer avant chaque lancement. Aujourd'hui négligeable (faible volume), à garder en tête si le funnel monte.
 - **Design system — Phase 2 (extension)** — une fois la home consumer refondue stabilisée (Phase 1 livrée par session 27/04), étendre la migration design system terra-primary au reste du repo : refonte fiche produit (`/producteurs/[slug]/produits/[id]`), refonte panier + checkout (`/panier`, `/checkout`), refonte UI kit producer (`pro.terroir-local.fr`), refonte UI kit admin (`admin.terroir-local.fr`). Migration variant `accent` (transitionnel green sur call sites admin/producer) → `primary` terra ou `success` green selon sémantique métier. Bundle Claude Design contient des références preview pour ces écrans (cards `metric-tile.html`, `product-card.html`, `dayslots.html`) déjà alignés sur le DS.
-- **Logo SVG vectoriel — vrais variants pour usages externes** — fichier source `~/Desktop/Logo.svg` officiel intégré dans le repo via la session refonte home (`public/logo/logo-source.svg`, ~10KB après nettoyage du calque JPEG modèle). Pour usages externes futurs : générer favicon `.ico` (haute-res depuis le SVG), OG image (1200x630 PNG dérivé du wordmark), version email (PNG fond crème actuel maintenu en `public/email-assets/logo-email.png`). Variants dark BG / icon-only sont en SVG inline dans le composant `Logo.tsx`, pas en fichiers `.svg` séparés.
 
 ### Investigations produit (à trancher)
 
@@ -61,8 +67,8 @@ _(rien d'ouvert)_
 
 ### Audit logs
 
-- **UI admin pour `audit_logs`** — créer une page back-office `/admin/audit-logs` avec filtres par `event_type`, `user_id`, date range, pagination. La table est alimentée par 11 event types (5 auth + 6 payment) — voir `CHANGELOG.md`.
-- **Events audit Phase 3** — instrumenter : `account_signup`, `email_change`, `account_deletion` (RGPD), `admin_login` (event distinct du password login pour traçabilité forensique admin spéciale), `role_change` (promotion consumer→producer, suspend/reactivate, etc.), Stripe events spécifiques (charge, dispute, payout completed/failed). Phases 1 (auth) et 2 (payment) déjà livrées — voir `CHANGELOG.md`.
+- **UI admin pour `audit_logs`** — créer une page back-office `/admin/audit-logs` avec filtres par `event_type`, `user_id`, date range, pagination. La table est alimentée par 13 event types (5 auth Phase 1 + 6 payment Phase 2 + 2 retry refund Phase 2bis 28/04) — voir `CHANGELOG.md`.
+- **Events audit Phase 3 — incluant `[ADMIN_INVITE_*]` structuré** — instrumenter : `account_signup`, `email_change`, `account_deletion` (RGPD), `admin_login` (event distinct du password login pour traçabilité forensique admin spéciale), `role_change` (promotion consumer→producer, suspend/reactivate, etc.), Stripe events spécifiques (charge, dispute, payout completed/failed), **`[ADMIN_INVITE_*]`** (R4 inspection TB invite 28/04 — `admin_invite_sent`, `admin_invite_draft_resend`, `admin_invite_blocked_admin`, `admin_invite_blocked_producer`). Phases 1 (auth, 5 events), 2 (payment, 6 events) et 2bis (retry refund, 2 events) déjà livrées — voir `CHANGELOG.md`.
 
 ### Auth / cleanup
 
@@ -76,61 +82,61 @@ _(rien d'ouvert)_
 
 ### Priorité HAUTE (prochaines semaines)
 
-1. **Prix GMS sur chaque fiche produit**
-   Prix moyen constaté en grande surface (source RNM FranceAgriMer) affiché à côté du prix éleveur. Mis à jour manuellement chaque mois via interface admin.
-   *Impact : justifie le prix, montre que circuit direct = moins cher pour qualité supérieure.*
-   (Base de données · Interface admin · Fiche produit)
+> Item 1 "Prix GMS sur chaque fiche produit" recadré en chantier "Notre démarche" (page pédagogique GMS). Voir section 🟠 En cours en haut. Item original retiré de la roadmap.
 
-2. **Score carbone & bien-être animal**
+1. **Score carbone & bien-être animal**
    Sur la page producteur : km parcourus vs moyenne GMS (~1500 km), mode d'élevage (plein air/bâtiment), alimentation, densité. Remplis par le producteur à l'onboarding.
    *Impact : transparence concrète, argument écologique mesurable sans jargon de label.*
    (Onboarding producteur · Page producteur publique)
 
 ### Priorité MOYENNE (prochain trimestre)
 
-3. **Carte interactive des morceaux**
+2. **Carte interactive des morceaux**
    Schéma SVG interactif (vache, puis porc, agneau). Clic sur un morceau → nom + conseils cuisson + redirection produits disponibles chez les éleveurs TerrOir.
    *Impact : éducatif, unique sur le marché. Aide à découvrir des morceaux moins connus, augmente le panier moyen.*
    (Page publique · Catalogue · UX éducatif)
 
-5. **Schéma interactif circuit court vs GMS**
+3. **Schéma interactif circuit court vs GMS**
    Infographie animée sur `/comment-ca-marche` montrant parcours d'un morceau GMS (éleveur → abattoir → transporteur → centrale → GMS → consommateur) vs TerrOir (éleveur → TerrOir → consommateur). Impact sur prix et rémunération éleveur.
    *Impact : argument de conversion puissant, rend concret l'avantage du circuit court.*
+   *Articulation : réutilise le composant `<CircuitVisualizer>` produit par Phase C du chantier "Notre démarche". Une fois Phase C livrée, ce schéma `/comment-ca-marche` peut être un montage allégé du visualizer principal.*
    (Page `comment-ca-marche` · Marketing)
 
-6. **D'où vient ma viande**
+4. **D'où vient ma viande**
    Page confirmation + historique commandes : mini-carte du trajet exploitation → point de retrait avec km. Comparaison avec moyenne GMS (1500 km).
    *Impact : moment émotionnel fort après achat, renforce satisfaction et fidélisation, potentiel partage social.*
    (Page confirmation · Historique commandes · Carte)
 
-7. **Alerte disponibilité produit**
+5. **Alerte disponibilité produit**
    Produit indisponible → consumer laisse email → prévenu au retour en stock. Producteur voit dans dashboard combien de personnes attendent chaque produit.
    *Impact : réduit perte de clients, donne visibilité sur la demande réelle au producteur.*
    (Fiche produit · Dashboard producteur · Email)
 
-8. **Calculateur d'impact à la confirmation**
+6. **Calculateur d'impact à la confirmation**
    Sur page confirmation : « Merci. Grâce à vous, Julien a gagné X€ de plus qu'en circuit classique. » Calculé depuis montant commande et taux moyen rémunération éleveur en circuit long (~30%).
    *Impact : crée sentiment de participation et de sens, fidélise au-delà du simple achat.*
+   *Articulation : réutilise les ratios de marge fixés dans Phase C du chantier "Notre démarche" (référence chiffrée commune).*
    (Page confirmation · Impact social)
 
 ### Priorité BASSE (second semestre 2026)
 
-9. **Compteur impact global plateforme**
+7. **Compteur impact global plateforme**
    Home + `/a-propos` : « Depuis le lancement, les éleveurs TerrOir ont gagné X€ de plus qu'en circuit classique. » Calcul automatique depuis commandes en base.
    *Impact : argument de marque fort, dimension collective et militante à chaque achat.*
+   *Articulation : réutilise les ratios de marge fixés dans Phase C du chantier "Notre démarche".*
    (Home · Page à-propos · Marketing)
 
-10. **Abonnement panier mensuel**
-    Commande récurrente chez un éleveur. Paiement auto, notification avant débit, pause/annulation. Producteur voit ses abonnés.
-    *Impact : revenus récurrents, fidélisation max. Nécessite travail juridique CGV.*
-    (Stripe recurring · Dashboard producteur · CGV)
+8. **Abonnement panier mensuel**
+   Commande récurrente chez un éleveur. Paiement auto, notification avant débit, pause/annulation. Producteur voit ses abonnés.
+   *Impact : revenus récurrents, fidélisation max. Nécessite travail juridique CGV.*
+   (Stripe recurring · Dashboard producteur · CGV)
 
-11. **Carte cadeau & fidélité**
-    Carte cadeau TerrOir (crédit en euros, utilisable chez n'importe quel éleveur). Dans un 2e temps : système points de fidélité (X points/€ dépensé, convertibles en réduction).
-    *Impact : levier d'acquisition et de rétention.*
-    (Stripe · Système de points · Acquisition)
+9. **Carte cadeau & fidélité**
+   Carte cadeau TerrOir (crédit en euros, utilisable chez n'importe quel éleveur). Dans un 2e temps : système points de fidélité (X points/€ dépensé, convertibles en réduction).
+   *Impact : levier d'acquisition et de rétention.*
+   (Stripe · Système de points · Acquisition)
 
-12. **Glossaire du terroir**
+10. **Glossaire du terroir**
     Pages expliquant labels (Label Rouge, AB, AOC…), races (Charolais, Maine-Anjou…), modes d'élevage. Contenu evergreen SEO.
     *Impact : SEO long terme, éducation consumer, autorité éditoriale terroir sarthois.*
     (SEO · Contenu · Pages statiques)

@@ -1,31 +1,36 @@
 # HANDOFF — TerrOir
 
-> À jour le **2026-04-28 (post-merge homepage refonte)**. Suite directe de la session 27/04 (3 bugs critiques orders/paiement P0/P1/P2 + chantier P1 robuste résurrection RPC SQL atomique + extension couverture vitest 207→432 tests + finalisation navbar SSR-aware `isAdmin`/`isProducer`/`producerLite` + chantier alignement routes orders TA + chantier pré-fetch ProducerLite TC + push back TB auto-bump lead + refonte design system via Claude Design + bundle handoff vers terminal CC). Session 28/04 = implémentation Next.js de la homepage consumer refondue (7 PUSH STOP-GO sur branche `feature/home-refonte` + merge `1bb17f5` sur master + déploiement prod automatique Vercel).
+> À jour le **2026-04-28 (post-merge session après-midi/soir)**. Suite directe de la session 27/04 + 28/04 matin (3 bugs critiques orders/paiement P0/P1/P2 + chantier P1 robuste résurrection RPC SQL atomique + extension couverture vitest 207→432 tests + finalisation navbar SSR-aware + refonte design system via Claude Design + bundle handoff vers terminal CC + implémentation Next.js homepage refonte Phase 1 mergée master via PR #1). Session 28/04 après-midi/soir = **6 PRs mergées en prod** (#2 Phase A nouveau chantier "Notre démarche" / #3 Logo variants externes / #4 Flux invitation email-existant / #5 Cron retry-failed-refunds / #6 Extension dotenv 4 scripts) + section TODO `### Chantiers code futurs` largement purgée.
 >
-> Commits récents (15 derniers) :
+> Commits récents (15 derniers, master HEAD = `217a9f4`) :
+> - `217a9f4` fix(scripts): étend chargement .env.local via dotenv aux 4 scripts restants (#6)
+> - `00c5d10` Cron retry-failed-refunds (résurrection bloquée scope minimal) (#5)
+> - `b3eb40e` feat(invite): détection email existant + UX feedback admin (#4)
+> - `fc539ea` feat(brand): logo variants externes (favicon + apple-icon + OG/Twitter image + metadata Next) (#3)
+> - `f7293ba` Merge pull request #2 from RomLub/feature/gms-prices-phase-a (Phase A "Notre démarche")
+> - `4d57a30` fix(scripts): seed-gms-prices charge .env.local via dotenv (devDep)
+> - `cad9d95` feat(gms-prices): helper fetch-active + seed 10 références + 9 tests vitest
+> - `ced2ec2` feat(gms-prices): migration tables references + history + RLS public read + indexes
+> - `ce7dca9` docs(session): refonte home consumer Phase 1 mergée (28/04)
 > - `1bb17f5` Merge pull request #1 from RomLub/feature/home-refonte (homepage consumer refonte Phase 1)
 > - `76f85e6` feat(home): nouvelle homepage consumer (page.tsx aggregateur 7 sections) — PUSH 7
 > - `e29d1e1` feat(home): mocks featured-products + 6 sections home (Hero/Steps/...) — PUSH 6
 > - `187b82e` refactor(ui): navbar-public + footer alignes DS terra (drawer mobile inclus) — PUSH 5
 > - `0030509` feat(ui): post-it + map-sarthe components (statiques Phase 1) — PUSH 4
 > - `a07ae5e` refactor(ui): button.primary terra + variants success/accent + migration semantique — PUSH 3
-> - `9371275` feat(ui): logo source nettoye + variants wordmark-dark / icon-dark — PUSH 2
-> - `d59d50d` feat(design-system): tokens terra completes + postit + caveat font — PUSH 1
-> - `4c39fcf` docs(session): chantiers TA+TC + design system + homepage refonte (27/04)
-> - `1ef2d0d` test+fix(cron) : cron order-timeout durci (TA, après-midi 27/04)
-> - `9ed9b0d` feat(navbar) : pré-fetch SSR ProducerLite (TC, après-midi 27/04)
-> - `6bcc185` test+fix(refund) : refund admin route alignée (TA, après-midi 27/04)
-> - `5a572b2` feat(orders) : UI consumer revival_blocked (chantier P1 robuste 3/3, matin 27/04)
-> - `9d6cb13` fix(webhook) : refund Stripe automatique si résurrection bloquée (chantier P1 robuste 2/3)
-> - `6b4a835` feat(orders) : RPC atomique résurrection avec check stock + slot (chantier P1 robuste 1/3)
 >
-> 🟢 **Chantiers majeurs clos sessions 27/04 + 28/04** :
+> 🟢 **Chantiers majeurs clos sessions 27/04 + 28/04 matin + 28/04 après-midi/soir** :
 > - **3 bugs 🔴 critiques résolus** : P0 stock non restauré, P2 commande fantôme 3DS, P1 idempotence retentative paiement (matin 27/04).
 > - **Chantier P1 robuste** (matin 27/04) : RPC SQL atomique `revive_order_with_stock_check` + refund Stripe automatique + audit_logs Phase 2 payment events + UI consumer page confirmation + extension filtre `isVoidOrderRow`.
 > - **Chantier alignement routes orders TA** (après-midi 27/04) : refund admin et cron-timeout alignés sur patterns canoniques. 432/432 tests verts.
 > - **Chantier pré-fetch SSR ProducerLite TC** (après-midi 27/04) : `ProducerLayout` initialise producer non-null dès le premier render. Plus de placeholder « — » au hard refresh.
-> - **Refonte design system + homepage consumer Phase 1** (sessions 27/04 + 28/04) : 19 blocs DS validés via Claude Design + 7 PUSH STOP-GO d'implémentation Next.js sur branche `feature/home-refonte`. Mergée `1bb17f5` sur master 28/04. Tokens terra complets + Logo source officiel + 5 variants logo + Button migration sémantique terra primary / success green / accent green deprecated + composants PostIt + MapSarthe + navbar refondue avec drawer mobile + footer dark 4 colonnes + 7 sections home assemblées dans `app/(public)/page.tsx`. Build prod 99.3 kB First Load JS, 432/432 tests préservés, zéro régression. **Production déployée**.
-> - **Couverture vitest passe de 207 à 432+ tests** (+108%) : state machine matrice 6×6, cron timeout, cancel route, confirm + complete routes, handle-payment-failed, handle-payment-succeeded, log-payment-event, refund admin (TA), get-initial-user-payload (TC). Aucun test ajouté sur la home (Phase 1 vote Q4 = pas de tests rendering, validation visuelle Vercel preview).
+> - **Refonte design system + homepage consumer Phase 1** (sessions 27/04 + 28/04 matin) : 19 blocs DS validés via Claude Design + 7 PUSH STOP-GO d'implémentation Next.js sur branche `feature/home-refonte`. Mergée `1bb17f5` sur master 28/04. Tokens terra complets + Logo source officiel + 5 variants logo + Button migration sémantique terra primary / success green / accent green deprecated + composants PostIt + MapSarthe + navbar refondue avec drawer mobile + footer dark 4 colonnes + 7 sections home assemblées dans `app/(public)/page.tsx`. Build prod 99.3 kB First Load JS, zéro régression. **Production déployée**.
+> - **Logo variants externes TA** (PR #3 squash `fc539ea`, 28/04 PM) : favicon multi-tailles + apple-icon iOS + OG image + Twitter image + metadata Next 14 file-based + factorisation `scripts/_logo-paths.mjs` partagé. Convention Next 14 file-based préférée à `metadata.icons` path-based.
+> - **Flux invitation email-existant TB** (PR #4 squash `b3eb40e`, 28/04 PM) : levée 409 sur `producer.statut='draft'` avec friction UX two-step (1er POST → 409 + `kind='draft_resend_confirm_required'`, modal bascule en mode confirmation amber + bouton "Confirmer la relance", 2nd POST avec `confirm_draft_resend=true`). Statuts `pending|active|public|suspended|deleted` inchangés (409 dur). 19 tests vitest. Pattern récidiviste TODO en retard sur le code (3e occurrence).
+> - **Cron retry-failed-refunds TC** (PR #5 squash `00c5d10`, 28/04 PM) : scope minimal résurrection bloquée (path P1 robuste 27/04 only), schedule daily `0 4 * * *` UTC, 3 attempts cumulatifs J+1/J+2/J+3 puis exhausted + notification placeholder admin. Stripe idempotencyKey par attempt (anti cache erreur 24h). 27 tests vitest. Refactor `buildRetryTargets` extraction module séparé (contrainte Next.js 14 sur exports route file).
+> - **Phase A chantier "Notre démarche" TB** (PR #2 merge commit `f7293ba`, 28/04 matin) : DB tables `gms_prices` + `gms_prices_history` + RLS public read + 10 références seed initial (4 bovin + 3 porcin + 3 ovin) + helper `lib/gms-prices/fetch-active.ts` (snake_case, log+return [] sur erreur, defense-in-depth) + 9 tests vitest + fix dotenv ergonomie seed mensuel. Recadrage produit avant code : item roadmap "Prix GMS sur fiche produit" recadré en page pédagogique GMS dédiée (risque juridique publicité comparative + impact pédagogique).
+> - **Extension dotenv 4 scripts TB** (PR #6 squash `217a9f4`, 28/04 PM) : pattern `dotenv` uniformisé sur les 5 scripts du repo (`seed.ts`, `seed-producers.ts`, `cleanup-seed.ts`, `backfill-stripe-connect-flags.ts`, + `seed-gms-prices.ts` déjà fait Phase A). Plus besoin de sourcer `.env.local` manuellement avant chaque run.
+> - **Couverture vitest passe de 207 à 487 tests** (+135% sur 2 sessions cumulées) : state machine matrice 6×6, cron timeout, cancel route, confirm + complete routes, handle-payment-failed, handle-payment-succeeded, log-payment-event, refund admin (TA), get-initial-user-payload (TC), helpers gms-prices fetch-active (9 tests, PR #2), invitation email-existant (19 tests, PR #4), retry-failed-refund + cron route (27 tests, PR #5).
 > - **Navbar SSR-aware finalisée** : pré-fetch `isAdmin` + `isProducer` + `producerLite` complet. Type `InitialUserPayload` factorisé dans `lib/auth/types.ts`. Plus aucun flash CTA ni placeholder « — » au hard refresh.
 >
 > **Configurations externes Stripe Dashboard validées (mode Test)** :
@@ -34,11 +39,23 @@
 > - Test 3DS scénarios complete + fail validés (carte `4000 0027 6000 3184`) ✅
 > - Retentative paiement 3DS-fail + carte 4242 validée end-to-end ✅
 >
-> **Validations prod end-to-end** : P0 + P2 + P1 simultanés sur commande TRR-7235E (carte 4000-0027-6000-3184 puis 4242-4242-4242-4242). P1 robuste validé sur commande TRR-KKKDL (stock Salade mesclun 50→47 + audit_logs `order_payment_failed` + `order_revival_succeeded`). Homepage consumer refondue déployée prod et validée visuellement (desktop) avant merge.
+> **Configurations externes Vercel** :
+> - Vercel Cron Jobs (vercel.json) : 7 schedules UTC actifs, dont nouveau `0 4 * * *` pour `/api/cron/retry-failed-refunds` (PR #5 28/04 PM, ne se déclenche qu'en production).
+> - Auth pattern : header `Authorization: Bearer ${CRON_SECRET}` requis sur tous les cron endpoints.
 >
-> **Migrations apply confirmées prod** : `20260424000000` (Stripe Connect flags), `20260427100000` (audit_logs), `20260427200000` (trigger stock à l'annulation), `20260427300000` (RPC résurrection avec check stock + slot). Pas de nouvelle migration session 28/04 (refonte uniquement frontend).
+> **Validations prod end-to-end** : P0 + P2 + P1 simultanés sur commande TRR-7235E. P1 robuste validé sur commande TRR-KKKDL. Homepage consumer refondue déployée prod et validée. **Phase A "Notre démarche" validée prod** : migration apply manuellement Supabase Studio + seed run depuis local + count = 10 + breakdown filière 4/3/3 OK + ordre d'affichage 1→10 OK + Vercel preview navigation propre + master merge OK + redéploy master Ready + 10 références toujours actives.
+>
+> **Migrations apply confirmées prod** : `20260424000000` (Stripe Connect flags), `20260427100000` (audit_logs), `20260427200000` (trigger stock à l'annulation), `20260427300000` (RPC résurrection avec check stock + slot), **`20260428000000` (gms_prices + gms_prices_history + RLS public read + indexes — PR #2 28/04)**.
 >
 > **Design system Phase 1 livré** : tokens terra complets dans `tailwind.config.js` + CSS vars dans `app/globals.css` + Caveat font + composants `<Logo variant="wordmark|wordmark-dark|icon|icon-dark|mono"/>`, `<Button variant="primary|secondary|ghost|success|accent"/>`, `<PostIt/>`, `<MapSarthe/>`, `<NavbarPublic/>` refondue, `<Footer/>` dark refondu. Sources officielles : `~/Desktop/Logo.svg` (8 paths vectoriels) et `public/logo/logo-source.svg` (~10KB nettoyé). Bundle Claude Design archivé dans `~/Downloads/design_handoff_terroir/` (39 fichiers, ~21KB) en cas de besoin pour Phase 2.
+>
+> **Brand assets externes Phase 1 livrés** (PR #3 28/04 PM) : `app/icon.png` régénéré + `app/apple-icon.png` (180×180 fond terra-700) + `app/opengraph-image.png` (1200×630 wordmark fond crème) + `app/twitter-image.png` (identique OG) + `scripts/_logo-paths.mjs` partagé + `scripts/generate-brand-assets.mjs` (générateur unique) + métadonnées Next 14 file-based dans `app/layout.tsx` (metadataBase + openGraph + twitter.card). Régénération via `node scripts/generate-brand-assets.mjs` (idempotent).
+>
+> **Pattern dotenv uniformisé sur tous les scripts** (PR #2 + PR #6 28/04) : 5 scripts du repo chargent désormais `.env.local` automatiquement via `dotenv` (devDep) — `seed-gms-prices.ts`, `seed.ts`, `seed-producers.ts`, `cleanup-seed.ts`, `backfill-stripe-connect-flags.ts`. Plus besoin de sourcer manuellement avant chaque run (ergonomie Windows PowerShell).
+>
+> **Chantier "Notre démarche" en cours (recadrage Phase B + Phase C à venir)** : Phase A livrée (DB + seed + helper). Phase B (interface admin `/admin/gms-prices` CRUD + workflow update mensuel) et Phase C (page publique pédagogique avec graphique circuit interactif + comparaison panier 10 références + encart home) à scoper en sessions futures. Phase C sera **full Claude Code** (Claude Design indispo session 28/04 PM, itération visuelle CD repassera plus tard pour polish).
+>
+> **Vulnérabilités npm pré-existantes flagged 28/04** : 5 vulnerabilities détectées sur le repo (1 critical + 3 high + 1 moderate), indépendantes des chantiers session. Item posé en TODO 🔐 Avant lancement public pour audit dédié + revue manuelle des breaking changes potentiels avant `npm audit fix --force`.
 >
 > Objectif : permettre à un Claude frais de reprendre le projet exactement où on en est, juste en lisant ce document (puis `docs/METHODOLOGY.md` et `docs/TODO.md`). Voir `docs/README.md` pour l'index complet de la documentation.
 
@@ -175,8 +192,19 @@ Gérées via Vercel Dashboard. Jamais dans le code.
   - Test 3DS scénarios validés : carte `4000 0027 6000 3184` complete + fail + retentative avec carte 4242 (validé end-to-end 26-27/04 sur 3 commandes successives TRR-DNW87, TRR-AM2UN, TRR-7235E, TRR-KKKDL).
   - **Branding Connect** : non configuré (flag pour investigation dédiée future, cf `TODO.md`).
 - **Mapbox account** : token `NEXT_PUBLIC_MAPBOX_TOKEN` configuré sur Vercel **Production + Preview**. Restrictions URL configurées côté Mapbox account sur les 4 domaines : `https://www.terroir-local.fr/*`, `https://pro.terroir-local.fr/*`, `https://admin.terroir-local.fr/*`, `https://terroir-local.fr/*`, plus `http://localhost:3000/*` pour le dev local. Sans ces restrictions URL, le token serait utilisable depuis n'importe quel domaine si exfiltré (token public bundlé côté client).
+- **Vercel Cron Jobs (`vercel.json`)** : 7 schedules UTC actifs, déclenchés en production uniquement (pas sur preview environments). Auth pattern : header `Authorization: Bearer ${CRON_SECRET}` requis sur tous les cron endpoints.
+  - `0 4 * * *` : `/api/cron/retry-failed-refunds` (PR #5 28/04 PM, scope minimal résurrection bloquée).
+  - 6 autres crons existants (cf `vercel.json` source pour la liste complète : `order-timeout`, etc.).
+  - **maxDuration** : 60s pour le retry-failed-refunds (configurable par cron via section `functions` de `vercel.json`).
+
 
 ## Chantiers majeurs clos
+
+- **Phase A chantier "Notre démarche"** (PR #2 merge commit `f7293ba`, 28/04 matin) : DB tables `gms_prices` (référence stable, 10 colonnes principales + métadonnées) + `gms_prices_history` (snapshots mensuels) + RLS public read filtré `active=true` + 2 indexes (partiel `WHERE active` + history DESC). Helper `lib/gms-prices/fetch-active.ts` exposant `fetchActiveGmsPrices` et `fetchActiveGmsPricesByFiliere`. Type `GmsPrice` snake_case (passe-plat DB → UI, aligné `ProducerPublic`). Log préfixé `[FETCH_GMS_PRICES_ERROR]` + return `[]` sur erreur DB. Defense-in-depth `.eq('active', true)` côté applicatif. Seed `scripts/seed-gms-prices.ts` aligné pattern `seed-producers.ts` (tsx + SERVICE_ROLE + `--dry-run` + prompt confirm + upsert applicatif par slug). 10 références placeholder à calibrer plus tard sur sources OFPM/Idele/CGAAER (4 bovin + 3 porcin + 3 ovin). 9 tests vitest. Migration `20260428000000_gms_prices` apply confirmée prod, seed apply confirmée prod (10 références actives, breakdown filière 4/3/3 OK).
+- **Logo variants externes** (PR #3 squash `fc539ea`, 28/04 PM) : `app/icon.png` régénéré (icon variant fond transparent) + `app/apple-icon.png` (180×180 fond `terra-700` pour iOS) + `app/opengraph-image.png` (1200×630 wordmark fond crème padding ~18%) + `app/twitter-image.png` (identique OG). Convention Next 14 file-based préférée à `metadata.icons` path-based — Next 14 branche les balises automatiquement. `app/layout.tsx` enrichi : `metadataBase` + `metadata.openGraph` complet + `metadata.twitter.card`. `scripts/_logo-paths.mjs` (NEW) module partagé paths SVG + helpers + couleurs marque, factorisation post-inspection. `scripts/generate-brand-assets.mjs` (NEW) générateur unique des 4 PNG via `sharp`. `scripts/generate-email-logo.mjs` refacto pour utiliser le module partagé.
+- **Flux invitation email-existant** (PR #4 squash `b3eb40e`, 28/04 PM) : 3 cas sur 4 du brief étaient déjà gérés (lead `'new'` auto-bump commit `dbe6360`, consumer existant via `loginAndUpgradeAction`, admin 409 + défense en profondeur). Seul trou réel : producer en `statut='draft'` (onboarding abandonné) bloqué en 409 inconditionnel. Fix : lookup conditionnel `producers.statut`, friction UX two-step (1er POST → 409 + `kind='draft_resend_confirm_required'`, modal bascule en mode confirmation `amber-50/300/900` + bouton `terra-terracotta` "Confirmer la relance", 2nd POST avec `confirm_draft_resend=true` autorise nouveau token). Statuts `pending|active|public|suspended|deleted` inchangés (409 dur). Réponse 200 enrichie de `draft_resend: boolean`. 19 tests vitest. Pattern récidiviste TODO en retard sur le code (3e occurrence, capitalisé en LESSONS).
+- **Cron retry-failed-refunds** (PR #5 squash `00c5d10`, 28/04 PM) : scope minimal résurrection bloquée (path P1 robuste 27/04 only — admin manuel et order-timeout pas instrumentés `*_refund_failed`, item posé en TODO). Schedule daily `0 4 * * *` UTC, 3 attempts cumulatifs J+1/J+2/J+3 puis exhausted à J+4. Stripe `idempotencyKey: refund_${order_id}_${attempt}` varie par attempt (anti cache erreur 24h). Pattern audit-log-driven : query `audit_logs WHERE event_type='order_revival_refund_failed' AND order_id NOT IN (...succeeded OR exhausted)` pour identifier targets, count attempt = `count(metadata->>'order_id'=X AND event_type='order_revival_refund_failed')`. Notification placeholder `template='refund_retry_exhausted'` (pas de Resend dédié). 5 fichiers code + 2 tests, 27 tests vitest. Refactor `buildRetryTargets` extraction module séparé `lib/cron/build-retry-targets.ts` pour contrainte Next.js 14 sur exports route file. 2 nouveaux event types audit_logs (`order_refund_retried_succeeded` + `order_refund_retry_exhausted`).
+- **Extension dotenv 4 scripts repo** (PR #6 squash `217a9f4`, 28/04 PM) : pattern `dotenv` uniformisé sur les 5 scripts du repo qui lisent `process.env` Supabase/Stripe — `seed.ts`, `seed-producers.ts`, `cleanup-seed.ts`, `backfill-stripe-connect-flags.ts` (cette PR) + `seed-gms-prices.ts` (PR #2 28/04 matin). +6 lignes par fichier (import dotenv + import node:path + appel `loadEnv()` avant `const SUPABASE_URL = process.env.*`). Plus besoin de sourcer `.env.local` manuellement avant chaque run.
 
 (Résumé ; détails chronologiques complets dans `docs/CHANGELOG.md`.)
 

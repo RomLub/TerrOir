@@ -7,7 +7,96 @@ Pour les priorités forward-looking, voir [`TODO.md`](./TODO.md).
 
 ---
 
-## 2026-04-28
+## 2026-04-28 (après-midi/soir)
+
+> Session 4 chantiers `### Chantiers code futurs` purgés + Phase A nouveau chantier "Notre démarche" + extension dotenv 5 scripts repo. **6 PRs mergées** sur master (#3 brand assets / #4 invite email-existant / #5 cron retry-failed-refunds / #6 extension dotenv 4 scripts) + **Phase A nouveau chantier "Notre démarche"** (PR #2 mergée matin via merge commit `f7293ba` regroupant `ced2ec2` + `cad9d95` + `4d57a30`). Master HEAD : `217a9f4` post-merge PR #6.
+>
+> 🟢 **Chantiers majeurs clos** :
+> - **Logo variants externes** (TA, PR #3 squash `fc539ea`) — favicon multi-tailles + apple-icon iOS + OG image + Twitter image + metadata Next 14 file-based + factorisation `scripts/_logo-paths.mjs` partagé. Convention Next 14 file-based préférée à `metadata.icons` path-based.
+> - **Flux invitation email-existant** (TB, PR #4 squash `b3eb40e`) — levée 409 sur `producer.statut='draft'` avec friction UX two-step (1er POST → 409 + `kind='draft_resend_confirm_required'`, modal bascule en mode confirmation amber + bouton "Confirmer la relance", 2nd POST avec `confirm_draft_resend=true`). Statuts `pending|active|public|suspended|deleted` inchangés (409 dur). 19 tests vitest.
+> - **Cron retry-failed-refunds** (TC, PR #5 squash `00c5d10`) — scope minimal résurrection bloquée (path P1 robuste 27/04 only), schedule daily `0 4 * * *` UTC, 3 attempts cumulatifs J+1/J+2/J+3 puis `order_refund_retry_exhausted` + notification placeholder admin. Stripe idempotencyKey par attempt (anti cache erreur 24h). 27 tests vitest.
+> - **Phase A chantier "Notre démarche"** (TB, PR #2 merge commit `f7293ba`) — DB tables `gms_prices` + `gms_prices_history` + RLS public read filtré `active=true` + 10 références seed initial (4 bovin + 3 porcin + 3 ovin) + helper `lib/gms-prices/fetch-active.ts` (snake_case, log+return [] sur erreur, defense-in-depth `.eq('active', true)` côté applicatif) + 9 tests vitest. Migration `20260428000000_gms_prices` apply confirmée prod, seed apply confirmée prod (10 références actives, breakdown filière 4/3/3 OK).
+> - **Extension dotenv 4 scripts** (TB, PR #6 squash `217a9f4`) — pattern `dotenv` uniformisé sur les 5 scripts du repo qui lisent `process.env` (`seed.ts`, `seed-producers.ts`, `cleanup-seed.ts`, `backfill-stripe-connect-flags.ts`, + `seed-gms-prices.ts` déjà fait commit `4d57a30` Phase A). Plus besoin de sourcer `.env.local` manuellement avant chaque run (ergonomie Windows PowerShell).
+>
+> ⚠️ **Méthodologie / nouveautés capitalisées** :
+> - **Pattern `gh CLI` pour PRs** : création + merge des 4 PRs (#3/#4/#5/#6) via `gh pr create` + `gh pr merge --squash --delete-branch` exécuté par TB depuis le terminal. Auth gh non-interactive via Git Credential Manager Windows + GH_TOKEN env var inline (token gho_… extrait à chaque session, scope `repo`/`gist`/`workflow` suffisant pour repo perso, pas de persistence `~/.config/gh/hosts.yml` car scope `read:org` insuffisant). Économise temps de création/merge web manuel (5-10 min par chantier × 4 PRs). À embarquer comme step standard du pattern STOP-GO terminal CC.
+> - **Push back factuel terminal CC sur conventions repo** : 2 occurrences cette session (TA file-based Next 14 vs path-based, TB snake_case vs camelCase + log+null vs throw). Le terminal CC a accès à l'inspection du codebase réel et corrige le brief mal calibré du chat. Pattern fiable et rentable, à valoriser systématiquement.
+> - **TODO en retard sur le code — 3e occurrence en série** : TB invitation email-existant a flag que 3 cas sur 4 du brief étaient déjà gérés. Pattern récidiviste (`ddb3a02` Phase C.4 25/04, `db248ac` auto-bump onboarded 27/04, ce fix 28/04). Pattern préventif renforcé : avant brief CC nouveau chantier listé dans TODO, faire grep ciblé fonction/route + `git log --all --oneline --grep="<keyword>"` pour vérifier qu'aucune session récente n'a livré silencieusement.
+> - **Working tree partagé saturation** : observation 4 processus actifs simultanés (TA + TB + TC + chat) provoque stash externes auto + bascules silencieuses de branche récidivantes. 3 récidives dans une même session, mitigation par `git branch --show-current` intercalé entre commandes critiques. À 1 seul terminal actif (post-fermeture TA/TC), saturation éliminée immédiatement. **Recommandation forte pour sessions futures multi-terminal** : `git worktree add` ou clones distincts par terminal.
+> - **Plan chirurgical `git checkout stash@{0} -- <paths>`** : innovation TA pour extraction sélective sans pop conflictuel quand le stash contient un mix de fichiers à toi + d'autres terminaux. Évite les conflits 3-way garantis par `git stash pop` quand les TC ont avancé entre temps. Pattern à réutiliser en working tree partagé saturé.
+> - **Convention `/docs/*` violée par TC, redressée à temps** : TC avait modifié les 4 fichiers docs avant push, redressement obligatoire via `git checkout HEAD -- docs/*` appliqué proprement avant commit. Pattern préventif : inclure systématiquement dans tous les briefs CC un rappel explicite de la convention LESSONS.md ligne 148.
+> - **Mode merge non uniforme** : PR #2 mergée en "Merge commit" (`f7293ba`) alors que PRs #3/#4/#5/#6 en "Squash". Bénin (cohérence post-fact des 4 squash uniformes), explique pourquoi master montre les 3 commits Phase A individuels (`ced2ec2`/`cad9d95`/`4d57a30`) en plus du merge commit. À aligner sur "Squash" par défaut pour futures sessions.
+
+### Logo variants externes (chantier TA, PR #3 squash `fc539ea`)
+
+- **Convention Next 14 file-based** : `app/icon.png` (64×64, icon variant fond transparent) + `app/apple-icon.png` (180×180, fond `terra-700` pour iOS qui arrondit + ne supporte pas transparence) + `app/opengraph-image.png` (1200×630, wordmark sur fond crème `#F7F4EF` padding ~18%) + `app/twitter-image.png` (identique OG). Next 14 branche automatiquement les balises `<link rel="icon">` / `<link rel="apple-touch-icon">` / `<meta property="og:image">` / `<meta name="twitter:image">` sans toucher à `metadata.icons` ni `openGraph.images`. Élimine couplage manuel et drift, plus robuste.
+- **`app/layout.tsx`** : ajout `metadataBase = new URL(process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000")` + `metadata.openGraph` complet (`title`/`description`/`url`/`type:'website'`/`locale:'fr_FR'`/`siteName:'TerrOir'`) + `metadata.twitter.card = 'summary_large_image'`. File-based Next 14 ajoute auto les balises image.
+- **`scripts/_logo-paths.mjs`** (NEW) : module partagé exposant les 8 paths SVG du logo source + helpers `buildWordmarkSvg` / `buildIconSvg` + couleurs marque (`GREEN_700` / `GREEN_400` / `TERRA_700` / `TERRA_300`). Factorisation post-inspection : duplication des 8 paths sinon répétée entre `generate-email-logo.mjs` (existant) et `generate-brand-assets.mjs` (nouveau).
+- **`scripts/generate-brand-assets.mjs`** (NEW) : générateur unique des 4 PNG en une passe via `sharp` (déjà dans le repo). Idempotent.
+- **`scripts/generate-email-logo.mjs`** (MOD) : refacto pour utiliser `_logo-paths.mjs` partagé (-45 LOC déduplication).
+- **Auto-QA** : tsc clean ✓ | vitest 432/432 ✓ | lint clean ✓ | build OK (routes statiques `/icon.png` `/opengraph-image.png` `/twitter-image.png` détectées) ✓ | HTML rendu home (curl localhost) avec toutes les balises injectées auto par convention Next 14 ✓
+
+### Flux invitation email-existant (chantier TB, PR #4 squash `b3eb40e`)
+
+- **Inspection préalable + push back partiel** : à la lecture de la route `/api/admin/producers/invite`, de `app/(producer)/invitation/page.tsx` (server component) et de `loginAndUpgradeAction`, **3 des 4 cas du brief étaient déjà gérés fonctionnellement** : cas 1 lead `'new'` (auto-bump → `'contacted'` commit `dbe6360`), cas 2 consumer existant (flow upgrade roles via `loginAndUpgradeAction` idempotent), cas 4 admin (409 + défense en profondeur côté `/invitation`). Seul trou réel : cas 3 producer en `statut='draft'` (onboarding abandonné) → 409 inconditionnel bloquait toute relance admin. 3e occurrence pattern récidiviste TODO en retard sur le code.
+- **Fix MID retenu (vs MIN doc-only / MAX migration SQL invalidation)** : lookup conditionnel `producers.statut` ajouté à la route. Si `statut='draft'`, friction UX two-step : 1er POST → 409 + `kind='draft_resend_confirm_required'`, modal bascule en mode confirmation (encadré `amber-50/300/900` + bouton `terra-terracotta` "Confirmer la relance"), 2nd POST avec `confirm_draft_resend=true` autorise un nouveau token. Anciens tokens restent en base mais deviennent orphelins. Autres statuts (`pending|active|public|suspended|deleted`) inchangés (409 dur). Réponse 200 enrichie de `draft_resend: boolean` pour traçabilité.
+- **3 fichiers touchés** : `app/api/admin/producers/invite/route.tsx`, `app/(admin)/gestion-producteurs/page.tsx`, `tests/app/api/admin/producers/invite/route.test.ts` (nouveau, 19 tests).
+- **Auto-QA** : tsc clean sur scope ✓ | vitest **478/478** (459 + 19) ✓ | lint clean ✓.
+- **4 résidus identifiés à l'inspection mais hors-scope MID, renvoyés au TODO comme chantiers dédiés futurs** : (1) UX admin réponse `existing_account` + toasts distincts, (2) invalidation SQL auto des invitations actives à chaque nouvel envoi, (3) casse email normalisée `ilike` sur tous les lookups, (4) audit log `[ADMIN_INVITE_*]` structuré (à fusionner avec Phase 3 audit).
+
+### Cron retry-failed-refunds (chantier TC, PR #5 squash `00c5d10`)
+
+- **Scope minimal validé** : retry uniquement les `order_revival_refund_failed` instrumentés par chantier P1 robuste 27/04. Admin manuel `/api/stripe/refund` + cron `order-timeout` NON couverts (pas d'instrumentation `*_refund_failed` audit_logs préalable). Item dédié posé au TODO pour extension future après instrumentation.
+- **Politique retry validée par push back factuel** : brief initial chat proposait backoff 1h/6h/24h sur cron daily 0 4 * * * — incohérence détectée par TC (avec daily, le délai minimum entre attempts est forcément 24h). Bascule sur **3 attempts cumulatifs daily** (J+1, J+2, J+3 puis exhausted à J+4). Plus simple, observable, prévisible.
+- **Stripe idempotencyKey par attempt** : `refund_${order_id}_${attempt}` varie par attempt. Anti cache erreur Stripe 24h sur idempotencyKey unique (figer une clé par order = anti-pattern). Garde l'idempotence intra-attempt + permet retry après 24h.
+- **Pattern audit-log-driven background job** : query `audit_logs WHERE event_type='order_revival_refund_failed' AND order_id NOT IN (...succeeded OR exhausted)` identifie les targets. Compteur attempt = `count(metadata->>'order_id'=X AND event_type='order_revival_refund_failed')`. Pas de colonne dédiée, audit_logs sert de single source of truth.
+- **Notification placeholder admin** (template `'refund_retry_exhausted'`) sans Resend dédié. Cohérent avec pattern existant `'webhook_anomaly_refund_failed'`. Si email immédiat souhaité plus tard, +1 commit Resend séparé.
+- **Refactor `buildRetryTargets` extraction module séparé** : Next.js 14 type-check refuse les exports custom dans un route file (`checkFields<Diff<...>>` failure). Extraction dans `lib/cron/build-retry-targets.ts`. Pattern à retenir pour futurs route files Next.js 14 avec helpers.
+- **5 fichiers code + 2 fichiers tests** : `lib/audit-logs/log-payment-event.ts` (extension 2 event types : `order_refund_retried_succeeded` + `order_refund_retry_exhausted`), `lib/stripe/retry-failed-refund.ts` (NEW, helper pure 165 lignes), `lib/cron/build-retry-targets.ts` (NEW, 110 lignes), `app/api/cron/retry-failed-refunds/route.ts` (NEW, 100 lignes), `vercel.json` (+1 cron `0 4 * * *` + entry function `maxDuration: 60`), `tests/lib/stripe/retry-failed-refund.test.ts` (NEW, 8 tests), `tests/app/api/cron/retry-failed-refunds/route.test.ts` (NEW, 19 tests intégration).
+- **Auto-QA** : tsc clean ✓ | vitest **459/459** (432 + 27) ✓ | lint clean (1 warning pré-existant sur `no-explicit-any` rule undefined) ✓ | build OK ✓.
+- **Pas de migration DB** : `event_type` est `text` libre dans `audit_logs`, ajout de 2 valeurs = pure extension TypeScript.
+- **Configuration externe Vercel** : cron schedule `0 4 * * *` UTC ajouté à `vercel.json`. Activation automatique sur master post-merge. Cron quotidien ne se déclenche qu'en production (Vercel ne run pas les schedules cron sur preview environments).
+
+### Phase A chantier "Notre démarche" (chantier TB, PR #2 merge commit `f7293ba`)
+
+- **Recadrage produit avant code** : item roadmap "Prix GMS sur chaque fiche produit" priorité HAUTE (vision Avril 2026) recadré en chantier "Notre démarche" — page pédagogique GMS dédiée avec graphique circuit interactif + comparaison panier 10 références, plutôt qu'affichage prix GMS sur fiche produit individuelle. Décision risque juridique (publicité comparative) + impact pédagogique. 5 décisions tranchées : slug `/notre-demarche`, données graphique placeholder à calibrer plus tard sur sources OFPM/Idele/CGAAER, item navbar primaire, encart home entre Steps et Products grid, sources rigoureuses cherchées plus tard avant audit pré-lancement.
+- **Phase A — DB + seed + helper** (3 commits sur la PR #2) :
+  - **Migration SQL `20260428000000_gms_prices.sql`** (commit `ced2ec2`) : tables `gms_prices` (ref stable, 10 colonnes principales `id`/`slug`/`filiere`/`libelle`/`description_courte`/`prix_gms_kg`/`prix_terroir_kg_min/max/moyen`/`mois_reference`/`source`/`source_url`/`ordre_affichage`/`active`/`notes_admin` + métadonnées) + `gms_prices_history` (snapshots mensuels avec UNIQUE `(reference_id, mois_reference)`). RLS public read filtré `active=true` sur `gms_prices`, public read tout sur `gms_prices_history`. Pas de policies INSERT/UPDATE/DELETE — écritures admin via `service_role` (pattern Phase B). 2 indexes : `idx_gms_prices_filiere WHERE active` (partiel) + `idx_gms_prices_history_reference (reference_id, mois_reference DESC)`.
+  - **Helper + seed + tests** (commit `cad9d95`) : `lib/gms-prices/fetch-active.ts` exposant `fetchActiveGmsPrices(supabase)` et `fetchActiveGmsPricesByFiliere(supabase, filiere)` avec signature `supabase: SupabaseClient` en paramètre (testabilité, contexte choisi par appelant). Type `GmsPrice` snake_case (passe-plat DB → UI, aligné `ProducerPublic`). Log préfixé `[FETCH_GMS_PRICES_ERROR]` + return `[]` sur erreur DB (convention `fetch-public.ts`). Defense-in-depth `.eq('active', true)` (+ `.eq('filiere', filiere)` pour la variante) côté applicatif en plus du filtre RLS. `scripts/seed-gms-prices.ts` aligné pattern `seed-producers.ts` (tsx + SERVICE_ROLE + `--dry-run` + prompt confirm + upsert applicatif SELECT puis UPDATE/INSERT par slug). 10 références seed (4 bovin + 3 porcin + 3 ovin) avec prix placeholder à calibrer plus tard sur sources réelles. **9 tests vitest** sur les 2 helpers.
+  - **Fix dotenv** (commit `4d57a30`, mini-chantier additionnel dans la foulée) : `scripts/seed-gms-prices.ts` charge `.env.local` automatiquement via `dotenv` (devDep) + import `node:path`. `loadEnv()` exécuté avant les `const SUPABASE_URL = process.env.*`. Plus besoin de sourcer manuellement `.env.local` avant chaque run (ergonomie Windows PowerShell).
+- **Auto-QA** : tsc clean ✓ | vitest **441/441** (432 + 9) ✓ | lint clean ✓ | build OK ✓.
+- **Validation prod end-to-end** : migration apply manuellement Supabase Studio SQL Editor par Romain. Vérifications post-apply : `SELECT count(*) FROM gms_prices` = 0 (table créée vide), RLS policy `gms_prices public read` confirmée. Seed run depuis local : `npx tsx scripts/seed-gms-prices.ts --dry-run` puis apply réel = 10 inséré(s). Vérifications post-seed : count = 10, breakdown filière `bovin: 4, porcin: 3, ovin: 3`, ordre d'affichage 1 → 10 conforme. Vercel preview build OK, navigation propre, aucune régression. Master merge OK, redéploy master Ready, prod fonctionne, 10 références toujours actives.
+
+### Extension dotenv 4 scripts (chantier TB additionnel, PR #6 squash `217a9f4`)
+
+- **Pattern uniformisé** sur les 5 scripts du repo qui lisent `process.env` Supabase/Stripe : `seed.ts`, `seed-producers.ts`, `cleanup-seed.ts`, `backfill-stripe-connect-flags.ts` (PR #6 28/04 après-midi/soir) + `seed-gms-prices.ts` (PR #2 28/04 matin).
+- **Modif standardisée** par fichier (~6 lignes ajoutées) : import `dotenv` + import `node:path` + `loadEnv({ path: resolve(process.cwd(), ".env.local") })` exécuté AVANT les `const SUPABASE_URL = process.env.*`. Aucun changement business.
+- **Auto-QA** : tsc clean ✓ | vitest **487/487** ✓ | lint clean ✓ | build OK ✓.
+- **Pas de chantier suivant prévu** : pattern dotenv = closed sur le repo. Si un nouveau script apparaît, le pattern est documenté en LESSONS.md pour duplication systématique.
+
+### Récap quantitatif session 28/04 après-midi/soir
+
+**4 chantiers livrés en prod** :
+
+| PR | Chantier | Hash master | Fichiers | Lignes | Tests |
+|---|---|---|---|---|---|
+| #2 | Phase A "Notre démarche" | `f7293ba` (merge) | 4 | +637 | +9 |
+| #3 | Logo variants externes | `fc539ea` (squash) | 8 | +230/-44 | 0 |
+| #4 | Flux invitation email-existant | `b3eb40e` (squash) | 3 | +573/-8 | +19 |
+| #5 | Cron retry-failed-refunds | `00c5d10` (squash) | 7 | +1067/+470/-2 | +27 |
+| #6 | Extension dotenv 4 scripts | `217a9f4` (squash) | 4 | +24 | 0 |
+
+**Vitest baseline** : 432 → 487 (+55 tests, +12.7%).
+
+**Section TODO `### Chantiers code futurs` purgée** : 4 items retirés (cron retry-failed-refunds livré, dédup webhook flag à instrumenter avant volume, transformWithOxc bloqué upstream, flux invitation email-existant livré, backfill producers count=0 hors décision lancement, DS Phase 2 chantier dédié futur, logo variants externes livré). 4 nouveaux items ajoutés (instrumentation `*_refund_failed` paths admin/timeout, UX admin invite réponse enrichie, invalidation auto invitations, casse email normalisée).
+
+**Configurations externes** :
+- Vercel cron schedule `0 4 * * *` UTC ajouté à `vercel.json` pour `retry-failed-refunds`.
+- Méthode auth `gh CLI` non-interactive validée (Git Credential Manager Windows + GH_TOKEN env var inline).
+
+**Vulnérabilités npm pré-existantes** : 5 vulnerabilities détectées sur le repo (1 critical + 3 high + 1 moderate) — indépendantes des chantiers session, à investiguer en chantier dédié 🔐 Avant lancement public.
+
+## 2026-04-28 (matin)
 
 > Session refonte homepage consumer suite directe de la session 27/04 (extraction design system + bundle handoff Claude Design). **8 commits** sur la branche `feature/home-refonte` + merge `1bb17f5` vers master. Implémentation Next.js complète de la home consumer alignée sur le design system terra livré par Claude Design : tokens, logo, composants atomic + composés, navbar refondue avec drawer mobile, footer dark 4 colonnes, 7 sections home assemblées dans `app/(public)/page.tsx`. Build prod 99.3 kB First Load JS, **432/432 tests préservés**, zéro régression.
 >
