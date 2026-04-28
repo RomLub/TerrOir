@@ -14,6 +14,7 @@ import {
   getSavedEmail,
   setSavedEmail,
 } from "@/lib/storage/local-preferences";
+import { PasswordInput } from "@/components/ui";
 
 const initialLoginState: LoginState = {};
 const initialMagicLinkState: MagicLinkState = {};
@@ -188,16 +189,12 @@ function PasswordForm({
         forget={remembered.forget}
       />
 
-      <label className="block">
-        <span className="text-sm font-medium">Mot de passe</span>
-        <input
-          name="password"
-          type="password"
-          required
-          autoComplete="current-password"
-          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-        />
-      </label>
+      <PasswordInput
+        label="Mot de passe"
+        name="password"
+        required
+        autoComplete="current-password"
+      />
 
       <div className="text-right">
         <Link

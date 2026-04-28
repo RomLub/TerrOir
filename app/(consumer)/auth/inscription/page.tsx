@@ -2,6 +2,7 @@
 
 import { useFormState, useFormStatus } from "react-dom";
 import { signupAction, type SignupState } from "./actions";
+import { PasswordInput } from "@/components/ui";
 
 const initialState: SignupState = {};
 
@@ -61,17 +62,13 @@ export default function InscriptionPage() {
           />
         </label>
 
-        <label className="block">
-          <span className="text-sm font-medium">Mot de passe</span>
-          <input
-            name="password"
-            type="password"
-            required
-            minLength={8}
-            autoComplete="new-password"
-            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-          />
-        </label>
+        <PasswordInput
+          label="Mot de passe"
+          name="password"
+          required
+          minLength={8}
+          autoComplete="new-password"
+        />
 
         <label className="block">
           <span className="text-sm font-medium">

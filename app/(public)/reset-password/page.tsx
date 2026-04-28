@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
-import { Button, Input } from '@/components/ui';
+import { Button, PasswordInput } from '@/components/ui';
 
 export default function ResetPasswordPage() {
   return (
@@ -94,18 +94,18 @@ function ResetPasswordForm() {
           />
         ) : null}
 
-        <Input
+        <PasswordInput
           label="Nouveau mot de passe"
-          type="password"
+          name="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           autoComplete="new-password"
           minLength={8}
           required
         />
-        <Input
+        <PasswordInput
           label="Confirmer"
-          type="password"
+          name="passwordConfirm"
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
           autoComplete="new-password"

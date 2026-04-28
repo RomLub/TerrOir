@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { Button, Input } from "@/components/ui";
+import { Button, PasswordInput } from "@/components/ui";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export default function PasswordPage() {
@@ -118,9 +118,8 @@ export default function PasswordPage() {
               />
             ) : null}
 
-            <Input
+            <PasswordInput
               name="currentPassword"
-              type="password"
               label="Mot de passe actuel"
               autoComplete="current-password"
               value={currentPassword}
@@ -128,9 +127,8 @@ export default function PasswordPage() {
               required
             />
 
-            <Input
+            <PasswordInput
               name="newPassword"
-              type="password"
               label="Nouveau mot de passe"
               autoComplete="new-password"
               minLength={8}
@@ -139,9 +137,8 @@ export default function PasswordPage() {
               required
             />
 
-            <Input
+            <PasswordInput
               name="confirmPassword"
-              type="password"
               label="Confirmer le nouveau mot de passe"
               autoComplete="new-password"
               minLength={8}
