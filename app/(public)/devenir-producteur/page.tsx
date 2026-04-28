@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { Button, Input, Textarea } from '@/components/ui';
-import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
 const ADVANTAGES = [
   { n: '6%', title: 'Commission unique', text: "Pas d'abonnement, pas de frais cachés. Vous payez 6% uniquement sur les commandes finalisées." },
@@ -10,9 +9,11 @@ const ADVANTAGES = [
   { n: '✓', title: 'Paiement garanti', text: "Le client paie au retrait. Pas d'impayés, pas de relances : la commande est validée avant le passage à la ferme." },
 ];
 
+type SubmitStatus = 'created' | 'updated';
+
 export default function DevenirProducteurPage() {
   const [form, setForm] = useState({ prenom: '', nom: '', email: '', phone: '', exploitation: '', commune: '', message: '' });
-  const [sent, setSent] = useState(false);
+  const [sent, setSent] = useState<SubmitStatus | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,32 +28,39 @@ export default function DevenirProducteurPage() {
     setSubmitting(true);
     setError(null);
 
-    const supabase = createSupabaseBrowserClient();
-    const { error: insertError } = await supabase.from('producer_interests').insert({
-      prenom: form.prenom.trim(),
-      nom: form.nom.trim(),
-      email: form.email.trim().toLowerCase(),
-      telephone: form.phone.trim(),
-      nom_exploitation: form.exploitation.trim(),
-      commune: form.commune.trim(),
-      message: form.message.trim() || null,
-      statut: 'new',
+    const message = form.message.trim();
+    const res = await fetch('/api/producer-interests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prenom: form.prenom.trim(),
+        nom: form.nom.trim(),
+        email: form.email.trim().toLowerCase(),
+        telephone: form.phone.trim(),
+        nom_exploitation: form.exploitation.trim(),
+        commune: form.commune.trim(),
+        ...(message ? { message } : {}),
+      }),
     });
 
     setSubmitting(false);
-    if (insertError) {
+    if (!res.ok) {
       setError('Impossible d\'envoyer votre candidature. Merci de réessayer.');
       return;
     }
-    setSent(true);
+    const data = (await res.json().catch(() => null)) as { status?: SubmitStatus } | null;
+    setSent(data?.status === 'updated' ? 'updated' : 'created');
   };
 
   if (sent) {
+    const heading = sent === 'updated'
+      ? 'Merci, votre demande a bien été mise à jour.'
+      : 'Merci, c\'est noté.';
     return (
       <div className="bg-bg">
         <section className="max-w-2xl mx-auto px-6 py-32 text-center">
           <div className="w-20 h-20 mx-auto rounded-full bg-green-100 border-2 border-green-700 flex items-center justify-center text-green-700 text-4xl">✓</div>
-          <h1 className="mt-6 font-serif text-[44px] text-green-900 leading-tight">Merci, c&apos;est noté.</h1>
+          <h1 className="mt-6 font-serif text-[44px] text-green-900 leading-tight">{heading}</h1>
           <p className="mt-4 text-[16px] text-dark/70 leading-relaxed">
             Nous avons bien reçu votre demande. Un membre de l&apos;équipe TerrOir va vous appeler dans les 48 heures pour échanger sur votre exploitation et vous présenter la plateforme.
           </p>
