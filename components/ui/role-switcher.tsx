@@ -47,11 +47,11 @@ export function RoleSwitcher({ current, variant }: RoleSwitcherProps) {
     <nav aria-label="Basculer d'espace" className={s.container}>
       {current === "consumer" ? (
         <div aria-current="page" className={s.active}>
-          Espace consommateur
+          Espace acheteur
         </div>
       ) : (
         <Link href={consumerUrl} className={s.inactive}>
-          Espace consommateur
+          Espace acheteur
         </Link>
       )}
       {current === "producer" ? (
