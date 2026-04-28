@@ -19,6 +19,7 @@ export type NavbarPublicProps = {
 const defaultLinks: NavLink[] = [
   { href: "/producteurs", label: "Rencontrer les producteurs" },
   { href: "/carte", label: "Carte" },
+  { href: "/notre-demarche", label: "Notre démarche" },
   { href: "/comment-ca-marche", label: "Comment ça marche" },
 ];
 

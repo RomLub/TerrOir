@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { PublicStats } from "@/components/ui/public-stats";
 import { Hero } from "./_components/home/Hero";
 import { Steps } from "./_components/home/Steps";
+import { NotreDemarcheTeaser } from "./_components/home/NotreDemarcheTeaser";
 import { FeaturedProducts } from "./_components/home/FeaturedProducts";
 import { SarthemapPostit } from "./_components/home/SarthemapPostit";
 import { Reassurance } from "./_components/home/Reassurance";
@@ -26,6 +27,7 @@ export default function HomePage() {
       <Hero />
       <PublicStats />
       <Steps />
+      <NotreDemarcheTeaser />
       <FeaturedProducts />
       <SarthemapPostit />
       <Reassurance />
