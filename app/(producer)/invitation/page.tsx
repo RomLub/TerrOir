@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth/session";
@@ -16,12 +17,30 @@ function slugFromEmail(email: string) {
   return `${base}-${suffix}`;
 }
 
-function ErrorCard({ title, message }: { title: string; message: string }) {
+function ErrorCard({
+  title,
+  message,
+  ctaLabel,
+  ctaHref,
+}: {
+  title: string;
+  message: string;
+  ctaLabel?: string;
+  ctaHref?: string;
+}) {
   return (
     <main className="flex min-h-screen items-center justify-center p-8">
       <div className="max-w-md rounded-lg bg-white p-8 shadow-sm">
         <h1 className="text-2xl font-bold text-terroir-terracotta">{title}</h1>
         <p className="mt-3 text-sm text-gray-700">{message}</p>
+        {ctaLabel && ctaHref ? (
+          <Link
+            href={ctaHref}
+            className="mt-6 inline-flex items-center rounded-md bg-terroir-green-700 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-terroir-green-700/90"
+          >
+            {ctaLabel}
+          </Link>
+        ) : null}
       </div>
     </main>
   );
@@ -30,7 +49,14 @@ function ErrorCard({ title, message }: { title: string; message: string }) {
 export default async function InvitationPage({ searchParams }: PageProps) {
   const token = searchParams.token;
   if (!token) {
-    return <ErrorCard title="Invitation invalide" message="Lien incomplet — token manquant." />;
+    return (
+      <ErrorCard
+        title="Invitation invalide"
+        message="Lien incomplet — token manquant."
+        ctaLabel="Demander une nouvelle invitation"
+        ctaHref="/devenir-producteur"
+      />
+    );
   }
 
   const admin = createSupabaseAdminClient();
@@ -60,6 +86,8 @@ export default async function InvitationPage({ searchParams }: PageProps) {
       <ErrorCard
         title="Invitation invalide"
         message={messages[status as Exclude<InvitationStatus, "ok">]}
+        ctaLabel="Demander une nouvelle invitation"
+        ctaHref="/devenir-producteur"
       />
     );
   }
@@ -78,6 +106,8 @@ export default async function InvitationPage({ searchParams }: PageProps) {
       <ErrorCard
         title="Invitation invalide"
         message="Cet email est associé à un compte administrateur."
+        ctaLabel="Se connecter"
+        ctaHref="/connexion"
       />
     );
   }
@@ -120,6 +150,8 @@ export default async function InvitationPage({ searchParams }: PageProps) {
       <ErrorCard
         title="Invitation invalide"
         message="Ce producteur est déjà inscrit."
+        ctaLabel="Se connecter à mon espace"
+        ctaHref="/connexion"
       />
     );
   }
