@@ -63,6 +63,43 @@ export function UserProvider({
   // Sinon (anonyme) il n'y a rien à charger → false.
   const [loading, setLoading] = useState(initial.user !== null);
 
+  // Sync state quand un nouveau initial.user arrive via SSR re-render.
+  // Cas typique : login server action → redirect("/compte") déclenche une
+  // RSC nav client-side ; revalidatePath("/", "layout") re-rend RootLayout
+  // côté SSR avec initial.user=Romain, mais useState(initial.user) ligne 50
+  // ne re-évalue PAS sa valeur initiale après le premier mount sur
+  // /connexion (où initial.user était null). Sans ce sync, le state client
+  // garde user=null → navbar affiche "Connexion" alors que le HTML SSR
+  // contenait déjà le prénom. Hard refresh fixait (full reload re-instancie
+  // UserProvider). Le précédent fix revalidatePath (PR #13) corrigeait le
+  // SSR mais pas la sémantique useState.
+  //
+  // Dépendances primitives (id) uniquement : `initial` est recréé à chaque
+  // render parent ; dépendre de l'objet entier ferait re-tirer à chaque
+  // render. Comparer initial.user?.id capture les transitions login
+  // (null → id) et logout (id → null) sans bruit. Couvre aussi un éventuel
+  // bug similaire sur les autres flows post-auth (signup, etc.).
+  //
+  // loading n'est pas re-set ici : le useEffect onAuthStateChange ci-dessous
+  // gère déjà setLoading(false) après loadProfile. Roles n'est pas couvert
+  // par initial (loadProfile only) — limitation pré-existante hors scope.
+  useEffect(() => {
+    setUser(initial.user);
+    setIsAdmin(initial.isAdmin);
+    setIsProducer(initial.isProducer);
+    setProducer(initial.producerLite);
+    // Deps primitives volontaires (id) : `initial` est recréé à chaque
+    // render parent (RSC update). Dépendre des objets entiers ferait
+    // re-tirer à chaque update sans changement d'identité. Comparer les
+    // primitives capture précisément les transitions login/logout.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    initial.user?.id,
+    initial.isAdmin,
+    initial.isProducer,
+    initial.producerLite?.id,
+  ]);
+
   useEffect(() => {
     let cancelled = false;
 
