@@ -347,6 +347,11 @@ function InviteModal({
   const [sent, setSent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Friction UX : quand la route renvoie 409 kind='draft_resend_confirm_required'
+  // (email correspond à un producer en statut='draft' = onboarding abandonné),
+  // on bascule en mode confirmation : encadré informatif orange + bouton
+  // dédié "Confirmer la relance". Le 2nd POST embarque confirm_draft_resend=true.
+  const [confirmDraftResend, setConfirmDraftResend] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -358,10 +363,19 @@ function InviteModal({
       const res = await fetch('/api/admin/producers/invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), message: message.trim() || undefined }),
+        body: JSON.stringify({
+          email: email.trim(),
+          message: message.trim() || undefined,
+          ...(confirmDraftResend ? { confirm_draft_resend: true } : {}),
+        }),
       });
       const body = await res.json();
       if (!res.ok) {
+        if (body.kind === 'draft_resend_confirm_required') {
+          setConfirmDraftResend(true);
+          setError(null);
+          return;
+        }
         setError(body.error ?? 'Invitation impossible');
         return;
       }
@@ -408,17 +422,41 @@ function InviteModal({
           Annuler
         </button>
         <button type="submit" form="admin-invite-form" disabled={!email.includes('@') || submitting}
-          className="rounded-md bg-terroir-green-700 px-4 py-2 text-[14px] font-semibold text-white transition-colors hover:bg-terroir-green-700/90 disabled:cursor-not-allowed disabled:opacity-50">
-          {submitting ? 'Envoi…' : 'Envoyer l\'invitation'}
+          className={`rounded-md px-4 py-2 text-[14px] font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+            confirmDraftResend
+              ? 'bg-terroir-terracotta hover:bg-terroir-terracotta/90'
+              : 'bg-terroir-green-700 hover:bg-terroir-green-700/90'
+          }`}>
+          {submitting
+            ? 'Envoi…'
+            : confirmDraftResend
+              ? 'Confirmer la relance'
+              : 'Envoyer l\'invitation'}
         </button>
       </>}
     >
       <form id="admin-invite-form" onSubmit={submit}>
         <p className="mt-1 text-[13px] text-gray-600">Il recevra un lien de création de compte personnalisé.</p>
         <div className="mt-6 space-y-4">
+          {confirmDraftResend && (
+            <div
+              className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-[13px] text-amber-900"
+              role="alert"
+            >
+              <p className="font-semibold">Onboarding producteur abandonné détecté</p>
+              <p className="mt-1 leading-relaxed">
+                Cet email correspond à un compte producteur dont l&apos;onboarding n&apos;a pas été finalisé.
+                Une nouvelle invitation va être envoyée pour relancer le processus. L&apos;ancien lien
+                d&apos;invitation deviendra orphelin.
+              </p>
+            </div>
+          )}
           <div>
             <label className="mb-1.5 block text-[12px] font-medium text-gray-800">Email du producteur</label>
-            <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+            <input type="email" required value={email} onChange={(e) => {
+                setEmail(e.target.value);
+                if (confirmDraftResend) setConfirmDraftResend(false);
+              }}
               placeholder="contact@ma-ferme.fr"
               className="w-full rounded-md border border-gray-300 bg-white px-3 py-2.5 text-[14px] text-gray-900 placeholder:text-gray-400 focus:border-terroir-green-700 focus:outline-none focus:ring-2 focus:ring-terroir-green-700" />
           </div>
