@@ -34,8 +34,14 @@
  */
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { config as loadEnv } from "dotenv";
 import Stripe from "stripe";
+import { resolve } from "node:path";
 import { syncStripeAccountFlags } from "@/lib/stripe/sync-account-flags";
+
+// Charge .env.local depuis la racine du repo AVANT toute lecture process.env.
+// Ergonomie Windows PowerShell — pas besoin de sourcer manuellement.
+loadEnv({ path: resolve(process.cwd(), ".env.local") });
 
 const APPLY = process.argv.includes("--apply");
 
