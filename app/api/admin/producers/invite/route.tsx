@@ -23,6 +23,10 @@ const bodySchema = z.object({
   commune: z.string().trim().optional(),
   especes: z.array(z.string()).optional(),
   message: z.string().trim().optional(),
+  // Flag UX : second POST envoyé par le modal admin après confirmation
+  // explicite de l'opérateur quand l'email correspond à un onboarding
+  // producer abandonné (producer.statut='draft'). Voir handler ci-dessous.
+  confirm_draft_resend: z.boolean().optional(),
 });
 
 export async function POST(request: Request) {
@@ -67,15 +71,52 @@ export async function POST(request: Request) {
   if (userCheckError) {
     return NextResponse.json({ error: userCheckError.message }, { status: 500 });
   }
+  // Si users.roles contient 'producer', on regarde producer.statut pour
+  // distinguer :
+  //   - statut='draft' : onboarding abandonné, l'admin peut relancer (les
+  //     autres surfaces — page /invitation et loginAndUpgradeAction —
+  //     gèrent déjà la reprise de manière idempotente). Friction UX
+  //     volontaire : le 1er POST renvoie 409 kind='draft_resend_confirm_required'
+  //     pour que le modal affiche un encadré informatif + bouton dédié,
+  //     et le 2nd POST avec `confirm_draft_resend=true` autorise la
+  //     génération d'un nouveau token. Les anciens tokens restent en
+  //     base mais deviennent orphelins (le user n'en a plus connaissance).
+  //   - autres statuts ('pending'|'active'|'public'|'suspended'|'deleted')
+  //     : 409 dur, inchangé.
+  let isDraftResend = false;
   if (
     existingUser &&
     Array.isArray(existingUser.roles) &&
     existingUser.roles.includes("producer")
   ) {
-    return NextResponse.json(
-      { error: "Ce producteur est déjà inscrit" },
-      { status: 409 },
-    );
+    const { data: existingProducer, error: producerCheckError } = await admin
+      .from("producers")
+      .select("statut")
+      .eq("user_id", existingUser.id)
+      .maybeSingle();
+    if (producerCheckError) {
+      return NextResponse.json(
+        { error: producerCheckError.message },
+        { status: 500 },
+      );
+    }
+    if (existingProducer?.statut !== "draft") {
+      return NextResponse.json(
+        { error: "Ce producteur est déjà inscrit" },
+        { status: 409 },
+      );
+    }
+    if (!input.confirm_draft_resend) {
+      return NextResponse.json(
+        {
+          error:
+            "Cet email correspond à un onboarding producteur abandonné. Confirmez la relance pour envoyer une nouvelle invitation.",
+          kind: "draft_resend_confirm_required",
+        },
+        { status: 409 },
+      );
+    }
+    isDraftResend = true;
   }
 
   // 2. Préparer TOUS les tokens AVANT le moindre write DB. Si un token
@@ -214,5 +255,6 @@ export async function POST(request: Request) {
     email_error: emailResult.ok ? undefined : emailResult.error,
     lead_updated: leadUpdated,
     lead_created: leadCreated,
+    draft_resend: isDraftResend,
   });
 }
