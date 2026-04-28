@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth/session";
 import { invitationBusinessInfoSchema } from "@/lib/auth/validators";
@@ -148,5 +149,13 @@ export async function completeOnboardingAction(
     }
   }
 
+  // Invalide le cache RSC du root layout AVANT redirect — flow producer
+  // onboarding pose les cookies session à l'étape 1 (cf. create-account.ts /
+  // login-and-upgrade.ts via signInWithPassword). Si l'user n'était pas loggé
+  // avant /invitation (cas "new" ou "consumer-login"), le RootLayout est
+  // cached avec initial.user=null pendant tout le wizard. Sans revalidatePath,
+  // la transition vers /ma-page réutiliserait ce cache → bug navbar identique
+  // au signup. Pattern strictement identique au fix login PR #13.
+  revalidatePath("/", "layout");
   redirect("/ma-page?onboarded=1");
 }

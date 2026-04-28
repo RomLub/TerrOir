@@ -74,11 +74,18 @@ export function UserProvider({
   // UserProvider). Le précédent fix revalidatePath (PR #13) corrigeait le
   // SSR mais pas la sémantique useState.
   //
+  // PRÉ-REQUIS : la server action en amont DOIT appeler
+  // revalidatePath("/", "layout") avant le redirect, sinon le RootLayout
+  // est servi depuis le cache RSC client et la prop initial reste figée
+  // sur la valeur du premier mount → ce useEffect ne tire pas (pas de
+  // transition initial.user?.id). Couvre login (PR #13), signup
+  // (cf. app/(consumer)/auth/inscription/actions.ts) et complete-onboarding
+  // producer (cf. app/(producer)/invitation/_actions/complete-onboarding.ts).
+  //
   // Dépendances primitives (id) uniquement : `initial` est recréé à chaque
   // render parent ; dépendre de l'objet entier ferait re-tirer à chaque
   // render. Comparer initial.user?.id capture les transitions login
-  // (null → id) et logout (id → null) sans bruit. Couvre aussi un éventuel
-  // bug similaire sur les autres flows post-auth (signup, etc.).
+  // (null → id) et logout (id → null) sans bruit.
   //
   // loading n'est pas re-set ici : le useEffect onAuthStateChange ci-dessous
   // gère déjà setLoading(false) après loadProfile. Roles n'est pas couvert
