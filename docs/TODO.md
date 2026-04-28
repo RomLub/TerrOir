@@ -4,7 +4,7 @@ Priorités forward-looking uniquement. Pour l'historique complet des commits / c
 
 ## 🟠 En cours
 
-- **Refonte homepage consumer (Phase 1)** — implémentation Next.js de la maquette livrée par Claude Design (session 27/04). Branche `feature/home-refonte`, terminal CC en Phase C (PUSH 1-7). Inputs : bundle `~/Downloads/design_handoff_terroir/` (19 cards design system + screens desktop/mobile + tokens) + fichier source `~/Desktop/Logo.svg` (8 paths vectoriels propres + calque JPEG modèle masqué à nettoyer). Migration Button.primary green-700 → terra-700 + ajout variants `success` (green-700, validations métier) et `accent` (green-700, transitional pour call sites admin/producer). 14 fichiers consommateurs à auditer. Phase 2 (fiches produit, panier, checkout, refonte UI kits producer/admin) reportée à sessions dédiées ultérieures.
+_(rien en cours)_
 
 ## 🔴 Bugs ouverts
 
