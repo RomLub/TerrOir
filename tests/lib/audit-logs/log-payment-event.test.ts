@@ -247,3 +247,26 @@ describe("logPaymentEvent — fail-safe", () => {
     );
   });
 });
+
+describe("logPaymentEvent — Phase 3 events Stripe (T-081 PR-B)", () => {
+  // Smoke test type-check : confirme que les 3 nouveaux event types
+  // Stripe-direct sont acceptés par l'union PaymentEventType et
+  // écrits tels quels dans audit_logs avec user_id null par défaut
+  // (orphelin, traçable par metadata).
+  it.each([
+    "stripe_account_updated",
+    "stripe_payout_paid",
+    "stripe_dispute",
+  ] as const)("event %s : insert event_type tel quel + user_id null", async (eventType) => {
+    await logPaymentEvent({ eventType, metadata: { foo: "bar" } });
+
+    expect(insertSpy).toHaveBeenCalledWith(
+      "audit_logs",
+      expect.objectContaining({
+        event_type: eventType,
+        user_id: null,
+        metadata: { foo: "bar" },
+      }),
+    );
+  });
+});
