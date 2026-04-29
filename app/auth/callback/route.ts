@@ -136,6 +136,24 @@ export async function GET(request: NextRequest) {
       // admin_login magiclink : pendant security-critical du admin_login
       // password déjà loggé dans loginAction (cf. app/connexion/actions.ts).
       if (type === "email_change") {
+        // Sync public.users.email = auth.users.email après verifyOtp succès.
+        // verifyOtp a déjà mis à jour auth.users.email côté Supabase ;
+        // user.email reflète la nouvelle adresse confirmée. Sans cette sync,
+        // public.users.email reste sur l'ancienne valeur (désynchro).
+        // Fail-open : si l'UPDATE échoue (DB down, RLS, etc.), on log et on
+        // poursuit — l'audit log et la session restent valides, la sync
+        // pourra être réconciliée hors-bande.
+        if (user.email) {
+          const { error: syncError } = await supabase
+            .from("users")
+            .update({ email: user.email })
+            .eq("id", user.id);
+          if (syncError) {
+            console.error(
+              `EMAIL_CHANGE_SYNC_ERROR user_id=${user.id} message=${syncError.message}`,
+            );
+          }
+        }
         await logAuthEvent({
           eventType: "email_change",
           userId: user.id,

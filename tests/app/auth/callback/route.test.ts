@@ -23,6 +23,8 @@ const {
   mockReadRedirectAfterAuth,
   mockLogAuthEvent,
   mockMaskEmail,
+  mockUsersUpdate,
+  mockUsersUpdateEq,
 } = vi.hoisted(() => ({
   mockVerifyOtp: vi.fn(),
   mockExchangeCodeForSession: vi.fn(),
@@ -32,6 +34,8 @@ const {
   mockReadRedirectAfterAuth: vi.fn(),
   mockLogAuthEvent: vi.fn(),
   mockMaskEmail: vi.fn(),
+  mockUsersUpdate: vi.fn(),
+  mockUsersUpdateEq: vi.fn(),
 }));
 
 vi.mock("@supabase/ssr", () => ({
@@ -41,6 +45,17 @@ vi.mock("@supabase/ssr", () => ({
       exchangeCodeForSession: mockExchangeCodeForSession,
       getUser: mockGetUser,
     },
+    from: (table: string) => ({
+      update: (payload: unknown) => {
+        mockUsersUpdate(table, payload);
+        return {
+          eq: (col: string, val: unknown) => {
+            mockUsersUpdateEq(col, val);
+            return Promise.resolve({ error: null });
+          },
+        };
+      },
+    }),
   }),
 }));
 
@@ -82,6 +97,8 @@ beforeEach(() => {
   mockLogAuthEvent.mockResolvedValue(undefined);
   mockMaskEmail.mockReset();
   mockMaskEmail.mockImplementation((email: string) => `m_${email}`);
+  mockUsersUpdate.mockReset();
+  mockUsersUpdateEq.mockReset();
 });
 
 afterEach(() => {
@@ -160,7 +177,7 @@ describe("GET /auth/callback — fallback erreur params manquants", () => {
 });
 
 describe("GET /auth/callback — Phase 3 multi-events audit (T-081 PR-A)", () => {
-  it("type=email_change → logAuthEvent('email_change') avec new_email_masked", async () => {
+  it("type=email_change → sync public.users.email + logAuthEvent('email_change') avec new_email_masked", async () => {
     mockVerifyOtp.mockResolvedValue({ error: null });
     mockGetUser.mockResolvedValue({
       data: { user: { id: "user-42", email: "new@example.com" } },
@@ -175,6 +192,13 @@ describe("GET /auth/callback — Phase 3 multi-events audit (T-081 PR-A)", () =>
     );
 
     await GET(buildRequest("?token_hash=abc&type=email_change"));
+
+    // Sync public.users.email = auth.users.email (résout désynchro flow profil
+    // pré-bascule supabase.auth.updateUser).
+    expect(mockUsersUpdate).toHaveBeenCalledWith("users", {
+      email: "new@example.com",
+    });
+    expect(mockUsersUpdateEq).toHaveBeenCalledWith("id", "user-42");
 
     expect(mockLogAuthEvent).toHaveBeenCalledWith({
       eventType: "email_change",

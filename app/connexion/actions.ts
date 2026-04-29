@@ -14,6 +14,7 @@ import {
   resolvePostLoginPath,
 } from "@/lib/auth/post-login-redirect";
 import { setRedirectAfterAuth } from "@/lib/auth/redirect-cookie";
+import { getAuthCallbackUrl } from "@/lib/auth/email-redirect";
 
 export type LoginState = { error?: string };
 
@@ -74,8 +75,9 @@ export async function loginAction(
 
 // =============================================================================
 // Magic link — alternative au login mdp. Le redirectTo est routé en fonction
-// du type d'user détecté (admin vs autres) pour que le callback tombe sur le
-// bon subdomain et pose les cookies isolés appropriés (Chantier 4) :
+// du type d'user détecté (admin vs autres) via getAuthCallbackUrl pour que le
+// callback tombe sur le bon subdomain et pose les cookies isolés appropriés
+// (Chantier 4) :
 //   admin → https://admin.terroir-local.fr/auth/callback
 //   autres → https://www.terroir-local.fr/auth/callback (cookies partagés
 //           avec pro via .terroir-local.fr, donc producers OK)
@@ -84,11 +86,6 @@ export async function loginAction(
 // inexistant ou non — Supabase signInWithOtp avec shouldCreateUser=false
 // échoue silencieusement, on ignore l'erreur et on renvoie le même success).
 // =============================================================================
-
-const MAGIC_LINK_ADMIN_CALLBACK =
-  "https://admin.terroir-local.fr/auth/callback";
-const MAGIC_LINK_DEFAULT_CALLBACK =
-  "https://www.terroir-local.fr/auth/callback";
 
 const magicLinkSchema = z.object({
   email: z.string().trim().email("Email invalide"),
@@ -140,9 +137,7 @@ export async function requestMagicLinkAction(
   // /auth/callback après verifyOtp.
   setRedirectAfterAuth(formData.get("redirectTo"));
 
-  const emailRedirectTo = isAdmin
-    ? MAGIC_LINK_ADMIN_CALLBACK
-    : MAGIC_LINK_DEFAULT_CALLBACK;
+  const emailRedirectTo = getAuthCallbackUrl(isAdmin);
 
   // signInWithOtp avec shouldCreateUser=false : si l'email n'existe pas dans
   // auth.users, Supabase renvoie une erreur — on la swallow pour préserver

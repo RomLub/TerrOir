@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Button, Input } from "@/components/ui";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import ChangeEmailSection from "./_components/ChangeEmailSection";
 import DeleteAccountSection from "./_components/DeleteAccountSection";
 
 type Profil = {
@@ -84,13 +85,16 @@ export default function ProfilPage() {
     setError(null);
     setSaved(false);
 
+    // Email volontairement exclu : il transite via supabase.auth.updateUser
+    // côté server action ChangeEmailSection (cf. _actions/change-email.ts) →
+    // évite la désynchro auth.users ↔ public.users (le sync public.users.email
+    // est fait dans /auth/callback case email_change après verifyOtp).
     const supabase = createSupabaseBrowserClient();
     const { error: updateError } = await supabase
       .from("users")
       .update({
         prenom: profil.prenom.trim() || null,
         nom: profil.nom.trim() || null,
-        email: profil.email.trim() || null,
         telephone: profil.telephone.trim() || null,
         sms_optin: profil.smsOptIn,
       })
@@ -154,18 +158,6 @@ export default function ProfilPage() {
 
             <div className="mt-4">
               <Input
-                name="email"
-                type="email"
-                label="Email"
-                autoComplete="email"
-                required
-                value={profil.email}
-                onChange={(e) => update("email")(e.target.value)}
-              />
-            </div>
-
-            <div className="mt-4">
-              <Input
                 name="telephone"
                 type="tel"
                 label="Téléphone"
@@ -223,6 +215,8 @@ export default function ProfilPage() {
             </div>
           </form>
         )}
+
+        {!loading ? <ChangeEmailSection currentEmail={profil.email} /> : null}
 
         <DeleteAccountSection />
     </main>
