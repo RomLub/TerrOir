@@ -99,6 +99,10 @@ beforeEach(() => {
   mockMaskEmail.mockImplementation((email: string) => `m_${email}`);
   mockUsersUpdate.mockReset();
   mockUsersUpdateEq.mockReset();
+  // Silence console.error en test (T-318 trace forensique
+  // AUTH_CALLBACK_ERROR + T-327 EMAIL_CHANGE_SYNC_ERROR), restauré
+  // par vi.restoreAllMocks() en afterEach.
+  vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -147,8 +151,8 @@ describe("GET /auth/callback — flow PKCE moderne (token_hash + type)", () => {
   });
 });
 
-describe("GET /auth/callback — fallback erreur params manquants", () => {
-  it("aucun param → redirect /connexion?error=auth_callback&reason=Missing+token_hash", async () => {
+describe("GET /auth/callback — fallback erreur params manquants (codes symboliques T-318)", () => {
+  it("aucun param → redirect /connexion?error=auth_callback&reason=missing + console.error AUTH_CALLBACK_ERROR", async () => {
     const res = await GET(buildRequest(""));
 
     expect(mockVerifyOtp).not.toHaveBeenCalled();
@@ -157,10 +161,20 @@ describe("GET /auth/callback — fallback erreur params manquants", () => {
     const location = res.headers.get("location") ?? "";
     expect(location).toContain("/connexion");
     expect(location).toContain("error=auth_callback");
-    expect(location).toContain("reason=Missing+token_hash");
+    // T-318 : code symbolique court "missing" au lieu du verbatim
+    // "Missing token_hash" qui fuyait dans la query string.
+    expect(location).toContain("reason=missing");
+    expect(location).not.toContain("Missing+token_hash");
+    // Verbatim conservé côté logs Vercel pour debug forensique.
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining("AUTH_CALLBACK_ERROR"),
+    );
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining("Missing token_hash"),
+    );
   });
 
-  it("?code= seul (legacy params) → fallback erreur, exchangeCodeForSession jamais appelé (post-suppression code mort PKCE)", async () => {
+  it("?code= seul (legacy params) → fallback erreur reason=missing, exchangeCodeForSession jamais appelé (post-suppression code mort PKCE)", async () => {
     const res = await GET(buildRequest("?code=legacy123"));
 
     // Confirme que la branche if (code) a bien été supprimée :
@@ -172,7 +186,63 @@ describe("GET /auth/callback — fallback erreur params manquants", () => {
     const location = res.headers.get("location") ?? "";
     expect(location).toContain("/connexion");
     expect(location).toContain("error=auth_callback");
-    expect(location).toContain("reason=Missing+token_hash");
+    expect(location).toContain("reason=missing");
+  });
+});
+
+describe("GET /auth/callback — classification erreurs verifyOtp (T-318 anti info disclosure)", () => {
+  it("verifyOtp 'Token has expired or is invalid' → reason=expired + verbatim côté logs (jamais query string)", async () => {
+    mockVerifyOtp.mockResolvedValue({
+      error: { message: "Token has expired or is invalid" },
+    });
+
+    const res = await GET(buildRequest("?token_hash=abc&type=magiclink"));
+
+    expect(res.status).toBe(307);
+    const location = res.headers.get("location") ?? "";
+    expect(location).toContain("reason=expired");
+    expect(location).not.toContain("Token+has+expired");
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining("AUTH_CALLBACK_ERROR"),
+    );
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining("Token has expired or is invalid"),
+    );
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining("reason_code=expired"),
+    );
+  });
+
+  it("verifyOtp 'User already confirmed' → reason=invalid (token déjà consommé classé invalid, pas expired)", async () => {
+    mockVerifyOtp.mockResolvedValue({
+      error: { message: "User already confirmed" },
+    });
+
+    const res = await GET(buildRequest("?token_hash=abc&type=signup"));
+
+    expect(res.status).toBe(307);
+    const location = res.headers.get("location") ?? "";
+    expect(location).toContain("reason=invalid");
+    expect(location).not.toContain("already+confirmed");
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining("User already confirmed"),
+    );
+  });
+
+  it("verifyOtp message inconnu non catégorisé → reason=technical (fallback default)", async () => {
+    mockVerifyOtp.mockResolvedValue({
+      error: { message: "Some unexpected Supabase error xyz" },
+    });
+
+    const res = await GET(buildRequest("?token_hash=abc&type=magiclink"));
+
+    expect(res.status).toBe(307);
+    const location = res.headers.get("location") ?? "";
+    expect(location).toContain("reason=technical");
+    expect(location).not.toContain("unexpected");
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining("Some unexpected Supabase error xyz"),
+    );
   });
 });
 
