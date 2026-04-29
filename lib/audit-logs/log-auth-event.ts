@@ -55,7 +55,13 @@ export type AuthEventType =
   //     dessus, sémantique propre : "consumed = used_at marqué".
   | "invitation_created"
   | "invitation_revoked"
-  | "invitation_consumed_success";
+  | "invitation_consumed_success"
+  // T-309 : tentative login échouée (signInWithPassword fail). Émis depuis
+  // loginAction quand Supabase rejette les credentials. userId = null (user
+  // pas authentifié), metadata embarque email tenté + reason_code catégoriel
+  // (invalid_credentials | email_not_confirmed | rate_limited | technical)
+  // pour permettre détection forensique brute-force / énumération.
+  | "login_failed";
 
 type LogAuthEventParams = {
   eventType: AuthEventType;

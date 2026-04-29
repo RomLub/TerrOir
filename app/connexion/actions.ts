@@ -21,6 +21,32 @@ import {
 
 export type LoginState = { error?: string };
 
+// T-309 : classification catégorielle EN-neutre des erreurs signinError pour
+// metadata.reason_code audit_logs login_failed. Mirror style inline T-318
+// classifyAuthError (cf. app/auth/callback/route.ts) — sémantique distincte
+// (token vs credentials) donc pas réutilisable. UI-facing message FR
+// "Identifiants invalides" reste générique côté retour LoginState.
+type LoginErrorCode =
+  | "invalid_credentials"
+  | "email_not_confirmed"
+  | "rate_limited"
+  | "technical";
+
+function classifyLoginError(
+  code: string | null | undefined,
+  message: string | null | undefined,
+): LoginErrorCode {
+  if (code === "invalid_credentials") return "invalid_credentials";
+  if (code === "email_not_confirmed") return "email_not_confirmed";
+  if (
+    code?.includes("rate_limit") ||
+    message?.toLowerCase().includes("rate limit")
+  ) {
+    return "rate_limited";
+  }
+  return "technical";
+}
+
 export async function loginAction(
   _prev: LoginState,
   formData: FormData,
@@ -38,6 +64,21 @@ export async function loginAction(
   const { data, error } = await supabase.auth.signInWithPassword(parsed.data);
 
   if (error || !data.user) {
+    // Audit forensique : on logue chaque tentative échouée pour permettre
+    // détection brute-force / énumération. email plaintext OK en metadata
+    // audit_logs (convention TerrOir, cf. magic link), userId null (user
+    // pas authentifié). reason_code catégoriel évite la dépendance directe
+    // aux codes Supabase verbatim côté analytics. logAuthEvent est fail-safe
+    // (swallow + warn) — un échec d'écriture audit ne bloque pas le retour
+    // d'erreur UI.
+    await logAuthEvent({
+      eventType: "login_failed",
+      userId: null,
+      metadata: {
+        email: parsed.data.email,
+        reason_code: classifyLoginError(error?.code, error?.message),
+      },
+    });
     return { error: "Identifiants invalides" };
   }
 
