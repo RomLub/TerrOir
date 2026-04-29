@@ -1,9 +1,15 @@
 "use server";
 
+import { headers } from "next/headers";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { signupSchema } from "@/lib/auth/validators";
 import { NEXT_PUBLIC_APP_URL } from "@/lib/env/urls";
+import { consumeRateLimit, getSignupRateLimit } from "@/lib/rate-limit";
+import {
+  extractRequestContext,
+  logAuthEvent,
+} from "@/lib/audit-logs/log-auth-event";
 
 export type SignupState = {
   error?: string;
@@ -25,6 +31,28 @@ export async function signupAction(
 
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Saisie invalide" };
+  }
+
+  // T-305 PR-B : rate-limit applicatif IP avant tout call Supabase coûteux.
+  // Cap 5/60s (cf. lib/rate-limit.ts getSignupRateLimit). Fail-open Redis
+  // indispo — un incident Upstash ne bloque pas la signup. Audit log
+  // rate_limit_exceeded émis sur cap reached pour détection forensique.
+  const { ipAddress } = extractRequestContext(headers());
+  const rateLimit = await consumeRateLimit(
+    getSignupRateLimit(),
+    ipAddress ?? "unknown",
+  );
+  if (!rateLimit.success) {
+    await logAuthEvent({
+      eventType: "rate_limit_exceeded",
+      userId: null,
+      metadata: {
+        route: "signup",
+        cap: rateLimit.limit,
+        reset: rateLimit.reset,
+      },
+    });
+    return { error: "Trop de tentatives. Réessayez dans quelques minutes." };
   }
 
   const { prenom, nom, email, password, telephone, sms_optin } = parsed.data;

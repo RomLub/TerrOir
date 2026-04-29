@@ -8,7 +8,15 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { loginSchema } from "@/lib/auth/validators";
 import { maskEmail } from "@/lib/rgpd/mask-email";
-import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
+import {
+  extractRequestContext,
+  logAuthEvent,
+} from "@/lib/audit-logs/log-auth-event";
+import {
+  consumeRateLimit,
+  getLoginRateLimit,
+  getRecoveryRateLimit,
+} from "@/lib/rate-limit";
 import {
   loadRoleSnapshot,
   resolvePostLoginPath,
@@ -59,6 +67,29 @@ export async function loginAction(
 
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Saisie invalide" };
+  }
+
+  // T-305 PR-B : rate-limit applicatif IP avant signInWithPassword. Cap 5/60s
+  // (cf. lib/rate-limit.ts getLoginRateLimit). Defensive layer applicative
+  // distincte du cap rate-limited Supabase (cf. T-309 reason_code). Mutualisé
+  // avec requestMagicLinkAction (D2 PR-B) — un attaquant qui alterne login
+  // mdp + magic link sur la même IP rencontre le compteur partagé.
+  const { ipAddress } = extractRequestContext(headers());
+  const rateLimit = await consumeRateLimit(
+    getLoginRateLimit(),
+    ipAddress ?? "unknown",
+  );
+  if (!rateLimit.success) {
+    await logAuthEvent({
+      eventType: "rate_limit_exceeded",
+      userId: null,
+      metadata: {
+        route: "login",
+        cap: rateLimit.limit,
+        reset: rateLimit.reset,
+      },
+    });
+    return { error: "Trop de tentatives. Réessayez dans quelques minutes." };
   }
 
   const supabase = createSupabaseServerClient();
@@ -161,6 +192,27 @@ export async function requestMagicLinkAction(
 
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Email invalide" };
+  }
+
+  // T-305 PR-B : rate-limit applicatif IP avant signInWithOtp. Mutualise
+  // getLoginRateLimit() avec loginAction (D2) — un attaquant qui alterne
+  // login mdp et magic link sur la même IP rencontre le compteur partagé.
+  const { ipAddress } = extractRequestContext(headers());
+  const rateLimit = await consumeRateLimit(
+    getLoginRateLimit(),
+    ipAddress ?? "unknown",
+  );
+  if (!rateLimit.success) {
+    await logAuthEvent({
+      eventType: "rate_limit_exceeded",
+      userId: null,
+      metadata: {
+        route: "magic_link",
+        cap: rateLimit.limit,
+        reset: rateLimit.reset,
+      },
+    });
+    return { error: "Trop de tentatives. Réessayez dans quelques minutes." };
   }
 
   const email = parsed.data.email;
@@ -274,6 +326,28 @@ export async function requestPasswordResetAction(
 
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Email invalide" };
+  }
+
+  // T-305 PR-B : rate-limit applicatif IP avant resetPasswordForEmail. Cap
+  // 3/60s (plus strict que login : recovery déclenche envoi mail coûteux +
+  // flooding boîte cible). Helper dédié getRecoveryRateLimit (cf. lib/rate-
+  // limit.ts).
+  const { ipAddress } = extractRequestContext(headers());
+  const rateLimit = await consumeRateLimit(
+    getRecoveryRateLimit(),
+    ipAddress ?? "unknown",
+  );
+  if (!rateLimit.success) {
+    await logAuthEvent({
+      eventType: "rate_limit_exceeded",
+      userId: null,
+      metadata: {
+        route: "recovery",
+        cap: rateLimit.limit,
+        reset: rateLimit.reset,
+      },
+    });
+    return { error: "Trop de tentatives. Réessayez dans quelques minutes." };
   }
 
   const email = parsed.data.email;
