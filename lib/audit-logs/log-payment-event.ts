@@ -29,6 +29,15 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 // log-auth-event (même contrat).
 
 export type PaymentEventType =
+  // T-429 : audit forensique post-création atomique d'une order via la
+  // RPC create_order_with_items. Posé dès le retour OK (avant ack HTTP au
+  // client), couvre le path happy de POST /api/orders/create. userId =
+  // session.id (consumer). Metadata aligne les colonnes DB (orders.id,
+  // montant_total, commission_terroir, montant_net_producteur). Compliance
+  // RGPD pré-Live : symétrique aux audit_logs cancel/refund/webhook/cron
+  // (Bundles 1+3+4) — aucune mutation DB importante n'échappe désormais
+  // à l'audit trail.
+  | "order_created"
   // Path nominal et failed (instrumentation rétroactive Phase 2).
   | "order_payment_succeeded"
   | "order_payment_failed"

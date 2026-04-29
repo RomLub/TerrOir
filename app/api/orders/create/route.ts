@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { extractHeureRetrait } from "@/lib/slots/format-slot-time";
+import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
 
 const bodySchema = z.object({
   producer_id: z.string().uuid(),
@@ -108,6 +109,26 @@ export async function POST(request: Request) {
     )
     .eq("id", orderId as string)
     .single();
+
+  // T-429 audit forensique pré-Live (RGPD compliance + reporting). Pose
+  // un audit_log post-RPC réussie, avant retour HTTP au client. Pattern
+  // await direct (helper fail-safe interne via try/catch swallow, idem
+  // 8+ call sites refund/cancel/webhook/cron). Fallback ?? null si SELECT
+  // post-RPC échoue silencieusement (T-427 documenté).
+  await logPaymentEvent({
+    eventType: "order_created",
+    userId: session.id,
+    metadata: {
+      order_id: orderId,
+      producer_id,
+      slot_id,
+      date_retrait,
+      montant_total: order?.montant_total ?? null,
+      commission: order?.commission_terroir ?? null,
+      montant_net: order?.montant_net_producteur ?? null,
+      items_count: items.length,
+    },
+  });
 
   return NextResponse.json({
     order_id: orderId,
