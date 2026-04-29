@@ -7,7 +7,6 @@ import { userOwnsProducer } from "@/lib/auth/producerOwnership";
 import {
   InvalidOrderTransitionError,
   assertTransition,
-  canTransition,
   isTerminal,
   type OrderStatus,
 } from "@/lib/orders/stateMachine";
@@ -100,15 +99,14 @@ export async function POST(request: Request, { params }: RouteContext) {
   }
 
   // Statut cible dynamique : refunded si le remboursement Stripe a réussi,
-  // sinon cancelled. La state machine peut refuser refunded depuis certains
-  // états (ex. ready) — on retombe alors sur cancelled, le refund côté Stripe
-  // reste valide et est tracé dans les logs Stripe.
+  // sinon cancelled. Post-T-151 toutes les transitions de from ∈
+  // {pending, confirmed, ready} vers refunded ou cancelled sont LEGAL
+  // (les statuts terminaux completed/cancelled/refunded sont court-circuités
+  // par isTerminal en amont, ligne 50). assertTransition reste comme filet
+  // fail-fast contre une régression future de la matrice.
   const from = order.statut as OrderStatus;
-  let finalStatus: OrderStatus =
+  const finalStatus: OrderStatus =
     order.stripe_payment_intent_id && !refundError ? "refunded" : "cancelled";
-  if (!canTransition(from, finalStatus)) {
-    finalStatus = "cancelled";
-  }
 
   try {
     assertTransition(from, finalStatus);
