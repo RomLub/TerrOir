@@ -3,6 +3,7 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { invitationLoginAndUpgradeSchema } from "@/lib/auth/validators";
+import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 
 export type State = { error?: string; success?: boolean };
 
@@ -75,6 +76,16 @@ export async function loginAndUpgradeAction(
   if (rolesError) {
     return { error: `Mise à jour rôles échouée : ${rolesError.message}` };
   }
+
+  // Phase 3 multi-events audit (T-081 PR-A) — promotion consumer→producer.
+  // Loggé APRÈS UPDATE roles succès (la transition est effective DB), AVANT
+  // INSERT producers (qui peut échouer indépendamment, pas un blocker pour
+  // l'event role_changed forensique).
+  await logAuthEvent({
+    eventType: "role_changed",
+    userId: existingUser.id,
+    metadata: { from: "consumer", to: "producer" },
+  });
 
   // Si une ligne producers existe déjà (ex: flux interrompu puis repris),
   // on ne la duplique pas. Sinon on la crée en statut='draft'.

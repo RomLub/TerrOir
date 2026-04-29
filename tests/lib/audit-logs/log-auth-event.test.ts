@@ -169,6 +169,24 @@ describe("logAuthEvent", () => {
       expect.objectContaining({ user_id: null }),
     );
   });
+
+  // Phase 3 multi-events (T-081 PR-A) — smoke test type-check : confirme
+  // que les 5 nouveaux event types sont acceptés par l'union AuthEventType
+  // et écrits tels quels dans audit_logs.
+  it.each([
+    "account_signup",
+    "account_deleted",
+    "email_change",
+    "admin_login",
+    "role_changed",
+  ] as const)("Phase 3 event %s : insert event_type tel quel", async (eventType) => {
+    await logAuthEvent({ eventType, userId: "user-1" });
+
+    expect(insertSpy).toHaveBeenCalledWith(
+      "audit_logs",
+      expect.objectContaining({ event_type: eventType, user_id: "user-1" }),
+    );
+  });
 });
 
 describe("extractRequestContext", () => {

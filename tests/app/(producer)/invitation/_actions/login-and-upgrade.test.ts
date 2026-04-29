@@ -49,6 +49,11 @@ vi.mock("@/lib/supabase/server", () => ({
   }),
 }));
 
+const logAuthEventMock = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/audit-logs/log-auth-event", () => ({
+  logAuthEvent: logAuthEventMock,
+}));
+
 import { loginAndUpgradeAction } from "@/app/(producer)/invitation/_actions/login-and-upgrade";
 
 // --- Helpers --------------------------------------------------------------
@@ -81,6 +86,8 @@ beforeEach(() => {
   captured = { fromCalls: [], inserts: [], updates: [] };
   responses = {};
   signInMock = vi.fn<AnyAsyncFn>().mockResolvedValue({ data: {}, error: null });
+  logAuthEventMock.mockReset();
+  logAuthEventMock.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -112,6 +119,13 @@ describe("loginAndUpgradeAction", () => {
     expect(captured.inserts.find((i) => i.table === "producers")?.payload).toMatchObject({
       user_id: "user-42",
       statut: "draft",
+    });
+    // Phase 3 multi-events audit (T-081 PR-A) : event role_changed loggué
+    // après UPDATE roles succès, AVANT INSERT producers.
+    expect(logAuthEventMock).toHaveBeenCalledWith({
+      eventType: "role_changed",
+      userId: "user-42",
+      metadata: { from: "consumer", to: "producer" },
     });
   });
 
@@ -148,5 +162,7 @@ describe("loginAndUpgradeAction", () => {
     expect(res).toEqual({ error: "Mot de passe incorrect" });
     expect(captured.updates).toEqual([]);
     expect(captured.inserts).toEqual([]);
+    // Phase 3 audit : pas de role_changed loggué si auth a échoué
+    expect(logAuthEventMock).not.toHaveBeenCalled();
   });
 });

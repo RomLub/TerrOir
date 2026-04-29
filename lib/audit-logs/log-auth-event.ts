@@ -25,7 +25,15 @@ export type AuthEventType =
   | "password_changed"
   | "account_login_password"
   | "account_login_magic_link"
-  | "account_logout";
+  | "account_logout"
+  // Phase 3 multi-events (T-081 PR-A) — events Auth additionnels pour
+  // couverture forensique élargie. Cohérent contrat fail-safe
+  // (swallow + console.warn, pas de re-throw) et même surface params.
+  | "account_signup"
+  | "account_deleted"
+  | "email_change"
+  | "admin_login"
+  | "role_changed";
 
 type LogAuthEventParams = {
   eventType: AuthEventType;
