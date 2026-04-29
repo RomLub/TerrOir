@@ -162,6 +162,7 @@ describe("buildRetryTargets — pure function", () => {
       {
         orderId: "order-3",
         paymentIntentId: "pi_3",
+        kind: "revival",
         blockedReason: "blocked_stock",
         attempt: 1,
       },
@@ -195,6 +196,7 @@ describe("buildRetryTargets — pure function", () => {
       {
         orderId: "order-4",
         paymentIntentId: "pi_4",
+        kind: "revival",
         blockedReason: "blocked_slot",
         attempt: 2,
       },
@@ -229,6 +231,7 @@ describe("buildRetryTargets — pure function", () => {
       {
         orderId: "order-5",
         paymentIntentId: "pi_5",
+        kind: "revival",
         blockedReason: "blocked_stock",
         attempt: 3,
       },
@@ -253,7 +256,7 @@ describe("buildRetryTargets — pure function", () => {
     expect(skipped[0]?.error).toContain("failed_count=4");
   });
 
-  it("defensive: skips events with missing payment_intent_id or blocked_reason", () => {
+  it("defensive: skips events with missing payment_intent_id (revival)", () => {
     const events = [
       {
         event_type: "order_revival_refund_failed",
@@ -264,9 +267,21 @@ describe("buildRetryTargets — pure function", () => {
     const { targets, skipped } = buildRetryTargets(events);
     expect(targets).toEqual([]);
     expect(skipped).toHaveLength(1);
-    expect(skipped[0]?.error).toContain(
-      "missing payment_intent_id or blocked_reason",
-    );
+    expect(skipped[0]?.error).toContain("missing payment_intent_id");
+  });
+
+  it("defensive: skips revival events with payment_intent_id but missing blocked_reason", () => {
+    const events = [
+      {
+        event_type: "order_revival_refund_failed",
+        metadata: { order_id: "order-no-blocked", payment_intent_id: "pi_x" },
+        created_at: "2026-04-25T10:00:00.000Z",
+      },
+    ];
+    const { targets, skipped } = buildRetryTargets(events);
+    expect(targets).toEqual([]);
+    expect(skipped).toHaveLength(1);
+    expect(skipped[0]?.error).toContain("missing blocked_reason");
   });
 
   it("uses the most recent refund_failed event for payment_intent_id + blocked_reason", () => {
@@ -298,6 +313,7 @@ describe("buildRetryTargets — pure function", () => {
       {
         orderId: "order-6",
         paymentIntentId: "pi_new",
+        kind: "revival",
         blockedReason: "blocked_slot",
         attempt: 2,
       },
@@ -334,6 +350,120 @@ describe("buildRetryTargets — pure function", () => {
     // order-B exclu (retried_succeeded), order-A et order-C eligibles attempt=1.
     const ids = targets.map((t) => t.orderId).sort();
     expect(ids).toEqual(["order-A", "order-C"]);
+  });
+
+  // ===========================================================================
+  // T-412 : extension aux 3 paths refund (revival / admin / timeout)
+  // ===========================================================================
+
+  it("T-412 : kind='admin' (path /api/stripe/refund) sans blocked_reason → target valide", () => {
+    const events = [
+      {
+        event_type: "order_admin_refund_failed",
+        metadata: {
+          order_id: "order-admin",
+          payment_intent_id: "pi_admin",
+          // pas de blocked_reason : path admin n'a pas ce concept.
+        },
+        created_at: "2026-04-27T10:00:00.000Z",
+      },
+    ];
+    const { targets, skipped } = buildRetryTargets(events);
+    expect(skipped).toEqual([]);
+    expect(targets).toEqual([
+      {
+        orderId: "order-admin",
+        paymentIntentId: "pi_admin",
+        kind: "admin",
+        blockedReason: undefined,
+        attempt: 1,
+      },
+    ]);
+  });
+
+  it("T-412 : kind='timeout' (path cron order-timeout) sans blocked_reason → target valide", () => {
+    const events = [
+      {
+        event_type: "order_timeout_refund_failed",
+        metadata: {
+          order_id: "order-timeout",
+          payment_intent_id: "pi_timeout",
+        },
+        created_at: "2026-04-27T10:00:00.000Z",
+      },
+    ];
+    const { targets, skipped } = buildRetryTargets(events);
+    expect(skipped).toEqual([]);
+    expect(targets).toEqual([
+      {
+        orderId: "order-timeout",
+        paymentIntentId: "pi_timeout",
+        kind: "timeout",
+        blockedReason: undefined,
+        attempt: 1,
+      },
+    ]);
+  });
+
+  it("T-412 : group key composite (orderId, kind) → 1 order avec 2 kinds = 2 targets distincts", () => {
+    const events = [
+      {
+        event_type: "order_admin_refund_failed",
+        metadata: { order_id: "order-mixed", payment_intent_id: "pi_admin" },
+        created_at: "2026-04-25T10:00:00.000Z",
+      },
+      {
+        event_type: "order_timeout_refund_failed",
+        metadata: { order_id: "order-mixed", payment_intent_id: "pi_timeout" },
+        created_at: "2026-04-26T10:00:00.000Z",
+      },
+    ];
+    const { targets } = buildRetryTargets(events);
+    expect(targets).toHaveLength(2);
+    const kinds = targets.map((t) => t.kind).sort();
+    expect(kinds).toEqual(["admin", "timeout"]);
+  });
+
+  it("T-412 : retried_succeeded sur kind=admin n'exclut PAS le kind=timeout (resolution par kind)", () => {
+    const events = [
+      {
+        event_type: "order_admin_refund_failed",
+        metadata: { order_id: "order-mixed", payment_intent_id: "pi_admin" },
+        created_at: "2026-04-25T10:00:00.000Z",
+      },
+      {
+        event_type: "order_refund_retried_succeeded",
+        metadata: { order_id: "order-mixed", kind: "admin" },
+        created_at: "2026-04-26T10:00:00.000Z",
+      },
+      {
+        event_type: "order_timeout_refund_failed",
+        metadata: { order_id: "order-mixed", payment_intent_id: "pi_timeout" },
+        created_at: "2026-04-27T10:00:00.000Z",
+      },
+    ];
+    const { targets } = buildRetryTargets(events);
+    // kind=admin résolu (succeeded), kind=timeout encore en target.
+    expect(targets).toHaveLength(1);
+    expect(targets[0]?.kind).toBe("timeout");
+  });
+
+  it("T-412 : retro-compat — event order_revival_refund_failed legacy sans metadata.kind → kind='revival' default", () => {
+    const events = [
+      {
+        event_type: "order_revival_refund_failed",
+        // metadata sans .kind (legacy avant T-412)
+        metadata: {
+          order_id: "order-legacy",
+          payment_intent_id: "pi_legacy",
+          blocked_reason: "blocked_stock",
+        },
+        created_at: "2026-04-27T10:00:00.000Z",
+      },
+    ];
+    const { targets } = buildRetryTargets(events);
+    expect(targets).toHaveLength(1);
+    expect(targets[0]?.kind).toBe("revival");
   });
 });
 
@@ -439,6 +569,7 @@ describe("POST /api/cron/retry-failed-refunds — integration", () => {
     expect(vi.mocked(retryFailedRefund)).toHaveBeenCalledWith({
       orderId: "order-42",
       paymentIntentId: "pi_42",
+      kind: "revival",
       attempt: 1,
       blockedReason: "blocked_stock",
       consumerId: "user-7",

@@ -1,10 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { stripe } from "@/lib/stripe/server";
 import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
+import type { RefundKind } from "@/lib/cron/build-retry-targets";
 
 // Helper pure (testable isolément, pattern Phase 2 audit_logs symétrique
 // à `handle-payment-succeeded.ts` / `handle-payment-failed.ts`) qui retente
-// un refund Stripe précédemment échoué sur le path résurrection bloquée.
+// un refund Stripe précédemment échoué. T-412 : étendu aux 3 paths refund
+// (revival / admin / timeout) via discriminator `kind`.
 //
 // Caller : `app/api/cron/retry-failed-refunds/route.ts` (cron daily 4h UTC,
 // `0 4 * * *`). Le cron query audit_logs pour identifier les targets et
@@ -17,28 +19,30 @@ import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
 //   - Au 3e échec consécutif → exhausted + notification admin.
 //   - Backoff implicite = ~24h entre runs cron (acceptable, cas exceptionnel).
 //
-// Idempotency Stripe (CRITIQUE) : `idempotencyKey: refund_${order_id}_${attempt}`
-// passée au SDK. Empêche un double refund si :
+// Idempotency Stripe (CRITIQUE) : `idempotencyKey: refund_${order_id}_${kind}_${attempt}`.
+// Empêche un double refund si :
 //   - le cron run déclenche 2 fois (timeout Vercel, retry serverless),
 //   - le même attempt est rejoué.
-// La clé varie par attempt pour qu'un attempt N+1 ne soit pas bloqué par
-// l'idempotency conflict du précédent appel persisté côté Stripe.
+// La clé varie par (kind, attempt) — 2 paths refund différents qui auraient
+// historiquement échoué sur la même order historiquement ne se collisionnent
+// pas. Aligné avec TA Bundle 1 T-408 (`refund_${order_id}_${context}` initial,
+// même valeurs `revival`/`admin`/`timeout`).
 //
 // Compteur attempts : la fonction reçoit `attempt` calculé en amont par le
-// cron via `count(audit_logs.event_type='order_revival_refund_failed' AND
-// metadata->>'order_id'=X)` + 1. Single source of truth = audit_logs
-// (cohérent avec le pattern audit-log-driven background job).
+// cron via `count(audit_logs.event_type IN [3 failed events] AND
+// metadata->>'order_id'=X AND metadata->>'kind'=K)` + 1. Single source of
+// truth = audit_logs (cohérent avec le pattern audit-log-driven background job).
 //
 // Sémantique retour :
 //   - "succeeded" : refund OK → cancellation_reason posée + audit log
-//     `order_refund_retried_succeeded`. Order sort de la query targets via
-//     le filtre NOT EXISTS du cron.
+//     `order_refund_retried_succeeded` (avec metadata.kind). Order sort de
+//     la query targets via le filtre composite (orderId, kind).
 //   - "failed_will_retry" : refund a échoué, attempt < 3 → audit log
-//     `order_revival_refund_failed` re-posté pour incrémenter le compteur.
-//     Sera repris au prochain run quotidien.
+//     re-posté (event_type selon kind, metadata.kind présent) pour
+//     incrémenter le compteur. Sera repris au prochain run quotidien.
 //   - "failed_exhausted" : refund a échoué, attempt === 3 → 2 audit logs
-//     posés (`order_revival_refund_failed` + `order_refund_retry_exhausted`)
-//     + notification `refund_retry_exhausted`. Order sort de la query.
+//     posés (refund_failed kind + `order_refund_retry_exhausted` avec
+//     metadata.kind) + notification `refund_retry_exhausted`. Order sort.
 //
 // État DB préservé en cas d'échec : on ne touche PAS l'order tant que le
 // refund n'est pas confirmé Stripe (cf. handle-payment-succeeded.ts:236).
@@ -53,17 +57,44 @@ export type RetryRefundResult =
 export type RetryRefundParams = {
   orderId: string;
   paymentIntentId: string;
-  // 1, 2 ou 3 (calculé par le cron caller à partir du count audit_logs).
+  kind: RefundKind;
+  // 1, 2 ou 3 (calculé par le cron caller à partir du count audit_logs
+  // groupé par (order_id, kind)).
   attempt: 1 | 2 | 3;
-  // Repris depuis le metadata du dernier event order_revival_refund_failed
-  // posé par handle-payment-succeeded. Sert à poser cancellation_reason
-  // côté UPDATE order au succès du retry.
-  blockedReason: "blocked_stock" | "blocked_slot";
+  // Repris depuis le metadata du dernier event refund_failed posé sur le
+  // path resurrection. Sert à poser cancellation_reason côté UPDATE order
+  // au succès du retry. Required uniquement si kind='revival'.
+  blockedReason?: "blocked_stock" | "blocked_slot";
   consumerId: string | null;
   admin: SupabaseClient;
 };
 
 const MAX_ATTEMPTS = 3;
+
+// Map kind → audit_log event_type pour le re-pose côté retry échoué (besoin
+// du compteur côté buildRetryTargets pour calculer attempt+1).
+const FAILED_EVENT_BY_KIND: Record<RefundKind, string> = {
+  revival: "order_revival_refund_failed",
+  admin: "order_admin_refund_failed",
+  timeout: "order_timeout_refund_failed",
+};
+
+// Map kind → cancellation_reason posée sur l'order au succès retry.
+// - revival : revival_blocked_stock / revival_blocked_slot (depuis blockedReason)
+// - admin   : admin_refund (idempotent : déjà posée par /api/stripe/refund)
+// - timeout : timeout (idempotent : déjà posée par cron order-timeout)
+function cancellationReasonFor(
+  kind: RefundKind,
+  blockedReason?: "blocked_stock" | "blocked_slot",
+): string {
+  if (kind === "revival") {
+    return blockedReason === "blocked_stock"
+      ? "revival_blocked_stock"
+      : "revival_blocked_slot";
+  }
+  if (kind === "admin") return "admin_refund";
+  return "timeout";
+}
 
 export async function retryFailedRefund(
   params: RetryRefundParams,
@@ -71,13 +102,14 @@ export async function retryFailedRefund(
   const {
     orderId,
     paymentIntentId,
+    kind,
     attempt,
     blockedReason,
     consumerId,
     admin,
   } = params;
 
-  const idempotencyKey = `refund_${orderId}_${attempt}`;
+  const idempotencyKey = `refund_${orderId}_${kind}_${attempt}`;
 
   try {
     const refund = await stripe.refunds.create(
@@ -85,12 +117,10 @@ export async function retryFailedRefund(
       { idempotencyKey },
     );
 
-    // UPDATE cancellation_reason (statut reste cancelled, cancelled_at reste
-    // figé). Symétrique au path nominal handle-payment-succeeded.ts:206-209.
-    const cancellationReason: "revival_blocked_stock" | "revival_blocked_slot" =
-      blockedReason === "blocked_stock"
-        ? "revival_blocked_stock"
-        : "revival_blocked_slot";
+    // UPDATE cancellation_reason adaptatif par kind. Statut reste cancelled,
+    // cancelled_at reste figé. Symétrique au path nominal des call sites
+    // initiaux (handle-payment-succeeded / refund admin / cron timeout).
+    const cancellationReason = cancellationReasonFor(kind, blockedReason);
 
     const { error: updateError } = await admin
       .from("orders")
@@ -102,7 +132,7 @@ export async function retryFailedRefund(
       // grep-able pour réconciliation manuelle (cohérent avec le pattern
       // [REFUND_DB_DRIFT] des autres refund paths).
       console.warn(
-        `[REFUND_RETRY_DB_DRIFT] order=${orderId} pi=${paymentIntentId} attempt=${attempt} refund_id=${refund.id} ${updateError.message}`,
+        `[REFUND_RETRY_DB_DRIFT] order=${orderId} kind=${kind} pi=${paymentIntentId} attempt=${attempt} refund_id=${refund.id} ${updateError.message}`,
       );
     }
 
@@ -112,31 +142,37 @@ export async function retryFailedRefund(
       metadata: {
         order_id: orderId,
         payment_intent_id: paymentIntentId,
+        kind,
         attempt,
         refund_id: refund.id,
-        blocked_reason: blockedReason,
+        ...(blockedReason ? { blocked_reason: blockedReason } : {}),
       },
     });
 
     console.log(
-      `[REFUND_RETRY_SUCCESS] order=${orderId} pi=${paymentIntentId} attempt=${attempt} refund_id=${refund.id}`,
+      `[REFUND_RETRY_SUCCESS] order=${orderId} kind=${kind} pi=${paymentIntentId} attempt=${attempt} refund_id=${refund.id}`,
     );
 
     return "succeeded";
   } catch (refundErr) {
     const errorMessage = (refundErr as Error).message;
 
-    // Re-pose un audit log refund_failed pour incrémenter le compteur
-    // (cron caller comptera ces events pour déterminer le prochain attempt).
+    // Re-pose un audit log refund_failed (event_type selon kind) pour
+    // incrémenter le compteur — buildRetryTargets le compte par (orderId, kind)
+    // pour déterminer le prochain attempt.
     await logPaymentEvent({
-      eventType: "order_revival_refund_failed",
+      eventType: FAILED_EVENT_BY_KIND[kind] as
+        | "order_revival_refund_failed"
+        | "order_admin_refund_failed"
+        | "order_timeout_refund_failed",
       userId: consumerId,
       metadata: {
         order_id: orderId,
         payment_intent_id: paymentIntentId,
+        kind,
         attempt,
         retry_error: errorMessage,
-        blocked_reason: blockedReason,
+        ...(blockedReason ? { blocked_reason: blockedReason } : {}),
       },
     });
 
@@ -150,9 +186,10 @@ export async function retryFailedRefund(
         metadata: {
           order_id: orderId,
           payment_intent_id: paymentIntentId,
+          kind,
           attempts_total: MAX_ATTEMPTS,
           last_error: errorMessage,
-          blocked_reason: blockedReason,
+          ...(blockedReason ? { blocked_reason: blockedReason } : {}),
         },
       });
 
@@ -166,27 +203,28 @@ export async function retryFailedRefund(
         metadata: {
           order_id: orderId,
           payment_intent_id: paymentIntentId,
+          kind,
           attempts_total: MAX_ATTEMPTS,
           last_error: errorMessage,
-          blocked_reason: blockedReason,
+          ...(blockedReason ? { blocked_reason: blockedReason } : {}),
         },
       });
 
       if (notifError) {
         console.warn(
-          `[REFUND_RETRY_NOTIF_WARN] order=${orderId} pi=${paymentIntentId} ${notifError.message}`,
+          `[REFUND_RETRY_NOTIF_WARN] order=${orderId} kind=${kind} pi=${paymentIntentId} ${notifError.message}`,
         );
       }
 
       console.error(
-        `[REFUND_RETRY_EXHAUSTED] order=${orderId} pi=${paymentIntentId} attempts=${MAX_ATTEMPTS} last_error=${errorMessage}`,
+        `[REFUND_RETRY_EXHAUSTED] order=${orderId} kind=${kind} pi=${paymentIntentId} attempts=${MAX_ATTEMPTS} last_error=${errorMessage}`,
       );
 
       return "failed_exhausted";
     }
 
     console.warn(
-      `[REFUND_RETRY_FAILED] order=${orderId} pi=${paymentIntentId} attempt=${attempt} error=${errorMessage}`,
+      `[REFUND_RETRY_FAILED] order=${orderId} kind=${kind} pi=${paymentIntentId} attempt=${attempt} error=${errorMessage}`,
     );
 
     return "failed_will_retry";
