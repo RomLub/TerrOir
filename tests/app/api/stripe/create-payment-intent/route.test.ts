@@ -17,13 +17,39 @@ const {
   mockPaymentIntentsUpdate,
   mockPaymentIntentsCancel,
   mockGetOrCreateStripeCustomer,
-} = vi.hoisted(() => ({
-  mockPaymentIntentsCreate: vi.fn(),
-  mockPaymentIntentsRetrieve: vi.fn(),
-  mockPaymentIntentsUpdate: vi.fn(),
-  mockPaymentIntentsCancel: vi.fn(),
-  mockGetOrCreateStripeCustomer: vi.fn(),
-}));
+  StripeIdempotencyError,
+} = vi.hoisted(() => {
+  // Mock minimal de Stripe.errors.StripeIdempotencyError pour les tests T-405
+  // qui simulent une collision de cle. Le code production utilise `instanceof
+  // Stripe.errors.StripeIdempotencyError` → on doit injecter la meme classe.
+  class StripeIdempotencyError extends Error {
+    readonly type = "StripeIdempotencyError" as const;
+    readonly rawType = "idempotency_error" as const;
+    constructor(message: string) {
+      super(message);
+      this.name = "StripeIdempotencyError";
+    }
+  }
+  return {
+    mockPaymentIntentsCreate: vi.fn(),
+    mockPaymentIntentsRetrieve: vi.fn(),
+    mockPaymentIntentsUpdate: vi.fn(),
+    mockPaymentIntentsCancel: vi.fn(),
+    mockGetOrCreateStripeCustomer: vi.fn(),
+    StripeIdempotencyError,
+  };
+});
+
+// Mock du module `stripe` (default export Stripe class) pour exposer
+// `Stripe.errors.StripeIdempotencyError` dans le code production. Le client
+// Stripe lui-meme est mocke via @/lib/stripe/server.
+vi.mock("stripe", () => {
+  const Stripe = function () {} as unknown as {
+    errors: { StripeIdempotencyError: typeof StripeIdempotencyError };
+  };
+  Stripe.errors = { StripeIdempotencyError };
+  return { default: Stripe };
+});
 
 vi.mock("@/lib/stripe/server", () => ({
   stripe: {
@@ -96,6 +122,11 @@ const DEFAULT_ORDER = {
 const DEFAULT_USER_PROFILE = { prenom: "Alice", nom: "Tester" };
 
 function defaultResp(table: string, op: Op): Resp {
+  // T-405 : l'UPDATE de create-payment-intent route utilise `.select("id")`
+  // pour exposer les rows touchees → defaut "1 row touched" pour le happy path.
+  // Les tests race (T-405-A/B) overrident a `[]` (0 rows = race detectee).
+  if (op === "update" && table === "orders")
+    return { data: [{ id: ORDER_ID }], error: null };
   if (op === "update" || op === "insert") return { data: null, error: null };
   if (table === "orders") return { data: DEFAULT_ORDER, error: null };
   if (table === "users") return { data: DEFAULT_USER_PROFILE, error: null };
@@ -117,7 +148,9 @@ function buildClientFactory() {
       const builder: Record<string, unknown> & { _op: Op } = { _op: "pending" };
       builder.select = (cols: string) => {
         captured.selects.push({ table, cols });
-        builder._op = "select";
+        // PostgREST autorise `.update().select()` pour exposer les rows
+        // touchees : on conserve _op="update" pour consommer la bonne queue.
+        if (builder._op === "pending") builder._op = "select";
         return builder;
       };
       builder.update = (payload: unknown) => {
@@ -134,6 +167,8 @@ function buildClientFactory() {
         captured.eqCalls.push({ table, col, val });
         return builder;
       };
+      // `.is(col, val)` PostgREST : noop chainable cote test (filtre cote DB).
+      builder.is = (_col: string, _val: unknown) => builder;
       builder.maybeSingle = () => Promise.resolve(consume(table, builder._op));
       builder.then = (onFulfilled: (r: Resp) => unknown) =>
         onFulfilled(consume(table, builder._op));
@@ -271,5 +306,124 @@ describe("C. T-404 — idempotencyKey passe en 2e arg de paymentIntents.create",
     expect(params.currency).toBe("eur");
     // 2e arg : idempotency stable sur l'UUID order.
     expect(options).toEqual({ idempotencyKey: `pi_create_${ORDER_ID}` });
+  });
+});
+
+// --- D. T-405 verrou DB anti-race + rollback + catch idempotency reuse ---
+
+describe("D. T-405 — race protection + rollback compensation", () => {
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  it("T-405-A UPDATE 0 rows touchees + cancel rollback OK → log absent, retrieve PI gagnant, 200", async () => {
+    // Simule la race : UPDATE retourne data=[] (un autre flow a deja persiste).
+    responses.orders = {
+      update: [{ data: [], error: null }],
+      // Le requery DB doit ensuite renvoyer le PI ID gagnant.
+      select: [
+        { data: DEFAULT_ORDER, error: null }, // 1er SELECT initial
+        { data: { stripe_payment_intent_id: "pi_winning_456" }, error: null },
+      ],
+    };
+    mockPaymentIntentsRetrieve.mockReset().mockResolvedValueOnce({
+      id: "pi_winning_456",
+      client_secret: "pi_winning_456_secret_xyz",
+    });
+
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ client_secret: "pi_winning_456_secret_xyz" });
+
+    // Cancel rollback appele sur le PI orphelin.
+    expect(mockPaymentIntentsCancel).toHaveBeenCalledTimes(1);
+    expect(mockPaymentIntentsCancel).toHaveBeenCalledWith(PI_ID);
+    // Cancel a reussi → pas de log [CREATE_PI_RACE_ROLLBACK].
+    const warnCalls = consoleWarnSpy.mock.calls.map((c: unknown[]) =>
+      String(c[0] ?? ""),
+    );
+    expect(warnCalls.some((m: string) => m.includes("[CREATE_PI_RACE_ROLLBACK]"))).toBe(false);
+    // Retrieve PI gagnant emis.
+    expect(mockPaymentIntentsRetrieve).toHaveBeenCalledWith("pi_winning_456");
+  });
+
+  it("T-405-B UPDATE 0 rows + Stripe cancel throw → log [CREATE_PI_RACE_ROLLBACK] greppable, retrieve continue", async () => {
+    responses.orders = {
+      update: [{ data: [], error: null }],
+      select: [
+        { data: DEFAULT_ORDER, error: null },
+        { data: { stripe_payment_intent_id: "pi_winning_456" }, error: null },
+      ],
+    };
+    mockPaymentIntentsCancel
+      .mockReset()
+      .mockRejectedValueOnce(new Error("intent_already_succeeded"));
+    mockPaymentIntentsRetrieve.mockReset().mockResolvedValueOnce({
+      id: "pi_winning_456",
+      client_secret: "pi_winning_456_secret_xyz",
+    });
+
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(200);
+
+    // Log greppable contient order, pi orphelin, raison.
+    const warnCalls = consoleWarnSpy.mock.calls.map((c: unknown[]) =>
+      String(c[0] ?? ""),
+    );
+    const rollbackLog = warnCalls.find((m: string) => m.includes("[CREATE_PI_RACE_ROLLBACK]"));
+    expect(rollbackLog).toBeDefined();
+    expect(rollbackLog!).toContain(ORDER_ID);
+    expect(rollbackLog!).toContain(PI_ID);
+    expect(rollbackLog!).toContain("intent_already_succeeded");
+    // Retrieve PI gagnant emis malgre echec cancel (best-effort).
+    expect(mockPaymentIntentsRetrieve).toHaveBeenCalledWith("pi_winning_456");
+  });
+
+  it("T-405-C UPDATE 1 row touchee → flow nominal sans rollback (pas de cancel, pas de retrieve)", async () => {
+    // Default UPDATE response = [{ id: ORDER_ID }] (1 row) → path nominal.
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ client_secret: PI_CLIENT_SECRET });
+    expect(mockPaymentIntentsCancel).not.toHaveBeenCalled();
+    expect(mockPaymentIntentsRetrieve).not.toHaveBeenCalled();
+  });
+
+  it("T-405-D paymentIntents.create throw StripeIdempotencyError → catch + requery DB + retrieve PI gagnant + log [CREATE_PI_IDEMPOTENCY_REUSE]", async () => {
+    mockPaymentIntentsCreate
+      .mockReset()
+      .mockRejectedValueOnce(
+        new StripeIdempotencyError("Keys for idempotent requests can only be used with the same parameters they were first used with."),
+      );
+    // Requery DB renvoie le PI ID gagnant pose par la 1re requete.
+    responses.orders = {
+      select: [
+        { data: DEFAULT_ORDER, error: null }, // SELECT initial
+        { data: { stripe_payment_intent_id: "pi_winning_999" }, error: null }, // requery post-error
+      ],
+    };
+    mockPaymentIntentsRetrieve.mockReset().mockResolvedValueOnce({
+      id: "pi_winning_999",
+      client_secret: "pi_winning_999_secret",
+    });
+
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ client_secret: "pi_winning_999_secret" });
+
+    // Pas de UPDATE/cancel : on est sorti via le catch idempotency.
+    expect(mockPaymentIntentsCancel).not.toHaveBeenCalled();
+    expect(captured.updates).toEqual([]);
+    // Log greppable [CREATE_PI_IDEMPOTENCY_REUSE].
+    const warnCalls = consoleWarnSpy.mock.calls.map((c: unknown[]) =>
+      String(c[0] ?? ""),
+    );
+    const reuseLog = warnCalls.find((m: string) => m.includes("[CREATE_PI_IDEMPOTENCY_REUSE]"));
+    expect(reuseLog).toBeDefined();
+    expect(reuseLog!).toContain(ORDER_ID);
+    expect(reuseLog!).toContain("idempotent");
+    // Retrieve emis sur le PI gagnant.
+    expect(mockPaymentIntentsRetrieve).toHaveBeenCalledWith("pi_winning_999");
   });
 });
