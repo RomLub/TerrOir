@@ -17,21 +17,25 @@ const consumer: RoleSnapshot = {
   isAdmin: false,
   isProducer: false,
   producerStatut: null,
+  roles: ["consumer"],
 };
 const admin: RoleSnapshot = {
   isAdmin: true,
   isProducer: false,
   producerStatut: null,
+  roles: [],
 };
 const producerPublic: RoleSnapshot = {
   isAdmin: false,
   isProducer: true,
   producerStatut: "public",
+  roles: ["producer"],
 };
 const producerDraft: RoleSnapshot = {
   isAdmin: false,
   isProducer: true,
   producerStatut: "draft",
+  roles: ["producer"],
 };
 
 describe("isValidRedirectPath", () => {

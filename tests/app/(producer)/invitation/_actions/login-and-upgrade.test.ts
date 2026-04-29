@@ -54,6 +54,15 @@ vi.mock("@/lib/audit-logs/log-auth-event", () => ({
   logAuthEvent: logAuthEventMock,
 }));
 
+// T-321 — Mock no-op pour role-snapshot-cookie (server-only virtuel Next).
+vi.mock("@/lib/auth/role-snapshot-cookie", () => ({
+  clearRoleSnapshotOnStore: vi.fn(),
+}));
+vi.mock("next/headers", () => ({
+  cookies: () => ({ set: vi.fn() }),
+  headers: () => ({ get: vi.fn(() => null) }),
+}));
+
 import { loginAndUpgradeAction } from "@/app/(producer)/invitation/_actions/login-and-upgrade";
 
 // --- Helpers --------------------------------------------------------------

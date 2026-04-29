@@ -1,10 +1,12 @@
 "use server";
 
+import { cookies, headers } from "next/headers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { invitationLoginAndUpgradeSchema } from "@/lib/auth/validators";
 import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 import { slugFromEmail } from "@/lib/producers/slug-from-email";
+import { clearRoleSnapshotOnStore } from "@/lib/auth/role-snapshot-cookie";
 
 export type State = { error?: string; success?: boolean };
 
@@ -91,6 +93,13 @@ export async function loginAndUpgradeAction(
     userId: existingUser.id,
     metadata: { from: "consumer", to: "producer" },
   });
+
+  // T-321 — Invalide le cookie role snapshot post-promotion. Le snapshot
+  // précédent (si existant — peu probable car l'user vient de signin via
+  // signInWithPassword juste au-dessus) refléterait roles=['consumer'].
+  // Clear plutôt que rewrite : la prochaine request middleware refera un
+  // DB lookup et reposera un cookie frais avec roles=['consumer','producer'].
+  clearRoleSnapshotOnStore(cookies(), headers().get("host"));
 
   // Si une ligne producers existe déjà (ex: flux interrompu puis repris),
   // on ne la duplique pas. Sinon on la crée en statut='draft'.
