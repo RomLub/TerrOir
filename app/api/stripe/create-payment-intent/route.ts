@@ -6,6 +6,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
 import { getOrCreateStripeCustomer } from "@/lib/stripe/customer";
+import { eurosToCents } from "@/lib/money/cents";
 
 const bodySchema = z.object({
   order_id: z.string().uuid(),
@@ -113,7 +114,7 @@ export async function POST(request: Request) {
   // Separate charges & transfers: le paiement arrive en totalité sur le
   // compte plateforme TerrOir. Le virement net vers le producteur
   // (montant_total − 6%) est déclenché plus tard par /api/cron/weekly-payout.
-  const amount = Math.round(Number(order.montant_total) * 100);
+  const amount = eurosToCents(order.montant_total);
 
   // payment_method_types: ["card"] explicite → désactive le default
   // automatic_payment_methods qui activerait Link dans le Payment Element.
