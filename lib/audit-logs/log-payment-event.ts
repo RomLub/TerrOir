@@ -62,7 +62,27 @@ export type PaymentEventType =
   // payout_id, payment_intent_id).
   | "stripe_account_updated"
   | "stripe_payout_paid"
-  | "stripe_dispute";
+  | "stripe_dispute"
+  // Bundle 3 webhook events go-Live (T-401) — Stripe signale les échecs
+  // de virement Connect plateforme -> producteur.
+  //   - stripe_transfer_failed : Transfer plateforme -> Connect account
+  //                              échoué. PAS via webhook (Stripe Connect
+  //                              Express n'émet pas l'event transfer.failed
+  //                              parce que stripe.transfers.create() est
+  //                              synchrone) — log instrumenté côté
+  //                              lib/stripe/payouts.ts dans le catch
+  //                              synchrone post-stripe.transfers.create()
+  //                              (Bundle 2 PR 2b TC). Enum value gardée
+  //                              côté audit pour cohérence forensique.
+  //   - stripe_payout_failed   : Payout Connect account -> banque producteur
+  //                              échoué (handler lib/stripe/handle-payout-failed.tsx,
+  //                              webhook payout.failed). Pose statut='failed'
+  //                              sur la row payouts (CHECK enum élargi par
+  //                              migration 20260429010000 T-422). Alerte
+  //                              l'admin via email Resend (SUPPORT_EMAIL)
+  //                              + notification placeholder DB.
+  | "stripe_transfer_failed"
+  | "stripe_payout_failed";
 
 type LogPaymentEventParams = {
   eventType: PaymentEventType;

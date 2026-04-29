@@ -270,3 +270,38 @@ describe("logPaymentEvent — Phase 3 events Stripe (T-081 PR-B)", () => {
     );
   });
 });
+
+describe("logPaymentEvent — Bundle 3 webhook events go-Live (T-401)", () => {
+  // Smoke test type-check : confirme que les 2 nouveaux event types
+  // d'échec virement Stripe sont acceptés par l'union PaymentEventType
+  // étendue. Pas de user_id (orphelin Stripe-direct) ; producer_id
+  // traçable via metadata.
+  it.each([
+    "stripe_transfer_failed",
+    "stripe_payout_failed",
+  ] as const)(
+    "event %s : insert event_type tel quel + metadata producer/payout traçable",
+    async (eventType) => {
+      await logPaymentEvent({
+        eventType,
+        metadata: {
+          producer_id: "producer-42",
+          payout_id: "payout-1",
+          failure_message: "insufficient_funds",
+        },
+      });
+
+      expect(insertSpy).toHaveBeenCalledWith(
+        "audit_logs",
+        expect.objectContaining({
+          event_type: eventType,
+          user_id: null,
+          metadata: expect.objectContaining({
+            producer_id: "producer-42",
+            failure_message: "insufficient_funds",
+          }),
+        }),
+      );
+    },
+  );
+});
