@@ -136,9 +136,14 @@ export async function processWeeklyPayouts(): Promise<{
     };
 
     // Check idempotence étendu : SELECT statut + montant_net pour résumes.
+    // T-416 : montant_brut + commission ajoutés pour audit log forensique
+    // post-UPDATE 'paid' resume (source of truth DB, vs recomputation
+    // locale qui peut diverger après 3DS-retry resurrection orders).
     const { data: existing } = await admin
       .from("payouts")
-      .select("id, statut, stripe_transfer_id, montant_net")
+      .select(
+        "id, statut, stripe_transfer_id, montant_net, montant_brut, commission",
+      )
       .eq("producer_id", producerId)
       .eq("periode_debut", periodeDebut)
       .maybeSingle();
@@ -251,6 +256,26 @@ export async function processWeeklyPayouts(): Promise<{
           });
           continue;
         }
+        // T-416 audit log forensique post-UPDATE 'paid' succès resume.
+        // Montants depuis existing (source of truth DB, immune aux changements
+        // d'orders entre INSERT initial et resume).
+        await logPaymentEvent({
+          eventType: "stripe_transfer_initiated",
+          userId: null,
+          metadata: {
+            payout_id: existing.id,
+            stripe_transfer_id: transfer.id,
+            producer_id: producerId,
+            periode_debut: periodeDebut,
+            periode_fin: periodeFin,
+            montant_brut_cents: Math.round(Number(existing.montant_brut) * 100),
+            commission_cents: Math.round(Number(existing.commission) * 100),
+            montant_net_cents: Math.round(Number(existing.montant_net) * 100),
+            currency: "eur",
+            orders_count: producerOrders.length,
+            resumed: true,
+          },
+        });
         results.push({
           ...baseResult,
           payout_id: existing.id,
@@ -443,6 +468,28 @@ export async function processWeeklyPayouts(): Promise<{
       });
       continue;
     }
+
+    // T-416 audit log forensique post-UPDATE 'paid' succès path nominal.
+    // Montants depuis recomputation locale = ceux qui viennent d'être
+    // INSERTed (source of truth puisque l'INSERT vient juste d'avoir lieu
+    // avec ces valeurs, l. ~278-289).
+    await logPaymentEvent({
+      eventType: "stripe_transfer_initiated",
+      userId: null,
+      metadata: {
+        payout_id: newRow.id,
+        stripe_transfer_id: transferId,
+        producer_id: producerId,
+        periode_debut: periodeDebut,
+        periode_fin: periodeFin,
+        montant_brut_cents: Math.round(montantBrut * 100),
+        commission_cents: Math.round(commission * 100),
+        montant_net_cents: Math.round(montantNet * 100),
+        currency: "eur",
+        orders_count: producerOrders.length,
+        resumed: false,
+      },
+    });
 
     results.push({
       ...baseResult,

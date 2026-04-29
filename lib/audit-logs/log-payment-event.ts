@@ -95,6 +95,20 @@ export type PaymentEventType =
   //                              l'admin via email Resend (SUPPORT_EMAIL)
   //                              + notification placeholder DB.
   | "stripe_transfer_failed"
+  // T-416 : "stripe_transfer_initiated" — émis après UPDATE 'paid' succès
+  // dans processWeeklyPayouts (cron weekly-payout). Pose 1 event par
+  // producer dont le transfer Stripe Connect a été créé et confirmé en DB.
+  // Couvre les 2 paths success (nominal + resume), discriminés via
+  // metadata.resumed: bool.
+  // Pas posé sur paths skip (paid/failed/pending legacy/not_ready) ni
+  // sur path catch synchrone transfer fail (stripe_transfer_failed
+  // existant suffit). Pas posé sur crash UPDATE 'paid' (placement
+  // post-UPDATE → trade-off connu : récupération via Stripe API + log
+  // greppable [WEEKLY_PAYOUT_UPDATE_FAILED]).
+  // userId = null (traçable via metadata.producer_id, cohérent
+  // stripe_transfer_failed). Format cents (cohérent Stripe API +
+  // stripe_transfer_failed existant).
+  | "stripe_transfer_initiated"
   | "stripe_payout_failed"
   // T-431 : stripe_default_payment_method_set — émis quand le default
   // payment method d'un Customer Stripe est modifié via
