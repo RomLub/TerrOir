@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { revalidatePath } from "next/cache";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { cookieConfigForHost } from "@/lib/supabase/cookie-domain";
@@ -144,6 +145,25 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(failUrl);
   }
 
+  // Audit log post-confirmation pour type=signup (T-300). Posé AVANT le
+  // branching targetUrl car le flow signup utilise ?next=/compte/commandes
+  // et n'emprunte donc pas la branche else où getUser() est déjà appelé
+  // pour les autres flows. Pattern audit forensique : l'event reflète un
+  // compte effectivement créé (post-confirm), pas une intention de signup
+  // pending qui pourrait ne jamais être confirmée.
+  if (type === "signup") {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (user) {
+      await logAuthEvent({
+        eventType: "account_signup",
+        userId: user.id,
+        metadata: { source: "consumer_signup_form" },
+      });
+    }
+  }
+
   // Cible : ?next= explicite > /reinitialiser-mot-de-passe (recovery) > routing
   // rôle-aware cross-domain via canonicalPostLoginUrlWithRedirect. Le rôle
   // dicte le host (admin/pro/www) ; le path est ?redirectTo= s'il est valide,
@@ -205,6 +225,15 @@ export async function GET(request: NextRequest) {
     } else {
       targetUrl = new URL("/", url.origin);
     }
+  }
+
+  // Bypass cache RSC du root layout pour signup : l'utilisateur transite
+  // de "non connecté pré-confirmation" à "connecté post-confirmation" —
+  // la navbar du RootLayout doit lire la session fresh dès la requête
+  // suivant le redirect. Pattern strictement identique au fix signup
+  // Server Action PR #17 (avant bascule confirmation T-300).
+  if (type === "signup") {
+    revalidatePath("/", "layout");
   }
 
   const response = NextResponse.redirect(targetUrl);

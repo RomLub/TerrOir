@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useFormState, useFormStatus } from "react-dom";
 import { signupAction, type SignupState } from "./actions";
 import { PasswordInput } from "@/components/ui";
@@ -21,6 +22,32 @@ function SubmitButton() {
 
 export default function InscriptionPage() {
   const [state, formAction] = useFormState(signupAction, initialState);
+
+  if (state.success) {
+    return (
+      <main className="flex min-h-screen items-center justify-center p-8">
+        <div className="w-full max-w-md space-y-4 rounded-lg bg-white p-8 text-center shadow-sm">
+          <h1 className="text-2xl font-bold text-terroir-green">
+            Vérifiez vos emails
+          </h1>
+          <p className="text-sm text-terroir-ink">
+            Un mail de confirmation a été envoyé à{" "}
+            <strong>{state.success.email}</strong>. Cliquez sur le lien pour
+            activer votre compte.
+          </p>
+          <p className="text-xs text-terroir-muted">
+            Pensez à consulter vos spams si vous ne le trouvez pas.
+          </p>
+          <Link
+            href="/connexion"
+            className="inline-block text-sm text-terroir-green underline hover:opacity-80"
+          >
+            Retour à la connexion
+          </Link>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="flex min-h-screen items-center justify-center p-8">

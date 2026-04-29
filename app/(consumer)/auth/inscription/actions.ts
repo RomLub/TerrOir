@@ -1,14 +1,14 @@
 "use server";
 
-import { redirect } from "next/navigation";
-import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { signupSchema } from "@/lib/auth/validators";
 import { NEXT_PUBLIC_APP_URL } from "@/lib/env/urls";
-import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 
-export type SignupState = { error?: string };
+export type SignupState = {
+  error?: string;
+  success?: { email: string };
+};
 
 export async function signupAction(
   _prev: SignupState,
@@ -40,12 +40,36 @@ export async function signupAction(
   });
 
   if (error || !data.user) {
-    return { error: error?.message ?? "Inscription impossible" };
+    // T-313 : enumeration-resistance. Si l'email est déjà enregistré,
+    // Supabase remonte "User already registered" (code user_already_exists).
+    // On simule un succès identique au flow nominal pour ne pas révéler
+    // l'existence d'un compte. L'utilisateur honnête qui s'est trompé
+    // d'identifiant verra "Mail envoyé" mais ne recevra pas le mail —
+    // l'attaquant scriptant signup ne peut pas distinguer "email connu"
+    // de "email nouveau". Pattern aligné resetPasswordForEmail
+    // (cf. mot-de-passe-oublie/page.tsx).
+    const code = (error as { code?: string } | undefined)?.code;
+    if (
+      code === "user_already_exists" ||
+      (error?.message && /already (registered|exists)/i.test(error.message))
+    ) {
+      console.warn(
+        `SIGNUP_DUP_EMAIL email=${email} code=${code ?? "n/a"}`,
+      );
+      return { success: { email } };
+    }
+    if (error) {
+      console.error(
+        `SIGNUP_ERROR email=${email} code=${code ?? "n/a"} message=${error.message}`,
+      );
+    }
+    return { error: "Inscription impossible. Réessayez plus tard." };
   }
 
-  // Profil public.users — créé via service_role pour contourner
-  // la contrainte RLS (auth.uid() peut ne pas être disponible
-  // immédiatement après signUp selon la config e-mail confirmation).
+  // Profil public.users — créé via service_role pour contourner la
+  // contrainte RLS (auth.uid() peut ne pas être disponible immédiatement
+  // après signUp avec enable_confirmations=ON, l'user n'a pas encore
+  // de session active).
   const admin = createSupabaseAdminClient();
   const { error: profileError } = await admin.from("users").insert({
     id: data.user.id,
@@ -58,22 +82,28 @@ export async function signupAction(
   });
 
   if (profileError) {
-    return { error: `Profil non créé : ${profileError.message}` };
+    // T-301 : compensation orphelin. signUp() a réussi côté auth.users
+    // mais l'INSERT public.users a échoué — un user half-created bloque
+    // l'utilisateur (impossible de re-signup avec le même email tant que
+    // auth.users persiste). Rollback via Admin API. Le pattern ne tente
+    // PAS de retry l'insert : la cause de l'échec (RLS, contrainte
+    // unique, DB down) ne s'évanouira pas en quelques ms.
+    const { error: rollbackError } = await admin.auth.admin.deleteUser(
+      data.user.id,
+    );
+    if (rollbackError) {
+      console.error(
+        `SIGNUP_ORPHAN_AUTH user_id=${data.user.id} email=${email} ` +
+          `profile_error=${profileError.message} rollback_error=${rollbackError.message}`,
+      );
+    }
+    return { error: "Inscription impossible. Réessayez plus tard." };
   }
 
-  await logAuthEvent({
-    eventType: "account_signup",
-    userId: data.user.id,
-    metadata: { source: "consumer_signup_form" },
-  });
-
-  // Invalide le cache RSC du root layout AVANT redirect — supabase config
-  // enable_confirmations=false (cf. supabase/config.toml) → signUp pose les
-  // cookies de session immédiatement. Sans revalidatePath, RSC nav vers
-  // /compte/commandes réutilise le RootLayout cached pré-signup avec
-  // initial.user=null, navbar affiche "Connexion" alors que l'user est loggé.
-  // Pattern strictement identique au fix login PR #13. Le sync useEffect
-  // PR #14 dans UserProvider tirera ensuite sur la transition initial.user?.id.
-  revalidatePath("/", "layout");
-  redirect("/compte/commandes");
+  // Pas de revalidatePath / redirect ici : Confirm Email Dashboard ON →
+  // signUp() ne pose PAS de cookies de session, l'utilisateur n'est pas
+  // loggué tant qu'il n'a pas cliqué le lien dans le mail. L'event
+  // audit account_signup est instrumenté côté /auth/callback case
+  // type=signup post-confirmation (signup réel ≠ signup pending).
+  return { success: { email } };
 }

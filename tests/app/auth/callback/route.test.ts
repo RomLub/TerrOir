@@ -25,6 +25,7 @@ const {
   mockMaskEmail,
   mockUsersUpdate,
   mockUsersUpdateEq,
+  mockRevalidatePath,
 } = vi.hoisted(() => ({
   mockVerifyOtp: vi.fn(),
   mockExchangeCodeForSession: vi.fn(),
@@ -36,6 +37,7 @@ const {
   mockMaskEmail: vi.fn(),
   mockUsersUpdate: vi.fn(),
   mockUsersUpdateEq: vi.fn(),
+  mockRevalidatePath: vi.fn(),
 }));
 
 vi.mock("@supabase/ssr", () => ({
@@ -81,6 +83,10 @@ vi.mock("@/lib/rgpd/mask-email", () => ({
   maskEmail: mockMaskEmail,
 }));
 
+vi.mock("next/cache", () => ({
+  revalidatePath: mockRevalidatePath,
+}));
+
 import { GET } from "@/app/auth/callback/route";
 
 beforeEach(() => {
@@ -99,6 +105,7 @@ beforeEach(() => {
   mockMaskEmail.mockImplementation((email: string) => `m_${email}`);
   mockUsersUpdate.mockReset();
   mockUsersUpdateEq.mockReset();
+  mockRevalidatePath.mockReset();
   // Silence console.error en test (T-318 trace forensique
   // AUTH_CALLBACK_ERROR + T-327 EMAIL_CHANGE_SYNC_ERROR), restauré
   // par vi.restoreAllMocks() en afterEach.
@@ -331,5 +338,44 @@ describe("GET /auth/callback — Phase 3 multi-events audit (T-081 PR-A)", () =>
     // recovery prend la branche else if (type === "recovery") qui ne fait
     // pas getUser et donc ne tombe jamais dans le bloc Phase 3.
     expect(mockLogAuthEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /auth/callback — case type=signup (T-300 audit déplacé post-confirm)", () => {
+  it("type=signup + ?next=/compte/commandes → verifyOtp + audit account_signup + revalidatePath + redirect honoré", async () => {
+    mockVerifyOtp.mockResolvedValue({ error: null });
+    mockGetUser.mockResolvedValue({
+      data: { user: { id: "user-99", email: "new@example.com" } },
+    });
+
+    const res = await GET(
+      buildRequest("?token_hash=signup-tok&type=signup&next=/compte/commandes"),
+    );
+
+    expect(mockVerifyOtp).toHaveBeenCalledWith({
+      token_hash: "signup-tok",
+      type: "signup",
+    });
+    expect(mockLogAuthEvent).toHaveBeenCalledWith({
+      eventType: "account_signup",
+      userId: "user-99",
+      metadata: { source: "consumer_signup_form" },
+    });
+    expect(mockRevalidatePath).toHaveBeenCalledWith("/", "layout");
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location") ?? "").toContain("/compte/commandes");
+  });
+
+  it("type=signup sans user (verifyOtp suspect) → audit NON loggué, revalidatePath quand même appelé", async () => {
+    mockVerifyOtp.mockResolvedValue({ error: null });
+    mockGetUser.mockResolvedValue({ data: { user: null } });
+
+    await GET(buildRequest("?token_hash=tok&type=signup&next=/compte/commandes"));
+
+    expect(mockLogAuthEvent).not.toHaveBeenCalled();
+    // revalidatePath est gated sur type==="signup", pas sur user — il
+    // tourne quand même pour refresh le RootLayout cache, comportement
+    // sûr (no-op si layout pas encore rendu).
+    expect(mockRevalidatePath).toHaveBeenCalledWith("/", "layout");
   });
 });
