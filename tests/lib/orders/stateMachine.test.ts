@@ -132,6 +132,17 @@ describe("isTerminal — sémantique", () => {
       expect(isTerminal("ready")).toBe(false);
     });
   });
+
+  describe("contrat fail-fast (asymétrie volontaire vs canTransition)", () => {
+    // Le call site unique (cancel route) lit order.statut depuis une
+    // colonne sous CHECK constraint SQL miroir de OrderStatus. Un statut
+    // hors enum = invariant DB↔TS violé. Crasher est la sémantique voulue
+    // (cf JSDoc isTerminal). Ce test fige le contrat — toute "harmonisation"
+    // future avec canTransition devra explicitement le casser.
+    it("statut hors enum → throw (pas de guard défensif silencieux)", () => {
+      expect(() => isTerminal("invalid_status" as OrderStatus)).toThrow();
+    });
+  });
 });
 
 describe("InvalidOrderTransitionError — contrat erreur", () => {
