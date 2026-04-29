@@ -6,6 +6,7 @@ import { syncStripeAccountFlags } from "@/lib/stripe/sync-account-flags";
 import { syncStripePaymentFailed } from "@/lib/stripe/handle-payment-failed";
 import { syncStripePaymentSucceeded } from "@/lib/stripe/handle-payment-succeeded";
 import { syncStripePayoutFailed } from "@/lib/stripe/handle-payout-failed";
+import { syncStripePayoutPaid } from "@/lib/stripe/handle-payout-paid";
 import { syncStripeDisputeCreated } from "@/lib/stripe/handle-dispute-created";
 import { syncStripeDisputeUpdated } from "@/lib/stripe/handle-dispute-updated";
 import { syncStripeDisputeClosed } from "@/lib/stripe/handle-dispute-closed";
@@ -394,105 +395,15 @@ export async function POST(request: Request) {
       }
 
       case "payout.paid": {
-        // Émis quand un virement Stripe Connect → banque du producteur
-        // est effectivement payé. event.account = Connect account id.
-        // `source_transaction` n'est pas typé sur Stripe.Payout dans le SDK
-        // v17; on y accède via une extension optionnelle.
-        const payout = event.data.object as Stripe.Payout & {
+        // Bundle 3 (T-402) : extraction T-400 du traitement inline initial
+        // vers `lib/stripe/handle-payout-paid.ts`. Le handler gère le match
+        // 2 stratégies (source_transaction direct, fallback event.account ->
+        // producers -> payouts récents) + UPDATE statut='paid' +
+        // stripe_payout_id + audit log forensique stripe_payout_paid.
+        const payoutPaid = event.data.object as Stripe.Payout & {
           source_transaction?: string | null;
         };
-
-        let payoutMatched = false;
-        let matchSource:
-          | "source_transaction"
-          | "fallback_account"
-          | "no_match" = "no_match";
-
-        if (payout.source_transaction) {
-          // Path nominal : Stripe nous donne le Transfer source qu'on a
-          // créé via stripe.transfers.create — match direct sur
-          // payouts.stripe_transfer_id.
-          const { data: updated } = await admin
-            .from("payouts")
-            .update({ statut: "paid", stripe_payout_id: payout.id })
-            .eq("stripe_transfer_id", payout.source_transaction)
-            .select("id");
-          payoutMatched = Array.isArray(updated) && updated.length > 0;
-          if (payoutMatched) matchSource = "source_transaction";
-        }
-
-        if (!payoutMatched) {
-          // T-402 fallback (décision PUSH 1 question D) : la metadata
-          // Transfer ne propage PAS vers Payout côté Stripe Connect.
-          // Vrai fallback = event.account (Connect account id) ->
-          // producers.stripe_account_id -> producer_id -> payouts récents
-          // statut IN ('processing','paid') des 30 derniers jours.
-          const eventAccount = event.account ?? null;
-          if (eventAccount) {
-            const { data: producer } = await admin
-              .from("producers")
-              .select("id")
-              .eq("stripe_account_id", eventAccount)
-              .maybeSingle();
-
-            if (producer) {
-              const since = new Date(
-                Date.now() - 30 * 24 * 60 * 60 * 1000,
-              ).toISOString();
-              const { data: matched } = await admin
-                .from("payouts")
-                .select("id")
-                .eq("producer_id", (producer as { id: string }).id)
-                .in("statut", ["processing", "paid"])
-                .gte("created_at", since)
-                .order("created_at", { ascending: false })
-                .limit(1)
-                .maybeSingle();
-
-              if (matched) {
-                await admin
-                  .from("payouts")
-                  .update({ statut: "paid", stripe_payout_id: payout.id })
-                  .eq("id", (matched as { id: string }).id);
-                payoutMatched = true;
-                matchSource = "fallback_account";
-              } else {
-                console.warn(
-                  `[PAYOUT_PAID_NO_TRANSACTION_NO_MATCH] payout=${payout.id} account=${eventAccount} producer=${(producer as { id: string }).id} — aucun payout récent matché`,
-                );
-              }
-            } else {
-              console.warn(
-                `[PAYOUT_PAID_NO_TRANSACTION_NO_PRODUCER] payout=${payout.id} account=${eventAccount} — producer introuvable via stripe_account_id`,
-              );
-            }
-          } else {
-            console.warn(
-              `[PAYOUT_PAID_NO_TRANSACTION_NO_ACCOUNT] payout=${payout.id} — ni source_transaction ni event.account`,
-            );
-          }
-        }
-
-        // Phase 3 multi-events audit (T-081 PR-B) — log APRÈS UPDATE
-        // payouts. destination peut être string (acct/ba_*) ou objet
-        // Stripe expansé ; on normalise en string ou null.
-        await logPaymentEvent({
-          eventType: "stripe_payout_paid",
-          metadata: {
-            payout_id: payout.id,
-            amount: payout.amount,
-            currency: payout.currency,
-            arrival_date: payout.arrival_date,
-            destination:
-              typeof payout.destination === "string"
-                ? payout.destination
-                : (payout.destination?.id ?? null),
-            source_transaction: payout.source_transaction ?? null,
-            stripe_account: event.account ?? null,
-            match_source: matchSource,
-            matched: payoutMatched,
-          },
-        });
+        await syncStripePayoutPaid(payoutPaid, event.account ?? null, admin);
         break;
       }
 

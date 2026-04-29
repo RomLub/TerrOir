@@ -38,6 +38,7 @@ const {
   mockSyncSucceeded,
   mockSyncFailed,
   mockSyncAccountFlags,
+  mockSyncPayoutPaid,
   mockSyncPayoutFailed,
   mockSyncDisputeCreated,
   mockSyncDisputeUpdated,
@@ -53,6 +54,7 @@ const {
   mockSyncSucceeded: vi.fn(),
   mockSyncFailed: vi.fn(),
   mockSyncAccountFlags: vi.fn(),
+  mockSyncPayoutPaid: vi.fn(),
   mockSyncPayoutFailed: vi.fn(),
   mockSyncDisputeCreated: vi.fn(),
   mockSyncDisputeUpdated: vi.fn(),
@@ -91,6 +93,10 @@ vi.mock("@/lib/stripe/sync-account-flags", () => ({
 
 vi.mock("@/lib/stripe/handle-payout-failed", () => ({
   syncStripePayoutFailed: mockSyncPayoutFailed,
+}));
+
+vi.mock("@/lib/stripe/handle-payout-paid", () => ({
+  syncStripePayoutPaid: mockSyncPayoutPaid,
 }));
 
 vi.mock("@/lib/stripe/handle-dispute-created", () => ({
@@ -255,6 +261,7 @@ beforeEach(() => {
   mockSyncSucceeded.mockReset();
   mockSyncFailed.mockReset();
   mockSyncAccountFlags.mockReset();
+  mockSyncPayoutPaid.mockReset().mockResolvedValue(undefined);
   mockSyncPayoutFailed.mockReset().mockResolvedValue(undefined);
   mockSyncDisputeCreated.mockReset().mockResolvedValue(undefined);
   mockSyncDisputeUpdated.mockReset().mockResolvedValue(undefined);
@@ -355,7 +362,7 @@ describe("POST /api/stripe/webhook — event rejoué (dédup hit)", () => {
     expect(mockSyncAccountFlags).not.toHaveBeenCalled();
   });
 
-  it("payout.paid rejoué → response 200 deduped:true, aucun from('payouts') déclenché", async () => {
+  it("payout.paid rejoué → response 200 deduped:true, syncStripePayoutPaid NON appelé", async () => {
     mockConstructEvent.mockReturnValue(
       makeStripeEvent("payout.paid", "evt_replay_4", {
         source_transaction: "tr_123",
@@ -368,9 +375,8 @@ describe("POST /api/stripe/webhook — event rejoué (dédup hit)", () => {
 
     expect(res.status).toBe(200);
     expect(body.deduped).toBe(true);
-    // Le case payout.paid fait from('payouts').update().eq(). Si dédup
-    // court-circuite correctement, aucun from() ne doit être déclenché.
-    expect(captured.fromCalls).toEqual([]);
+    // Court-circuit dédup avant le routing case.
+    expect(mockSyncPayoutPaid).not.toHaveBeenCalled();
   });
 });
 
@@ -454,35 +460,40 @@ describe("POST /api/stripe/webhook — Phase 3 events Stripe (T-081 PR-B)", () =
     });
   });
 
-  it("payout.paid nouveau avec source_transaction matché → UPDATE payouts + logPaymentEvent stripe_payout_paid match_source=source_transaction", async () => {
-    configurePayoutPaidFixtures({
-      payoutsUpdateData: [{ id: "row-1" }],
-    });
+  it("payout.paid nouveau → délègue à syncStripePayoutPaid avec event.account (extraction T-400)", async () => {
+    // T-400 contract test : la route route.tsx case 'payout.paid' délègue
+    // toute la logique au helper extrait. La couverture du match
+    // source_transaction / fallback / no-match / audit log est dans
+    // tests/lib/stripe/handle-payout-paid.test.ts.
     mockConstructEvent.mockReturnValue(
-      makeStripeEvent("payout.paid", "evt_payout_1", {
-        id: "po_test_1",
-        amount: 12345,
-        currency: "eur",
-        arrival_date: 1700000000,
-        destination: "ba_test_1",
-        source_transaction: "tr_test_1",
-      }),
+      makeStripeEvent(
+        "payout.paid",
+        "evt_payout_1",
+        {
+          id: "po_test_1",
+          amount: 12345,
+          currency: "eur",
+          arrival_date: 1700000000,
+          destination: "ba_test_1",
+          source_transaction: "tr_test_1",
+        },
+        "acct_connect_1",
+      ),
     );
     mockCheckOrMarkProcessed.mockResolvedValue({ alreadyProcessed: false });
 
     const res = await POST(makeRequest());
 
     expect(res.status).toBe(200);
-    expect(captured.fromCalls).toContain("payouts");
-    expect(mockLogPaymentEvent).toHaveBeenCalledWith({
-      eventType: "stripe_payout_paid",
-      metadata: expect.objectContaining({
-        payout_id: "po_test_1",
+    expect(mockSyncPayoutPaid).toHaveBeenCalledTimes(1);
+    expect(mockSyncPayoutPaid).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "po_test_1",
         source_transaction: "tr_test_1",
-        match_source: "source_transaction",
-        matched: true,
       }),
-    });
+      "acct_connect_1",
+      expect.anything(),
+    );
   });
 
   it("charge.dispute.created nouveau → délègue à syncStripeDisputeCreated (extraction T-403 Bundle 3)", async () => {
@@ -562,74 +573,11 @@ describe("POST /api/stripe/webhook — Bundle 3 (T-401 payout.failed)", () => {
   });
 });
 
-describe("POST /api/stripe/webhook — Bundle 3 (T-402 fallback payout.paid sans source_transaction)", () => {
-  it("source_transaction absent + producer trouvé via stripe_account_id + payout récent matché → UPDATE + audit log match_source=fallback_account", async () => {
-    configurePayoutPaidFixtures({
-      producerByAccount: { data: { id: "producer-42" }, error: null },
-      payoutByProducer: { data: { id: "payout-row-1" }, error: null },
-    });
-    mockConstructEvent.mockReturnValue(
-      makeStripeEvent(
-        "payout.paid",
-        "evt_payout_no_source",
-        {
-          id: "po_no_source",
-          amount: 8000,
-          currency: "eur",
-          arrival_date: 1700000000,
-          destination: "ba_test",
-        },
-        "acct_connect_42",
-      ),
-    );
-    mockCheckOrMarkProcessed.mockResolvedValue({ alreadyProcessed: false });
-
-    const res = await POST(makeRequest());
-
-    expect(res.status).toBe(200);
-    expect(mockLogPaymentEvent).toHaveBeenCalledWith({
-      eventType: "stripe_payout_paid",
-      metadata: expect.objectContaining({
-        payout_id: "po_no_source",
-        source_transaction: null,
-        stripe_account: "acct_connect_42",
-        match_source: "fallback_account",
-        matched: true,
-      }),
-    });
-  });
-
-  it("source_transaction absent + producer introuvable via account → warn log + audit log matched=false", async () => {
-    configurePayoutPaidFixtures({
-      producerByAccount: { data: null, error: null },
-    });
-    mockConstructEvent.mockReturnValue(
-      makeStripeEvent(
-        "payout.paid",
-        "evt_payout_orphan",
-        {
-          id: "po_orphan",
-          amount: 5000,
-          currency: "eur",
-        },
-        "acct_orphan",
-      ),
-    );
-    mockCheckOrMarkProcessed.mockResolvedValue({ alreadyProcessed: false });
-
-    const res = await POST(makeRequest());
-
-    expect(res.status).toBe(200);
-    expect(mockLogPaymentEvent).toHaveBeenCalledWith({
-      eventType: "stripe_payout_paid",
-      metadata: expect.objectContaining({
-        payout_id: "po_orphan",
-        match_source: "no_match",
-        matched: false,
-      }),
-    });
-  });
-});
+// T-400 — Tests T-402 fallback (source_transaction absent + producer match /
+// orphan) migrés vers tests/lib/stripe/handle-payout-paid.test.ts. Le contract
+// test ci-dessus (mockSyncPayoutPaid called with event.account) garantit la
+// délégation route → helper. La logique fallback elle-même est testée en
+// isolation côté helper.
 
 describe("POST /api/stripe/webhook — Bundle 3 (T-403 extended dispute.updated + dispute.closed)", () => {
   it("charge.dispute.updated nouveau → syncStripeDisputeUpdated appelé", async () => {
