@@ -86,7 +86,6 @@ export {
   type RoleToggleProps,
   ROLE_TOGGLE_LABEL_CONSUMER,
   ROLE_TOGGLE_LABEL_PRODUCER,
-  getRoleToggleTargetUrl,
 } from "./role-toggle";
 export { MiniMap, type MiniMapProps } from "./mini-map";
 export { PostIt, type PostItProps } from "./post-it";

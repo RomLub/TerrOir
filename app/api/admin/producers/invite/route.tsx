@@ -180,7 +180,10 @@ export async function POST(request: Request) {
           unsubscribeUrl={unsubscribeUrl}
         />
       ),
-      metadata: { token_prefix: token.slice(0, 8), email: input.email },
+      // token_prefix retiré (T-322) : leak forensique inutile vers Resend.
+      // Le token_prefix reste tracé côté audit_logs Supabase via logAuthEvent
+      // (event 'invitation_created', metadata.token_prefix) — système interne.
+      metadata: { email: input.email },
     });
   } catch (err) {
     const message = (err as Error).message;

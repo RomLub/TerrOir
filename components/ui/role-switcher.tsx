@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useUserContext } from "@/components/providers/user-provider";
-import { NEXT_PUBLIC_APP_URL, NEXT_PUBLIC_PRODUCER_URL } from "@/lib/env/urls";
+import { getRoleSwitcherUrls } from "@/lib/auth/role-switcher-urls";
 
 // Switcher cross-subdomain pour les users ayant les deux casquettes
 // consumer ET producer (Chantier 6). Rendu uniquement si les deux rôles
 // sont présents — sinon null (pas de placeholder, pas de section vide).
+// Gating + URLs factorisés dans lib/auth/role-switcher-urls.ts.
 //
 // Le bouton du space courant est un <div role="group"> non-cliquable
 // avec aria-current="page" pour les lecteurs d'écran. L'autre est un
@@ -37,10 +38,9 @@ const STYLES = {
 
 export function RoleSwitcher({ current, variant }: RoleSwitcherProps) {
   const { roles } = useUserContext();
-  if (!roles.includes("consumer") || !roles.includes("producer")) return null;
+  const { show, consumerUrl, producerUrl } = getRoleSwitcherUrls(roles);
+  if (!show) return null;
 
-  const consumerUrl = `${NEXT_PUBLIC_APP_URL}/compte`;
-  const producerUrl = `${NEXT_PUBLIC_PRODUCER_URL}/dashboard`;
   const s = STYLES[variant];
 
   return (
