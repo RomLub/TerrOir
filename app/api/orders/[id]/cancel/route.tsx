@@ -86,6 +86,25 @@ export async function POST(request: Request, { params }: RouteContext) {
     }
   }
 
+  // T-410 : valider la transition d'etat AVANT d'emettre un refund Stripe
+  // irrécupérable. La cible *tentative* dépend de la presence d'un PI
+  // (refunded si paid, sinon cancelled). Vu la matrice TRANSITIONS, depuis
+  // pending/confirmed/ready (les seuls atteignant ce point post-isTerminal)
+  // les deux cibles sont équivalemment légales → valider la tentative
+  // suffit. Pattern aligné refund/route.ts:78-85.
+  const from = order.statut as OrderStatus;
+  const tentativeFinalStatus: OrderStatus = order.stripe_payment_intent_id
+    ? "refunded"
+    : "cancelled";
+  try {
+    assertTransition(from, tentativeFinalStatus);
+  } catch (e) {
+    if (e instanceof InvalidOrderTransitionError) {
+      return NextResponse.json({ error: e.message }, { status: 409 });
+    }
+    throw e;
+  }
+
   // 1. Remboursement Stripe si déjà payé
   // T-408 idempotencyKey : `refund_${order.id}_manual_cancel` (UUID stable +
   // context discriminator). Distinct de `refund_${order_id}_${attempt}`
@@ -103,23 +122,22 @@ export async function POST(request: Request, { params }: RouteContext) {
     }
   }
 
-  // Statut cible dynamique : refunded si le remboursement Stripe a réussi,
-  // sinon cancelled. Post-T-151 toutes les transitions de from ∈
-  // {pending, confirmed, ready} vers refunded ou cancelled sont LEGAL
-  // (les statuts terminaux completed/cancelled/refunded sont court-circuités
-  // par isTerminal en amont, ligne 50). assertTransition reste comme filet
-  // fail-fast contre une régression future de la matrice.
-  const from = order.statut as OrderStatus;
+  // Statut cible final : refunded si le refund Stripe a reussi, sinon
+  // fallback cancelled. Post-T-151 toutes les transitions sont LEGAL ; le
+  // filet POST-refund couvre une régression future de la matrice ou
+  // un drift où la cible bascule de refunded → cancelled.
   const finalStatus: OrderStatus =
     order.stripe_payment_intent_id && !refundError ? "refunded" : "cancelled";
 
-  try {
-    assertTransition(from, finalStatus);
-  } catch (e) {
-    if (e instanceof InvalidOrderTransitionError) {
-      return NextResponse.json({ error: e.message }, { status: 409 });
+  if (finalStatus !== tentativeFinalStatus) {
+    try {
+      assertTransition(from, finalStatus);
+    } catch (e) {
+      if (e instanceof InvalidOrderTransitionError) {
+        return NextResponse.json({ error: e.message }, { status: 409 });
+      }
+      throw e;
     }
-    throw e;
   }
 
   await admin

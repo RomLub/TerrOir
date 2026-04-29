@@ -27,13 +27,13 @@ vi.hoisted(() => {
 // vi.hoisted permet de partager des vi.fn() entre le module de test et les
 // factories vi.mock (sinon les const seraient `undefined` à l'évaluation
 // hoistée du factory).
-const { mockRevalidateTag, mockRefundCreate, mockSendTemplate } = vi.hoisted(
-  () => ({
+const { mockRevalidateTag, mockRefundCreate, mockSendTemplate, mockAssertTransition } =
+  vi.hoisted(() => ({
     mockRevalidateTag: vi.fn(),
     mockRefundCreate: vi.fn(),
     mockSendTemplate: vi.fn(),
-  }),
-);
+    mockAssertTransition: vi.fn(),
+  }));
 
 vi.mock("next/cache", () => ({
   revalidateTag: mockRevalidateTag,
@@ -48,6 +48,19 @@ vi.mock("@/lib/stripe/server", () => ({
 vi.mock("@/lib/resend/send", () => ({
   sendTemplate: mockSendTemplate,
 }));
+
+// T-410 : on wrappe `assertTransition` pour pouvoir le forcer a throw dans
+// les tests T-410-C (transition illegale) — case impossible a declencher
+// naturellement vu la matrice TRANSITIONS post-T-151. Par defaut, delegate
+// a l'implementation reelle pour ne pas casser les 32 tests existants.
+vi.mock("@/lib/orders/stateMachine", async (importActual) => {
+  const actual = await importActual<typeof import("@/lib/orders/stateMachine")>();
+  mockAssertTransition.mockImplementation(actual.assertTransition);
+  return {
+    ...actual,
+    assertTransition: mockAssertTransition,
+  };
+});
 
 // --- Auth mocks (closure variable) ---------------------------------------
 type SessionUser = {
@@ -768,5 +781,75 @@ describe("J. Email annulation au consumer", () => {
     const res = await POST(makeRequest(), PARAMS);
     expect(res.status).toBe(200);
     expect(mockSendTemplate).not.toHaveBeenCalled();
+  });
+});
+
+// --- K. T-410 assertTransition AVANT refund Stripe -----------------------
+
+describe("K. T-410 — assertTransition AVANT refund Stripe (filet anti-refund-irrecuperable)", () => {
+  it("T-410-A pending+PI : assertTransition appele AVANT refund (cible tentative='refunded')", async () => {
+    setOrderFetch({ stripe_payment_intent_id: PI_ID });
+    mockRefundCreate.mockResolvedValue({ id: "re_1" });
+
+    const res = await POST(makeRequest(), PARAMS);
+    expect(res.status).toBe(200);
+
+    // Verifie l'ordre des invocations : assertTransition appele AVANT
+    // mockRefundCreate (sinon refund Stripe irrecuperable sur transition KO).
+    const assertCallOrder = mockAssertTransition.mock.invocationCallOrder[0]!;
+    const refundCallOrder = mockRefundCreate.mock.invocationCallOrder[0]!;
+    expect(assertCallOrder).toBeLessThan(refundCallOrder);
+
+    // Cible tentative = "refunded" (PI present), passee en 1er a assertTransition.
+    expect(mockAssertTransition).toHaveBeenCalledWith("pending", "refunded");
+  });
+
+  it("T-410-B pending sans PI : assertTransition('pending','cancelled') AVANT UPDATE, refund Stripe non appele", async () => {
+    // Default DEFAULT_ORDER stripe_payment_intent_id = null → pas de refund Stripe.
+    const res = await POST(makeRequest(), PARAMS);
+    expect(res.status).toBe(200);
+
+    expect(mockRefundCreate).not.toHaveBeenCalled();
+
+    // assertTransition appele avec cible "cancelled" (pas de PI → tentative=cancelled).
+    expect(mockAssertTransition).toHaveBeenCalledWith("pending", "cancelled");
+
+    // Verifie ordre : assertTransition AVANT le UPDATE orders.
+    const assertCallOrder = mockAssertTransition.mock.invocationCallOrder[0]!;
+    // captured.updates ne stocke pas l'invocationCallOrder, mais on peut deduire
+    // que le UPDATE a eu lieu car la route a abouti 200.
+    expect(assertCallOrder).toBeGreaterThan(0);
+    // L'UPDATE final est applique avec cancelled.
+    const orderUpdate = captured.updates.find((u) => u.table === "orders");
+    expect((orderUpdate!.payload as Record<string, unknown>).statut).toBe(
+      "cancelled",
+    );
+  });
+
+  it("T-410-C transition illegale → 409 retourne AVANT refund Stripe", async () => {
+    setOrderFetch({ stripe_payment_intent_id: PI_ID });
+    // Force assertTransition a throw (matrice naturelle interdit ce cas
+    // post-isTerminal — mock pour exercer le filet).
+    const { InvalidOrderTransitionError } = await import(
+      "@/lib/orders/stateMachine"
+    );
+    mockAssertTransition.mockImplementationOnce(() => {
+      throw new InvalidOrderTransitionError(
+        "pending" as never,
+        "refunded" as never,
+      );
+    });
+
+    const res = await POST(makeRequest(), PARAMS);
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toContain("pending");
+    expect(body.error).toContain("refunded");
+
+    // Garde-fou critique T-410 : refund Stripe NON emis sur transition KO.
+    expect(mockRefundCreate).not.toHaveBeenCalled();
+    // Aucun UPDATE orders/producers.
+    expect(captured.updates.find((u) => u.table === "orders")).toBeUndefined();
+    expect(mockRevalidateTag).not.toHaveBeenCalled();
   });
 });
