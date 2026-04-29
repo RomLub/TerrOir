@@ -337,9 +337,12 @@ describe("POST /api/cron/order-timeout — single order", () => {
     };
 
     expect(vi.mocked(stripe.refunds.create)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(stripe.refunds.create)).toHaveBeenCalledWith({
-      payment_intent: "pi_abc",
-    });
+    // T-408 : 1er arg params metier, 2e arg options idempotencyKey
+    // (context "timeout" discriminator distinct des autres paths refund).
+    expect(vi.mocked(stripe.refunds.create)).toHaveBeenCalledWith(
+      { payment_intent: "pi_abc" },
+      { idempotencyKey: "refund_order-2_timeout" },
+    );
 
     const ordersUpdate = captured.updates.find((u) => u.table === "orders");
     expect(ordersUpdate?.payload.statut).toBe("refunded");
@@ -406,6 +409,14 @@ describe("POST /api/cron/order-timeout — multiple orders", () => {
 
     // Order-A skip refund, order-B+C tentent refund.
     expect(vi.mocked(stripe.refunds.create)).toHaveBeenCalledTimes(2);
+    // T-408 : chaque appel a une idempotencyKey distincte par order_id
+    // (timeout context discriminator stable, UUID order varie).
+    const calls = vi.mocked(stripe.refunds.create).mock.calls as unknown as Array<
+      [{ payment_intent: string }, { idempotencyKey: string }]
+    >;
+    expect(calls[0][1].idempotencyKey).toBe("refund_order-B_timeout");
+    expect(calls[1][1].idempotencyKey).toBe("refund_order-C_timeout");
+    expect(calls[0][1].idempotencyKey).not.toBe(calls[1][1].idempotencyKey);
     expect(captured.updates.filter((u) => u.table === "orders")).toHaveLength(
       3,
     );

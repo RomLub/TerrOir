@@ -368,7 +368,11 @@ describe("E. Happy path + side effects", () => {
 
     // 1. Stripe refund émis sur le bon PI.
     expect(mockRefundCreate).toHaveBeenCalledTimes(1);
-    expect(mockRefundCreate).toHaveBeenCalledWith({ payment_intent: PI_ID });
+    // T-408 : 1er arg params metier, 2e arg options idempotency.
+    expect(mockRefundCreate).toHaveBeenCalledWith(
+      { payment_intent: PI_ID },
+      { idempotencyKey: `refund_${ORDER_ID}_admin` },
+    );
 
     // 2. UPDATE orders avec statut+reason+timestamp.
     const orderUpdate = captured.updates.find((u) => u.table === "orders");
@@ -493,5 +497,21 @@ describe("F. T-107 Instrumentation order_admin_refund_failed (audit_logs)", () =
         }),
       }),
     );
+  });
+});
+
+// --- G. T-408 idempotencyKey refund admin --------------------------------
+
+describe("G. T-408 idempotencyKey passe en 2e arg de refunds.create", () => {
+  it("T-408 happy path → refunds.create appele avec ({...params}, { idempotencyKey: 'refund_<order.id>_admin' })", async () => {
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(200);
+    expect(mockRefundCreate).toHaveBeenCalledTimes(1);
+    const [params, options] = mockRefundCreate.mock.calls[0]! as [
+      { payment_intent: string },
+      { idempotencyKey: string },
+    ];
+    expect(params.payment_intent).toBe(PI_ID);
+    expect(options).toEqual({ idempotencyKey: `refund_${ORDER_ID}_admin` });
   });
 });

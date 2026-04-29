@@ -46,9 +46,12 @@ export async function POST(request: Request) {
 
     if (order.stripe_payment_intent_id) {
       try {
-        await stripe.refunds.create({
-          payment_intent: order.stripe_payment_intent_id,
-        });
+        // T-408 idempotencyKey : `refund_${order.id}_timeout` (context
+        // discriminator distinct des paths manual_cancel / admin / retry).
+        await stripe.refunds.create(
+          { payment_intent: order.stripe_payment_intent_id },
+          { idempotencyKey: `refund_${order.id}_timeout` },
+        );
       } catch (e) {
         refundError = (e as Error).message;
         // Instrumentation T-107 : audit_log forensique pour permettre la
