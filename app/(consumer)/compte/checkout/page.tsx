@@ -8,6 +8,7 @@ import { Button } from '@/components/ui';
 import { getStripe } from '@/lib/stripe/client';
 import { useCartStore, type CartItem } from '@/lib/store/cart';
 import { itemKey, type ValidateResponse } from '@/lib/cart/validate';
+import { classifyStripeError, type CheckoutError } from '@/lib/checkout/classify-stripe-error';
 import { listPaymentMethodsAction, type PaymentMethodSummary } from './actions';
 
 const BRAND_LABEL: Record<string, string> = {
@@ -69,6 +70,7 @@ function formatDateFr(iso: string): string {
 
 export default function CheckoutPage() {
   const items = useCartStore((s) => s.items);
+  const clearCart = useCartStore((s) => s.clear);
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => setHydrated(true), []);
 
@@ -78,7 +80,7 @@ export default function CheckoutPage() {
 
   const [order, setOrder] = useState<OrderCreated | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
-  const [initError, setInitError] = useState<string | null>(null);
+  const [initError, setInitError] = useState<CheckoutError | null>(null);
   const [preparing, setPreparing] = useState(false);
 
   const subtotal = group ? group.items.reduce((s, i) => s + i.prix * i.quantite, 0) : 0;
@@ -142,7 +144,17 @@ export default function CheckoutPage() {
         });
         const orderData = await orderRes.json();
         if (!orderRes.ok) {
-          setInitError(orderData.error ?? 'Impossible de créer la commande');
+          // T-407 : 409 sur create-order (cas borderline, ex. order existante).
+          // Même UX que 409 PI : rediriger vers commandes au lieu de retry.
+          if (orderRes.status === 409) {
+            console.warn('[CHECKOUT_INIT_409]', 'orders/create', orderData?.error);
+            setInitError({ kind: 'init_409', message: 'Cette commande n\'est plus payable.' });
+            return;
+          }
+          setInitError({
+            kind: 'generic',
+            message: orderData.error ?? 'Impossible de créer la commande',
+          });
           return;
         }
         const created = orderData as OrderCreated;
@@ -155,12 +167,24 @@ export default function CheckoutPage() {
         });
         const piData = await piRes.json();
         if (!piRes.ok || !piData.client_secret) {
-          setInitError(piData.error ?? 'Impossible d\'initialiser le paiement');
+          // T-407 : 409 = T-406 guard (order non-pending). Order morte
+          // (webhook payment_failed a déjà cancelle, ou order
+          // confirmed/ready/completed/refunded). Pas de retry possible
+          // sur cette order, l'user doit consulter ses commandes.
+          if (piRes.status === 409) {
+            console.warn('[CHECKOUT_INIT_409]', 'create-payment-intent', piData?.error);
+            setInitError({ kind: 'init_409', message: 'Cette commande n\'est plus payable.' });
+            return;
+          }
+          setInitError({
+            kind: 'generic',
+            message: piData.error ?? 'Impossible d\'initialiser le paiement',
+          });
           return;
         }
         setClientSecret(piData.client_secret as string);
       } catch {
-        setInitError('Erreur de connexion au serveur');
+        setInitError({ kind: 'generic', message: 'Erreur de connexion au serveur' });
       } finally {
         setPreparing(false);
       }
@@ -228,9 +252,35 @@ export default function CheckoutPage() {
                 <span className="text-[11px] mono text-dark/50">🔒 Stripe · SSL</span>
               </div>
 
-              {initError && (
-                <div className="p-4 rounded-xl bg-terra-100/60 border border-terra-300/40 text-[13px] text-terra-900">{initError}</div>
-              )}
+              {initError?.kind === 'init_409' ? (
+                // T-407 : order morte (T-406 guard 409 sur create-PI/create-order).
+                // Webhook payment_failed a probablement déjà cancelle l'order,
+                // ou statut confirmed/ready/completed/refunded. Pas de retry
+                // possible sur cette order — orienter user vers ses commandes.
+                <div className="space-y-4">
+                  <div className="p-4 rounded-xl bg-terra-100/60 border border-terra-300/40 text-[13px] text-terra-900">
+                    {initError.message}
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Link href="/compte/commandes" className="flex-1">
+                      <Button size="lg" className="w-full">Voir mes commandes</Button>
+                    </Link>
+                    <Button
+                      size="lg"
+                      variant="ghost"
+                      className="flex-1"
+                      onClick={() => {
+                        clearCart();
+                        router.push('/');
+                      }}
+                    >
+                      Vider le panier
+                    </Button>
+                  </div>
+                </div>
+              ) : initError ? (
+                <div className="p-4 rounded-xl bg-terra-100/60 border border-terra-300/40 text-[13px] text-terra-900">{initError.message}</div>
+              ) : null}
 
               {!initError && !clientSecret && (
                 <p className="text-[13px] text-dark/60">Initialisation du paiement…</p>
@@ -301,7 +351,7 @@ function CheckoutForm({
   const clear = useCartStore((s) => s.clear);
 
   const [processing, setProcessing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<CheckoutError | null>(null);
   const [saveCard, setSaveCard] = useState(false);
 
   // Phase 7 : sélecteur CB enregistrée vs nouvelle CB.
@@ -350,7 +400,9 @@ function CheckoutForm({
       );
 
       if (payError) {
-        setError(payError.message ?? 'Le paiement a échoué.');
+        const classified = classifyStripeError(payError);
+        console.warn(`[CHECKOUT_${classified.kind.toUpperCase()}]`, classified.code ?? payError.code, payError.decline_code);
+        setError(classified);
         setProcessing(false);
         return;
       }
@@ -376,7 +428,10 @@ function CheckoutForm({
         body: JSON.stringify({ order_id: orderId, save_card: true }),
       });
       if (!updateRes.ok) {
-        setError("Impossible d'activer la mémorisation de la carte. Réessayez.");
+        setError({
+          kind: 'generic',
+          message: "Impossible d'activer la mémorisation de la carte. Réessayez.",
+        });
         setProcessing(false);
         return;
       }
@@ -391,7 +446,9 @@ function CheckoutForm({
     });
 
     if (payError) {
-      setError(payError.message ?? 'Le paiement a échoué.');
+      const classified = classifyStripeError(payError);
+      console.warn(`[CHECKOUT_${classified.kind.toUpperCase()}]`, classified.code ?? payError.code, payError.decline_code);
+      setError(classified);
       setProcessing(false);
       return;
     }
@@ -508,21 +565,30 @@ function CheckoutForm({
       </div>
 
       {error && (
-        <div className="p-3 rounded-lg bg-terra-100/60 border border-terra-300/40 text-[13px] text-terra-900">{error}</div>
+        <div className="p-3 rounded-lg bg-terra-100/60 border border-terra-300/40 text-[13px] text-terra-900">{error.message}</div>
       )}
-      <Button
-        type="submit"
-        size="lg"
-        className="w-full"
-        disabled={
-          !stripe ||
-          processing ||
-          (mode === 'new' && !elements) ||
-          (mode === 'saved' && !selectedPmId)
-        }
-      >
-        {processing ? 'Traitement…' : `Payer ${amountLabel} €`}
-      </Button>
+      {error?.kind === 'pi_invalid' ? (
+        // T-407 : PI canceled côté Stripe (timeout > 24h, cancel admin).
+        // L'order est probablement déjà cancelled DB via webhook → retry
+        // sans intérêt, rediriger vers commandes.
+        <Link href="/compte/commandes" className="block">
+          <Button size="lg" className="w-full" type="button">Voir mes commandes</Button>
+        </Link>
+      ) : (
+        <Button
+          type="submit"
+          size="lg"
+          className="w-full"
+          disabled={
+            !stripe ||
+            processing ||
+            (mode === 'new' && !elements) ||
+            (mode === 'saved' && !selectedPmId)
+          }
+        >
+          {processing ? 'Traitement…' : `Payer ${amountLabel} €`}
+        </Button>
+      )}
     </form>
   );
 }
