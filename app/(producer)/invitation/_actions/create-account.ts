@@ -1,9 +1,15 @@
 "use server";
 
+import { headers } from "next/headers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { invitationCreateAccountSchema } from "@/lib/auth/validators";
 import { slugFromEmail } from "@/lib/producers/slug-from-email";
+import { consumeRateLimit, getSignupRateLimit } from "@/lib/rate-limit";
+import {
+  extractRequestContext,
+  logAuthEvent,
+} from "@/lib/audit-logs/log-auth-event";
 
 export type State = { error?: string; success?: boolean };
 
@@ -18,6 +24,27 @@ export async function createAccountAction(
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Saisie invalide" };
+  }
+
+  // T-305 PR-B : rate-limit applicatif IP avant lookup invitation +
+  // createUser. Mutualise getSignupRateLimit() (D3) — flow signup invitation
+  // partage la même surface attaque que signup classique côté IP.
+  const { ipAddress } = extractRequestContext(headers());
+  const rateLimit = await consumeRateLimit(
+    getSignupRateLimit(),
+    ipAddress ?? "unknown",
+  );
+  if (!rateLimit.success) {
+    await logAuthEvent({
+      eventType: "rate_limit_exceeded",
+      userId: null,
+      metadata: {
+        route: "invitation_create",
+        cap: rateLimit.limit,
+        reset: rateLimit.reset,
+      },
+    });
+    return { error: "Trop de tentatives. Réessayez dans quelques minutes." };
   }
 
   const admin = createSupabaseAdminClient();

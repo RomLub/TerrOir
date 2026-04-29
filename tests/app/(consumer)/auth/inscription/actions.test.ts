@@ -17,11 +17,33 @@ type AnyAsyncFn = (...args: unknown[]) => Promise<unknown>;
 //   1. createSupabaseServerClient → auth.signUp
 //   2. createSupabaseAdminClient → from(...).insert() + auth.admin.deleteUser
 //   3. NEXT_PUBLIC_APP_URL → constante stable pour assertion emailRedirectTo
-//
-// logAuthEvent volontairement NON mocké : depuis T-300 l'event
-// account_signup est instrumenté côté /auth/callback case type=signup,
-// pas dans actions.ts. Si un test laissait fuiter un appel ici, le test
-// happy path l'attraperait via assertion explicite.
+//   4. T-305 PR-B : @/lib/rate-limit (consumeRateLimit + getSignupRateLimit)
+//      + @/lib/audit-logs/log-auth-event (logAuthEvent + extractRequestContext)
+//      + next/headers (headers() pour extractRequestContext).
+
+vi.mock("server-only", () => ({}));
+
+vi.mock("next/headers", () => ({
+  headers: vi.fn(() => ({ get: () => null })),
+}));
+
+const consumeRateLimitMock = vi.hoisted(() =>
+  vi.fn(async () => ({ success: true, limit: 5, remaining: 4, reset: 0 })),
+);
+const logAuthEventMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/rate-limit", () => ({
+  consumeRateLimit: consumeRateLimitMock,
+  getSignupRateLimit: () => ({}),
+}));
+
+vi.mock("@/lib/audit-logs/log-auth-event", () => ({
+  logAuthEvent: logAuthEventMock,
+  extractRequestContext: () => ({
+    ipAddress: "203.0.113.5",
+    userAgent: null,
+  }),
+}));
 
 let supabaseSignUpMock: Mock<AnyAsyncFn>;
 let adminInsertMock: Mock<AnyAsyncFn>;
@@ -81,6 +103,16 @@ beforeEach(() => {
   adminDeleteUserMock = vi
     .fn<AnyAsyncFn>()
     .mockResolvedValue({ error: null });
+
+  consumeRateLimitMock.mockReset();
+  consumeRateLimitMock.mockResolvedValue({
+    success: true,
+    limit: 5,
+    remaining: 4,
+    reset: 0,
+  });
+  logAuthEventMock.mockReset();
+  logAuthEventMock.mockResolvedValue(undefined);
 
   // Silence console.warn / console.error pour les tests qui les déclenchent
   // intentionnellement. On vérifie le comportement métier, pas la trace.
@@ -214,5 +246,38 @@ describe("signupAction", () => {
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining("SIGNUP_ORPHAN_AUTH"),
     );
+  });
+
+  // --- T-305 PR-B — rate-limit applicatif IP (5/60s signup) ----------------
+
+  it("T-305 PR-B : cap dépassé → audit rate_limit_exceeded + error FR + signUp NON appelé", async () => {
+    consumeRateLimitMock.mockResolvedValueOnce({
+      success: false,
+      limit: 5,
+      remaining: 0,
+      reset: 9999,
+    });
+
+    const res = await signupAction({}, makeFormData());
+
+    expect(res.error).toMatch(/Trop de tentatives/);
+    expect(logAuthEventMock).toHaveBeenCalledWith({
+      eventType: "rate_limit_exceeded",
+      userId: null,
+      metadata: { route: "signup", cap: 5, reset: 9999 },
+    });
+    expect(supabaseSignUpMock).not.toHaveBeenCalled();
+    expect(adminInsertMock).not.toHaveBeenCalled();
+  });
+
+  it("T-305 PR-B : cap OK → consumeRateLimit appelé avec IP extraite + flow nominal continue", async () => {
+    await signupAction({}, makeFormData());
+
+    expect(consumeRateLimitMock).toHaveBeenCalledWith(
+      expect.anything(),
+      "203.0.113.5",
+    );
+    expect(supabaseSignUpMock).toHaveBeenCalled();
+    expect(logAuthEventMock).not.toHaveBeenCalled();
   });
 });

@@ -52,12 +52,30 @@ vi.mock("@/lib/supabase/server", () => ({
 const logAuthEventMock = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/audit-logs/log-auth-event", () => ({
   logAuthEvent: logAuthEventMock,
+  extractRequestContext: () => ({
+    ipAddress: "203.0.113.5",
+    userAgent: null,
+  }),
+}));
+
+// T-305 PR-B : mock rate-limit (consume + getLoginRateLimit). next/headers mock
+// consolidé avec T-321 ci-dessous (le module ne peut être mocké qu'une fois).
+const consumeRateLimitMock = vi.hoisted(() =>
+  vi.fn(async () => ({ success: true, limit: 5, remaining: 4, reset: 0 })),
+);
+
+vi.mock("@/lib/rate-limit", () => ({
+  consumeRateLimit: consumeRateLimitMock,
+  getLoginRateLimit: () => ({}),
 }));
 
 // T-321 — Mock no-op pour role-snapshot-cookie (server-only virtuel Next).
 vi.mock("@/lib/auth/role-snapshot-cookie", () => ({
   clearRoleSnapshotOnStore: vi.fn(),
 }));
+
+// next/headers expose à la fois cookies (T-321 clearRoleSnapshotOnStore) et
+// headers (T-305 PR-B extractRequestContext + T-321 host lookup).
 vi.mock("next/headers", () => ({
   cookies: () => ({ set: vi.fn() }),
   headers: () => ({ get: vi.fn(() => null) }),
@@ -97,6 +115,13 @@ beforeEach(() => {
   signInMock = vi.fn<AnyAsyncFn>().mockResolvedValue({ data: {}, error: null });
   logAuthEventMock.mockReset();
   logAuthEventMock.mockResolvedValue(undefined);
+  consumeRateLimitMock.mockReset();
+  consumeRateLimitMock.mockResolvedValue({
+    success: true,
+    limit: 5,
+    remaining: 4,
+    reset: 0,
+  });
 });
 
 afterEach(() => {
@@ -193,5 +218,50 @@ describe("loginAndUpgradeAction", () => {
     );
 
     warnSpy.mockRestore();
+  });
+
+  // --- T-305 PR-B — rate-limit applicatif IP (5/60s mutualisé login) -------
+
+  it("T-305 PR-B : cap dépassé → audit rate_limit_exceeded route=invitation_login + error FR + lookup token NON appelé", async () => {
+    consumeRateLimitMock.mockResolvedValueOnce({
+      success: false,
+      limit: 5,
+      remaining: 0,
+      reset: 9999,
+    });
+    responses.producer_invitations = [validInvitationResp("user@example.com")];
+
+    const res = await loginAndUpgradeAction({}, makeFormData());
+
+    expect(res).toEqual({
+      error: "Trop de tentatives. Réessayez dans quelques minutes.",
+    });
+    expect(logAuthEventMock).toHaveBeenCalledWith({
+      eventType: "rate_limit_exceeded",
+      userId: null,
+      metadata: { route: "invitation_login", cap: 5, reset: 9999 },
+    });
+    // Ni lookup invitation, ni signIn, ni role_changed (short-circuit).
+    expect(captured.fromCalls).toEqual([]);
+    expect(signInMock).not.toHaveBeenCalled();
+    expect(logAuthEventMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "role_changed" }),
+    );
+  });
+
+  it("T-305 PR-B : cap OK → consumeRateLimit appelé avec IP extraite + flow nominal continue", async () => {
+    responses.producer_invitations = [validInvitationResp("user@example.com")];
+    responses.users = [
+      { data: { id: "user-42", roles: ["consumer"] }, error: null },
+    ];
+    responses.producers = [{ data: null, error: null }];
+
+    await loginAndUpgradeAction({}, makeFormData());
+
+    expect(consumeRateLimitMock).toHaveBeenCalledWith(
+      expect.anything(),
+      "203.0.113.5",
+    );
+    expect(signInMock).toHaveBeenCalled();
   });
 });

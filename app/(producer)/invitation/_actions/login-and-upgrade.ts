@@ -4,9 +4,13 @@ import { cookies, headers } from "next/headers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { invitationLoginAndUpgradeSchema } from "@/lib/auth/validators";
-import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
+import {
+  extractRequestContext,
+  logAuthEvent,
+} from "@/lib/audit-logs/log-auth-event";
 import { slugFromEmail } from "@/lib/producers/slug-from-email";
 import { clearRoleSnapshotOnStore } from "@/lib/auth/role-snapshot-cookie";
+import { consumeRateLimit, getLoginRateLimit } from "@/lib/rate-limit";
 
 export type State = { error?: string; success?: boolean };
 
@@ -20,6 +24,27 @@ export async function loginAndUpgradeAction(
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Saisie invalide" };
+  }
+
+  // T-305 PR-B : rate-limit applicatif IP avant lookup + signInWithPassword.
+  // Mutualise getLoginRateLimit() (D3) — flow login invitation partage la
+  // même surface attaque brute-force que loginAction classique côté IP.
+  const { ipAddress } = extractRequestContext(headers());
+  const rateLimit = await consumeRateLimit(
+    getLoginRateLimit(),
+    ipAddress ?? "unknown",
+  );
+  if (!rateLimit.success) {
+    await logAuthEvent({
+      eventType: "rate_limit_exceeded",
+      userId: null,
+      metadata: {
+        route: "invitation_login",
+        cap: rateLimit.limit,
+        reset: rateLimit.reset,
+      },
+    });
+    return { error: "Trop de tentatives. Réessayez dans quelques minutes." };
   }
 
   const admin = createSupabaseAdminClient();

@@ -61,7 +61,15 @@ export type AuthEventType =
   // pas authentifié), metadata embarque email tenté + reason_code catégoriel
   // (invalid_credentials | email_not_confirmed | rate_limited | technical)
   // pour permettre détection forensique brute-force / énumération.
-  | "login_failed";
+  | "login_failed"
+  // T-305 PR-B : cap rate-limit applicatif dépassé. Émis depuis chaque call
+  // site auth (signup, login, magic_link, recovery, invitation create/login)
+  // quand consumeRateLimit() retourne success=false. userId=null (user souvent
+  // non authentifié au moment du rate-limit) + metadata { route, cap, reset }
+  // pour grep forensique pattern d'attaque (bruteforce IP, flooding recovery).
+  // Cap rate-limited Supabase distinct (cf. login_failed reason_code=rate_limited
+  // côté T-309) — celui-ci est notre defensive layer applicative.
+  | "rate_limit_exceeded";
 
 type LogAuthEventParams = {
   eventType: AuthEventType;

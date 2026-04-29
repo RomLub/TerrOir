@@ -53,6 +53,29 @@ vi.mock("@/lib/supabase/server", () => ({
   }),
 }));
 
+// T-305 PR-B : mocks rate-limit + audit-log + next/headers.
+vi.mock("next/headers", () => ({
+  headers: vi.fn(() => ({ get: () => null })),
+}));
+
+const consumeRateLimitMock = vi.hoisted(() =>
+  vi.fn(async () => ({ success: true, limit: 5, remaining: 4, reset: 0 })),
+);
+const logAuthEventMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/rate-limit", () => ({
+  consumeRateLimit: consumeRateLimitMock,
+  getSignupRateLimit: () => ({}),
+}));
+
+vi.mock("@/lib/audit-logs/log-auth-event", () => ({
+  logAuthEvent: logAuthEventMock,
+  extractRequestContext: () => ({
+    ipAddress: "203.0.113.5",
+    userAgent: null,
+  }),
+}));
+
 import { createAccountAction } from "@/app/(producer)/invitation/_actions/create-account";
 
 // --- Helpers --------------------------------------------------------------
@@ -92,6 +115,15 @@ beforeEach(() => {
   });
   deleteUserMock = vi.fn<AnyAsyncFn>().mockResolvedValue({ data: null, error: null });
   signInMock = vi.fn<AnyAsyncFn>().mockResolvedValue({ data: {}, error: null });
+  consumeRateLimitMock.mockReset();
+  consumeRateLimitMock.mockResolvedValue({
+    success: true,
+    limit: 5,
+    remaining: 4,
+    reset: 0,
+  });
+  logAuthEventMock.mockReset();
+  logAuthEventMock.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -246,5 +278,45 @@ describe("createAccountAction", () => {
     );
 
     errorSpy.mockRestore();
+  });
+
+  // --- T-305 PR-B — rate-limit applicatif IP (5/60s mutualisé signup) ------
+
+  it("T-305 PR-B : cap dépassé → audit rate_limit_exceeded route=invitation_create + error FR + lookup token NON appelé", async () => {
+    consumeRateLimitMock.mockResolvedValueOnce({
+      success: false,
+      limit: 5,
+      remaining: 0,
+      reset: 8888,
+    });
+    responses.producer_invitations = [validInvitationResp()];
+
+    const res = await createAccountAction({}, makeFormData());
+
+    expect(res).toEqual({
+      error: "Trop de tentatives. Réessayez dans quelques minutes.",
+    });
+    expect(logAuthEventMock).toHaveBeenCalledWith({
+      eventType: "rate_limit_exceeded",
+      userId: null,
+      metadata: { route: "invitation_create", cap: 5, reset: 8888 },
+    });
+    // Aucun call DB / Supabase admin tenté.
+    expect(captured.fromCalls).toEqual([]);
+    expect(createUserMock).not.toHaveBeenCalled();
+    expect(signInMock).not.toHaveBeenCalled();
+  });
+
+  it("T-305 PR-B : cap OK → consumeRateLimit appelé avec IP extraite + flow nominal continue", async () => {
+    responses.producer_invitations = [validInvitationResp("new@example.com")];
+
+    await createAccountAction({}, makeFormData());
+
+    expect(consumeRateLimitMock).toHaveBeenCalledWith(
+      expect.anything(),
+      "203.0.113.5",
+    );
+    expect(createUserMock).toHaveBeenCalled();
+    expect(logAuthEventMock).not.toHaveBeenCalled();
   });
 });
