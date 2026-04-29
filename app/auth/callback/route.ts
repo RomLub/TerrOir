@@ -46,6 +46,31 @@ function sanitizeNext(raw: string | null): string | null {
   return raw;
 }
 
+type AuthErrorCode = "expired" | "invalid" | "missing" | "technical";
+
+// Classifie une erreur Supabase verifyOtp (ou notre fallback "Missing
+// token_hash") en code symbolique court FR-neutre. Évite de fuiter le
+// message verbatim Supabase ("Token has expired" vs "Invalid token" vs
+// "User already confirmed") dans la query string /connexion?reason=…, qui
+// donnait à un attaquant une énumération sémantique des états du token
+// (finding T-318 information disclosure). Le verbatim reste conservé côté
+// logs Vercel via console.error AUTH_CALLBACK_ERROR pour debug forensique
+// (pattern symétrique CHANGE_PASSWORD_UPDATE_USER_ERROR T-315).
+function classifyAuthError(rawMessage: string | null): AuthErrorCode {
+  if (!rawMessage) return "missing";
+  const msg = rawMessage.toLowerCase();
+  if (msg.includes("missing token_hash")) return "missing";
+  if (msg.includes("expired")) return "expired";
+  if (
+    msg.includes("invalid") ||
+    msg.includes("already confirmed") ||
+    msg.includes("already used")
+  ) {
+    return "invalid";
+  }
+  return "technical";
+}
+
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
   const tokenHash = url.searchParams.get("token_hash");
@@ -107,9 +132,15 @@ export async function GET(request: NextRequest) {
   }
 
   if (authError) {
+    const reasonCode = classifyAuthError(authError);
+    // Verbatim Supabase conservé côté logs Vercel pour debug, JAMAIS exposé
+    // dans la query string vers /connexion (anti info disclosure T-318).
+    console.error(
+      `AUTH_CALLBACK_ERROR type=${type ?? "null"} reason_code=${reasonCode} raw_message=${authError}`,
+    );
     const failUrl = new URL("/connexion", url.origin);
     failUrl.searchParams.set("error", "auth_callback");
-    failUrl.searchParams.set("reason", authError.slice(0, 120));
+    failUrl.searchParams.set("reason", reasonCode);
     return NextResponse.redirect(failUrl);
   }
 

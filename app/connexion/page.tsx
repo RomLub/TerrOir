@@ -1,22 +1,24 @@
 import { ConnexionForm } from "./connexion-form";
 
-// Mappe une `reason` technique remontée par /auth/callback (Supabase) sur
-// un message FR digestible. Match par substring lowercase pour absorber
-// les variations exactes (URL-encoded, slicé à 120 chars, libellés
-// upstream qui bougent). Fallback générique si la reason ne matche rien.
+// Mappe un `reason` code symbolique court (expired/invalid/missing/technical)
+// remonté par /auth/callback sur un message FR final. Fix T-318 : codes
+// catégoriels au lieu du verbatim Supabase, anti information disclosure (la
+// classification est faite côté serveur via classifyAuthError, le verbatim
+// reste côté logs Vercel pour debug). Le default catch-all couvre aussi les
+// vieux emails legacy en transit avec verbatim brut (graceful degradation).
 function getFriendlyAuthError(reason: string | undefined): string | null {
   if (!reason) return null;
-  const r = reason.toLowerCase();
-  if (r.includes("challenge") || r.includes("pkce")) {
-    return "Ce lien a expiré ou n'est plus valide. Demandez un nouveau lien magique.";
+  switch (reason) {
+    case "expired":
+      return "Ce lien a expiré. Demandez un nouveau lien magique.";
+    case "invalid":
+      return "Ce lien n'est plus valide. Demandez un nouveau lien magique.";
+    case "missing":
+      return "Lien incomplet. Demandez un nouveau lien magique.";
+    case "technical":
+    default:
+      return "Une erreur est survenue lors de la connexion. Réessayez.";
   }
-  if (r.includes("expired")) {
-    return "Ce lien a expiré. Demandez un nouveau lien magique.";
-  }
-  if (r.includes("missing code") || r.includes("token_hash")) {
-    return "Ce lien n'est pas valide. Demandez un nouveau lien magique.";
-  }
-  return "Une erreur est survenue lors de la connexion. Demandez un nouveau lien.";
 }
 
 // Server entry : extrait searchParams.redirectTo pour le passer au form
