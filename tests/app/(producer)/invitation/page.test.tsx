@@ -30,6 +30,13 @@ type Resp = { data?: unknown; error?: unknown };
 
 let responses: Record<string, Resp[]>;
 let sessionUser: { id: string; email: string | null } | null;
+// T-303 : capture des UPDATE/INSERT pendant le GET render pour asserter
+// l'absence de side-effect (la bascule en server action POST garantit que
+// le render ne mute jamais).
+let captured: {
+  inserts: Array<{ table: string; payload: unknown }>;
+  updates: Array<{ table: string; payload: unknown }>;
+};
 
 vi.mock("@/lib/auth/session", () => ({
   getSessionUser: async () => sessionUser,
@@ -63,8 +70,14 @@ vi.mock("@/lib/supabase/admin", () => ({
       builder.in = () => builder;
       builder.order = () => builder;
       builder.limit = () => builder;
-      builder.update = () => builder;
-      builder.insert = () => Promise.resolve(resp);
+      builder.update = (payload: unknown) => {
+        captured.updates.push({ table, payload });
+        return builder;
+      };
+      builder.insert = (payload: unknown) => {
+        captured.inserts.push({ table, payload });
+        return Promise.resolve(resp);
+      };
       builder.maybeSingle = () => Promise.resolve(resp);
       builder.then = (onFulfilled: (r: Resp) => unknown) => onFulfilled(resp);
       return builder;
@@ -114,6 +127,7 @@ async function runPage(token?: string): Promise<ReactElement> {
 beforeEach(() => {
   responses = {};
   sessionUser = null;
+  captured = { inserts: [], updates: [] };
 });
 
 afterEach(() => {
@@ -243,5 +257,72 @@ describe("InvitationPage — wizard caseKind passé à OnboardingWizard", () => 
       email: "consumer@example.com",
       startStep: 1,
     });
+  });
+});
+
+describe("InvitationPage — T-303 consumer-loggedin no auto-upgrade pendant le GET render", () => {
+  it("user loggé comme invitee SANS rôle producer → render InvitationConfirmCard, AUCUN UPDATE/INSERT côté DB", async () => {
+    sessionUser = { id: "user-1", email: "consumer@example.com" };
+    responses.producer_invitations = [validInvitation("consumer@example.com")];
+    responses.admin_users = [{ data: null, error: null }];
+    responses.users = [
+      {
+        data: {
+          id: "user-1",
+          roles: ["consumer"],
+          prenom: "Léa",
+          nom: "Martin",
+          telephone: "0612345678",
+        },
+        error: null,
+      },
+    ];
+    // Pas de producer existant côté DB.
+    responses.producers = [{ data: null, error: null }];
+
+    const result = await runPage(VALID_TOKEN);
+
+    const card = findByName(result, "InvitationConfirmCard");
+    expect(card).not.toBeNull();
+    expect(card!.props).toMatchObject({
+      token: VALID_TOKEN,
+      email: "consumer@example.com",
+      prenom: "Léa",
+    });
+
+    // Assertion CRITIQUE T-303 : aucun side-effect DB pendant le render.
+    // Le bug originel produisait UPDATE users.roles + INSERT producers ici.
+    expect(captured.updates).toEqual([]);
+    expect(captured.inserts).toEqual([]);
+
+    // Et pas de wizard non plus — la carte de confirmation remplace tout
+    // le flow auto-upgrade-puis-StepInfos.
+    expect(findByName(result, "OnboardingWizard")).toBeNull();
+  });
+
+  it("user loggé comme invitee + producer.draft existant → redirect /onboarding (early return inchangé Phase 4)", async () => {
+    sessionUser = { id: "user-1", email: "consumer@example.com" };
+    responses.producer_invitations = [validInvitation("consumer@example.com")];
+    responses.admin_users = [{ data: null, error: null }];
+    responses.users = [
+      {
+        data: {
+          id: "user-1",
+          roles: ["consumer", "producer"],
+          prenom: null,
+          nom: null,
+          telephone: null,
+        },
+        error: null,
+      },
+    ];
+    responses.producers = [{ data: { id: "p-1", statut: "draft" }, error: null }];
+
+    await expect(runPage(VALID_TOKEN)).rejects.toThrow(
+      "__REDIRECT__:/onboarding",
+    );
+
+    expect(captured.updates).toEqual([]);
+    expect(captured.inserts).toEqual([]);
   });
 });
