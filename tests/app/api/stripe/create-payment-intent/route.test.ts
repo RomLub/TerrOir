@@ -256,3 +256,20 @@ describe("B. T-406 — order.statut guard", () => {
     expect(mockPaymentIntentsCreate).toHaveBeenCalledTimes(1);
   });
 });
+
+// --- C. T-404 idempotencyKey paymentIntents.create -----------------------
+
+describe("C. T-404 — idempotencyKey passe en 2e arg de paymentIntents.create", () => {
+  it("T-404 happy path → create appele avec ({...params}, { idempotencyKey: 'pi_create_<order.id>' })", async () => {
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(200);
+    expect(mockPaymentIntentsCreate).toHaveBeenCalledTimes(1);
+    const call = mockPaymentIntentsCreate.mock.calls[0]!;
+    // 1er arg : params metier (montant, currency, customer, metadata...).
+    const [params, options] = call as [Record<string, unknown>, { idempotencyKey: string }];
+    expect(params.amount).toBe(Math.round(12.34 * 100));
+    expect(params.currency).toBe("eur");
+    // 2e arg : idempotency stable sur l'UUID order.
+    expect(options).toEqual({ idempotencyKey: `pi_create_${ORDER_ID}` });
+  });
+});

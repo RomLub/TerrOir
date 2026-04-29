@@ -118,18 +118,25 @@ export async function POST(request: Request) {
   // automatic_payment_methods qui activerait Link dans le Payment Element.
   // Notre propre système de cartes sauvegardées (Stripe Customer) couvre
   // le besoin sans la friction Link (email+téléphone+nom obligatoires).
-  const pi = await stripe.paymentIntents.create({
-    amount,
-    currency: "eur",
-    customer: customerId,
-    payment_method_types: ["card"],
-    ...(setupFutureUsage && { setup_future_usage: setupFutureUsage }),
-    metadata: {
-      order_id: order.id,
-      producer_id: order.producer_id,
-      consumer_id: order.consumer_id ?? "",
+  // T-404 idempotencyKey : `pi_create_${order.id}` (UUID stable). Empeche
+  // la double creation Stripe sur retry (timeout reseau, double-clic client,
+  // re-render React). Cohérent avec le pattern `refund_${order_id}_*` des
+  // 3 paths refund (T-408) + retry-failed-refund.ts.
+  const pi = await stripe.paymentIntents.create(
+    {
+      amount,
+      currency: "eur",
+      customer: customerId,
+      payment_method_types: ["card"],
+      ...(setupFutureUsage && { setup_future_usage: setupFutureUsage }),
+      metadata: {
+        order_id: order.id,
+        producer_id: order.producer_id,
+        consumer_id: order.consumer_id ?? "",
+      },
     },
-  });
+    { idempotencyKey: `pi_create_${order.id}` },
+  );
 
   const { error: updateError } = await supabase
     .from("orders")
