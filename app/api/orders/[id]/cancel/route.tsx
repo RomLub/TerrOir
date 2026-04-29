@@ -33,7 +33,7 @@ export async function POST(request: Request, { params }: RouteContext) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
-  const reason = parsed.data.reason ?? "other";
+  let reason = parsed.data.reason ?? "other";
 
   const admin = createSupabaseAdminClient();
 
@@ -51,7 +51,8 @@ export async function POST(request: Request, { params }: RouteContext) {
     return NextResponse.json({ ok: true, already: true });
   }
 
-  // Auth: système (cron secret), admin, ou producteur propriétaire
+  // Auth: système (cron secret), admin, producteur propriétaire, ou
+  // consumer pour sa propre commande tant qu'elle est encore pending.
   const cronSecret = process.env.CRON_SECRET;
   const isSystemCall =
     cronSecret !== undefined &&
@@ -70,6 +71,17 @@ export async function POST(request: Request, { params }: RouteContext) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
       authorizedByProducer = true;
+    } else if (
+      session.id === order.consumer_id &&
+      order.statut === "pending"
+    ) {
+      // Fenêtre stricte : tant que le producteur n'a pas confirmé, zéro
+      // engagement de sa part → l'annulation consumer est sans préjudice.
+      // Après 'confirmed' le consumer doit passer par contact direct.
+      // reason forcée à "consumer_cancel" pour analytics propres + défense
+      // contre un client forgeant une reason réservée producteur ("stock").
+      // authorizedByProducer reste false → pas de recalcul du badge.
+      reason = "consumer_cancel";
     } else {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
