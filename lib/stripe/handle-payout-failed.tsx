@@ -95,10 +95,15 @@ export async function syncStripePayoutFailed(
       `[STRIPE_PAYOUT_FAILED_NO_MATCH] payout=${payout.id} account=${eventAccount ?? "null"} amount=${payout.amount} — payouts row introuvable`,
     );
   } else {
-    // UPDATE statut='failed' (CHECK enum élargi par migration T-422).
+    // UPDATE statut='failed' + error_msg (CHECK enum élargi par migration
+    // T-422 ; column error_msg ajoutée par T-426). On préfère failure_message
+    // (humain) à failure_code (machine), fallback sur le code si pas de
+    // message. Au pire, sentinel "unknown" — la column ne reste jamais null
+    // sur un échec puisque la sémantique du chemin = un échec connu.
+    const errorMsg = failureMessage ?? failureCode ?? "unknown";
     const { error: updateError } = await admin
       .from("payouts")
-      .update({ statut: "failed" })
+      .update({ statut: "failed", error_msg: errorMsg })
       .eq("id", payoutRowId);
     if (updateError) {
       console.warn(

@@ -324,13 +324,16 @@ export async function processWeeklyPayouts(): Promise<{
         `[STRIPE_TRANSFER_FAILED_SYNC] payout=${newRow.id} producer=${producerId} reason=${msg}`,
       );
 
-      // 1. UPDATE 'failed' (vs 'processing' qui aurait déclenché retry).
-      //    Cas pathologique : si UPDATE échoue, row reste 'processing' et
-      //    le prochain run tentera le resume — l'idempotencyKey Stripe
+      // 1. UPDATE 'failed' + error_msg (vs 'processing' qui aurait déclenché
+      //    retry). Cas pathologique : si UPDATE échoue, row reste 'processing'
+      //    et le prochain run tentera le resume — l'idempotencyKey Stripe
       //    renverra le même throw 24h, on retombera dans ce catch. Acceptable.
+      //    error_msg dénormalise le message d'erreur dans la column dédiée
+      //    (T-426) — alignement avec audit_logs.metadata.error_message
+      //    historique mais query plus rapide pour debug back-office.
       const { error: failedUpdateErr } = await admin
         .from("payouts")
-        .update({ statut: "failed" })
+        .update({ statut: "failed", error_msg: msg })
         .eq("id", newRow.id);
       if (failedUpdateErr) {
         console.warn(

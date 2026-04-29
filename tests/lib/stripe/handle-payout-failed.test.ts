@@ -193,7 +193,12 @@ describe("syncStripePayoutFailed — direct via metadata.payout_id (T-414 futur)
     expect(out.result).toBe("updated");
     expect(out.payoutRowId).toBe("row-payout-1");
     expect(out.producerId).toBe("producer-42");
-    expect(captured.update[0]).toEqual({ statut: "failed" });
+    // T-426 — error_msg dénormalisé depuis failure_message (cf fixture
+    // makePayout : "The bank account has been closed.").
+    expect(captured.update[0]).toEqual({
+      statut: "failed",
+      error_msg: "The bank account has been closed.",
+    });
   });
 });
 
