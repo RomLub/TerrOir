@@ -322,38 +322,10 @@ describe("B. Order lookup + idempotence terminal", () => {
   });
 });
 
-// --- C. Auth — système (cron) --------------------------------------------
+// --- C. Auth — session manquante -----------------------------------------
 
-describe("C. Auth — système (cron)", () => {
-  it("C1 header x-cron-secret correct → bypass session, flow nominal", async () => {
-    process.env.CRON_SECRET = "super-secret";
-    sessionUser = null; // si bypass ne marchait pas → 401
-    const req = makeRequest({
-      body: { reason: "timeout" },
-      headers: { "x-cron-secret": "super-secret" },
-    });
-    const res = await POST(req, PARAMS);
-    expect(res.status).toBe(200);
-    const json = await res.json();
-    expect(json.statut).toBe("cancelled");
-    // authorizedByProducer = false en chemin cron → pas de badge update.
-    expect(
-      captured.updates.find((u) => u.table === "producers"),
-    ).toBeUndefined();
-  });
-
-  it("C2 CRON_SECRET unset, header présent → bypass désactivé → 401", async () => {
-    delete process.env.CRON_SECRET;
-    sessionUser = null;
-    const req = makeRequest({
-      headers: { "x-cron-secret": "anything" },
-    });
-    const res = await POST(req, PARAMS);
-    expect(res.status).toBe(401);
-    expect(await res.json()).toEqual({ error: "Unauthorized" });
-  });
-
-  it("C3 ni cron secret ni session → 401", async () => {
+describe("C. Auth — session manquante", () => {
+  it("C1 ni session → 401", async () => {
     sessionUser = null;
     const res = await POST(makeRequest(), PARAMS);
     expect(res.status).toBe(401);

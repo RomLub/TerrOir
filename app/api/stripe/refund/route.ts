@@ -13,8 +13,7 @@ import {
 
 const bodySchema = z.object({ order_id: z.string().uuid() });
 
-// Auth: admin, producteur propriétaire de la commande, ou appel interne
-// (timeout 24h) via header X-Cron-Secret.
+// Auth: admin ou producteur propriétaire de la commande.
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   const parsed = bodySchema.safeParse(body);
@@ -36,25 +35,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Order not found" }, { status: 404 });
   }
 
-  const cronSecret = process.env.CRON_SECRET;
-  const isSystemCall =
-    cronSecret !== undefined &&
-    request.headers.get("x-cron-secret") === cronSecret;
-
-  let authorized = isSystemCall;
-
-  if (!authorized) {
-    const session = await getSessionUser();
-    if (session?.isAdmin) {
-      authorized = true;
-    } else if (session?.roles.includes("producer")) {
-      const { data: producer } = await admin
-        .from("producers")
-        .select("id")
-        .eq("user_id", session.id)
-        .maybeSingle();
-      if (producer?.id === order.producer_id) authorized = true;
-    }
+  let authorized = false;
+  const session = await getSessionUser();
+  if (session?.isAdmin) {
+    authorized = true;
+  } else if (session?.roles.includes("producer")) {
+    const { data: producer } = await admin
+      .from("producers")
+      .select("id")
+      .eq("user_id", session.id)
+      .maybeSingle();
+    if (producer?.id === order.producer_id) authorized = true;
   }
 
   if (!authorized) {

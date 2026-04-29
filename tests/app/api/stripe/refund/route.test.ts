@@ -239,23 +239,13 @@ describe("B. Order lookup", () => {
 // --- C. Auth -------------------------------------------------------------
 
 describe("C. Auth multi-acteur", () => {
-  it("C1 header x-cron-secret correct → bypass session, flow nominal 200", async () => {
-    process.env.CRON_SECRET = "super-secret";
-    sessionUser = null; // bypass complet
-    const res = await POST(
-      makeRequest({ headers: { "x-cron-secret": "super-secret" } }),
-    );
-    expect(res.status).toBe(200);
-    expect((await res.json()).refund_id).toBe("re_test_123");
-  });
-
-  it("C2 session admin → 200 happy path", async () => {
+  it("C1 session admin → 200 happy path", async () => {
     const res = await POST(makeRequest());
     expect(res.status).toBe(200);
     expect(mockRefundCreate).toHaveBeenCalledTimes(1);
   });
 
-  it("C3 session producer owner (producers.id === order.producer_id) → 200", async () => {
+  it("C2 session producer owner (producers.id === order.producer_id) → 200", async () => {
     sessionUser = {
       id: PRODUCER_USER_ID,
       email: "prod@example.com",
@@ -276,7 +266,7 @@ describe("C. Auth multi-acteur", () => {
     ).toBeDefined();
   });
 
-  it("C4 session producer non-owner (producers.id mismatch) → 403", async () => {
+  it("C3 session producer non-owner (producers.id mismatch) → 403", async () => {
     sessionUser = {
       id: "user-other",
       email: "other@example.com",
@@ -290,7 +280,7 @@ describe("C. Auth multi-acteur", () => {
     expect(captured.updates).toEqual([]);
   });
 
-  it("C5 ni session ni cron secret → 403", async () => {
+  it("C4 ni session ni session producer → 403", async () => {
     sessionUser = null;
     const res = await POST(makeRequest());
     expect(res.status).toBe(403);
