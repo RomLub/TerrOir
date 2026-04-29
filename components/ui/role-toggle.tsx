@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { useUserContext } from "@/components/providers/user-provider";
-import { NEXT_PUBLIC_APP_URL, NEXT_PUBLIC_PRODUCER_URL } from "@/lib/env/urls";
+import { getRoleSwitcherUrls } from "@/lib/auth/role-switcher-urls";
 
 // Toggle slider cross-subdomain pour les users multi-rôles (consumer ET
 // producer présents dans `users.roles`). Variante horizontale du RoleSwitcher
 // (sidebars verticales) pour les contextes navbar horizontale (NavbarPublic).
 // Rend null si l'user n'a pas les deux rôles → pas de placeholder pour les
-// mono-rôle.
+// mono-rôle. Gating + URLs factorisés dans lib/auth/role-switcher-urls.ts.
 
 export const ROLE_TOGGLE_LABEL_CONSUMER = "Espace acheteur";
 export const ROLE_TOGGLE_LABEL_PRODUCER = "Espace producteur";
@@ -18,24 +18,10 @@ export type RoleToggleProps = {
   className?: string;
 };
 
-// Helper pur exposé pour tester la résolution d'URL sans monter le composant.
-// `target` = espace cible (pas l'espace courant). URLs absolues pour traverser
-// le sous-domaine — cookies session partagés sur .terroir-local.fr (cf.
-// lib/supabase/cookie-domain.ts) donc la session est conservée à la bascule.
-export function getRoleToggleTargetUrl(
-  target: "consumer" | "producer",
-): string {
-  return target === "consumer"
-    ? `${NEXT_PUBLIC_APP_URL}/compte`
-    : `${NEXT_PUBLIC_PRODUCER_URL}/dashboard`;
-}
-
 export function RoleToggle({ current, className = "" }: RoleToggleProps) {
   const { roles } = useUserContext();
-  if (!roles.includes("consumer") || !roles.includes("producer")) return null;
-
-  const consumerUrl = getRoleToggleTargetUrl("consumer");
-  const producerUrl = getRoleToggleTargetUrl("producer");
+  const { show, consumerUrl, producerUrl } = getRoleSwitcherUrls(roles);
+  if (!show) return null;
 
   return (
     <nav

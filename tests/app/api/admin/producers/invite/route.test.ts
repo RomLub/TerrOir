@@ -384,6 +384,15 @@ describe("E. Cas 1 — lead matching et création invitation_directe", () => {
     expect(
       captured.inserts.some((i) => i.table === "producer_interests"),
     ).toBe(false);
+    // T-322 : metadata Resend ne doit PAS contenir token_prefix (leak audit
+    // log forensique vers système tiers). token_prefix reste côté audit_logs
+    // Supabase via logAuthEvent (cf. test H1 invitation_created).
+    const sendArgs = mockSendTemplate.mock.calls[0]?.[0] as
+      | { metadata?: Record<string, unknown> }
+      | undefined;
+    expect(sendArgs?.metadata).toBeDefined();
+    expect(sendArgs?.metadata).not.toHaveProperty("token_prefix");
+    expect(sendArgs?.metadata?.email).toBe("prospect@example.com");
   });
 
   it("E2 aucun lead matché ET aucun lead existant → 200 + lead_created=true (invitation_directe)", async () => {
