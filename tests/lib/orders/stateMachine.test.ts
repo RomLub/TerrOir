@@ -23,7 +23,7 @@ const STATUSES: readonly OrderStatus[] = [
 const LEGAL: Record<OrderStatus, readonly OrderStatus[]> = {
   pending: ["confirmed", "cancelled", "refunded"],
   confirmed: ["ready", "cancelled", "refunded"],
-  ready: ["completed", "cancelled"],
+  ready: ["completed", "cancelled", "refunded"],
   completed: [],
   cancelled: [],
   refunded: [],
@@ -82,8 +82,6 @@ describe("assertTransition — contrat throw / no-throw", () => {
       // Retours en arrière interdits
       ["confirmed", "pending"],
       ["ready", "confirmed"],
-      // ready → refunded illégal (cf TODO investigation produit)
-      ["ready", "refunded"],
       // Terminaux : aucune transition sortante
       ["completed", "ready"],
       ["completed", "refunded"],

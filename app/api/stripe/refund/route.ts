@@ -74,7 +74,7 @@ export async function POST(request: Request) {
   // Filet état machine AVANT le refund Stripe : refuser une transition
   // invalide ici évite d'émettre un refund Stripe irrécupérable. Refund
   // admin = action explicite ; pas de fallback cancelled comme la route
-  // cancel (cf décision produit "ready→refunded" tracée en TODO).
+  // cancel.
   try {
     assertTransition(order.statut as OrderStatus, "refunded");
   } catch (e) {

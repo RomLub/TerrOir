@@ -562,18 +562,17 @@ describe("E. Stripe refund + state machine fallback", () => {
     );
   });
 
-  it("E4 stripe_pi + refund OK + statut ready → fallback canTransition (ready→refunded illégal) → cancelled (refund Stripe a quand même eu lieu)", async () => {
+  it("E4 stripe_pi + refund OK + statut ready → finalStatus refunded (T-151 transition autorisée, drift Stripe/DB résolu)", async () => {
     setOrderFetch({ statut: "ready", stripe_payment_intent_id: PI_ID });
     mockRefundCreate.mockResolvedValue({ id: "re_1" });
     const res = await POST(makeRequest(), PARAMS);
     expect(res.status).toBe(200);
-    // Le refund Stripe a bien été tenté avant le fallback DB.
     expect(mockRefundCreate).toHaveBeenCalledTimes(1);
     const json = await res.json();
-    expect(json.statut).toBe("cancelled");
+    expect(json.statut).toBe("refunded");
     const orderUpdate = captured.updates.find((u) => u.table === "orders");
     expect((orderUpdate!.payload as Record<string, unknown>).statut).toBe(
-      "cancelled",
+      "refunded",
     );
   });
 });

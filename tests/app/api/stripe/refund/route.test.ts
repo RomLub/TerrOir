@@ -1,9 +1,9 @@
 // Vitest pour POST /api/stripe/refund (refund admin manuel).
 // Couverture : zod uuid, auth multi-acteur (cron / admin / producer-owner),
-// idempotence refunded, no-PI 409, filet assertTransition (Q1 strict :
-// 409 sans refund Stripe — pas de fallback cancelled comme la route cancel),
-// happy path refund + UPDATE + notification + revalidateTag, drift
-// Stripe/DB [REFUND_DB_DRIFT], cache flap [STATS_REVAL_WARN].
+// idempotence refunded, no-PI 409, filet assertTransition strict (409 sans
+// refund Stripe sur statut terminal — pas de fallback cancelled comme la
+// route cancel), happy path refund + UPDATE + notification + revalidateTag,
+// drift Stripe/DB [REFUND_DB_DRIFT], cache flap [STATS_REVAL_WARN].
 //
 // Pattern aligné sur tests/app/api/orders/[id]/cancel/route.test.ts :
 // vi.hoisted pour mocks partagés + builder Supabase chaînable + queues
@@ -319,18 +319,21 @@ describe("D. État commande + filet assertTransition", () => {
     expect(mockRefundCreate).not.toHaveBeenCalled();
   });
 
-  it("D3 statut='ready' → 409 InvalidOrderTransition, refund Stripe jamais émis (filet clé)", async () => {
+  it("D3 statut='ready' → 200 happy path (T-151 transition ready→refunded autorisée)", async () => {
     setOrderFetch({ statut: "ready" });
     const res = await POST(makeRequest());
-    expect(res.status).toBe(409);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toContain("ready");
-    expect(body.error).toContain("refunded");
-    // Garde-fou critique : le refund Stripe ne doit PAS être émis quand la
-    // transition est refusée — éviter un refund irrécupérable.
-    expect(mockRefundCreate).not.toHaveBeenCalled();
-    expect(captured.updates).toEqual([]);
-    expect(mockRevalidateTag).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect((await res.json()).refund_id).toBe("re_test_123");
+    // Refund Stripe émis + UPDATE statut=refunded + revalidateTag.
+    expect(mockRefundCreate).toHaveBeenCalledTimes(1);
+    const orderUpdate = captured.updates.find((u) => u.table === "orders");
+    expect((orderUpdate!.payload as Record<string, unknown>).statut).toBe(
+      "refunded",
+    );
+    expect(mockRevalidateTag).toHaveBeenCalledWith("public-stats");
+    // badge_annulation_score : aucun UPDATE sur producers (cohérent avec
+    // l'absence de logique badge dans cette route — gating dans cancel route).
+    expect(captured.updates.find((u) => u.table === "producers")).toBeUndefined();
   });
 
   it("D4 statut='cancelled' (terminal) → 409, refund Stripe jamais émis", async () => {
@@ -338,6 +341,20 @@ describe("D. État commande + filet assertTransition", () => {
     const res = await POST(makeRequest());
     expect(res.status).toBe(409);
     expect(mockRefundCreate).not.toHaveBeenCalled();
+  });
+
+  it("D5 statut='completed' (terminal) → 409, refund Stripe jamais émis (filet clé post-T-151)", async () => {
+    setOrderFetch({ statut: "completed" });
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toContain("completed");
+    expect(body.error).toContain("refunded");
+    // Garde-fou critique : le refund Stripe ne doit PAS être émis quand la
+    // transition est refusée — éviter un refund irrécupérable.
+    expect(mockRefundCreate).not.toHaveBeenCalled();
+    expect(captured.updates).toEqual([]);
+    expect(mockRevalidateTag).not.toHaveBeenCalled();
   });
 });
 

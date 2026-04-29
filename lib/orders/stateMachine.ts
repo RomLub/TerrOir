@@ -17,7 +17,7 @@ export type OrderStatus =
 const TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
   pending: ["confirmed", "cancelled", "refunded"],
   confirmed: ["ready", "cancelled", "refunded"],
-  ready: ["completed", "cancelled"],
+  ready: ["completed", "cancelled", "refunded"],
   completed: [],
   cancelled: [],
   refunded: [],
