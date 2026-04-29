@@ -137,18 +137,28 @@ describe("loginAndUpgradeAction", () => {
     expect(captured.fromCalls).toEqual([]);
   });
 
-  it("aucun user trouvé pour cet email → error 'Aucun compte trouvé'", async () => {
-    responses.producer_invitations = [validInvitationResp()];
+  it("T-304 : aucun user trouvé pour cet email → error générique 'Identifiants incorrects' + console.warn forensique", async () => {
+    responses.producer_invitations = [validInvitationResp("ghost@example.com")];
     responses.users = [{ data: null, error: null }];
+
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     const res = await loginAndUpgradeAction({}, makeFormData());
 
-    expect(res).toEqual({ error: "Aucun compte trouvé avec cet email" });
+    // T-304 : message générique commun avec cas signinError pour bloquer
+    // l'énumération email-vs-password côté UI.
+    expect(res).toEqual({ error: "Identifiants incorrects" });
     expect(signInMock).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0]?.[0]).toMatch(
+      /INVITATION_LOGIN_NO_USER email=ghost@example\.com/,
+    );
+
+    warnSpy.mockRestore();
   });
 
-  it("mot de passe incorrect → error 'Mot de passe incorrect'", async () => {
-    responses.producer_invitations = [validInvitationResp()];
+  it("T-304 : mot de passe incorrect → error générique 'Identifiants incorrects' + console.warn forensique", async () => {
+    responses.producer_invitations = [validInvitationResp("user@example.com")];
     responses.users = [
       { data: { id: "user-42", roles: ["consumer"] }, error: null },
     ];
@@ -157,12 +167,22 @@ describe("loginAndUpgradeAction", () => {
       error: { message: "Invalid login credentials" },
     });
 
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
     const res = await loginAndUpgradeAction({}, makeFormData());
 
-    expect(res).toEqual({ error: "Mot de passe incorrect" });
+    // CHAÎNE EXACTE IDENTIQUE à cas !existingUser pour preuve textuelle
+    // d'enumeration-resistance côté UI.
+    expect(res).toEqual({ error: "Identifiants incorrects" });
     expect(captured.updates).toEqual([]);
     expect(captured.inserts).toEqual([]);
     // Phase 3 audit : pas de role_changed loggué si auth a échoué
     expect(logAuthEventMock).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(warnSpy.mock.calls[0]?.[0]).toMatch(
+      /INVITATION_LOGIN_SIGNIN_FAIL email=user@example\.com message=Invalid login credentials/,
+    );
+
+    warnSpy.mockRestore();
   });
 });

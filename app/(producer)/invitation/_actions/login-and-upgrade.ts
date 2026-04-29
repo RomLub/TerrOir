@@ -45,7 +45,13 @@ export async function loginAndUpgradeAction(
     .maybeSingle();
 
   if (!existingUser) {
-    return { error: "Aucun compte trouvé avec cet email" };
+    // T-304 : enumeration-resistance. Message générique commun avec le
+    // cas signinError pour ne pas distinguer "email inconnu" vs "password
+    // incorrect" côté UI. console.warn forensique côté server pour debug.
+    console.warn(
+      `INVITATION_LOGIN_NO_USER email=${invitation.email}`,
+    );
+    return { error: "Identifiants incorrects" };
   }
 
   const currentRoles = Array.isArray(existingUser.roles)
@@ -65,7 +71,11 @@ export async function loginAndUpgradeAction(
     password: parsed.data.password,
   });
   if (signinError) {
-    return { error: "Mot de passe incorrect" };
+    // T-304 : message générique aligné cas !existingUser ci-dessus.
+    console.warn(
+      `INVITATION_LOGIN_SIGNIN_FAIL email=${invitation.email} message=${signinError.message}`,
+    );
+    return { error: "Identifiants incorrects" };
   }
 
   const newRoles = Array.from(new Set([...currentRoles, "producer"]));
