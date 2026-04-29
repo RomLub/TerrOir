@@ -11,6 +11,7 @@ import type { User } from "@supabase/supabase-js";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { UserRole } from "@/lib/auth/roles";
 import type { InitialUserPayload, ProducerLite } from "@/lib/auth/types";
+import { createAuthBroadcaster } from "@/lib/auth/cross-tab-auth-sync";
 
 export type { ProducerLite };
 
@@ -147,22 +148,56 @@ export function UserProvider({
       setIsProducer(producerData !== null);
     }
 
+    function applySession(currentUser: User | null) {
+      setUser(currentUser);
+      loadProfile(currentUser).finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    }
+
+    // Cross-tab sync (T-316). Le storage adapter Supabase est cookies (cf.
+    // lib/supabase/client.ts), donc onAuthStateChange ne fire PAS quand un
+    // autre tab modifie la session — d'où le besoin de broadcaster
+    // explicitement les transitions identité via BroadcastChannel API.
+    const broadcaster = createAuthBroadcaster();
+    const unsubscribeBroadcast = broadcaster.subscribe(() => {
+      // Tab émetteur a notifié un changement identité — on récupère la
+      // session courante côté lecteur et on re-applique le state. getSession
+      // lit les cookies à jour (le tab émetteur a déjà mis à jour cookies
+      // via signIn/signOut) ; pas besoin de refresh côté serveur.
+      void supabase.auth.getSession().then(({ data }) => {
+        if (cancelled) return;
+        applySession(data.session?.user ?? null);
+      });
+    });
+
     // onAuthStateChange émet INITIAL_SESSION dès l'abonnement → couvre la
     // résolution initiale, plus tous les login/logout ultérieurs (multi-tab,
     // expiration token). Pas besoin d'appel getSession() séparé.
+    //
+    // Broadcast filtré aux events identité (SIGNED_IN/SIGNED_OUT/
+    // USER_UPDATED/PASSWORD_RECOVERY) — on exclut TOKEN_REFRESHED (spam
+    // toutes les heures sur tous les tabs sans changement de user) et
+    // INITIAL_SESSION (mount local, ne représente pas une transition).
+    const IDENTITY_EVENTS = new Set([
+      "SIGNED_IN",
+      "SIGNED_OUT",
+      "USER_UPDATED",
+      "PASSWORD_RECOVERY",
+    ]);
     const { data: listener } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      (event, session) => {
         const current = session?.user ?? null;
-        setUser(current);
-        loadProfile(current).finally(() => {
-          if (!cancelled) setLoading(false);
-        });
+        applySession(current);
+        if (IDENTITY_EVENTS.has(event)) broadcaster.broadcast();
       },
     );
 
     return () => {
       cancelled = true;
       listener.subscription.unsubscribe();
+      unsubscribeBroadcast();
+      broadcaster.close();
     };
   }, [supabase]);
 
