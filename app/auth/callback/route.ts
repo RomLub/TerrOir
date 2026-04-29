@@ -10,6 +10,8 @@ import {
   clearRedirectAfterAuth,
   readRedirectAfterAuth,
 } from "@/lib/auth/redirect-cookie";
+import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
+import { maskEmail } from "@/lib/rgpd/mask-email";
 
 // Gère le retour des emails transactionnels Supabase (recovery, invite,
 // magic link, signup) au format ?token_hash=…&type=… → OTP vérifié via
@@ -127,6 +129,29 @@ export async function GET(request: NextRequest) {
     } = await supabase.auth.getUser();
     if (user) {
       const role = await loadRoleSnapshot(supabase, user.id);
+
+      // Phase 3 multi-events audit (T-081 PR-A) — events forensiques
+      // additionnels sur le callback OTP. email_change : audit le swap
+      // d'adresse (verifyOtp a mis à jour auth.users.email côté Supabase).
+      // admin_login magiclink : pendant security-critical du admin_login
+      // password déjà loggé dans loginAction (cf. app/connexion/actions.ts).
+      if (type === "email_change") {
+        await logAuthEvent({
+          eventType: "email_change",
+          userId: user.id,
+          metadata: {
+            new_email_masked: user.email ? maskEmail(user.email) : null,
+          },
+        });
+      }
+      if (type === "magiclink" && role.isAdmin) {
+        await logAuthEvent({
+          eventType: "admin_login",
+          userId: user.id,
+          metadata: { source: "magic_link" },
+        });
+      }
+
       targetUrl = canonicalPostLoginUrlWithRedirect(role, redirectTo);
     } else {
       targetUrl = new URL("/", url.origin);

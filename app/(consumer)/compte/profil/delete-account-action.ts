@@ -68,6 +68,8 @@ import { sendTemplate } from "@/lib/resend/send";
 import AccountDeleted, {
   subject as accountDeletedSubject,
 } from "@/lib/resend/templates/account-deleted";
+import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
+import { maskEmail } from "@/lib/rgpd/mask-email";
 
 export type DeleteAccountState = {
   error?: string;
@@ -113,6 +115,17 @@ export async function deleteAccountAction(
   if (signInError) {
     return { error: "Mot de passe incorrect." };
   }
+
+  // Audit forensique RGPD : log AVANT le RPC delete (sinon user_id perdu
+  // par CASCADE auth.users → public.users à l'étape 8). metadata.email_masked
+  // via maskEmail (rappel : metadata.email en clair est OK côté audit_logs DB
+  // — cf. magic_link conv. — mais ici on suit le pattern PII minimal du
+  // brief T-081).
+  await logAuthEvent({
+    eventType: "account_deleted",
+    userId: session.id,
+    metadata: { email_masked: maskEmail(session.email) },
+  });
 
   // 3. Capture producer state AVANT RPC (l'anonymisation va NULL le stripe_account_id)
   const admin = createSupabaseAdminClient();

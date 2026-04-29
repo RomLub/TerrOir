@@ -6,6 +6,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { signupSchema } from "@/lib/auth/validators";
 import { NEXT_PUBLIC_APP_URL } from "@/lib/env/urls";
+import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 
 export type SignupState = { error?: string };
 
@@ -59,6 +60,12 @@ export async function signupAction(
   if (profileError) {
     return { error: `Profil non créé : ${profileError.message}` };
   }
+
+  await logAuthEvent({
+    eventType: "account_signup",
+    userId: data.user.id,
+    metadata: { source: "consumer_signup_form" },
+  });
 
   // Invalide le cache RSC du root layout AVANT redirect — supabase config
   // enable_confirmations=false (cf. supabase/config.toml) → signUp pose les

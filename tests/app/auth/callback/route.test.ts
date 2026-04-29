@@ -21,6 +21,8 @@ const {
   mockCanonicalPostLoginUrl,
   mockLoadRoleSnapshot,
   mockReadRedirectAfterAuth,
+  mockLogAuthEvent,
+  mockMaskEmail,
 } = vi.hoisted(() => ({
   mockVerifyOtp: vi.fn(),
   mockExchangeCodeForSession: vi.fn(),
@@ -28,6 +30,8 @@ const {
   mockCanonicalPostLoginUrl: vi.fn(),
   mockLoadRoleSnapshot: vi.fn(),
   mockReadRedirectAfterAuth: vi.fn(),
+  mockLogAuthEvent: vi.fn(),
+  mockMaskEmail: vi.fn(),
 }));
 
 vi.mock("@supabase/ssr", () => ({
@@ -54,6 +58,14 @@ vi.mock("@/lib/auth/redirect-cookie", () => ({
   clearRedirectAfterAuth: vi.fn(),
 }));
 
+vi.mock("@/lib/audit-logs/log-auth-event", () => ({
+  logAuthEvent: mockLogAuthEvent,
+}));
+
+vi.mock("@/lib/rgpd/mask-email", () => ({
+  maskEmail: mockMaskEmail,
+}));
+
 import { GET } from "@/app/auth/callback/route";
 
 beforeEach(() => {
@@ -66,6 +78,10 @@ beforeEach(() => {
   mockLoadRoleSnapshot.mockReset();
   mockReadRedirectAfterAuth.mockReset();
   mockReadRedirectAfterAuth.mockReturnValue(null);
+  mockLogAuthEvent.mockReset();
+  mockLogAuthEvent.mockResolvedValue(undefined);
+  mockMaskEmail.mockReset();
+  mockMaskEmail.mockImplementation((email: string) => `m_${email}`);
 });
 
 afterEach(() => {
@@ -140,5 +156,86 @@ describe("GET /auth/callback — fallback erreur params manquants", () => {
     expect(location).toContain("/connexion");
     expect(location).toContain("error=auth_callback");
     expect(location).toContain("reason=Missing+token_hash");
+  });
+});
+
+describe("GET /auth/callback — Phase 3 multi-events audit (T-081 PR-A)", () => {
+  it("type=email_change → logAuthEvent('email_change') avec new_email_masked", async () => {
+    mockVerifyOtp.mockResolvedValue({ error: null });
+    mockGetUser.mockResolvedValue({
+      data: { user: { id: "user-42", email: "new@example.com" } },
+    });
+    mockLoadRoleSnapshot.mockResolvedValue({
+      isAdmin: false,
+      isProducer: false,
+      producerStatut: null,
+    });
+    mockCanonicalPostLoginUrl.mockReturnValue(
+      new URL("https://www.terroir-local.fr/compte"),
+    );
+
+    await GET(buildRequest("?token_hash=abc&type=email_change"));
+
+    expect(mockLogAuthEvent).toHaveBeenCalledWith({
+      eventType: "email_change",
+      userId: "user-42",
+      metadata: { new_email_masked: "m_new@example.com" },
+    });
+  });
+
+  it("type=magiclink + role.isAdmin=true → logAuthEvent('admin_login') avec source='magic_link'", async () => {
+    mockVerifyOtp.mockResolvedValue({ error: null });
+    mockGetUser.mockResolvedValue({
+      data: { user: { id: "admin-1", email: "admin@example.com" } },
+    });
+    mockLoadRoleSnapshot.mockResolvedValue({
+      isAdmin: true,
+      isProducer: false,
+      producerStatut: null,
+    });
+    mockCanonicalPostLoginUrl.mockReturnValue(
+      new URL("https://admin.terroir-local.fr/tableau-de-bord"),
+    );
+
+    await GET(buildRequest("?token_hash=abc&type=magiclink"));
+
+    expect(mockLogAuthEvent).toHaveBeenCalledWith({
+      eventType: "admin_login",
+      userId: "admin-1",
+      metadata: { source: "magic_link" },
+    });
+  });
+
+  it("type=magiclink + role.isAdmin=false → admin_login NON loggué (event security-critical réservé admin)", async () => {
+    mockVerifyOtp.mockResolvedValue({ error: null });
+    mockGetUser.mockResolvedValue({
+      data: { user: { id: "user-1", email: "user@example.com" } },
+    });
+    mockLoadRoleSnapshot.mockResolvedValue({
+      isAdmin: false,
+      isProducer: false,
+      producerStatut: null,
+    });
+    mockCanonicalPostLoginUrl.mockReturnValue(
+      new URL("https://www.terroir-local.fr/compte"),
+    );
+
+    await GET(buildRequest("?token_hash=abc&type=magiclink"));
+
+    expect(
+      mockLogAuthEvent.mock.calls.find(
+        (call) => (call[0] as { eventType: string }).eventType === "admin_login",
+      ),
+    ).toBeUndefined();
+  });
+
+  it("type=recovery → ni email_change ni admin_login loggué (branche short-circuit)", async () => {
+    mockVerifyOtp.mockResolvedValue({ error: null });
+
+    await GET(buildRequest("?token_hash=xyz&type=recovery"));
+
+    // recovery prend la branche else if (type === "recovery") qui ne fait
+    // pas getUser et donc ne tombe jamais dans le bloc Phase 3.
+    expect(mockLogAuthEvent).not.toHaveBeenCalled();
   });
 });

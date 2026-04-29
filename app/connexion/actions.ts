@@ -43,6 +43,19 @@ export async function loginAction(
   });
 
   const role = await loadRoleSnapshot(supabase, data.user.id);
+
+  // Phase 3 (T-081 PR-A) : event distinct admin_login pour détection
+  // forensique de compromission (security-critical). Loggé EN PLUS de
+  // account_login_password (asymétrie volontaire : un admin compromis
+  // déclenche les 2 events ; un détecteur peut grep `admin_login` seul).
+  if (role.isAdmin) {
+    await logAuthEvent({
+      eventType: "admin_login",
+      userId: data.user.id,
+      metadata: { source: "password" },
+    });
+  }
+
   const host = headers().get("host") ?? "";
   // Invalide le cache RSC du root layout AVANT redirect : sans ça, Next 14
   // navigue côté client vers la cible (ex: /compte) en réutilisant le
