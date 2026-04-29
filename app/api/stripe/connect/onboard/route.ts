@@ -47,6 +47,20 @@ export async function POST() {
       .update({ stripe_account_id: stripeAccountId })
       .eq("id", producer.id);
     if (updateError) {
+      // T-418 compensation : l'account Stripe vient d'être créé (l.33-42),
+      // 0 activité par construction sauf race rarissime (producer ouvre
+      // Dashboard externe pendant le crash de l'UPDATE). On tente
+      // accounts.del best-effort pour éviter l'accumulation d'orphelins.
+      // Si del throw → log greppable + continuer (pas de re-throw).
+      // Pattern symétrique cleanup.ts mais inline (sémantique différente :
+      // compensation transactionnelle ≠ suppression RGPD).
+      try {
+        await stripe.accounts.del(stripeAccountId);
+      } catch (delErr) {
+        console.warn(
+          `[CONNECT_ONBOARD_ROLLBACK_FAILED] account=${stripeAccountId} producer=${producer.id} reason=${(delErr as Error).message ?? "unknown"}`,
+        );
+      }
       return NextResponse.json(
         { error: `Account created but not persisted: ${updateError.message}` },
         { status: 500 },
