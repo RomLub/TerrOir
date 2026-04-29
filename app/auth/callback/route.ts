@@ -14,6 +14,7 @@ import {
 import { setRoleSnapshotOnResponse } from "@/lib/auth/role-snapshot-cookie";
 import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 import { maskEmail } from "@/lib/rgpd/mask-email";
+import { sanitizeNext } from "@/lib/auth/sanitize-next";
 
 // Gère le retour des emails transactionnels Supabase (recovery, invite,
 // magic link, signup) au format ?token_hash=…&type=… → OTP vérifié via
@@ -40,13 +41,6 @@ const ALLOWED_TYPES: EmailOtpType[] = [
   "email_change",
   "email",
 ];
-
-function sanitizeNext(raw: string | null): string | null {
-  if (!raw) return null;
-  // On n'autorise qu'un chemin relatif sur le même host — jamais une URL externe.
-  if (!raw.startsWith("/") || raw.startsWith("//")) return null;
-  return raw;
-}
 
 type AuthErrorCode = "expired" | "invalid" | "missing" | "technical";
 
