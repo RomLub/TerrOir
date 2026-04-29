@@ -1,6 +1,13 @@
 import "server-only";
+import { waitUntil } from "@vercel/functions";
 import { stripe } from "./server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
+import { sendTemplate } from "@/lib/resend/send";
+import { SUPPORT_EMAIL } from "@/lib/env/support-email";
+import AdminTransferFailed, {
+  subject as adminTransferFailedSubject,
+} from "@/lib/resend/templates/admin-transfer-failed";
 
 // =============================================================================
 // Calcule la plage lundi 00:00 → dimanche 23:59:59.999 UTC de la semaine
@@ -305,15 +312,111 @@ export async function processWeeklyPayouts(): Promise<{
       transferId = transfer.id;
     } catch (transferErr) {
       const msg = (transferErr as Error).message;
+
+      // Compensation A2 — Stripe Connect Express n'émet pas l'event webhook
+      // transfer.failed (transfers synchrones API). Le throw ici est le seul
+      // signal d'échec → on doit poser le row 'failed' + audit + alerte admin
+      // synchrone (pas de retry auto, désaligne le path resume vers manual
+      // review). Bundle 3 TB a gardé l'enum stripe_transfer_failed +
+      // template admin_transfer_failed pour ce consumer (cf commentaire
+      // log-payment-event.ts:66-76).
       console.warn(
-        `[WEEKLY_PAYOUT_TRANSFER_FAILED] payout=${newRow.id} reason=${msg}`,
+        `[STRIPE_TRANSFER_FAILED_SYNC] payout=${newRow.id} producer=${producerId} reason=${msg}`,
       );
-      // Row reste 'processing' → prochain run reprend par chemin resume.
+
+      // 1. UPDATE 'failed' (vs 'processing' qui aurait déclenché retry).
+      //    Cas pathologique : si UPDATE échoue, row reste 'processing' et
+      //    le prochain run tentera le resume — l'idempotencyKey Stripe
+      //    renverra le même throw 24h, on retombera dans ce catch. Acceptable.
+      const { error: failedUpdateErr } = await admin
+        .from("payouts")
+        .update({ statut: "failed" })
+        .eq("id", newRow.id);
+      if (failedUpdateErr) {
+        console.warn(
+          `[WEEKLY_PAYOUT_FAILED_UPDATE_FAILED] payout=${newRow.id} reason=${failedUpdateErr.message}`,
+        );
+      }
+
+      // 2. Lookup nom_exploitation pour subject email (best-effort).
+      const { data: producerNom } = await admin
+        .from("producers")
+        .select("nom_exploitation")
+        .eq("id", producerId)
+        .maybeSingle();
+      const exploitation =
+        (producerNom as { nom_exploitation?: string | null } | null)
+          ?.nom_exploitation ?? null;
+
+      // 3. Audit log forensique (logPaymentEvent est lui-même fail-safe).
+      await logPaymentEvent({
+        eventType: "stripe_transfer_failed",
+        metadata: {
+          payout_id: newRow.id,
+          producer_id: producerId,
+          periode_debut: periodeDebut,
+          periode_fin: periodeFin,
+          montant_net_cents: Math.round(montantNet * 100),
+          currency: "eur",
+          error_message: msg,
+          // Discrimine du futur webhook (n'arrive jamais sur Express, mais
+          // flag prévoit cohérence forensique si Stripe change leur API).
+          source: "sync_transfer_create",
+        },
+      });
+
+      // 4. Notification placeholder DB — pattern aligné handle-payout-failed.tsx
+      //    (insert "intent" synchrone, l'envoi Resend insérera son propre row).
+      await admin.from("notifications").insert({
+        user_id: null,
+        type: "email",
+        template: "admin_transfer_failed",
+        statut: "sent",
+        metadata: {
+          payout_id: newRow.id,
+          producer_id: producerId,
+          periode_debut: periodeDebut,
+          montant_net_cents: Math.round(montantNet * 100),
+          error_message: msg,
+        },
+      });
+
+      // 5. Email réel admin via Resend (fire-and-forget waitUntil).
+      const dashboardUrl = `https://dashboard.stripe.com/connect/accounts/${producer.stripe_account_id}/transfers`;
+      const props = {
+        exploitation,
+        amount: montantNet,
+        currency: "eur",
+        // transferId: pas d'ID Stripe (le throw a précédé la création).
+        // Placeholder informatif pour le template qui exige string.
+        transferId: `(échec synchrone — payout ${newRow.id})`,
+        failureMessage: msg,
+        failureCode: null,
+        dashboardUrl,
+      };
+      waitUntil(
+        sendTemplate({
+          to: SUPPORT_EMAIL,
+          userId: null,
+          template: "admin_transfer_failed",
+          subject: adminTransferFailedSubject(props),
+          element: <AdminTransferFailed {...props} />,
+          metadata: {
+            payout_id: newRow.id,
+            producer_id: producerId,
+          },
+        }).catch((err) => {
+          console.error(
+            `[STRIPE_TRANSFER_FAILED_EMAIL_ERR] payout=${newRow.id} error=${(err as Error).message}`,
+          );
+        }),
+      );
+
       results.push({
         ...baseResult,
         payout_id: newRow.id,
         stripe_transfer_id: null,
-        error: `Transfer failed (will retry): ${msg}`,
+        error: `Transfer failed: ${msg}`,
       });
       continue;
     }

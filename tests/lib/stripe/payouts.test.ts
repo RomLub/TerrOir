@@ -7,7 +7,8 @@
 //   - Skip 'failed' (défensif Bundle 3 TB)
 //   - Skip 'pending' legacy (T-424 reflag migration one-shot)
 //   - Producer not_ready (R1 : pas d'INSERT fantôme)
-//   - Crash transfer.create → row reste 'processing'
+//   - Crash transfer.create → compensation A2 (UPDATE 'failed' + audit + Resend
+//     + notification, alignée handle-payout-failed.tsx Bundle 3 TB)
 //   - Crash UPDATE 'paid' → row reste 'processing'
 //   - Anti-régression T-414 : ordre INSERT-before-transfer vérifié via invocationCallOrder
 //   - idempotencyKey forme exacte `transfer_${producerId}_${periodeDebut}`
@@ -18,12 +19,21 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-// `lib/stripe/payouts.ts` importe 'server-only' (virtuel Next) — stub.
+// `lib/stripe/payouts.tsx` importe 'server-only' (virtuel Next) — stub.
 vi.mock("server-only", () => ({}));
 
-const { mockTransferCreate, mockCreateAdminClient } = vi.hoisted(() => ({
+const {
+  mockTransferCreate,
+  mockCreateAdminClient,
+  mockLogPaymentEvent,
+  mockSendTemplate,
+  mockWaitUntil,
+} = vi.hoisted(() => ({
   mockTransferCreate: vi.fn(),
   mockCreateAdminClient: vi.fn(),
+  mockLogPaymentEvent: vi.fn(),
+  mockSendTemplate: vi.fn(),
+  mockWaitUntil: vi.fn(),
 }));
 
 vi.mock("@/lib/stripe/server", () => ({
@@ -34,6 +44,33 @@ vi.mock("@/lib/stripe/server", () => ({
 
 vi.mock("@/lib/supabase/admin", () => ({
   createSupabaseAdminClient: mockCreateAdminClient,
+}));
+
+vi.mock("@/lib/audit-logs/log-payment-event", () => ({
+  logPaymentEvent: mockLogPaymentEvent,
+}));
+
+vi.mock("@/lib/resend/send", () => ({
+  sendTemplate: mockSendTemplate,
+}));
+
+vi.mock("@/lib/env/support-email", () => ({
+  SUPPORT_EMAIL: "admin@terroir-test.fr",
+}));
+
+// Le template JSX consomme @react-email/* lors du render. On le remplace
+// par une factory minimale — `processWeeklyPayouts` ne fait que passer la
+// référence à `sendTemplate` (qui est aussi mocké).
+vi.mock("@/lib/resend/templates/admin-transfer-failed", () => ({
+  default: (props: unknown) => ({ __template: "admin_transfer_failed", props }),
+  subject: (p: { exploitation: string | null }) =>
+    `[TerrOir Admin] Transfer Stripe échoué — ${p.exploitation ?? "producteur inconnu"}`,
+}));
+
+// waitUntil : exécute le callback immédiatement et attend sa résolution dans
+// le test pour stabilité des assertions (pas de fire-and-forget en test).
+vi.mock("@vercel/functions", () => ({
+  waitUntil: mockWaitUntil,
 }));
 
 import { processWeeklyPayouts } from "@/lib/stripe/payouts";
@@ -154,6 +191,11 @@ beforeEach(() => {
   responses = {};
   mockTransferCreate.mockReset();
   mockCreateAdminClient.mockReset().mockImplementation(() => makeAdminClient());
+  mockLogPaymentEvent.mockReset().mockResolvedValue(undefined);
+  mockSendTemplate.mockReset().mockResolvedValue({ ok: true, id: "email_test" });
+  // waitUntil : on exécute le callback immédiatement (Vercel-side réel
+  // détache le promise), et on capture l'argument pour assertion.
+  mockWaitUntil.mockReset().mockImplementation((p: Promise<unknown>) => p);
   consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 });
 
@@ -555,15 +597,122 @@ describe("processWeeklyPayouts — producer not_ready (R1)", () => {
 });
 
 // =============================================================================
-// 7. Crash transfer.create (path nominal) → row reste 'processing'
+// 7. Crash transfer.create — compensation A2 (UPDATE 'failed' + audit + Resend
+//    + notification placeholder, aligné handle-payout-failed.tsx Bundle 3 TB)
 // =============================================================================
-describe("processWeeklyPayouts — crash transfer.create (path nominal)", () => {
-  it("INSERT 'processing' fait, transfer throw → pas d'UPDATE, error_msg propagé", async () => {
+describe("processWeeklyPayouts — crash transfer.create (compensation A2)", () => {
+  it("transfer throw → UPDATE 'failed' + audit log stripe_transfer_failed + Resend admin + notification placeholder", async () => {
     responses = {
       orders: { select: [{ data: [defaultOrder()], error: null }] },
       payouts: {
         select: [{ data: null, error: null }],
         insert: [{ data: { id: "payout-crash-transfer" }, error: null }],
+        update: [{ data: null, error: null }], // UPDATE 'failed' OK
+      },
+      producers: {
+        select: [
+          // 1er select : check stripe_account_id + payouts_enabled
+          {
+            data: {
+              stripe_account_id: "acct_test",
+              stripe_payouts_enabled: true,
+            },
+            error: null,
+          },
+          // 2e select : lookup nom_exploitation pour subject email
+          {
+            data: { nom_exploitation: "Ferme du Test" },
+            error: null,
+          },
+        ],
+      },
+      notifications: {
+        insert: [{ data: null, error: null }],
+      },
+    };
+
+    mockTransferCreate.mockRejectedValue(
+      new Error("Connect not authorized for this destination"),
+    );
+
+    const { results } = await processWeeklyPayouts();
+
+    // Result : payout_id présent (row inséré), stripe_transfer_id null, error propagé.
+    expect(results[0].payout_id).toBe("payout-crash-transfer");
+    expect(results[0].stripe_transfer_id).toBeNull();
+    expect(results[0].error).toContain("Transfer failed");
+    expect(results[0].error).toContain("Connect not authorized");
+
+    // 1. INSERT 'processing' fait (anti-régression T-414).
+    expect(captured.inserts).toContainEqual({
+      table: "payouts",
+      payload: expect.objectContaining({ statut: "processing" }),
+    });
+
+    // 2. UPDATE 'failed' posé sur la row (compensation A2).
+    expect(captured.updates).toContainEqual({
+      table: "payouts",
+      payload: { statut: "failed" },
+    });
+
+    // 3. Audit log forensique stripe_transfer_failed avec metadata complète.
+    expect(mockLogPaymentEvent).toHaveBeenCalledTimes(1);
+    expect(mockLogPaymentEvent).toHaveBeenCalledWith({
+      eventType: "stripe_transfer_failed",
+      metadata: expect.objectContaining({
+        payout_id: "payout-crash-transfer",
+        producer_id: PRODUCER_ID,
+        montant_net_cents: 9400,
+        currency: "eur",
+        error_message: "Connect not authorized for this destination",
+        source: "sync_transfer_create",
+      }),
+    });
+
+    // 4. Notification placeholder DB (type='email', template='admin_transfer_failed').
+    expect(captured.inserts).toContainEqual({
+      table: "notifications",
+      payload: expect.objectContaining({
+        type: "email",
+        template: "admin_transfer_failed",
+        statut: "sent",
+        metadata: expect.objectContaining({
+          payout_id: "payout-crash-transfer",
+          producer_id: PRODUCER_ID,
+          error_message: "Connect not authorized for this destination",
+        }),
+      }),
+    });
+
+    // 5. Email réel admin via sendTemplate, fire-and-forget waitUntil.
+    expect(mockWaitUntil).toHaveBeenCalledTimes(1);
+    expect(mockSendTemplate).toHaveBeenCalledTimes(1);
+    expect(mockSendTemplate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "admin@terroir-test.fr",
+        template: "admin_transfer_failed",
+        userId: null,
+        subject: expect.stringContaining("Ferme du Test"),
+        metadata: expect.objectContaining({
+          payout_id: "payout-crash-transfer",
+          producer_id: PRODUCER_ID,
+        }),
+      }),
+    );
+
+    // 6. Log greppable [STRIPE_TRANSFER_FAILED_SYNC] posé.
+    const warnedFirst = String(consoleWarnSpy.mock.calls[0]?.[0] ?? "");
+    expect(warnedFirst).toContain("[STRIPE_TRANSFER_FAILED_SYNC]");
+    expect(warnedFirst).toContain("payout=payout-crash-transfer");
+  });
+
+  it("cas pathologique : UPDATE 'failed' échoue → log [WEEKLY_PAYOUT_FAILED_UPDATE_FAILED] + alerte admin quand même", async () => {
+    responses = {
+      orders: { select: [{ data: [defaultOrder()], error: null }] },
+      payouts: {
+        select: [{ data: null, error: null }],
+        insert: [{ data: { id: "payout-update-failed-fail" }, error: null }],
+        update: [{ data: null, error: { message: "RLS denied" } }], // UPDATE 'failed' KO
       },
       producers: {
         select: [
@@ -574,26 +723,30 @@ describe("processWeeklyPayouts — crash transfer.create (path nominal)", () => 
             },
             error: null,
           },
+          { data: { nom_exploitation: "Ferme Edge" }, error: null },
         ],
       },
+      notifications: { insert: [{ data: null, error: null }] },
     };
 
-    mockTransferCreate.mockRejectedValue(new Error("Stripe transient 500"));
+    mockTransferCreate.mockRejectedValue(new Error("Network timeout"));
 
-    const { results } = await processWeeklyPayouts();
+    await processWeeklyPayouts();
 
-    expect(results[0].payout_id).toBe("payout-crash-transfer");
-    expect(results[0].stripe_transfer_id).toBeNull();
-    expect(results[0].error).toContain("Stripe transient 500");
+    // Le row reste 'processing' (UPDATE 'failed' a échoué) — flag greppable
+    // pour intervention admin.
+    const warnedAll = consoleWarnSpy.mock.calls
+      .map((c: unknown[]) => String(c[0] ?? ""))
+      .join("\n");
+    expect(warnedAll).toContain("[STRIPE_TRANSFER_FAILED_SYNC]");
+    expect(warnedAll).toContain("[WEEKLY_PAYOUT_FAILED_UPDATE_FAILED]");
+    expect(warnedAll).toContain("RLS denied");
 
-    // INSERT 'processing' fait, mais pas d'UPDATE (row reste 'processing'
-    // pour resume au prochain run).
-    expect(captured.inserts).toHaveLength(1);
-    expect(captured.updates).toEqual([]);
-
-    expect(consoleWarnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("[WEEKLY_PAYOUT_TRANSFER_FAILED]"),
-    );
+    // Audit + Resend posés malgré l'échec UPDATE — l'alerte admin est
+    // INDÉPENDANTE de la persistence du statut, c'est l'observabilité de
+    // dernier recours.
+    expect(mockLogPaymentEvent).toHaveBeenCalledTimes(1);
+    expect(mockSendTemplate).toHaveBeenCalledTimes(1);
   });
 });
 
