@@ -8,6 +8,7 @@ import { Button } from '@/components/ui';
 import { getStripe } from '@/lib/stripe/client';
 import { useCartStore, type CartItem } from '@/lib/store/cart';
 import { itemKey, type ValidateResponse } from '@/lib/cart/validate';
+import type { CheckoutError } from '@/lib/checkout/classify-stripe-error';
 import { listPaymentMethodsAction, type PaymentMethodSummary } from './actions';
 
 const BRAND_LABEL: Record<string, string> = {
@@ -78,7 +79,7 @@ export default function CheckoutPage() {
 
   const [order, setOrder] = useState<OrderCreated | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
-  const [initError, setInitError] = useState<string | null>(null);
+  const [initError, setInitError] = useState<CheckoutError | null>(null);
   const [preparing, setPreparing] = useState(false);
 
   const subtotal = group ? group.items.reduce((s, i) => s + i.prix * i.quantite, 0) : 0;
@@ -142,7 +143,10 @@ export default function CheckoutPage() {
         });
         const orderData = await orderRes.json();
         if (!orderRes.ok) {
-          setInitError(orderData.error ?? 'Impossible de créer la commande');
+          setInitError({
+            kind: 'generic',
+            message: orderData.error ?? 'Impossible de créer la commande',
+          });
           return;
         }
         const created = orderData as OrderCreated;
@@ -155,12 +159,15 @@ export default function CheckoutPage() {
         });
         const piData = await piRes.json();
         if (!piRes.ok || !piData.client_secret) {
-          setInitError(piData.error ?? 'Impossible d\'initialiser le paiement');
+          setInitError({
+            kind: 'generic',
+            message: piData.error ?? 'Impossible d\'initialiser le paiement',
+          });
           return;
         }
         setClientSecret(piData.client_secret as string);
       } catch {
-        setInitError('Erreur de connexion au serveur');
+        setInitError({ kind: 'generic', message: 'Erreur de connexion au serveur' });
       } finally {
         setPreparing(false);
       }
@@ -229,7 +236,7 @@ export default function CheckoutPage() {
               </div>
 
               {initError && (
-                <div className="p-4 rounded-xl bg-terra-100/60 border border-terra-300/40 text-[13px] text-terra-900">{initError}</div>
+                <div className="p-4 rounded-xl bg-terra-100/60 border border-terra-300/40 text-[13px] text-terra-900">{initError.message}</div>
               )}
 
               {!initError && !clientSecret && (
@@ -301,7 +308,7 @@ function CheckoutForm({
   const clear = useCartStore((s) => s.clear);
 
   const [processing, setProcessing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<CheckoutError | null>(null);
   const [saveCard, setSaveCard] = useState(false);
 
   // Phase 7 : sélecteur CB enregistrée vs nouvelle CB.
@@ -350,7 +357,10 @@ function CheckoutForm({
       );
 
       if (payError) {
-        setError(payError.message ?? 'Le paiement a échoué.');
+        setError({
+          kind: 'generic',
+          message: payError.message ?? 'Le paiement a échoué.',
+        });
         setProcessing(false);
         return;
       }
@@ -376,7 +386,10 @@ function CheckoutForm({
         body: JSON.stringify({ order_id: orderId, save_card: true }),
       });
       if (!updateRes.ok) {
-        setError("Impossible d'activer la mémorisation de la carte. Réessayez.");
+        setError({
+          kind: 'generic',
+          message: "Impossible d'activer la mémorisation de la carte. Réessayez.",
+        });
         setProcessing(false);
         return;
       }
@@ -391,7 +404,10 @@ function CheckoutForm({
     });
 
     if (payError) {
-      setError(payError.message ?? 'Le paiement a échoué.');
+      setError({
+        kind: 'generic',
+        message: payError.message ?? 'Le paiement a échoué.',
+      });
       setProcessing(false);
       return;
     }
@@ -508,7 +524,7 @@ function CheckoutForm({
       </div>
 
       {error && (
-        <div className="p-3 rounded-lg bg-terra-100/60 border border-terra-300/40 text-[13px] text-terra-900">{error}</div>
+        <div className="p-3 rounded-lg bg-terra-100/60 border border-terra-300/40 text-[13px] text-terra-900">{error.message}</div>
       )}
       <Button
         type="submit"
