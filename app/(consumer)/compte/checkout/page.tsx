@@ -70,6 +70,7 @@ function formatDateFr(iso: string): string {
 
 export default function CheckoutPage() {
   const items = useCartStore((s) => s.items);
+  const clearCart = useCartStore((s) => s.clear);
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => setHydrated(true), []);
 
@@ -143,6 +144,13 @@ export default function CheckoutPage() {
         });
         const orderData = await orderRes.json();
         if (!orderRes.ok) {
+          // T-407 : 409 sur create-order (cas borderline, ex. order existante).
+          // Même UX que 409 PI : rediriger vers commandes au lieu de retry.
+          if (orderRes.status === 409) {
+            console.warn('[CHECKOUT_INIT_409]', 'orders/create', orderData?.error);
+            setInitError({ kind: 'init_409', message: 'Cette commande n\'est plus payable.' });
+            return;
+          }
           setInitError({
             kind: 'generic',
             message: orderData.error ?? 'Impossible de créer la commande',
@@ -159,6 +167,15 @@ export default function CheckoutPage() {
         });
         const piData = await piRes.json();
         if (!piRes.ok || !piData.client_secret) {
+          // T-407 : 409 = T-406 guard (order non-pending). Order morte
+          // (webhook payment_failed a déjà cancelle, ou order
+          // confirmed/ready/completed/refunded). Pas de retry possible
+          // sur cette order, l'user doit consulter ses commandes.
+          if (piRes.status === 409) {
+            console.warn('[CHECKOUT_INIT_409]', 'create-payment-intent', piData?.error);
+            setInitError({ kind: 'init_409', message: 'Cette commande n\'est plus payable.' });
+            return;
+          }
           setInitError({
             kind: 'generic',
             message: piData.error ?? 'Impossible d\'initialiser le paiement',
@@ -235,9 +252,35 @@ export default function CheckoutPage() {
                 <span className="text-[11px] mono text-dark/50">🔒 Stripe · SSL</span>
               </div>
 
-              {initError && (
+              {initError?.kind === 'init_409' ? (
+                // T-407 : order morte (T-406 guard 409 sur create-PI/create-order).
+                // Webhook payment_failed a probablement déjà cancelle l'order,
+                // ou statut confirmed/ready/completed/refunded. Pas de retry
+                // possible sur cette order — orienter user vers ses commandes.
+                <div className="space-y-4">
+                  <div className="p-4 rounded-xl bg-terra-100/60 border border-terra-300/40 text-[13px] text-terra-900">
+                    {initError.message}
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Link href="/compte/commandes" className="flex-1">
+                      <Button size="lg" className="w-full">Voir mes commandes</Button>
+                    </Link>
+                    <Button
+                      size="lg"
+                      variant="ghost"
+                      className="flex-1"
+                      onClick={() => {
+                        clearCart();
+                        router.push('/');
+                      }}
+                    >
+                      Vider le panier
+                    </Button>
+                  </div>
+                </div>
+              ) : initError ? (
                 <div className="p-4 rounded-xl bg-terra-100/60 border border-terra-300/40 text-[13px] text-terra-900">{initError.message}</div>
-              )}
+              ) : null}
 
               {!initError && !clientSecret && (
                 <p className="text-[13px] text-dark/60">Initialisation du paiement…</p>
