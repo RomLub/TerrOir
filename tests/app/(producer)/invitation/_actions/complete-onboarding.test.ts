@@ -41,6 +41,7 @@ type Captured = {
   selects: Array<{ table: string; cols: string }>;
   eqCalls: Array<{ table: string; col: string; val: unknown }>;
   ilikeCalls: Array<{ table: string; col: string; val: unknown }>;
+  isCalls: Array<{ table: string; col: string; val: unknown }>;
 };
 
 let captured: Captured;
@@ -76,6 +77,10 @@ vi.mock("@/lib/supabase/admin", () => ({
         captured.ilikeCalls.push({ table, col, val });
         return builder;
       };
+      builder.is = (col: string, val: unknown) => {
+        captured.isCalls.push({ table, col, val });
+        return builder;
+      };
       builder.maybeSingle = () => Promise.resolve(resp);
       builder.then = (onFulfilled: (r: Resp) => unknown) => onFulfilled(resp);
       return builder;
@@ -83,10 +88,18 @@ vi.mock("@/lib/supabase/admin", () => ({
   }),
 }));
 
+// T-307 — mock logAuthEvent : la SUT l'appelle sur race lost. On veut
+// vérifier eventType + payload metadata sans déclencher l'INSERT réel
+// dans audit_logs (qui a son propre suite de tests dédiée).
+vi.mock("@/lib/audit-logs/log-auth-event", () => ({
+  logAuthEvent: vi.fn(),
+}));
+
 // Import APRÈS les mocks (vi.mock est hoisté par vitest, mais on garde
 // l'ordre lisible). Le path alias `@` → repo root est défini dans
 // vitest.config.ts.
 import { completeOnboardingAction } from "@/app/(producer)/invitation/_actions/complete-onboarding";
+import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 
 // --- Helpers --------------------------------------------------------------
 
@@ -134,6 +147,7 @@ beforeEach(() => {
     selects: [],
     eqCalls: [],
     ilikeCalls: [],
+    isCalls: [],
   };
   responses = {};
   sessionUser = {
@@ -144,6 +158,7 @@ beforeEach(() => {
   };
   consoleInfoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
   consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  vi.mocked(logAuthEvent).mockClear();
 });
 
 afterEach(() => {
@@ -278,5 +293,121 @@ describe("completeOnboardingAction — auto-bump lead 'contacted' → 'onboarded
     ).toBeUndefined();
     expect(consoleInfoSpy).not.toHaveBeenCalled();
     expect(consoleWarnSpy).not.toHaveBeenCalled();
+  });
+});
+
+// --- T-307 : guard race condition consommation token --------------------
+// Le UPDATE producer_invitations final porte un guard SQL .is('used_at',
+// null) + .select('id') pour détecter le cas où une transaction concurrente
+// a déjà claim le token entre le check ligne 54 et le UPDATE. Sémantique :
+// data path users + producers étant idempotent, on log + audit + continue
+// le redirect happy plutôt que rejeter — UX cohérente avec un onboarding
+// en réalité réussi côté data.
+
+function makeValidInvitationRead(): Resp {
+  // SELECT initial sur producer_invitations dans la branche `if (token)` :
+  // invitation valide non consommée, email matchant la session, expiration
+  // largement future. Permet d'arriver au UPDATE final qui porte le guard.
+  return {
+    data: {
+      id: "inv-99",
+      email: "user@example.com",
+      expires_at: "2030-12-31T00:00:00Z",
+      used_at: null,
+    },
+    error: null,
+  };
+}
+
+describe("completeOnboardingAction — race condition consommation token (T-307)", () => {
+  it("happy path : claim succeeds → UPDATE invitation chaîne .is('used_at', null) + .select('id'), aucun log race ni audit log", async () => {
+    responses.producer_invitations = [
+      makeValidInvitationRead(),
+      // 2e from() pour producer_invitations = UPDATE final → claim OK,
+      // 1 row affected.
+      { data: [{ id: "inv-99" }], error: null },
+    ];
+
+    await runAction(makeFormData({ token: "abcdef0123456789-token" }));
+
+    // Le guard SQL est posé sur l'UPDATE.
+    expect(captured.isCalls).toContainEqual({
+      table: "producer_invitations",
+      col: "used_at",
+      val: null,
+    });
+    // Le rowcount est récupéré pour détecter la race.
+    expect(captured.selects).toContainEqual({
+      table: "producer_invitations",
+      cols: "id",
+    });
+
+    // Aucun signal de race.
+    const raceWarn = consoleWarnSpy.mock.calls.find((c: unknown[]) =>
+      String(c[0] ?? "").includes("[INVITATION_RACE_LOST]"),
+    );
+    expect(raceWarn).toBeUndefined();
+    expect(logAuthEvent).not.toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "invitation_consumed_race_lost" }),
+    );
+  });
+
+  it("race lost : claim renvoie rowcount=0 → console.warn [INVITATION_RACE_LOST] + audit log invitation_consumed_race_lost, redirect happy quand même", async () => {
+    responses.producer_invitations = [
+      makeValidInvitationRead(),
+      // Race : autre transaction a claim avant nous → 0 rows updated.
+      { data: [], error: null },
+    ];
+
+    // runAction resolve undefined si le redirect happy a été déclenché
+    // (le throw __REDIRECT__ est attrapé par runAction). Si la SUT avait
+    // return error, runAction renverrait { error: ... } à la place.
+    await expect(
+      runAction(makeFormData({ token: "abcdef0123456789-token" })),
+    ).resolves.toBeUndefined();
+
+    const raceWarn = consoleWarnSpy.mock.calls.find((c: unknown[]) =>
+      String(c[0] ?? "").includes("[INVITATION_RACE_LOST]"),
+    );
+    expect(raceWarn).toBeDefined();
+    const warned = String(raceWarn?.[0] ?? "");
+    expect(warned).toContain("invitationId=inv-99");
+    expect(warned).toContain("userId=user-42");
+
+    // Audit log race lost émis avec préfixe token (8 chars), jamais le
+    // token complet (cohérent T-081 PR-A : token Resend metadata = prefix
+    // only).
+    expect(logAuthEvent).toHaveBeenCalledWith({
+      eventType: "invitation_consumed_race_lost",
+      userId: "user-42",
+      metadata: {
+        invitation_id: "inv-99",
+        token_prefix: "abcdef01",
+      },
+    });
+  });
+
+  it("claimError DB authentique → console.error [INVITATION_CLAIM_ERROR] + pas d'audit log race + redirect happy", async () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    responses.producer_invitations = [
+      makeValidInvitationRead(),
+      // Erreur DB pendant le UPDATE invitation : on log error mais on
+      // continue (data path users + producers idempotent → pas un échec
+      // critique du POV utilisateur). Distinct de la race (rowcount=0).
+      { data: null, error: { message: "connection reset" } },
+    ];
+
+    await expect(
+      runAction(makeFormData({ token: "abcdef0123456789-token" })),
+    ).resolves.toBeUndefined();
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[INVITATION_CLAIM_ERROR]"),
+    );
+    expect(logAuthEvent).not.toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "invitation_consumed_race_lost" }),
+    );
   });
 });

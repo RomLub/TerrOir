@@ -6,6 +6,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth/session";
 import { invitationBusinessInfoSchema } from "@/lib/auth/validators";
 import { maskEmail } from "@/lib/rgpd/mask-email";
+import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 
 export type State = { error?: string };
 
@@ -42,6 +43,10 @@ export async function completeOnboardingAction(
   // On retient l'invitation à marquer used_at SI on est en flux classique
   // (token présent). En flux reprise (Phase 4), pas d'invitation à marquer.
   let invitationId: string | null = null;
+  // T-307 : préfixe (8 chars) du token capturé à la lecture pour audit log
+  // race lost. Token complet jamais loggé — c'est le secret de jonction
+  // email→inscription, traité comme un credential.
+  let tokenPrefix: string | null = null;
 
   if (token) {
     const { data: invitation } = await admin
@@ -59,6 +64,7 @@ export async function completeOnboardingAction(
       return { error: "Email de session ne correspond pas à l'invitation" };
     }
     invitationId = invitation.id as string;
+    tokenPrefix = token.substring(0, 8);
   } else {
     const { data: producer } = await admin
       .from("producers")
@@ -118,11 +124,39 @@ export async function completeOnboardingAction(
   // On marque used_at SEULEMENT maintenant (pas au createAccount/login). Cela
   // permet à un utilisateur qui abandonne à l'étape 2 ou 3 de recliquer sur
   // le lien email dans les 7 jours de validité de l'invitation pour reprendre.
+  //
+  // T-307 — Guard race condition : .is('used_at', null) + .select('id')
+  // garantit l'atomicité Postgres face à 2 requêtes concurrentes qui
+  // franchiraient le check ligne 54 simultanément. La 2ᵉ transaction voit
+  // used_at déjà set par la 1ʳᵉ → 0 rows updated. Comme les UPDATE users +
+  // producers précédents sont idempotents (mêmes payloads), on log + audit
+  // + continue plutôt que rejeter — UX cohérente avec un onboarding en
+  // réalité réussi côté data.
   if (invitationId) {
-    await admin
+    const { data: claimed, error: claimError } = await admin
       .from("producer_invitations")
       .update({ used_at: new Date().toISOString() })
-      .eq("id", invitationId);
+      .eq("id", invitationId)
+      .is("used_at", null)
+      .select("id");
+
+    if (claimError) {
+      console.error(
+        `[INVITATION_CLAIM_ERROR] invitationId=${invitationId} error=${claimError.message}`,
+      );
+    } else if (claimed && claimed.length === 0) {
+      console.warn(
+        `[INVITATION_RACE_LOST] invitationId=${invitationId} userId=${session.id}`,
+      );
+      await logAuthEvent({
+        eventType: "invitation_consumed_race_lost",
+        userId: session.id,
+        metadata: {
+          invitation_id: invitationId,
+          token_prefix: tokenPrefix,
+        },
+      });
+    }
   }
 
   // Bump du lead matching : producer_interests.statut 'contacted' → 'onboarded'.

@@ -33,7 +33,13 @@ export type AuthEventType =
   | "account_deleted"
   | "email_change"
   | "admin_login"
-  | "role_changed";
+  | "role_changed"
+  // T-307 : race condition perdue sur consommation token invitation.
+  // Émis quand le UPDATE producer_invitations.used_at concurrent affecte
+  // 0 rows (le claim a été grillé par une transaction parallèle). Sert de
+  // signal forensique : volume anormal = soupçon d'attaque double-click /
+  // replay automatisé sur lien d'invitation.
+  | "invitation_consumed_race_lost";
 
 type LogAuthEventParams = {
   eventType: AuthEventType;
