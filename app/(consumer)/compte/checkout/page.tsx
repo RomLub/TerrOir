@@ -8,7 +8,7 @@ import { Button } from '@/components/ui';
 import { getStripe } from '@/lib/stripe/client';
 import { useCartStore, type CartItem } from '@/lib/store/cart';
 import { itemKey, type ValidateResponse } from '@/lib/cart/validate';
-import type { CheckoutError } from '@/lib/checkout/classify-stripe-error';
+import { classifyStripeError, type CheckoutError } from '@/lib/checkout/classify-stripe-error';
 import { listPaymentMethodsAction, type PaymentMethodSummary } from './actions';
 
 const BRAND_LABEL: Record<string, string> = {
@@ -400,10 +400,9 @@ function CheckoutForm({
       );
 
       if (payError) {
-        setError({
-          kind: 'generic',
-          message: payError.message ?? 'Le paiement a échoué.',
-        });
+        const classified = classifyStripeError(payError);
+        console.warn(`[CHECKOUT_${classified.kind.toUpperCase()}]`, classified.code ?? payError.code, payError.decline_code);
+        setError(classified);
         setProcessing(false);
         return;
       }
@@ -447,10 +446,9 @@ function CheckoutForm({
     });
 
     if (payError) {
-      setError({
-        kind: 'generic',
-        message: payError.message ?? 'Le paiement a échoué.',
-      });
+      const classified = classifyStripeError(payError);
+      console.warn(`[CHECKOUT_${classified.kind.toUpperCase()}]`, classified.code ?? payError.code, payError.decline_code);
+      setError(classified);
       setProcessing(false);
       return;
     }
@@ -569,19 +567,28 @@ function CheckoutForm({
       {error && (
         <div className="p-3 rounded-lg bg-terra-100/60 border border-terra-300/40 text-[13px] text-terra-900">{error.message}</div>
       )}
-      <Button
-        type="submit"
-        size="lg"
-        className="w-full"
-        disabled={
-          !stripe ||
-          processing ||
-          (mode === 'new' && !elements) ||
-          (mode === 'saved' && !selectedPmId)
-        }
-      >
-        {processing ? 'Traitement…' : `Payer ${amountLabel} €`}
-      </Button>
+      {error?.kind === 'pi_invalid' ? (
+        // T-407 : PI canceled côté Stripe (timeout > 24h, cancel admin).
+        // L'order est probablement déjà cancelled DB via webhook → retry
+        // sans intérêt, rediriger vers commandes.
+        <Link href="/compte/commandes" className="block">
+          <Button size="lg" className="w-full" type="button">Voir mes commandes</Button>
+        </Link>
+      ) : (
+        <Button
+          type="submit"
+          size="lg"
+          className="w-full"
+          disabled={
+            !stripe ||
+            processing ||
+            (mode === 'new' && !elements) ||
+            (mode === 'saved' && !selectedPmId)
+          }
+        >
+          {processing ? 'Traitement…' : `Payer ${amountLabel} €`}
+        </Button>
+      )}
     </form>
   );
 }
