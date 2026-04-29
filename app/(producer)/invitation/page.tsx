@@ -4,18 +4,13 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth/session";
 import { pickInitialInfos } from "@/lib/producers/pick-initial-infos";
 import { OnboardingWizard, type WizardCase } from "./_components/OnboardingWizard";
+import { InvitationConfirmCard } from "./_components/InvitationConfirmCard";
 
 interface PageProps {
   searchParams: { token?: string };
 }
 
 type InvitationStatus = "ok" | "missing" | "not-found" | "used" | "expired";
-
-function slugFromEmail(email: string) {
-  const base = email.split("@")[0]!.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
-  const suffix = Math.random().toString(36).slice(2, 8);
-  return `${base}-${suffix}`;
-}
 
 function ErrorCard({
   title,
@@ -161,11 +156,7 @@ export default async function InvitationPage({ searchParams }: PageProps) {
 
   // Phase 4 : si l'invitee est déjà loggé, a le rôle producer en DB et
   // un producer en draft, on centralise la reprise dans /onboarding —
-  // pas besoin du token, la session suffit. La double vérification
-  // (rôle + draft) garantit qu'aucun auto-upgrade n'est nécessaire à
-  // ce stade. Les autres cas (pas loggé, loggé autre compte, producer
-  // inexistant, rôle pas encore ajouté) gardent le flux classique
-  // ci-dessous qui fait l'auto-upgrade puis affiche le wizard.
+  // pas besoin du token, la session suffit.
   if (
     isLoggedInAsInvitee &&
     existingRoles.includes("producer") &&
@@ -173,6 +164,23 @@ export default async function InvitationPage({ searchParams }: PageProps) {
     existingProducer.statut === "draft"
   ) {
     redirect("/onboarding");
+  }
+
+  // T-303 : tout autre cas où l'invitee est déjà connecté avec le bon
+  // email (typiquement consumer sans rôle producer encore) doit afficher
+  // une carte de confirmation explicite. Aucun side-effect DB pendant le
+  // GET render — l'upgrade transite par acceptInvitationAction (POST)
+  // après clic explicite "Accepter et devenir producteur".
+  if (isLoggedInAsInvitee) {
+    return (
+      <main className="flex min-h-screen items-center justify-center p-8">
+        <InvitationConfirmCard
+          token={token}
+          email={email}
+          prenom={(existingUser?.prenom as string | null) ?? null}
+        />
+      </main>
+    );
   }
 
   // Lead matching pour pré-remplissage (Phase 2 du chantier "Vision funnel
@@ -188,45 +196,17 @@ export default async function InvitationPage({ searchParams }: PageProps) {
     .limit(1)
     .maybeSingle();
 
-  // Détermination du cas + préparation des valeurs initiales
-  let caseKind: WizardCase;
-  let startStep: 1 | 2 = 1;
-  let producerForPick = existingProducer;
-
-  if (!existingUser) {
-    caseKind = "new";
-  } else if (isLoggedInAsInvitee) {
-    caseKind = "consumer-loggedin";
-
-    // Auto-upgrade côté serveur (idempotent) : ajoute 'producer' au tableau
-    // roles et crée la ligne producers en statut='draft' si absente.
-    if (!existingRoles.includes("producer")) {
-      const newRoles = Array.from(new Set([...existingRoles, "producer"]));
-      await admin
-        .from("users")
-        .update({ roles: newRoles })
-        .eq("id", existingUser.id);
-    }
-
-    if (!existingProducer) {
-      // TODO Phase 3 finale : retirer prenom_affichage de cet INSERT après le
-      // DROP COLUMN producers.prenom_affichage.
-      await admin.from("producers").insert({
-        user_id: existingUser.id,
-        slug: slugFromEmail(email),
-        prenom_affichage: "À compléter",
-        nom_exploitation: "À compléter",
-        statut: "draft",
-      });
-      producerForPick = null;
-    }
-    startStep = 2;
-  } else {
-    caseKind = "consumer-login";
-  }
+  // Cas restants après les early returns ci-dessus : soit aucun user en DB
+  // (caseKind 'new' → création de compte via mot de passe), soit user existe
+  // mais n'est PAS connecté avec cet email (caseKind 'consumer-login' →
+  // login par mot de passe). Les deux sécurisent le consentement par
+  // password. Le cas 'consumer-loggedin' du WizardCase devient obsolète
+  // côté page.tsx mais le type reste pour rétro-compat client (l'enum
+  // sera nettoyé dans un chantier futur).
+  const caseKind: WizardCase = !existingUser ? "new" : "consumer-login";
 
   const initialInfos = pickInitialInfos(
-    producerForPick,
+    existingProducer,
     existingUser
       ? {
           prenom: (existingUser.prenom as string | null) ?? null,
@@ -243,7 +223,7 @@ export default async function InvitationPage({ searchParams }: PageProps) {
         token={token}
         email={email}
         caseKind={caseKind}
-        startStep={startStep}
+        startStep={1}
         initialInfos={initialInfos}
       />
     </main>
