@@ -5,6 +5,7 @@ import { stripe } from "@/lib/stripe/server";
 import { syncStripeAccountFlags } from "@/lib/stripe/sync-account-flags";
 import { syncStripePaymentFailed } from "@/lib/stripe/handle-payment-failed";
 import { syncStripePaymentSucceeded } from "@/lib/stripe/handle-payment-succeeded";
+import { checkOrMarkProcessed } from "@/lib/webhook-events/check-or-mark-processed";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { NEXT_PUBLIC_PRODUCER_URL } from "@/lib/env/urls";
 import { sendTemplate } from "@/lib/resend/send";
@@ -43,6 +44,41 @@ export async function POST(request: Request) {
   }
 
   const admin = createSupabaseAdminClient();
+
+  // Dédup applicative (T-103) : si Stripe rejoue cet event (auto-retry sur
+  // 5xx, replay manuel Dashboard, network glitch), on ack 200 sans rejouer
+  // les effets de bord (UPDATE DB, emails Resend, SMS Twilio, audit logs).
+  // Mécanisme par INSERT exclusif sur PK event_id de webhook_events_processed
+  // (cf. lib/webhook-events/check-or-mark-processed.ts + migration
+  // 20260429000000). Filtré sur les 4 events ayant des effets de bord
+  // observables — pollue pas la table avec les events handled `default`.
+  const DEDUP_TARGETS = new Set([
+    "payment_intent.succeeded",
+    "payment_intent.payment_failed",
+    "account.updated",
+    "payout.paid",
+  ]);
+
+  if (DEDUP_TARGETS.has(event.type)) {
+    try {
+      const { alreadyProcessed } = await checkOrMarkProcessed(
+        admin,
+        event.id,
+        event.type,
+      );
+      if (alreadyProcessed) {
+        return NextResponse.json({ received: true, deduped: true });
+      }
+    } catch (err) {
+      // Erreur DB hors 23505 → throw du helper. On renvoie 500 pour que
+      // Stripe retry (le retry refera l'INSERT et saura distinguer si
+      // c'était un glitch transitoire ou non).
+      return NextResponse.json(
+        { error: (err as Error).message },
+        { status: 500 },
+      );
+    }
+  }
 
   try {
     switch (event.type) {
