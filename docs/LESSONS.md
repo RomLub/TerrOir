@@ -40,6 +40,10 @@ Pour le contexte chronologique des commits référencés, voir [`CHANGELOG.md`](
 - **Auto-extraction IP/UA via `next/headers()`** (commit `a36fcaa`) : pas besoin de propager `request` jusqu'au helper d'audit — `headers()` côté Next.js App Router donne accès aux headers de la requête courante. Permet d'appeler `await logAuthEvent({ eventType, userId, metadata })` depuis n'importe quelle server action sans plumberie. Fallback explicite si headers absents (test ou contexte non-HTTP).
 - **Magic link audit : loguer systématiquement (avant succès Resend)** : pour un event comme `account_login_magic_link`, loguer APRÈS la tentative d'envoi quoi qu'il en soit (succès ou échec Resend), pas seulement après succès. Préserve l'enumeration-resistance côté UI (pas de signal différentiel selon que l'email existe), tout en traçant la tentative côté audit. Metadata `email` + `isAdmin` en clair côté DB pour le forensique (l'enumeration-resistance vit côté response client, pas côté logs server).
 - **Capturer le `userId` AVANT `signOut`** : pour l'event `account_logout`, lire `auth.getUser()` AVANT le `signOut`. Sinon le user est déjà déconnecté quand on log → `userId=null` et l'event est inutile pour le forensique.
+- **Pattern audit log forensique préfixe greppable côté logs Vercel** (cohérent T-318 + T-309 + T-317 + T-314 + T-305 PR-B + T-310 séance 29/04) : format `[AUDIT_TYPE] reason=<reason> raw_length=<n>` (jamais raw verbatim). Anti log forging + anti PII. Reasons enum strict (no injection vector). `raw_length` integer (no injection vector). Cohabitation avec `audit_logs` table DB-only — PAS de `console.warn` applicatif redondant si l'event vit déjà dans `audit_logs` (pattern double-trace évité). Exception : `T-318` mapping FR codes erreurs callback préserve verbatim Supabase côté logs Vercel pour debug runtime callback (pas dispo DB-side, justifié).
+- **Pattern compensation orphelin `admin.auth.admin.deleteUser` symétrique** (T-301 + T-302 + T-304 + Cluster B séance 29/04) : sur tout signup/upgrade qui combine `auth.signUp` + `INSERT public.users/producers`, si auth OK + DB KO → `deleteUser` rollback. Préserve invariant zéro user orphelin `auth.users` sans row applicative. Pattern reproductible : `try { auth.signUp; INSERT; } catch (insertError) { admin.auth.admin.deleteUser(authUserId); throw }`. Coût : 1 round-trip supplémentaire en cas d'erreur (acceptable). Bénéfice : pas de cleanup batch nécessaire.
+- **Pattern enumeration-resistance strict** (T-301 + T-302 + T-304 + T-313 séance 29/04) : `{ success: { email } }` identique happy path et error path. Anti-énumération comptes existants côté UI. Distinct du pattern wording erreur générique ("Identifiants invalides" T-309). Le wording erreur est défensif côté UI ; l'enumeration-resistance est défensive côté response shape (un attaquant qui inspecte la réponse JSON ne distingue pas success existant vs création réussie). À combiner avec audit log applicatif (DB-only) qui trace la distinction côté forensique.
+- **Helper inline classifyAuthError mapping codes catégoriels EN-neutre** (T-309 + T-318 séance 29/04) : pour chaque flow auth (login fail, callback verifyOtp, etc.), helper inline `~10-22L` mappant `signinError` ou `verifyOtpError` vers 4 codes catégoriels EN-neutre (`invalid_credentials | email_not_confirmed | rate_limited | technical` pour login ; `expired | invalid | missing | technical` pour callback). Stocké dans `metadata.reason_code` côté audit_logs. Distinct du wording user-facing FR (côté `error` retourné UI). Permet grep `audit_logs` Supabase Dashboard pour analyse pattern attaque (`reason_code='invalid_credentials'` brute-force, `reason_code='email_not_confirmed'` énumération comptes, etc.).
 
 ## RLS & permissions
 
@@ -102,6 +106,48 @@ Pour le contexte chronologique des commits référencés, voir [`CHANGELOG.md`](
 - **Next.js cache silencieusement les pages SSR par défaut.** Pour les pages avec data live (stock produit, slots matérialisés, listings), il faut expliciter `export const dynamic = 'force-dynamic'; export const revalidate = 0;`. Sinon les nouvelles données DB sont invisibles avant redeploy Vercel (fix commit `983ed8e`).
 - **Next.js re-render SSR après mutation de cookies** (ex: `signInWithPassword`) peut déclencher une défense en profondeur avant que le client ne puisse avancer. Dans les flows multi-étapes, vérifier que les conditions de blocage distinguent bien les états légitimes (`draft`) des états problématiques (`pending`/`active`/`public`). Incident du 21/04 : middleware bloquait les users `draft` en pleine onboarding (fix commit `23a2b31`).
 
+### Edge Runtime middleware — incompat Node crypto natif
+
+- **Tout helper consommé par `middleware.ts` (Edge Runtime Next.js) DOIT utiliser Web Crypto API (`crypto.subtle`)** — PAS le module `crypto` Node natif (`createHmac`, `timingSafeEqual`, `randomBytes`, etc.). Bug racine T-321 (commit initial `e22f14a` séance 29/04 → fix `59a0151` post-PUSH 2.5) : middleware throw au runtime preview Vercel `[Error: The edge runtime does not support Node.js 'crypto' module]` → 500 `MIDDLEWARE_INVOCATION_FAILED` sur toutes routes protégées (`/compte`, etc.). Cause : `lib/auth/role-snapshot-cookie.ts` utilisait `import { createHmac, timingSafeEqual } from 'crypto'`. **Détection uniquement via runtime preview Vercel** — auto-QA Vitest (Node runtime, false positive) + Build Vercel SUCCESS (compile-time bundle valide) ne détectent PAS l'incompat.
+
+- **Pattern Web Crypto API Edge-compat** (post-fix T-321) :
+  ```ts
+  // Sign HMAC-SHA256
+  async function signHmac(secret: string, payload: string): Promise<string> {
+    const encoder = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(secret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign']
+    );
+    const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(payload));
+    return Array.from(new Uint8Array(signature))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+  }
+
+  // Verify (timing-safe intrinsèque, pas besoin de timingSafeEqual)
+  async function verifyHmac(secret: string, payload: string, signatureHex: string): Promise<boolean> {
+    const encoder = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(secret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['verify']
+    );
+    const sigBytes = new Uint8Array(signatureHex.match(/.{2}/g)!.map(b => parseInt(b, 16)));
+    return crypto.subtle.verify('HMAC', key, sigBytes, encoder.encode(payload));
+  }
+  ```
+  Pattern référence : `lib/auth/role-snapshot-cookie.ts` post-T-321. Zéro dépendance à `Buffer` (utilise `TextEncoder/TextDecoder/btoa/atob`). Async cascade obligatoire sur tous les call sites consommateurs (le helper retourne `Promise`).
+
+- **Détection pre-merge** : (1) `grep -r "from ['\"]crypto['\"]" middleware.ts <fichiers consommés transitivement>` → 0 résultats attendus. (2) Validation runtime preview Vercel obligatoire avant merge (build SUCCESS pas suffisant). (3) En cas de doute, créer une route preview-only qui exerce le chemin middleware et lit Vercel runtime logs JSONL via `gh api`.
+
+- **Référence** : commit `59a0151` (T-321 PUSH 2.5 fix séance 29/04). Bug initial `e22f14a` non détecté par 864/864 tests verts. Symptôme observé : 500 `MIDDLEWARE_INVOCATION_FAILED` preview `/compte`. Diagnostic via Vercel Dashboard runtime logs (43 entries JSONL) → message exact `[Error: The edge runtime does not support Node.js 'crypto' module]`. **Pas d'impact prod** (PR #44 jamais mergée avant fix).
+
 ## Database & migrations
 
 - **Toute migration future qui référence `auth.users` via FK dans `public.*` DOIT inclure les GRANT sur `supabase_auth_admin`** (USAGE sur le schema + privilèges sur les tables concernées). Sans ça, GoTrue renvoie « Database error querying schema » sur `/token` et `/recover`.
@@ -150,6 +196,63 @@ Pour le contexte chronologique des commits référencés, voir [`CHANGELOG.md`](
 - **Convention TODO forward-looking only — instituée session 27/04** : le `TODO.md` ne contient QUE des chantiers/items **encore à faire**. Les chantiers résolus (bugs, dettes techniques, features livrées) sont retirés du TODO et tracés UNIQUEMENT dans `CHANGELOG.md` (par session datée) + `LESSONS.md` (si une leçon transversale est tirée). Les blockquotes "résolu le X/Y" qui traînent dans le TODO comme témoignage historique sont à éviter — ils confondent le lecteur, polluent la priorisation, et créent de la dérive ("est-ce vraiment résolu ? est-ce le bon endroit pour chercher ?"). **Justification** : le TODO doit être lisible en 30 secondes pour décider quoi attaquer demain. Si on veut savoir ce qui a été résolu, on lit le CHANGELOG (antichronologique, dense). Si on veut le pourquoi, on lit LESSONS (transversal, thématique). 3 fichiers, 3 rôles distincts, zéro recouvrement. Convention appliquée rétroactivement le 27/04 sur les blockquotes "Bug magic link PKCE" + "Bug navbar CTA disparition" qui squattaient le TODO. À embarquer dans `METHODOLOGY.md`.
 - **Pattern checkout master silencieux récurrent en working directory partagé** (session 28/04, observé 3 fois pendant l'implémentation home refonte). Quand le terminal CC (TT) et le terminal docs (chat) tournent dans le même working directory `~/.../terroir/`, un `git checkout` fait dans l'un peut "emporter" l'autre via le filesystem partagé. Symptôme : tu es sur master dans ton terminal docs, TT pousse PUSH 3 sur master par erreur (au lieu de feature/home-refonte), et plus tard quand tu fais `git checkout master`, tu emportes les 17 fichiers WIP de TT qui n'avaient pas encore été committed sur sa branche. **Mitigation** : `git branch --show-current` au début de chaque commande critique (add/commit/push). TT a institué cette vérification systématique après la 2e occurrence. Pour Phase 2, possibilité de séparer physiquement les working directories (ex: clone du repo dans 2 dossiers distincts pour chat docs vs CC code) si la fréquence devient pénible.
 - **Pattern recovery cherry-pick après commit sur mauvaise branche** (session 28/04, commit `c911e5f` sur master local par erreur). Quand un terminal CC commit accidentellement sur master au lieu de feature, **NE JAMAIS push master** tant que la situation n'est pas réconciliée. Procédure : (1) terminal CC fait `git checkout feature/<branche>`, (2) `git cherry-pick <hash-orphelin>`, (3) auto-QA, (4) `git push origin feature/<branche>`. (5) Sur master local, `git reset --hard origin/master` pour effacer le commit orphelin (le commit existe maintenant sur la branche feature avec un nouveau hash post-cherry-pick, donc reset master local = pas de perte). Procédure non-destructive du point de vue remote (zéro force push), juste un reset local. Pattern observé une fois dans cette session, géré proprement par TT en proposant l'option et attendant le GO explicite avant le reset destructif.
+
+### Worktrees dédiés `terroir-XX-tNNN` — pattern multi-terminal séance 29/04
+
+- **Pattern worktrees dédiés systématiques** (séance 29/04 purge audit Auth #1, 13+ worktrees créés cumulés sur 5 terminaux TA/TB/TC/TD/TE) : pour chaque chantier nouveau d'un terminal, créer un worktree dédié `terroir-<terminal>-t<NNN>` (ex: `terroir-tb-t321`, `terroir-tc-t305-prb`, `terroir-ta-t328`). Procédure :
+  ```bash
+  cd ..
+  git worktree add terroir-<terminal>-t<NNN> -b feat/<branche-feature> origin/master
+  cd terroir-<terminal>-t<NNN>
+  # Junction node_modules pour éviter npm install (Windows)
+  cmd /c mklink /J node_modules ../<repo-principal>/node_modules
+  cp ../<repo-principal>/.env.local .env.local
+  git branch --show-current  # MUST = feat/<branche-feature>
+  git status  # MUST = clean
+  ```
+  Bénéfices : (1) zéro contamination working tree partagé multi-terminal (cf incidents `5e1a48a` + `11b914e` + `894fa5e`), (2) évite collisions stash externes auto + bascules silencieuses de branche, (3) chaque terminal a sa branche `git branch --show-current` indépendante, (4) `cp .env.local` instantané vs reload manuel.
+- **Coût** : ~10s setup + cleanup `git worktree remove` à faire en fin de séance. Largement amorti sur séance multi-PR (séance 29/04 : 13+ worktrees pour 16 PRs mergées, cleanup batch fin séance).
+- **Pattern recovery quand `gh pr merge --delete-branch` plante** (séance 29/04, master locked par worktree TD checkout master) : `gh api -X DELETE repos/{}/git/refs/heads/<branche>` pour suppression branche remote post-merge serveur. Le merge serveur OK (squash + close PR), juste la suppression branche locale échoue. Pattern utilisé 5+ fois cette séance. Vérification 404 GET ref.
+- **Pattern fallback REST API curl + node payload writer pour `gh pr create`** (séance 29/04 PR #46 TC) : si `gh CLI` plante (scope OAuth restreint sur le token de session, manque `read:org` etc.), bascule REST API direct via `curl POST /repos/{owner}/{repo}/pulls` + payload JSON construit via `node` throw-away (5085 bytes typique). Token `gho_*` extrait du Git Credential Manager Windows. Plus robuste que `gh CLI` quand le token de session a un scope OAuth restreint. À retenir pour futurs chantiers : pattern REST API documenté en fallback de `gh CLI`.
+
+### Rebase + force-with-lease — pattern conflit master post-merges concurrents
+
+- **Pattern rebase + `--force-with-lease` standard quand PR DIRTY post-merges concurrents** (séance 29/04, observé 3 fois : TE PR #42 T-309, TC PR #46 T-305 PR-B, TB PR #44 T-321 cookies post-T-309 + T-310 + T-323). Quand plusieurs PRs avancent en parallèle multi-terminal, la dernière à merger est souvent DIRTY car master a avancé entre `gh pr create` et `gh pr merge`. Procédure :
+  ```bash
+  cd worktree terroir-<terminal>-t<NNN>
+  git branch --show-current  # MUST = feat/<branche>
+  git fetch origin master
+  git rebase origin/master
+  # Conflit attendu sur fichiers union (lib/audit-logs/log-auth-event.ts AuthEventType,
+  # app/connexion/actions.ts loginAction success/fail paths, etc.)
+  # Résolution : garder TOUTES les additions ordre chronologique d'ajout +
+  # commentaires dédiés respectifs préservés
+  git add <fichiers résolus>
+  git rebase --continue
+  # Auto-QA local post-rebase
+  npx tsc --noEmit && npx vitest run
+  git push --force-with-lease origin feat/<branche>
+  # Vercel preview rebuild auto post-force-push
+  ```
+- **`--force-with-lease` (jamais `--force`)** : refuse le push si remote a bougé entre temps (autre force-push concurrent). Sécurité supplémentaire sur feat branch partagée. Pratique standard pour résolution conflit post-PR.
+- **Pattern résolution conflit `AuthEventType` union récurrent** (séance 29/04, observé 3 fois sur PRs concurrentes T-309 / T-310 / T-305 PR-B qui ajoutent toutes des entries au même endroit `lib/audit-logs/log-auth-event.ts` après `invitation_consumed_race_lost`) : résolution union sémantique = garder TOUTES les entries ordre chronologique d'ajout (T-310 trois entries `invitation_created/invitation_revoked/invitation_consumed_success` + T-309 `login_failed` + T-305 PR-B `rate_limit_exceeded`) + commentaires dédiés respectifs préservés. Le diff git interprète l'edit comme "remplacement" car les 3 PRs ont divergé du même parent en éditant le même endroit, mais sémantiquement les 5 additions sont complémentaires.
+- **Référence** : commits `45b2df9` (TE T-309 post-rebase) + `5d51f44` (TC T-305 PR-B post-rebase) + `e22f14a` (TB T-321 post-rebase pré-fix Edge Runtime).
+
+### Fail-fast env vars vs fallback silencieux — convention TerrOir
+
+- **Convention `lib/env/urls.ts` fail-fast strict** (commit `ef7f10b` "localhost a déjà fait perdre du temps en prod") : pas de fallback silencieux pour env vars `NEXT_PUBLIC_*_URL`. Throw au module-load si manquante. Cohérent T-328 + T-325 séance 29/04 qui étendent le pattern à `NEXT_PUBLIC_ADMIN_URL` et au refacto `lib/auth/email-redirect.ts` + 3 fichiers landing/UI.
+- **Coût attendu côté tests** : 14+ fichiers tests existants chargent transitivement `lib/env/urls.ts` et cassent sur throw fail-fast `Missing NEXT_PUBLIC_<X>` au module-load. Patch via stubs `process.env.NEXT_PUBLIC_<X> ??=` dans `vi.hoisted` ou pré-import :
+  ```ts
+  vi.hoisted(() => {
+    process.env.NEXT_PUBLIC_APP_URL ??= "https://www.terroir-local.fr";
+    process.env.NEXT_PUBLIC_ADMIN_URL ??= "https://admin.terroir-local.fr";
+    process.env.NEXT_PUBLIC_PRODUCER_URL ??= "https://pro.terroir-local.fr";
+  });
+  ```
+  Pattern projet réutilisable. Coût accepté vs fallback silencieux. Pas scope creep.
+- **Bénéfice** : fail-fast attrape l'oubli env Vercel **au build** (Vercel preview FAIL au build = signal voulu), pas en runtime prod silencieux (localhost en prod, scénario `ef7f10b`).
+- **Test preview Vercel obligatoire avant merge** : fail-fast vérifie env vars Vercel preview au build. Vercel preview SUCCESS = env vars correctement configurées Production + Preview. Bloqueur PR3 si env var pas encore set côté Vercel par Romain.
+- **Référence** : commits T-328 `05df0c3` (`lib/auth/email-redirect.ts` env-driven) + T-325 `d1be726` (3 fichiers landing/UI env-driven). Pattern stub référence : `tests/lib/auth/email-redirect.test.ts` (NEW, 9 cas).
 - **Pattern push back factuel TT sur erreur du chat** (session 28/04, PUSH 7, trailer Co-Authored-By Claude). Le chat avait supposé que les 6 commits précédents de la branche n'avaient pas le trailer (ne l'ayant pas vu dans les rapports streamés). TT a fait la vérification factuelle dans `git log` réel et confirmé que les 6 avaient le trailer. Recommandation TT : garder le trailer sur PUSH 7 pour cohérence (vs réécriture historique destructive avec force push). **Côté chat (Claude principal)**, recevoir un push back factuel = vérifier ses propres assumptions dans le repo réel, pas insister par défaut. **3e occurrence cumulative en série** (`ddb3a02` Phase C.4 YAGNI 25/04, `49c0f1b` P1 cible 26/04 nuit, ce trailer 28/04). Le pattern "TT pousse-back avec lecture factuelle du code/git" devient **fiable et rentable** : économise du churn, corrige les erreurs du chat, dépénalise les briefs imparfaits. À valoriser dans `METHODOLOGY.md` comme contrat collaboratif.
 - **Pattern multi-PUSH STOP-GO sur chantier large** (session 28/04, 7 PUSH refonte home consumer). Pour un chantier de ~1350 lignes touchant 22 fichiers existants + 11 fichiers nouveaux, le découpage en 7 PUSH avec audit + plan + STOP + GO + code + auto-QA + STOP + rapport intermédiaire + GO push permet à Romain de valider granulairement et à TT de ne pas accumuler de risque. Coût méthodologique élevé (~2-3h de discussion brief/audit/validation pour ~7-8h de code) mais coût d'erreur faible (zéro revert, zéro force push, zéro régression). **Pattern recommandé** pour : refactor large (>10 fichiers), migration sémantique (Button primary green → terra), refonte UI (homepage / kit producer / kit admin), changements à blast radius mesurable. **Pattern non-recommandé** pour : fix de 1-2 lignes, ajout d'un test isolé, micro-itération sur composant existant.
 - **Pattern saturation working tree partagé multi-terminal** (session 28/04 après-midi, observé avec 4 processus actifs simultanés : TA + TB + TC + chat). Symptômes : (1) stash externes auto-créés par un terminal absorbant des modifs d'autres terminaux non-committées, (2) `git branch --show-current` retourne par moments une branche différente de celle attendue (3 récidives observées), (3) fichiers staged dans l'index appartenant à d'autres terminaux malgré `git add` paths explicites. **Mitigation systématique** : `git branch --show-current` intercalé entre CHAQUE commande critique (add / commit / push / checkout), pas seulement à 1-2 moments-clé. Coût négligeable (1 commande grep), bénéfice critique (évite de pusher sur la mauvaise branche). Quand on passe de 4 processus actifs à 1 seul (TC libéré + TA libéré), les bascules silencieuses cessent immédiatement. **Recommandation forte pour sessions futures** : pour 3+ terminaux parallèles, séparer physiquement les working directories via `git worktree add ../terroir-tb feature/xxx` (ou clones distincts). Coût opérationnel faible (~2 min de setup), bénéfice énorme (zéro stash externe, zéro switch silencieux).

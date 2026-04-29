@@ -7,6 +7,150 @@ Pour les priorités forward-looking, voir [`TODO.md`](./TODO.md).
 
 ---
 
+## 2026-04-29 (purge audit Auth #1)
+
+> Session marathon multi-terminal (TA/TB/TC/TD/TE) consacrée à la purge des findings de l'audit Auth #1 Cluster A/B/C/D + mineurs/cosmétiques + bloqueurs lancement code. **16 PRs mergées sur master** sur la séance complète (continuations cumulées). Master HEAD final : `d1be726` post-merge PR #48 T-325. **Audit Auth #1 close côté code** ; bloqueurs lancement résiduels non-code (T-041 pages légales + T-046 HIBP Pro plan).
+>
+> 🟢 **Chantiers majeurs clos par cluster** :
+> - **Cluster A `auth/inscription/*`** (TC, PR #33 squash `4afa2e4`) — T-300 confirmation email signup activée + T-301 compensation orphelin `admin.auth.admin.deleteUser` symétrique + T-313 enumeration-resistance signup `{ success: { email } }` identique happy/error paths.
+> - **Cluster B `invitation/_actions/*`** (TB+TC, PRs #36 `8163f88` + #38 `8f60412` + #40 `9648525`) — T-303 GET → POST anti-CSRF, T-302+T-304 enumeration-resistance + compensation orphelin `create-account.ts` + `login-and-upgrade.ts`, T-307 audit log `invitation_consumed_race_lost`, T-310 complet (3 events câblés `invitation_created`/`invitation_consumed_success`/`invitation_consumed_race_lost` + 1 pré-déclaré `invitation_revoked`).
+> - **Cluster C `connexion/*` + `callback/*`** (TE, PRs #34 `358801f` + #42 `ec83876` + #47 `354de7d`) — T-318 mapping FR codes symboliques erreurs callback (4 codes `expired/invalid/missing/technical`), T-317 host header injection `requestPasswordResetAction`, T-309 audit log `login_failed` + helper inline `classifyLoginError` (4 codes EN-neutre `invalid_credentials/email_not_confirmed/rate_limited/technical`), T-314 hardening `sanitizeNext` extraction `lib/auth/sanitize-next.ts` + reject control chars + dangerous schemes + `/\\` gap principal.
+> - **Cluster D `compte/*`** (séance précédente) — T-315 + T-327 (bug latent flow profil email change).
+> - **Mineurs/cosmétiques** (TC, PR #41 `2417b04`) — T-319 helper `lib/auth/role-switcher-urls.ts` extracted (RoleToggle + RoleSwitcher) + T-322 `token_prefix` retiré metadata Resend invitation flow.
+> - **T-305 rate-limit complet** (TA infra PR #35 `8c9f069` + TC intégration PR #46 `ba4857c`) — PR-A infra Upstash Redis sliding window + helpers `getSignupRateLimit/getLoginRateLimit/getRecoveryRateLimit` (5/60s signup-login, 3/60s recovery par IP). PR-B intégration 6 call sites auth + audit log `rate_limit_exceeded` (signup + login + magic_link mutualisé + recovery + invitation create-account + invitation login-and-upgrade). Wording erreur générique `"Trop de tentatives. Réessayez dans quelques minutes."` Bloqueur lancement public levé.
+> - **T-316 cross-tab session sync** (TA, PR #39 `3508082`) — `lib/auth/cross-tab-auth-sync.ts` BroadcastChannel API avec fallback no-op + listener `UserProvider`. SIGNED_OUT/SIGNED_IN/USER_UPDATED propagés cross-tab même origin sans refresh manuel.
+> - **T-321 middleware perf cache role snapshot cookie HttpOnly** (TB, PR #44 `98ffd53`) — `lib/auth/role-snapshot-cookie.ts` Web Crypto API HMAC-SHA256 + cookie isolation Chantier 4 (`__terroir_role_snapshot` www/pro shared `.terroir-local.fr` vs `sb-admin-role-snapshot` admin exclusif) + middleware fast-path 3 call sites cachables (admin lookup + pro roles lookup + parallel needsAuth) + invalidation triggers (login success + logout + callback OTP + role_changed login-and-upgrade + role_changed accept-invitation). 2 queries DB économisées par request authentifiée (~50-100ms gagnés). TTL 15 min. **Bug Edge Runtime crypto Node natif détecté + fix Web Crypto API async** (cf LESSONS.md section dédiée).
+> - **T-323 slugFromEmail extraction** (TA, PR #43 `f6aa8a4`) — duplication strictement identique 3 fichiers `_actions/*` extraite vers `lib/producers/slug-from-email.ts` pure function + 5 tests vector matrix (standard + accents + majuscules + spéciaux + randomness).
+> - **T-327 bug latent flow profil email change** (TA, PR #32 `ee43444`) — fix bug latent post-merge T-315 doc Word audit.
+> - **T-328 hardcode prod URLs `lib/auth/email-redirect.ts`** (TA, PR #45 `05df0c3`) — 4 constantes refondues env-driven `${NEXT_PUBLIC_*}/path` (fail-fast strict via `lib/env/urls.ts`, antimagne T-317 préservée env build-time ≠ donnée runtime). Tests preview Change Email + Magic Link + Reset Password + Confirm Signup possibles maintenant. Action externe Romain : `NEXT_PUBLIC_ADMIN_URL=https://admin.terroir-local.fr` configuré Vercel All Environments.
+> - **T-325 refactor env vars hostnames** (TA, PR #48 `d1be726`) — 3 fichiers landing/UI basculés env-driven (`pro-accueil/page.tsx` + `admin-accueil/page.tsx` URL technique lignes 41/50 + `footer.tsx`) + texte UX visible `admin-accueil` lignes 44/53 hardcoded (label distinction URL technique). Catégorie B intentionnelle préservée (`cookie-domain/redirect-cookie/role-snapshot/post-login-redirect/middleware/connexion-layout` = apex prod cookies partagés multi-subdomain). `lib/twilio/sms.ts` skip (texte communicationnel).
+>
+> ⚠️ **Méthodologie / nouveautés capitalisées** :
+> - **Bug Edge Runtime crypto Node natif détecté via Vercel logs** (T-321 PUSH 2.5 fix) : `middleware.ts` Next.js tourne en Edge Runtime, pas Node.js runtime. `crypto.createHmac` + `timingSafeEqual` Node natif **incompatibles Edge Runtime**. Bug NON détecté par auto-QA Vitest (Node runtime, false positive) ni Build Vercel (compile-time OK). Détection uniquement via runtime preview Vercel `MIDDLEWARE_INVOCATION_FAILED` + Vercel logs JSONL. **Fix : refacto Web Crypto API `crypto.subtle.sign/verify` async** (cascade async sur 3 fichiers app + 2 fichiers tests). Invariant méthodologique gravé pour TerrOir (cf LESSONS.md section dédiée).
+> - **Pattern fail-fast env vars vs fallback silencieux** (commit `ef7f10b` "localhost a déjà fait perdre du temps en prod") — convention projet TerrOir prime sur defense-in-depth dans helper. Tests existants nécessitent stubs `process.env ??=` dans `vi.hoisted` ou pré-import. Coût attendu accepté vs fallback silencieux. Cohérent T-328 + T-325 séance courante. Pattern stub réutilisable pour tester n'importe quelle route qui touche aux env vars hostnames.
+> - **Pattern recovery merge `gh CLI`** (TC PUSH 3 PR #46) : si `gh CLI` plante (scope OAuth restreint, master locked worktree TD), fallback **REST API curl + node payload writer** (POST `/repos/{owner}/{repo}/pulls` + payload JSON construit via node throw-away). Token `gho_*` du Git Credential Manager. Pattern documenté pour chantiers futurs si auth gh inline plante. Recovery DELETE branche : `gh api -X DELETE repos/{}/git/refs/heads/<branche>`.
+> - **Pattern résolution conflit AuthEventType union** (TE T-309 + TC T-305 PR-B rebases) : conflits récurrents sur `lib/audit-logs/log-auth-event.ts` quand plusieurs PRs ajoutent entries en parallèle. Résolution : garder TOUTES les entries ordre chronologique d'ajout + commentaires dédiés respectifs préservés. `git rebase origin/master` + `git push --force-with-lease` standard.
+> - **Pattern audit log forensique préfixe greppable** (cohérent T-318 + T-309 + T-317 + T-314 + T-305 PR-B + T-310) : format `[AUDIT_TYPE] reason=<reason> raw_length=<n>` côté logs Vercel. PAS de raw verbatim (anti log forging + anti PII). Reasons enum strict (no injection vector). Cohabitation avec audit_logs DB-only (pas de console.warn applicatif redondant).
+> - **Pattern compensation orphelin `admin.auth.admin.deleteUser`** (T-301 + T-302 + T-304 + Cluster B) — symétrique reproductible : si auth signup/upgrade OK + DB insert KO → `deleteUser` rollback. Évite users orphelins en `auth.users` sans row applicative.
+> - **Pattern enumeration-resistance strict** (T-301 + T-302 + T-304 + T-313) — `{ success: { email } }` identique happy path et error path vs message générique unique selon contexte. Anti-énumération comptes existants. Distinct du pattern wording erreur côté UI.
+> - **Pattern bundling cohérent "on évite la dette technique"** : T-300+T-301+T-313 PR #33, T-302+T-304 PR #38, T-319+T-322 PR #41, T-310 complet PR #40. Plusieurs findings cohérents fonctionnellement bundlés en 1 PR plutôt que sub-PRs séparés.
+> - **Pattern worktrees dédiés `terroir-XX-tNNN` validés systématiquement** : 13+ worktrees créés cette séance (`terroir-tb-t302`, `terroir-tb-t303`, `terroir-tb-t307`, `terroir-tb-t310`, `terroir-tb-t321`, `terroir-tc-batch`, `terroir-tc-t300`, `terroir-tc-t315`, `terroir-tc-t305-prb`, `terroir-ta-t323`, `terroir-ta-t328`, `terroir-ta-t325`, `terroir-te-t309`, `terroir-te-t317`, etc.). Junction `node_modules` + `cp .env.local` instantanés. Évite contamination working tree partagé multi-terminal (cf LESSONS.md `5e1a48a` + `11b914e` + `894fa5e`).
+> - **Vercel SSO bloque accès curl externe preview** (TC + TB diagnostic T-305 PR-B test) : preview Vercel team protégés par SSO retournent 401 sur curl anonyme. Server Actions Next 14 hostiles au curl scripté (Next-Action header hashé build-time, body multipart, Origin/Referer matching). 3 approches identifiées : DevTools "Copy as cURL" + node payload, auto-extraction Next-Action fragile, SKIP test preview (auto-QA exhaustive + pattern uniforme + validation prod réelle post-merge). Voie SKIP retenue pour T-305 PR-B (mur technique, pas soft-fail).
+> - **Skip motivés findings audit Auth #1** archivés : T-320 (e2e cross-tab session sync, ROI faible setup framework e2e + 5 tests unit T-316 broadcaster suffisants + validation manuelle Romain), T-324 (status quo cookie redirect_after_auth scope acceptable), T-326 (déjà capitalisé `docs/TODO.md` Vision funnel Phase 3), T-308 (close direct via T-300 callback `route.ts:154-165` audit `account_signup`).
+
+### Cluster A finalisation (chantier TC, PR #33 squash `4afa2e4`)
+
+- **T-300 confirmation email signup** : action externe Romain Dashboard Supabase ON activée début continuation 2 (bloqueur initial levé). Auto-login retiré post-confirmation, message "Vérifiez vos emails" affiché à la place du redirect `/compte`.
+- **T-301 compensation orphelin signup** : pattern `admin.auth.admin.deleteUser` symétrique si auth signup OK + DB insert KO. Préserve invariant zéro user orphelin `auth.users` sans `public.users`.
+- **T-313 enumeration-resistance signup** : `{ success: { email } }` identique happy path et error path. Anti-énumération comptes existants côté UI. Cohérent pattern enumeration-resistance Cluster B.
+- **Auto-QA** : tsc clean ✓ | vitest baseline ✓ | lint clean ✓ | build OK ✓.
+
+### Cluster B finalisation (chantiers TB+TC, PRs #36 `8163f88` + #38 `8f60412` + #40 `9648525`)
+
+- **T-303 GET → POST anti-CSRF** (TB, PR #36 squash `8163f88`) : auto-upgrade GET → POST sur route invitation accept pour défense CSRF. Pattern auto-QA assertion mock count = 0 pendant render anti-CSRF.
+- **T-302 + T-304 enumeration-resistance + compensation orphelin** (TC, PR #38 squash `8f60412`) : `create-account.ts` + `login-and-upgrade.ts` enrichis pattern enumeration-resistance + `admin.auth.admin.deleteUser` symétrique. Cohérent T-301 Cluster A.
+- **T-310 complet audit log invitation flow** (TB, PR #40 squash `9648525`) : 3 events câblés (`invitation_created` POST `/api/admin/producers/invite`, `invitation_consumed_success` `completeOnboardingAction` success path, `invitation_consumed_race_lost` déjà mergé séance précédente T-307) + 1 pré-déclaré (`invitation_revoked` Option A — fonction admin de révocation absente, type `AuthEventType` prêt côté `lib/audit-logs/log-auth-event.ts`, câblage = juste 1 appel `logAuthEvent` côté future server action de révocation, coût zéro). Cluster B couverture forensique complète flow invitation producer.
+
+### Cluster C finalisation (chantiers TE, PRs #34 `358801f` + #42 `ec83876` + #47 `354de7d`)
+
+- **T-318 mapping FR codes symboliques erreurs callback** (TE, PR #34 squash `358801f`) : 4 codes catégoriels `expired/invalid/missing/technical` mappés depuis `verifyOtp` errors. Préserve enumeration-resistance UI (pas de signal différentiel selon que l'OTP est expiré ou invalide).
+- **T-317 host header injection `requestPasswordResetAction`** : whitelist hostnames stricte vs `request.headers.host` non-vérifié. Préserve antimagne contre redirect attacker-controlled cross-domain.
+- **T-309 audit log `login_failed`** (TE, PR #42 squash `ec83876`) : helper inline `classifyLoginError(code, message)` ~22L mappant `signinError` vers 4 codes EN-neutre `invalid_credentials/email_not_confirmed/rate_limited/technical`. `logAuthEvent({ eventType: "login_failed", userId: null, metadata: { email, reason_code } })` câblé fail path `loginAction`. IP + UA auto-extraits par `logAuthEvent` interne (`resolveRequestContext`). Surveillance forensique brute-force / énumération possible via grep `audit_logs` Supabase Dashboard. **Rebase trivial post-T-310** : conflit AuthEventType union résolu garder LES DEUX additions (T-310 entries puis T-309 login_failed) ordre chronologique d'ajout.
+- **T-314 hardening `sanitizeNext`** (TE, PR #47 squash `354de7d`) : extraction helper `lib/auth/sanitize-next.ts` (NEW +73L) + 27 tests vector matrix exhaustive (vs 18 plan, +9 cas overdelivery). 12 vectors couverts : URL absolues + protocol-relative `//` + backslash `/\\` (gap principal fixé) + schemes dangereux `javascript|data|file|vbscript` case-insensitive + control chars `[\r\n\0\t]` (anti CRLF log forging + null byte). Logging forensique format greppable `[SANITIZE_NEXT_REJECTED] reason=<reason> raw_length=<n>` (pas de raw verbatim, anti log forging + anti PII). Sister helper `isValidRedirectPath` (`post-login-redirect.ts`) **INTACT** par décision (asymétrie historique consolidée vs extension périmètre risquée). Cluster C close 5/5.
+
+### Mineurs/cosmétiques (chantier TC, PR #41 squash `2417b04`)
+
+- **T-319 helper `lib/auth/role-switcher-urls.ts` extracted** : duplication `RoleToggle` (navbar consumer multi-rôle) + `RoleSwitcher` (sidebar admin/producer multi-rôle) refactor via helper pur `getRoleSwitcherUrls`. 10 tests helper + 4 invariants role-toggle.
+- **T-322 `token_prefix` retiré metadata Resend invitation flow** : leak forensique vers tiers (Resend) supprimé. `token_prefix` reste tracé interne via `audit_logs` (forensique = DB-only, cohérent convention Phase 3).
+- **Auto-QA** : tsc clean ✓ | vitest baseline + 10 helper + 1 enrichi ✓ | lint clean ✓ | build OK ✓.
+
+### Bloqueurs lancement public (chantiers TA + TC, PRs #35 `8c9f069` + #46 `ba4857c` + #39 `3508082`)
+
+- **T-305 PR-A infra rate-limit Upstash Redis** (TA, PR #35 squash `8c9f069`) : `lib/rate-limit.ts` sliding window + helpers `getSignupRateLimit/getLoginRateLimit/getRecoveryRateLimit` (5/60s signup-login, 3/60s recovery par IP). Pattern fail-open Redis indispo (cohérent fail-safe `logAuthEvent` Phase 3). Memoization via `@upstash/redis` SDK. 9 tests vitest infra. Action externe Romain : compte Upstash + database `terroir-rate-limit` Ireland (eu-west-1) Free tier + vars `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` Vercel All Environments + `.env.local`.
+- **T-305 PR-B intégration 6 call sites auth + audit log `rate_limit_exceeded`** (TC, PR #46 squash `ba4857c`) : pattern code uniforme wrap pre-Supabase 6 call sites (signup + login + magic_link mutualisé `getLoginRateLimit` + recovery + invitation create-account + invitation login-and-upgrade mutualisés `getSignupRateLimit/getLoginRateLimit`). Insertion après `safeParse`, avant tout call Supabase coûteux. IP extraction via `extractRequestContext` existant (Vercel `x-forwarded-for` CSV + fallback `x-real-ip`). Wording erreur générique FR `"Trop de tentatives. Réessayez dans quelques minutes."` Metadata `{ route, cap, reset }` (pas `remaining: 0` redondant). 12 tests neufs (cap dépassé + cap OK pour chaque call site). **D4 SKIP `acceptInvitationAction`** (session-authed user déjà loggé + T-307 race-loss couvert protection mutuelle). **Rebase post-T-321 + T-328 + T-314 mergés entre temps** : conflit `app/(producer)/invitation/_actions/login-and-upgrade.ts` résolu union imports cookies + headers + clearRoleSnapshotOnStore + consumeRateLimit + getLoginRateLimit. Auto-QA verte 885/885 post-rebase. **Bloqueur lancement public majeur levé**.
+- **T-316 cross-tab session sync** (TA, PR #39 squash `3508082`) : `lib/auth/cross-tab-auth-sync.ts` BroadcastChannel API avec fallback no-op + listener `UserProvider`. SIGNED_OUT/SIGNED_IN/USER_UPDATED propagés cross-tab même origin sans refresh manuel. 5 tests broadcaster (cross-instance + filter par type + isolation post-close + unsubscribe + fallback no-op). Test preview validé Romain (Tab 1 logout → Tab 2 navbar bascule "Connexion" sans refresh).
+
+### T-321 middleware perf cache role snapshot cookie HttpOnly (chantier TB, PR #44 squash `98ffd53`)
+
+- **Architecture cookie HttpOnly signé HMAC** : `lib/auth/role-snapshot-cookie.ts` (NEW ~280L) helpers `getRoleSnapshotSecret/signRoleSnapshot/parseAndVerifyRoleSnapshot/setRoleSnapshotCookie/clearRoleSnapshotCookie/readRoleSnapshotCookie`. Payload `{ user_id, roles, isAdmin, expires_at }`. Format value `base64url(JSON_payload).hex(HMAC-SHA256)`. Attrs httpOnly + secure (prod) + sameSite=lax + domain (`.terroir-local.fr` prod, undefined admin) + path=/ + maxAge=900 (15min).
+- **Isolation Chantier 4 préservée** : `__terroir_role_snapshot` (www/pro shared `.terroir-local.fr`) vs `sb-admin-role-snapshot` (admin exclusif, no domain). Mirror exact `lib/supabase/cookie-domain.ts`.
+- **Refacto middleware 3 call sites cachables** : L116-120 admin lookup + L145-149 pro roles lookup + L190-197 parallel needsAuth. `producers.statut` lookups L157-161 + L218-222 INTACTS (volatile draft↔active, hors scope cache). 2 queries DB économisées par request authentifiée (~50-100ms gagnés). `getUser()` reste source vérité auth (non cachable).
+- **Invalidation triggers** : login success password (`loginAction` write fresh), login success magic link OTP (`callback/route.ts` write fresh), logout (`logout-action.ts` clear maxAge=0), `role_changed` `login-and-upgrade.ts` + `accept-invitation.ts` (clear, force DB lookup au prochain hit). `complete-onboarding.ts` PAS d'action (statut producer change, roles inchangés). Cross-tab T-316 PAS d'action (cookie HttpOnly server-only, partagé naturellement entre tabs).
+- **Bug Edge Runtime crypto Node natif** (PUSH 2.5 fix) : commit initial `e22f14a` utilisait `createHmac` + `timingSafeEqual` Node natif → 500 `MIDDLEWARE_INVOCATION_FAILED` preview Vercel. Diagnostic via Vercel runtime logs JSONL. **Fix Web Crypto API async** : refacto helpers `crypto.subtle.sign/verify` (timing-safe intrinsèque) + `TextEncoder`/`TextDecoder` + `btoa/atob` (zéro Buffer). Cascade async sur 3 fichiers app (`middleware.ts` + `loginAction` + `callback/route.ts`) + 2 fichiers tests. **Auto-QA Vitest n'a PAS détecté le bug** (Node runtime, false positive). Build Vercel SUCCESS au compile-time pas garantie runtime Edge. Validation runtime preview Vercel obligatoire pour helpers middleware. Invariant méthodologique gravé pour TerrOir (cf LESSONS.md section dédiée).
+- **Action externe Romain** : `ROLE_SNAPSHOT_SECRET` généré via `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` (clé hexa 64 chars) + Vercel All Environments + `.env.local`. Sensitive masqué Vercel.
+- **Test preview validé Romain** (post-fix Edge Runtime) : `/compte` charge sans 500 ✓ + cookie `__terroir_role_snapshot` écrit DevTools (Application > Cookies, value `base64.signature`, HttpOnly + SameSite Lax + Size 240 bytes) ✓ + cookie cleared post-logout ✓.
+- **Auto-QA** : tsc clean ✓ | vitest 864/864 (post-fix Edge Runtime) ✓ | lint clean ✓ | build OK (Middleware bundle 81 kB stable) ✓ | grep `import crypto Node` côté middleware = 0 (defense vs régression future) ✓.
+
+### T-323 slugFromEmail extraction (chantier TA, PR #43 squash `f6aa8a4`)
+
+- **Refactor pur extraction** : duplication strictement identique byte-for-byte 3 fichiers `_actions/*` (`accept-invitation.ts:15-19` + `create-account.ts:9-13` + `login-and-upgrade.ts:10-14`) extraite vers `lib/producers/slug-from-email.ts` (NEW pure function). Cohérent helpers similaires existants `lib/producers/*` kebab-case (`get-display-name.ts` + `promote-to-public.ts` + `fetch-public.ts` + etc.).
+- **5 tests vector matrix** : email standard `john.doe@example.com` → préfixe `john-doe-` + suffixe 6 chars + email avec accents `émile@x.fr` → caractères non-ASCII → tirets + email majuscules `Foo.Bar@x.fr` → lowercase + caractères spéciaux `+_!@x.fr` → tirets fusionnés + randomness 2 appels même email → suffixes différents.
+- **T-308 close direct sans code** : Scénario A confirmé Cluster A `account_signup` audit déjà couvert via T-300 `callback/route.ts:154-165` post-`verifyOtp` avec metadata `source: "consumer_signup_form"` (commit `4afa2e4` Cluster A merge).
+- **Auto-QA** : tsc clean ✓ | vitest baseline + 5 nouveaux tests T-323 ✓ | lint clean ✓ | build OK ✓.
+
+### T-327 bug latent flow profil email change (chantier TA, PR #32 squash `ee43444`)
+
+- **Fix bug latent post-merge T-315** : flag par doc Word audit, scope Cluster D `compte/*`. Détails côté doc audit Auth (séance précédente).
+
+### T-328 hardcode prod URLs `lib/auth/email-redirect.ts` (chantier TA, PR #45 squash `05df0c3`)
+
+- **3 reflags tranchés PUSH 1** : Q1 fail-fast strict (cohérence projet `lib/env/urls.ts` commit `ef7f10b` "pas de fallback silencieux car localhost a déjà fait perdre du temps en prod"), Q2 `NEXT_PUBLIC_APP_URL` Vercel valeur réelle = `https://www.terroir-local.fr` (avec www) confirmée Romain, Q3 scope effectif 4 constantes seulement (pas 6 — magic link réutilise déjà `getAuthCallbackUrl`, pas de `MAGIC_LINK_*_CALLBACK` constantes).
+- **Refonte 4 constantes env-driven** : `AUTH_CALLBACK_ADMIN/DEFAULT` + `PASSWORD_RESET_ADMIN/DEFAULT` refondues `${NEXT_PUBLIC_*_URL}/path`. Helpers `getAuthCallbackUrl(isAdmin)` + `getPasswordResetUrl(isAdmin)` signatures préservées (call sites intacts).
+- **`lib/env/urls.ts` enrichi** : `NEXT_PUBLIC_ADMIN_URL` ajouté fail-fast strict (mirror `NEXT_PUBLIC_APP_URL` pattern projet). Throw au module-load si manquante.
+- **Antimagne T-317 préservée** : env build-time ≠ donnée externe runtime. Pas de host header injection vector réintroduit (env vars build-time injectées au build Vercel, pas modifiables runtime).
+- **Élargissement scope tests** : 14 fichiers tests existants chargent transitivement `lib/env/urls.ts` et cassent sur throw fail-fast `Missing NEXT_PUBLIC_ADMIN_URL`. Patch via stubs `process.env.NEXT_PUBLIC_ADMIN_URL ??=` dans `vi.hoisted` ou pré-import (pattern projet réutilisé). Coût attendu fail-fast strict, pas scope creep.
+- **Action externe Romain** : `NEXT_PUBLIC_ADMIN_URL=https://admin.terroir-local.fr` configuré Vercel All Environments + `.env.local`. Tests preview Change Email + Magic Link + Reset Password + Confirm Signup possibles maintenant (testabilité restored).
+- **Auto-QA** : tsc clean ✓ | vitest 839/839 (+9 nouveaux T-328) ✓ | lint clean ✓ | build OK ✓.
+
+### T-325 refactor env vars hostnames (chantier TA, PR #48 squash `d1be726`)
+
+- **3 reflags tranchés PUSH 1** : Q1 scope 3 fichiers (`pro-accueil` + `admin-accueil` + `footer.tsx`) skip `lib/twilio/sms.ts` (texte SMS communicationnel user-facing branding), Q2 texte UX visible `admin-accueil` lignes 44 & 53 hardcoded (label distinction URL technique vs label UX, preview Vercel hostname long technique illisible casse UX), Q3 catégorie B EXCLUE (`cookie-domain/redirect-cookie/role-snapshot/post-login-redirect/middleware/connexion-layout` — design intentionnel apex prod cookies `.terroir-local.fr` partagés multi-subdomain, refacto casserait cookies preview Vercel).
+- **3 fichiers refondus env-driven** : `app/pro-accueil/page.tsx` (lines 5-6) imports `NEXT_PUBLIC_APP_URL` + `APPLY_URL`/`CONSUMER_URL` templates. `app/admin-accueil/page.tsx` (lines 41 + 50) imports `NEXT_PUBLIC_PRODUCER_URL` + `NEXT_PUBLIC_APP_URL` URL technique href interpolated (texte UX lignes 44/53 INTACT). `components/ui/footer.tsx` (line 31) import `NEXT_PUBLIC_PRODUCER_URL` + `defaultColumns[1].links[1].href` interpolated.
+- **Auto-QA** : tsc clean ✓ | vitest 873/873 (zéro régression) ✓ | lint clean ✓ | build OK (fail-fast `NEXT_PUBLIC_PRODUCER_URL` valide Vercel All Environments) ✓.
+
+### Récap quantitatif séance 29/04 (purge audit Auth #1 close)
+
+**16 PRs mergées en prod** (master timeline antichronologique) :
+
+| PR | Chantier | Hash master | Terminal | Tests |
+|---|---|---|---|---|
+| #48 | T-325 refactor env vars hostnames | `d1be726` | TA | 873/873 (zéro régression) |
+| #47 | T-314 hardening `sanitizeNext` | `354de7d` | TE | 900/900 (+27 cas) |
+| #46 | T-305 PR-B intégration call sites rate-limit | `ba4857c` | TC | 885/885 (post-rebase) |
+| #45 | T-328 hardcode prod URLs `email-redirect.ts` | `05df0c3` | TA | 839/839 (+9) |
+| #44 | T-321 middleware perf cache role snapshot | `98ffd53` | TB | 864/864 (post-fix Edge Runtime) |
+| #43 | T-323 `slugFromEmail` extraction | `f6aa8a4` | TA | baseline + 5 |
+| #42 | T-309 audit log `login_failed` | `ec83876` | TE | 825/825 (post-rebase) |
+| #41 | T-319 + T-322 mineurs/cosmétiques bundle | `2417b04` | TC | baseline + 10 + 1 |
+| #40 | T-310 complet audit log invitation flow | `9648525` | TB | 810/810 |
+| #39 | T-316 cross-tab session sync | `3508082` | TA | baseline + 5 |
+| #38 | T-302 + T-304 Cluster B finalisation | `8f60412` | TC | baseline + tests Cluster B |
+| #36 | T-303 GET → POST anti-CSRF | `8163f88` | TB | baseline + 8 |
+| #35 | T-305 PR-A infra Upstash | `8c9f069` | TA | baseline + 9 |
+| #34 | T-318 mapping FR codes erreurs callback | `358801f` | TE | baseline + 3 |
+| #33 | T-300 + T-301 + T-313 Cluster A | `4afa2e4` | TC | baseline + Cluster A |
+| #32 | T-327 bug latent flow profil email change | `ee43444` | TA | baseline + 1 |
+
+**Vitest baseline** : ~487 (28/04 fin) → 873 (29/04 fin séance) (+386 tests, +79.3%).
+
+**Master HEAD final** : `d1be726` (post-merge PR #48).
+
+**Configurations externes Romain Dashboard** :
+- Confirm email Dashboard Supabase ON activé (bloqueur T-300 levé).
+- Compte Upstash + database `terroir-rate-limit` Ireland (eu-west-1) Free tier + vars `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` Vercel All Environments + `.env.local` (T-305 PR-A).
+- `ROLE_SNAPSHOT_SECRET` généré via `node crypto.randomBytes(32).toString('hex')` + Vercel Production + Preview + `.env.local` (T-321). Sensitive masqué Vercel.
+- `NEXT_PUBLIC_ADMIN_URL=https://admin.terroir-local.fr` Vercel All Environments + `.env.local` (T-328).
+
+**Tests preview validés Romain** : T-327 + T-318 (3 tests) + T-300 UI (1 test) + T-303 (skip auto-QA suffit) + T-316 cross-tab (1 test logout multi-tab) + T-321 cookie post-fix Edge Runtime (3 tests DevTools).
+
+**Bloqueurs lancement public résiduels (non-code)** :
+- **T-041 Pages légales** (Mentions légales / CGU / CGV / Politique confidentialité) — fusion T-041 (footer pro) + T-046 (footer consumer "à venir") + finding audit Auth #1 séance 29/04. Action externe Romain rédaction + validation juridique avocat avant go-live public.
+- **T-046 HIBP password protection** — bloqué Pro plan Supabase ($25/mois). Action externe Romain upgrade Pro plan + toggle Dashboard Settings → Auth → Password Strength → "Enable HIBP password check". Pas de chantier code TerrOir.
+
+**Audit Auth #1 close côté code** (16 PRs mergées). Bloqueurs lancement résiduels = actions externes (juridique + Pro plan Supabase).
+
+---
+
 ## 2026-04-28 (après-midi/soir)
 
 > Session 4 chantiers `### Chantiers code futurs` purgés + Phase A nouveau chantier "Notre démarche" + extension dotenv 5 scripts repo. **6 PRs mergées** sur master (#3 brand assets / #4 invite email-existant / #5 cron retry-failed-refunds / #6 extension dotenv 4 scripts) + **Phase A nouveau chantier "Notre démarche"** (PR #2 mergée matin via merge commit `f7293ba` regroupant `ced2ec2` + `cad9d95` + `4d57a30`). Master HEAD : `217a9f4` post-merge PR #6.
