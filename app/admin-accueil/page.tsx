@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { Logo } from '@/components/ui';
+import { NEXT_PUBLIC_APP_URL, NEXT_PUBLIC_PRODUCER_URL } from '@/lib/env/urls';
 
 export const metadata: Metadata = {
   title: 'Administration — TerrOir',
@@ -38,7 +39,7 @@ export default function AdminAccueilPage() {
             <p>
               Vous êtes producteur ?{' '}
               <a
-                href="https://pro.terroir-local.fr/"
+                href={`${NEXT_PUBLIC_PRODUCER_URL}/`}
                 className="text-green-700 hover:underline"
               >
                 pro.terroir-local.fr
@@ -47,7 +48,7 @@ export default function AdminAccueilPage() {
             <p>
               Vous êtes client ?{' '}
               <a
-                href="https://www.terroir-local.fr/"
+                href={`${NEXT_PUBLIC_APP_URL}/`}
                 className="text-green-700 hover:underline"
               >
                 terroir-local.fr

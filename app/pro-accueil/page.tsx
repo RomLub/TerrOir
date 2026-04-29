@@ -1,9 +1,10 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { Logo, Button } from '@/components/ui';
+import { NEXT_PUBLIC_APP_URL } from '@/lib/env/urls';
 
-const APPLY_URL = 'https://www.terroir-local.fr/devenir-producteur';
-const CONSUMER_URL = 'https://www.terroir-local.fr/';
+const APPLY_URL = `${NEXT_PUBLIC_APP_URL}/devenir-producteur`;
+const CONSUMER_URL = `${NEXT_PUBLIC_APP_URL}/`;
 
 export const metadata: Metadata = {
   title: 'Devenir producteur partenaire — TerrOir',
