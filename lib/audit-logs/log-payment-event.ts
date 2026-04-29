@@ -86,7 +86,13 @@ export type PaymentEventType =
   //                              l'admin via email Resend (SUPPORT_EMAIL)
   //                              + notification placeholder DB.
   | "stripe_transfer_failed"
-  | "stripe_payout_failed";
+  | "stripe_payout_failed"
+  // T-431 : stripe_default_payment_method_set — émis quand le default
+  // payment method d'un Customer Stripe est modifié via
+  // app/api/stripe/ensure-default-payment-method/route.ts (paths F1, F2).
+  // Pas émis sur path F3 (detach seul sans changement de default) ni
+  // E1 (no-op default déjà set).
+  | "stripe_default_payment_method_set";
 
 type LogPaymentEventParams = {
   eventType: PaymentEventType;

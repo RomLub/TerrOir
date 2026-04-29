@@ -6,9 +6,9 @@
 //   - Customer lookup (2) : no_customer 200, customer_deleted 200
 //   - Payment methods (1) : no_payment_methods 200
 //   - Default already set (1) : changed:false no-op
-//   - Happy path + dedupe (3) : create default 200 (+ assert pas
-//     de logPaymentEvent — anti-régression T-431), dedupe + create 200,
-//     dedupe sans update 200
+//   - Happy path + dedupe (3) : create default 200 (+ assert logPaymentEvent
+//     posé event_type stripe_default_payment_method_set sur paths F1+F2 —
+//     T-431 résolu), dedupe + create 200, dedupe sans update 200
 //   - Edge fingerprint (1) : fingerprints différents → pas de detach
 //
 // Pattern mocks aligné tests/app/api/stripe/connect/onboard/route.test.ts
@@ -48,11 +48,10 @@ vi.mock("@/lib/stripe/server", () => ({
   },
 }));
 
-// Mock préventif : la route n'importe pas logPaymentEvent aujourd'hui (cf.
-// T-431 reflag — audit log payment_method_set_default absent). L'assertion
-// `not.toHaveBeenCalled()` dans F1 documente l'état actuel ; si la route
-// est instrumentée plus tard, le test échouera et signalera qu'il faut
-// l'updater pour valider la nouvelle assertion (call-with).
+// Mock standard logPaymentEvent ; T-431 résolu : la route pose un audit_log
+// event_type stripe_default_payment_method_set sur les paths F1 (1 PM, set
+// default) et F2 (dedupe + set default). F3 (detach seul sans default change)
+// et E1 (no-op default déjà set) ne posent PAS d'event.
 vi.mock("@/lib/audit-logs/log-payment-event", () => ({
   logPaymentEvent: mockLogPaymentEvent,
 }));
@@ -286,6 +285,7 @@ describe("E. Default already set", () => {
     expect(await res.json()).toEqual({ success: true, changed: false });
     expect(mockCustomersUpdate).not.toHaveBeenCalled();
     expect(mockPaymentMethodsDetach).not.toHaveBeenCalled();
+    expect(mockLogPaymentEvent).not.toHaveBeenCalled();
   });
 });
 
@@ -307,10 +307,17 @@ describe("F. Happy path + dedupe", () => {
       invoice_settings: { default_payment_method: PM_NEW_ID },
     });
     expect(mockPaymentMethodsDetach).not.toHaveBeenCalled();
-    // Anti-régression T-431 : audit log payment_method_set_default absent.
-    // Si la route est instrumentée plus tard, ce test échoue et impose
-    // d'updater l'assertion vers `toHaveBeenCalledWith(...)`.
-    expect(mockLogPaymentEvent).not.toHaveBeenCalled();
+    expect(mockLogPaymentEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "stripe_default_payment_method_set",
+        userId: CONSUMER_ID,
+        metadata: expect.objectContaining({
+          customer_id: CUSTOMER_ID,
+          payment_method_id: PM_NEW_ID,
+          order_id: ORDER_ID,
+        }),
+      }),
+    );
   });
 
   it("F2 — pas de default + 2 PMs même fingerprint → detach pms[0], update avec pms[1]", async () => {
@@ -331,6 +338,18 @@ describe("F. Happy path + dedupe", () => {
     expect(mockCustomersUpdate).toHaveBeenCalledWith(CUSTOMER_ID, {
       invoice_settings: { default_payment_method: PM_EXISTING_ID },
     });
+    expect(mockLogPaymentEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "stripe_default_payment_method_set",
+        userId: CONSUMER_ID,
+        metadata: expect.objectContaining({
+          customer_id: CUSTOMER_ID,
+          payment_method_id: PM_EXISTING_ID,
+          order_id: ORDER_ID,
+          dedupe_detached_id: PM_NEW_ID,
+        }),
+      }),
+    );
   });
 
   it("F3 — default DÉJÀ set + 2 PMs même fingerprint → detach pms[0], pas de customers.update", async () => {
@@ -349,6 +368,7 @@ describe("F. Happy path + dedupe", () => {
     });
     expect(mockPaymentMethodsDetach).toHaveBeenCalledWith(PM_NEW_ID);
     expect(mockCustomersUpdate).not.toHaveBeenCalled();
+    expect(mockLogPaymentEvent).not.toHaveBeenCalled();
   });
 });
 
