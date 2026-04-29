@@ -3,6 +3,7 @@ import { revalidateTag } from "next/cache";
 import { assertCronAuth } from "@/lib/cron/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
+import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
 import {
   assertTransition,
   type OrderStatus,
@@ -50,6 +51,19 @@ export async function POST(request: Request) {
         });
       } catch (e) {
         refundError = (e as Error).message;
+        // Instrumentation T-107 : audit_log forensique pour permettre la
+        // détection background par un cron retry futur (extension T-102).
+        // Pas de retry inline : la commande tombe en `cancelled` (fallback
+        // ci-dessous) et le refund reste à reconcilier hors-ligne.
+        await logPaymentEvent({
+          eventType: "order_timeout_refund_failed",
+          userId: order.consumer_id,
+          metadata: {
+            order_id: order.id,
+            payment_intent_id: order.stripe_payment_intent_id,
+            refund_error: refundError,
+          },
+        });
       }
     }
 

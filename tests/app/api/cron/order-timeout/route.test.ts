@@ -31,11 +31,16 @@ vi.mock("@/lib/resend/templates/order-timeout-cancelled", () => ({
     `Commande ${props.codeCommande} annulée (timeout)`,
 }));
 
+vi.mock("@/lib/audit-logs/log-payment-event", () => ({
+  logPaymentEvent: vi.fn(),
+}));
+
 import { POST } from "@/app/api/cron/order-timeout/route";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
 import { sendTemplate } from "@/lib/resend/send";
 import { revalidateTag } from "next/cache";
+import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
 
 // =============================================================================
 // Mock Supabase admin — chaque appel `from(table)` retourne un builder neuf.
@@ -183,6 +188,9 @@ beforeEach(() => {
   vi.mocked(createSupabaseAdminClient).mockReset();
 
   vi.mocked(revalidateTag).mockReset();
+
+  vi.mocked(logPaymentEvent).mockReset();
+  vi.mocked(logPaymentEvent).mockResolvedValue(undefined);
 
   consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 });
@@ -592,5 +600,86 @@ describe("POST /api/cron/order-timeout — revalidateTag", () => {
 
     // Aucune UPDATE n'a réussi → cache non invalidé (cache stale > flap à vide).
     expect(vi.mocked(revalidateTag)).not.toHaveBeenCalled();
+  });
+});
+
+// =============================================================================
+// T-107. Instrumentation order_timeout_refund_failed (audit_logs)
+// =============================================================================
+describe("POST /api/cron/order-timeout — T-107 audit log refund failed", () => {
+  it("T1 Stripe refund throw → logPaymentEvent('order_timeout_refund_failed') avec metadata complète", async () => {
+    const order = makeOrder({ id: "order-T1", paymentIntent: "pi_t1" });
+    const { client } = makeSupabase({
+      selectOrders: { data: [order], error: null },
+    });
+    vi.mocked(createSupabaseAdminClient).mockReturnValue(client);
+    vi.mocked(stripe.refunds.create).mockRejectedValueOnce(
+      new Error("card_declined"),
+    );
+
+    const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
+    expect(res.status).toBe(200);
+
+    // Le log audit a bien été posé pour ce path refund.
+    expect(vi.mocked(logPaymentEvent)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(logPaymentEvent)).toHaveBeenCalledWith({
+      eventType: "order_timeout_refund_failed",
+      userId: "consumer-order-T1",
+      metadata: {
+        order_id: "order-T1",
+        payment_intent_id: "pi_t1",
+        refund_error: "card_declined",
+      },
+    });
+  });
+
+  it("T2 Stripe refund OK → logPaymentEvent JAMAIS appelé (pas de log nominal)", async () => {
+    const order = makeOrder({ id: "order-T2", paymentIntent: "pi_t2" });
+    const { client } = makeSupabase({
+      selectOrders: { data: [order], error: null },
+    });
+    vi.mocked(createSupabaseAdminClient).mockReturnValue(client);
+
+    await POST(makeRequest({ auth: "Bearer test-secret" }));
+
+    expect(vi.mocked(logPaymentEvent)).not.toHaveBeenCalled();
+  });
+
+  it("T3 order sans payment_intent → logPaymentEvent JAMAIS appelé (pas de refund tenté)", async () => {
+    const order = makeOrder({ id: "order-T3", paymentIntent: null });
+    const { client } = makeSupabase({
+      selectOrders: { data: [order], error: null },
+    });
+    vi.mocked(createSupabaseAdminClient).mockReturnValue(client);
+
+    await POST(makeRequest({ auth: "Bearer test-secret" }));
+
+    expect(vi.mocked(logPaymentEvent)).not.toHaveBeenCalled();
+  });
+
+  it("T4 batch mixte (1 OK + 1 KO) → logPaymentEvent appelé une seule fois sur l'order KO", async () => {
+    const orderOk = makeOrder({ id: "order-ok", paymentIntent: "pi_ok" });
+    const orderKo = makeOrder({ id: "order-ko", paymentIntent: "pi_ko" });
+    const { client } = makeSupabase({
+      selectOrders: { data: [orderOk, orderKo], error: null },
+    });
+    vi.mocked(createSupabaseAdminClient).mockReturnValue(client);
+    vi.mocked(stripe.refunds.create)
+      .mockResolvedValueOnce({ id: "re_ok" } as never)
+      .mockRejectedValueOnce(new Error("network_timeout"));
+
+    await POST(makeRequest({ auth: "Bearer test-secret" }));
+
+    expect(vi.mocked(logPaymentEvent)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(logPaymentEvent)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "order_timeout_refund_failed",
+        userId: "consumer-order-ko",
+        metadata: expect.objectContaining({
+          order_id: "order-ko",
+          refund_error: "network_timeout",
+        }),
+      }),
+    );
   });
 });

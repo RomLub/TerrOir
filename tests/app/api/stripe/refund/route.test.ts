@@ -11,10 +11,13 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-const { mockRevalidateTag, mockRefundCreate } = vi.hoisted(() => ({
-  mockRevalidateTag: vi.fn(),
-  mockRefundCreate: vi.fn(),
-}));
+const { mockRevalidateTag, mockRefundCreate, mockLogPaymentEvent } = vi.hoisted(
+  () => ({
+    mockRevalidateTag: vi.fn(),
+    mockRefundCreate: vi.fn(),
+    mockLogPaymentEvent: vi.fn(),
+  }),
+);
 
 vi.mock("next/cache", () => ({
   revalidateTag: mockRevalidateTag,
@@ -24,6 +27,10 @@ vi.mock("@/lib/stripe/server", () => ({
   stripe: {
     refunds: { create: mockRefundCreate },
   },
+}));
+
+vi.mock("@/lib/audit-logs/log-payment-event", () => ({
+  logPaymentEvent: mockLogPaymentEvent,
 }));
 
 // --- Auth mocks (closure variable) ---------------------------------------
@@ -186,6 +193,7 @@ beforeEach(() => {
     .mockReset()
     .mockResolvedValue({ id: "re_test_123" });
   mockRevalidateTag.mockReset();
+  mockLogPaymentEvent.mockReset().mockResolvedValue(undefined);
   consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
   savedCronSecret = process.env.CRON_SECRET;
   delete process.env.CRON_SECRET;
@@ -416,5 +424,57 @@ describe("E. Happy path + side effects", () => {
     // Le reste du flow (UPDATE + revalidateTag) reste appelé.
     expect(captured.updates.find((u) => u.table === "orders")).toBeDefined();
     expect(mockRevalidateTag).toHaveBeenCalledTimes(1);
+  });
+});
+
+// --- F. T-107 Instrumentation order_admin_refund_failed ------------------
+
+describe("F. T-107 Instrumentation order_admin_refund_failed (audit_logs)", () => {
+  it("F1 Stripe refund throw → logPaymentEvent('order_admin_refund_failed') puis exception propagée (pas d'UPDATE ni revalidateTag)", async () => {
+    mockRefundCreate.mockReset().mockRejectedValueOnce(new Error("card_declined"));
+
+    await expect(POST(makeRequest())).rejects.toThrow("card_declined");
+
+    expect(mockLogPaymentEvent).toHaveBeenCalledTimes(1);
+    expect(mockLogPaymentEvent).toHaveBeenCalledWith({
+      eventType: "order_admin_refund_failed",
+      userId: CONSUMER_ID,
+      metadata: {
+        order_id: ORDER_ID,
+        payment_intent_id: PI_ID,
+        refund_error: "card_declined",
+      },
+    });
+
+    // Exception propagée AVANT UPDATE/notification/revalidateTag.
+    expect(captured.updates).toEqual([]);
+    expect(
+      captured.inserts.find((i) => i.table === "notifications"),
+    ).toBeUndefined();
+    expect(mockRevalidateTag).not.toHaveBeenCalled();
+  });
+
+  it("F2 happy path Stripe OK → logPaymentEvent JAMAIS appelé (pas de pollution audit nominal)", async () => {
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(200);
+    expect(mockLogPaymentEvent).not.toHaveBeenCalled();
+  });
+
+  it("F3 consumer_id null + Stripe throw → logPaymentEvent reçoit userId=null (pas de crash)", async () => {
+    setOrderFetch({ consumer_id: null });
+    mockRefundCreate.mockReset().mockRejectedValueOnce(new Error("network_error"));
+
+    await expect(POST(makeRequest())).rejects.toThrow("network_error");
+
+    expect(mockLogPaymentEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "order_admin_refund_failed",
+        userId: null,
+        metadata: expect.objectContaining({
+          order_id: ORDER_ID,
+          refund_error: "network_error",
+        }),
+      }),
+    );
   });
 });
