@@ -37,16 +37,18 @@ vi.mock("next/cache", () => ({
 }));
 
 let resetPasswordForEmailMock: Mock<AnyAsyncFn>;
+let signInWithPasswordMock: Mock<AnyAsyncFn>;
 let logAuthEventMock: Mock<AnyAsyncFn>;
 let maybeSingleMock: Mock<AnyAsyncFn>;
 
 vi.mock("@/lib/supabase/server", () => ({
   createSupabaseServerClient: () => ({
     auth: {
-      // signInWithPassword + signInWithOtp ne sont pas appelés par
-      // requestPasswordResetAction, mais doivent exister pour le module load.
-      signInWithPassword: vi.fn(),
+      // signInWithOtp pas appelé par les actions testées mais doit exister
+      // pour le module load (utilisé par requestMagicLinkAction).
       signInWithOtp: vi.fn(),
+      signInWithPassword: (...args: unknown[]) =>
+        signInWithPasswordMock(...args),
       resetPasswordForEmail: (...args: unknown[]) =>
         resetPasswordForEmailMock(...args),
     },
@@ -82,7 +84,10 @@ vi.mock("@/lib/auth/redirect-cookie", () => ({
   setRedirectAfterAuth: vi.fn(),
 }));
 
-import { requestPasswordResetAction } from "@/app/connexion/actions";
+import {
+  loginAction,
+  requestPasswordResetAction,
+} from "@/app/connexion/actions";
 import {
   PASSWORD_RESET_ADMIN,
   PASSWORD_RESET_DEFAULT,
@@ -96,12 +101,22 @@ function makeFormData(email: string | null): FormData {
   return fd;
 }
 
+function makeLoginFormData(email: string, password: string): FormData {
+  const fd = new FormData();
+  fd.set("email", email);
+  fd.set("password", password);
+  return fd;
+}
+
 // --- Setup / teardown -----------------------------------------------------
 
 beforeEach(() => {
   resetPasswordForEmailMock = vi
     .fn<AnyAsyncFn>()
     .mockResolvedValue({ data: {}, error: null });
+  signInWithPasswordMock = vi
+    .fn<AnyAsyncFn>()
+    .mockResolvedValue({ data: { user: null }, error: null });
   logAuthEventMock = vi.fn<AnyAsyncFn>().mockResolvedValue(undefined);
   maybeSingleMock = vi
     .fn<AnyAsyncFn>()
@@ -184,6 +199,75 @@ describe("requestPasswordResetAction", () => {
       eventType: "password_reset_request",
       userId: null,
       metadata: { email: "user@example.com" },
+    });
+  });
+});
+
+describe("loginAction (T-309 — audit login_failed sur fail path)", () => {
+  it("invalid_credentials → logAuthEvent login_failed avec reason_code=invalid_credentials + email plaintext + userId null", async () => {
+    signInWithPasswordMock.mockResolvedValue({
+      data: { user: null },
+      error: {
+        code: "invalid_credentials",
+        message: "Invalid login credentials",
+      },
+    });
+
+    const result = await loginAction(
+      {},
+      makeLoginFormData("user@example.com", "wrongpass"),
+    );
+
+    expect(result).toEqual({ error: "Identifiants invalides" });
+    expect(logAuthEventMock).toHaveBeenCalledWith({
+      eventType: "login_failed",
+      userId: null,
+      metadata: {
+        email: "user@example.com",
+        reason_code: "invalid_credentials",
+      },
+    });
+  });
+
+  it("email_not_confirmed → reason_code=email_not_confirmed (compte pending confirmation)", async () => {
+    signInWithPasswordMock.mockResolvedValue({
+      data: { user: null },
+      error: {
+        code: "email_not_confirmed",
+        message: "Email not confirmed",
+      },
+    });
+
+    await loginAction({}, makeLoginFormData("pending@example.com", "anypass"));
+
+    expect(logAuthEventMock).toHaveBeenCalledWith({
+      eventType: "login_failed",
+      userId: null,
+      metadata: {
+        email: "pending@example.com",
+        reason_code: "email_not_confirmed",
+      },
+    });
+  });
+
+  it("erreur générique inconnue → reason_code=technical (catégorie fallback)", async () => {
+    signInWithPasswordMock.mockResolvedValue({
+      data: { user: null },
+      error: {
+        code: "unknown_supabase_code",
+        message: "Some opaque server error",
+      },
+    });
+
+    await loginAction({}, makeLoginFormData("user@example.com", "pass"));
+
+    expect(logAuthEventMock).toHaveBeenCalledWith({
+      eventType: "login_failed",
+      userId: null,
+      metadata: {
+        email: "user@example.com",
+        reason_code: "technical",
+      },
     });
   });
 });
