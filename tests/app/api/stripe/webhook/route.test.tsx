@@ -36,6 +36,7 @@ const {
   mockSendTemplate,
   mockSendSms,
   mockWaitUntil,
+  mockLogPaymentEvent,
 } = vi.hoisted(() => ({
   mockConstructEvent: vi.fn(),
   mockCheckOrMarkProcessed: vi.fn(),
@@ -46,6 +47,7 @@ const {
   mockSendTemplate: vi.fn(),
   mockSendSms: vi.fn(),
   mockWaitUntil: vi.fn(),
+  mockLogPaymentEvent: vi.fn(),
 }));
 
 vi.mock("@/lib/stripe/server", () => ({
@@ -87,6 +89,10 @@ vi.mock("@/lib/twilio/sms", () => ({
 
 vi.mock("@vercel/functions", () => ({
   waitUntil: mockWaitUntil,
+}));
+
+vi.mock("@/lib/audit-logs/log-payment-event", () => ({
+  logPaymentEvent: mockLogPaymentEvent,
 }));
 
 // React templates : la route les passe à sendTemplate (mocké), donc
@@ -170,6 +176,8 @@ beforeEach(() => {
   mockSendSms.mockReset();
   mockWaitUntil.mockReset();
   mockCreateAdmin.mockReturnValue(buildMockSupabase());
+  mockLogPaymentEvent.mockReset();
+  mockLogPaymentEvent.mockResolvedValue(undefined);
   consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
@@ -322,5 +330,130 @@ describe("POST /api/stripe/webhook — erreur DB sur dédup", () => {
     expect(res.status).toBe(500);
     expect(body.error).toContain("connection lost");
     expect(mockSyncSucceeded).not.toHaveBeenCalled();
+  });
+});
+
+// =============================================================================
+// Phase 3 multi-events audit (T-081 PR-B) — events Stripe directs
+// =============================================================================
+
+describe("POST /api/stripe/webhook — Phase 3 events Stripe (T-081 PR-B)", () => {
+  it("account.updated nouveau → syncStripeAccountFlags appelé + logPaymentEvent('stripe_account_updated')", async () => {
+    mockConstructEvent.mockReturnValue(
+      makeStripeEvent("account.updated", "evt_acct_1", {
+        id: "acct_test_1",
+        charges_enabled: true,
+        payouts_enabled: false,
+        details_submitted: true,
+      }),
+    );
+    mockCheckOrMarkProcessed.mockResolvedValue({ alreadyProcessed: false });
+    mockSyncAccountFlags.mockResolvedValue(undefined);
+
+    const res = await POST(makeRequest());
+
+    expect(res.status).toBe(200);
+    expect(mockSyncAccountFlags).toHaveBeenCalledTimes(1);
+    expect(mockLogPaymentEvent).toHaveBeenCalledWith({
+      eventType: "stripe_account_updated",
+      metadata: {
+        stripe_account_id: "acct_test_1",
+        charges_enabled: true,
+        payouts_enabled: false,
+        details_submitted: true,
+      },
+    });
+  });
+
+  it("payout.paid nouveau avec source_transaction → UPDATE payouts + logPaymentEvent('stripe_payout_paid')", async () => {
+    mockConstructEvent.mockReturnValue(
+      makeStripeEvent("payout.paid", "evt_payout_1", {
+        id: "po_test_1",
+        amount: 12345,
+        currency: "eur",
+        arrival_date: 1700000000,
+        destination: "ba_test_1",
+        source_transaction: "tr_test_1",
+      }),
+    );
+    mockCheckOrMarkProcessed.mockResolvedValue({ alreadyProcessed: false });
+
+    const res = await POST(makeRequest());
+
+    expect(res.status).toBe(200);
+    expect(captured.fromCalls).toContain("payouts");
+    expect(mockLogPaymentEvent).toHaveBeenCalledWith({
+      eventType: "stripe_payout_paid",
+      metadata: {
+        payout_id: "po_test_1",
+        amount: 12345,
+        currency: "eur",
+        arrival_date: 1700000000,
+        destination: "ba_test_1",
+        source_transaction: "tr_test_1",
+      },
+    });
+  });
+
+  it("charge.dispute.created nouveau → console.error([STRIPE_DISPUTE_RECEIVED]) + logPaymentEvent('stripe_dispute')", async () => {
+    mockConstructEvent.mockReturnValue(
+      makeStripeEvent("charge.dispute.created", "evt_dispute_1", {
+        id: "dp_test_1",
+        charge: "ch_test_1",
+        payment_intent: "pi_test_1",
+        amount: 5000,
+        currency: "eur",
+        reason: "fraudulent",
+        status: "needs_response",
+        evidence_details: { due_by: 1700000000 },
+      }),
+    );
+    mockCheckOrMarkProcessed.mockResolvedValue({ alreadyProcessed: false });
+
+    const res = await POST(makeRequest());
+
+    expect(res.status).toBe(200);
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[STRIPE_DISPUTE_RECEIVED]"),
+    );
+    expect(mockLogPaymentEvent).toHaveBeenCalledWith({
+      eventType: "stripe_dispute",
+      metadata: {
+        dispute_id: "dp_test_1",
+        charge_id: "ch_test_1",
+        payment_intent_id: "pi_test_1",
+        amount: 5000,
+        currency: "eur",
+        reason: "fraudulent",
+        status: "needs_response",
+        evidence_due_by: 1700000000,
+      },
+    });
+  });
+
+  it("charge.dispute.created rejoué (dédup hit) → response 200 deduped:true, logPaymentEvent NON appelé", async () => {
+    mockConstructEvent.mockReturnValue(
+      makeStripeEvent("charge.dispute.created", "evt_dispute_replay", {
+        id: "dp_replay",
+        charge: "ch_replay",
+        payment_intent: "pi_replay",
+        amount: 1000,
+        currency: "eur",
+        reason: "duplicate",
+        status: "needs_response",
+        evidence_details: { due_by: 1700000000 },
+      }),
+    );
+    mockCheckOrMarkProcessed.mockResolvedValue({ alreadyProcessed: true });
+
+    const res = await POST(makeRequest());
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ received: true, deduped: true });
+    expect(mockLogPaymentEvent).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("[STRIPE_DISPUTE_RECEIVED]"),
+    );
   });
 });

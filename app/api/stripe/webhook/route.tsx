@@ -6,6 +6,7 @@ import { syncStripeAccountFlags } from "@/lib/stripe/sync-account-flags";
 import { syncStripePaymentFailed } from "@/lib/stripe/handle-payment-failed";
 import { syncStripePaymentSucceeded } from "@/lib/stripe/handle-payment-succeeded";
 import { checkOrMarkProcessed } from "@/lib/webhook-events/check-or-mark-processed";
+import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { NEXT_PUBLIC_PRODUCER_URL } from "@/lib/env/urls";
 import { sendTemplate } from "@/lib/resend/send";
@@ -57,6 +58,10 @@ export async function POST(request: Request) {
     "payment_intent.payment_failed",
     "account.updated",
     "payout.paid",
+    // T-081 PR-B : charge.dispute.created ajouté au Set parce qu'on log
+    // un audit forensique + console.error sur ce case. Sans dédup, un
+    // rejouage Stripe poserait un 2e event audit identique.
+    "charge.dispute.created",
   ]);
 
   if (DEDUP_TARGETS.has(event.type)) {
@@ -353,7 +358,23 @@ export async function POST(request: Request) {
         // (onboarding progressant, KYC validé, capabilities activées…).
         // Logique extraite dans `lib/stripe/sync-account-flags.ts` pour
         // testabilité ; ack 200 dans tous les cas (cf doc fonction).
-        await syncStripeAccountFlags(event.data.object as Stripe.Account, admin);
+        const account = event.data.object as Stripe.Account;
+        await syncStripeAccountFlags(account, admin);
+
+        // Phase 3 multi-events audit (T-081 PR-B) — log APRÈS succès
+        // syncStripeAccountFlags : si syncStripeAccountFlags throw, on
+        // tombe dans le catch global → 500 → Stripe retry → on
+        // relogguera. user_id null (orphelin Stripe-direct, traçable
+        // par stripe_account_id metadata).
+        await logPaymentEvent({
+          eventType: "stripe_account_updated",
+          metadata: {
+            stripe_account_id: account.id,
+            charges_enabled: account.charges_enabled,
+            payouts_enabled: account.payouts_enabled,
+            details_submitted: account.details_submitted,
+          },
+        });
         break;
       }
 
@@ -372,6 +393,70 @@ export async function POST(request: Request) {
             .update({ statut: "paid", stripe_payout_id: payout.id })
             .eq("stripe_transfer_id", payout.source_transaction);
         }
+
+        // Phase 3 multi-events audit (T-081 PR-B) — log APRÈS UPDATE
+        // payouts (no-op si source_transaction null, cohérent avec
+        // l'absence d'effet DB). destination peut être string (acct/ba_*)
+        // ou objet Stripe expansé ; on normalise en string ou null.
+        await logPaymentEvent({
+          eventType: "stripe_payout_paid",
+          metadata: {
+            payout_id: payout.id,
+            amount: payout.amount,
+            currency: payout.currency,
+            arrival_date: payout.arrival_date,
+            destination:
+              typeof payout.destination === "string"
+                ? payout.destination
+                : (payout.destination?.id ?? null),
+            source_transaction: payout.source_transaction ?? null,
+          },
+        });
+        break;
+      }
+
+      case "charge.dispute.created": {
+        // Phase 3 multi-events (T-081 PR-B) — case ajouté ici parce que
+        // l'event Stripe charge.dispute.created arrivait jusqu'ici en
+        // default no-op silencieux (pas de log applicatif, pas d'audit
+        // forensique). Stripe émet ce webhook quand un cardholder ouvre
+        // un litige (chargeback) sur une charge encaissée. Action admin
+        // attendue avant `evidence_due_by` (sinon perte du litige par
+        // défaut).
+        // Traitement minimal : alerte admin via console.error grep-able
+        // sur Vercel + audit forensique. Pas d'UPDATE DB (table disputes
+        // hors-scope T-081, chantier futur si volume).
+        const dispute = event.data.object as Stripe.Dispute;
+        const chargeId =
+          typeof dispute.charge === "string"
+            ? dispute.charge
+            : (dispute.charge?.id ?? null);
+        const paymentIntentId =
+          typeof dispute.payment_intent === "string"
+            ? dispute.payment_intent
+            : (dispute.payment_intent?.id ?? null);
+        // evidence_details.due_by est le path canonique Stripe (timestamp
+        // unix) pour la deadline de soumission de preuves. Optional dans
+        // certains états du dispute, on normalise en null si absent.
+        const evidenceDueBy = dispute.evidence_details?.due_by ?? null;
+
+        console.error(
+          `[STRIPE_DISPUTE_RECEIVED] dispute=${dispute.id} charge=${chargeId} amount=${dispute.amount} reason=${dispute.reason} status=${dispute.status} evidence_due_by=${evidenceDueBy}`,
+        );
+
+        await logPaymentEvent({
+          eventType: "stripe_dispute",
+          metadata: {
+            dispute_id: dispute.id,
+            charge_id: chargeId,
+            payment_intent_id: paymentIntentId,
+            amount: dispute.amount,
+            currency: dispute.currency,
+            reason: dispute.reason,
+            status: dispute.status,
+            evidence_due_by: evidenceDueBy,
+          },
+        });
         break;
       }
 

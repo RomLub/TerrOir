@@ -54,7 +54,15 @@ export type PaymentEventType =
   // `stripe.refunds.create` sur leur path respectif pour permettre la
   // détection background ultérieure.
   | "order_admin_refund_failed"
-  | "order_timeout_refund_failed";
+  | "order_timeout_refund_failed"
+  // Phase 3 multi-events (T-081 PR-B) — events Stripe directs, pas liés à
+  // un order_id spécifique côté plateforme. Préfixe `stripe_` pour
+  // disambiguer des events `order_*` ci-dessus. user_id null par défaut
+  // (orphelin), traçable a posteriori via metadata (stripe_account_id,
+  // payout_id, payment_intent_id).
+  | "stripe_account_updated"
+  | "stripe_payout_paid"
+  | "stripe_dispute";
 
 type LogPaymentEventParams = {
   eventType: PaymentEventType;
