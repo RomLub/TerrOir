@@ -33,7 +33,7 @@ export async function POST(request: Request) {
   const { data: order, error: orderError } = await supabase
     .from("orders")
     .select(
-      "id, consumer_id, producer_id, montant_total, stripe_payment_intent_id",
+      "id, consumer_id, producer_id, montant_total, statut, stripe_payment_intent_id",
     )
     .eq("id", parsed.data.order_id)
     .maybeSingle();
@@ -43,6 +43,16 @@ export async function POST(request: Request) {
   }
   if (order.consumer_id !== session.id) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  // T-406 : la route prépare le paiement initial uniquement. Toute commande
+  // hors `pending` (confirmed/ready/completed/cancelled/refunded) ne doit pas
+  // pouvoir (re)passer ici — bloque aussi le path `update setup_future_usage`
+  // ci-dessous sur un PI orphelin d'une commande terminée.
+  if (order.statut !== "pending") {
+    return NextResponse.json(
+      { error: "Order not in pending state" },
+      { status: 409 },
+    );
   }
 
   // Stripe Customer (Phase 6) : toujours attaché au PI, même si save_card=false.
