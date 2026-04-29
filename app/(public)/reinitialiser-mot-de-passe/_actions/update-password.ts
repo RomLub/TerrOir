@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 
@@ -77,5 +78,10 @@ export async function updatePasswordAction(
     userId: updateData.user?.id ?? null,
   });
 
+  // Invalide le cache RSC du root layout AVANT redirect — verifyOtp recovery
+  // pose des cookies session frais, sans revalidatePath le RootLayout cached
+  // garde initial.user=null et la navbar reste en état déconnecté jusqu'à F5.
+  // Pattern strictement identique au fix login PR #13.
+  revalidatePath("/", "layout");
   redirect("/compte?password=updated");
 }
