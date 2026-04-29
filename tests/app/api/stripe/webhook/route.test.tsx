@@ -38,7 +38,6 @@ const {
   mockSyncSucceeded,
   mockSyncFailed,
   mockSyncAccountFlags,
-  mockSyncTransferFailed,
   mockSyncPayoutFailed,
   mockSyncDisputeCreated,
   mockSyncDisputeUpdated,
@@ -54,7 +53,6 @@ const {
   mockSyncSucceeded: vi.fn(),
   mockSyncFailed: vi.fn(),
   mockSyncAccountFlags: vi.fn(),
-  mockSyncTransferFailed: vi.fn(),
   mockSyncPayoutFailed: vi.fn(),
   mockSyncDisputeCreated: vi.fn(),
   mockSyncDisputeUpdated: vi.fn(),
@@ -89,10 +87,6 @@ vi.mock("@/lib/stripe/handle-payment-failed", () => ({
 
 vi.mock("@/lib/stripe/sync-account-flags", () => ({
   syncStripeAccountFlags: mockSyncAccountFlags,
-}));
-
-vi.mock("@/lib/stripe/handle-transfer-failed", () => ({
-  syncStripeTransferFailed: mockSyncTransferFailed,
 }));
 
 vi.mock("@/lib/stripe/handle-payout-failed", () => ({
@@ -261,7 +255,6 @@ beforeEach(() => {
   mockSyncSucceeded.mockReset();
   mockSyncFailed.mockReset();
   mockSyncAccountFlags.mockReset();
-  mockSyncTransferFailed.mockReset().mockResolvedValue(undefined);
   mockSyncPayoutFailed.mockReset().mockResolvedValue(undefined);
   mockSyncDisputeCreated.mockReset().mockResolvedValue(undefined);
   mockSyncDisputeUpdated.mockReset().mockResolvedValue(undefined);
@@ -539,48 +532,7 @@ describe("POST /api/stripe/webhook — Phase 3 events Stripe (T-081 PR-B)", () =
 // Bundle 3 webhook events go-Live (T-401 + T-402 + T-403 extended)
 // =============================================================================
 
-describe("POST /api/stripe/webhook — Bundle 3 (T-401 transfer.failed + payout.failed)", () => {
-  it("transfer.failed nouveau → syncStripeTransferFailed appelé", async () => {
-    mockConstructEvent.mockReturnValue(
-      makeStripeEvent("transfer.failed", "evt_transfer_failed_1", {
-        id: "tr_test_1",
-        amount: 10000,
-        currency: "eur",
-        destination: "acct_test",
-      }),
-    );
-    mockCheckOrMarkProcessed.mockResolvedValue({ alreadyProcessed: false });
-
-    const res = await POST(makeRequest());
-
-    expect(res.status).toBe(200);
-    expect(mockCheckOrMarkProcessed).toHaveBeenCalledWith(
-      expect.anything(),
-      "evt_transfer_failed_1",
-      "transfer.failed",
-    );
-    expect(mockSyncTransferFailed).toHaveBeenCalledTimes(1);
-    expect(mockSyncTransferFailed).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "tr_test_1" }),
-      expect.anything(),
-    );
-  });
-
-  it("transfer.failed rejoué (dédup hit) → deduped:true, syncStripeTransferFailed NON appelé", async () => {
-    mockConstructEvent.mockReturnValue(
-      makeStripeEvent("transfer.failed", "evt_transfer_replay", {
-        id: "tr_replay",
-      }),
-    );
-    mockCheckOrMarkProcessed.mockResolvedValue({ alreadyProcessed: true });
-
-    const res = await POST(makeRequest());
-    const body = await res.json();
-
-    expect(body.deduped).toBe(true);
-    expect(mockSyncTransferFailed).not.toHaveBeenCalled();
-  });
-
+describe("POST /api/stripe/webhook — Bundle 3 (T-401 payout.failed)", () => {
   it("payout.failed nouveau → syncStripePayoutFailed appelé avec event.account", async () => {
     mockConstructEvent.mockReturnValue(
       makeStripeEvent(

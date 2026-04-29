@@ -1,11 +1,17 @@
 import { EmailLayout, emailTheme } from "./layout";
 
-// Template d'alerte admin Bundle 3 (T-401) : un Transfer Stripe Connect
-// (plateforme -> compte Connect producteur) a échoué. Stripe ne re-tente
-// pas automatiquement les transfers. Action admin requise via Dashboard
-// Stripe Connect (retry manuel + investigation cause : KYC, plafonds,
-// banque destination). Le row payouts associé a été passé statut='failed'
-// par lib/stripe/handle-transfer-failed.ts.
+// Template d'alerte admin (T-401) : un Transfer Stripe Connect (plateforme
+// -> compte Connect producteur) a échoué. Stripe ne re-tente pas
+// automatiquement les transfers. Action admin requise via Dashboard Stripe
+// Connect (retry manuel + investigation cause : KYC, plafonds, banque
+// destination).
+//
+// Pas de consumer côté webhook : Stripe Connect Express n'émet pas l'event
+// transfer.failed parce que stripe.transfers.create() est synchrone (succès
+// ou throw immédiat). Ce template sera consommé par lib/stripe/payouts.ts
+// dans le catch synchrone post-stripe.transfers.create() (Bundle 2 PR 2b
+// TC) — le row payouts y sera passé statut='failed', avec waitUntil(
+// sendTemplate({ template: 'admin_transfer_failed', ... })).
 
 export interface Props {
   exploitation: string | null;

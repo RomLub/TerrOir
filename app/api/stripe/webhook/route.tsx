@@ -5,7 +5,6 @@ import { stripe } from "@/lib/stripe/server";
 import { syncStripeAccountFlags } from "@/lib/stripe/sync-account-flags";
 import { syncStripePaymentFailed } from "@/lib/stripe/handle-payment-failed";
 import { syncStripePaymentSucceeded } from "@/lib/stripe/handle-payment-succeeded";
-import { syncStripeTransferFailed } from "@/lib/stripe/handle-transfer-failed";
 import { syncStripePayoutFailed } from "@/lib/stripe/handle-payout-failed";
 import { syncStripeDisputeCreated } from "@/lib/stripe/handle-dispute-created";
 import { syncStripeDisputeUpdated } from "@/lib/stripe/handle-dispute-updated";
@@ -71,7 +70,10 @@ export async function POST(request: Request) {
     // les nouveaux handlers ont des effets de bord (UPDATE DB, audit
     // log, INSERT notifications, sendTemplate Resend) — dédup obligatoire
     // pour idempotence sur rejouage Stripe.
-    "transfer.failed",
+    // NOTE : `transfer.failed` PAS dans le Set parce que Stripe Connect
+    // Express ne l'émet pas. Les transfers via stripe.transfers.create()
+    // sont synchrones côté API ; l'échec côté création est géré dans
+    // lib/stripe/payouts.ts (catch synchrone, hors scope webhook).
     "payout.failed",
     "charge.dispute.updated",
     "charge.dispute.closed",
@@ -99,12 +101,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    // event.type narrowing : on cast en string parce que `transfer.failed`
-    // n'apparaît pas dans la discriminated union du SDK Stripe v17 (déprécié
-    // au profit de `transfer.reversed` côté types, mais l'event reste émis
-    // sur certaines configurations Connect). Tous les `event.data.object as`
-    // sont déjà des casts manuels — pas de regression de safety.
-    switch (event.type as string) {
+    switch (event.type) {
       case "payment_intent.succeeded": {
         const pi = event.data.object as Stripe.PaymentIntent;
 
@@ -537,22 +534,11 @@ export async function POST(request: Request) {
         break;
       }
 
-      case "transfer.failed": {
-        // Bundle 3 (T-401) : Transfer plateforme -> Connect account échoué.
-        // Stripe ne re-tente pas auto -> action admin requise. UPDATE
-        // payouts.statut='failed' (CHECK enum élargi T-422) + audit log
-        // + INSERT notifications placeholder + email admin SUPPORT_EMAIL.
-        await syncStripeTransferFailed(
-          event.data.object as Stripe.Transfer,
-          admin,
-        );
-        break;
-      }
-
       case "payout.failed": {
         // Bundle 3 (T-401) : Payout Connect account -> banque producteur
-        // échoué. Pareil que transfer.failed mais sur le row payouts via
-        // payout.metadata.payout_id (T-414 futur) ou fallback event.account
+        // échoué (RIB invalide, banque fermée, plafonds). Stripe ne re-tente
+        // pas automatiquement -> action admin requise. Lookup row payouts
+        // via payout.metadata.payout_id (T-414 futur) ou fallback event.account
         // -> producers.stripe_account_id -> producer_id (correction PUSH 1
         // question D vs brief TD initial).
         await syncStripePayoutFailed(
