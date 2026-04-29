@@ -263,8 +263,10 @@ export async function GET(request: NextRequest) {
   // T-321 — Pose le cookie role snapshot signé HMAC sur la réponse de redirect
   // (cross-domain via canonicalPostLoginUrl, donc le cookie doit être sur le
   // host courant pour être lisible par middleware au prochain hit).
+  // Async (Web Crypto API) car middleware Edge Runtime ne supporte pas
+  // crypto Node natif.
   if (roleSnapshotToWrite) {
-    setRoleSnapshotOnResponse(response, host, roleSnapshotToWrite);
+    await setRoleSnapshotOnResponse(response, host, roleSnapshotToWrite);
   }
   return response;
 }

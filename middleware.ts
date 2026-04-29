@@ -55,7 +55,7 @@ async function resolveRoleSnapshot(
   userId: string,
   host: string | undefined,
 ): Promise<{ roles: string[]; isAdmin: boolean; needsRefresh: boolean }> {
-  const cached = readRoleSnapshotFromRequest(request, host);
+  const cached = await readRoleSnapshotFromRequest(request, host);
   if (cached && cached.user_id === userId) {
     return {
       roles: cached.roles,
@@ -163,7 +163,7 @@ export async function middleware(request: NextRequest) {
     redirectUrl.pathname = snapshot.isAdmin ? "/tableau-de-bord" : LOGIN_PATH;
     const redirectResponse = NextResponse.redirect(redirectUrl);
     if (snapshot.needsRefresh) {
-      setRoleSnapshotOnResponse(redirectResponse, host, {
+      await setRoleSnapshotOnResponse(redirectResponse, host, {
         user_id: user.id,
         roles: snapshot.roles,
         isAdmin: snapshot.isAdmin,
@@ -203,7 +203,7 @@ export async function middleware(request: NextRequest) {
       redirectUrl.pathname = LOGIN_PATH;
       const redirectResponse = NextResponse.redirect(redirectUrl);
       if (snapshot.needsRefresh) {
-        setRoleSnapshotOnResponse(redirectResponse, host, {
+        await setRoleSnapshotOnResponse(redirectResponse, host, {
           user_id: user.id,
           roles: snapshot.roles,
           isAdmin: snapshot.isAdmin,
@@ -222,7 +222,7 @@ export async function middleware(request: NextRequest) {
       redirectUrl.pathname = LOGIN_PATH;
       const redirectResponse = NextResponse.redirect(redirectUrl);
       if (snapshot.needsRefresh) {
-        setRoleSnapshotOnResponse(redirectResponse, host, {
+        await setRoleSnapshotOnResponse(redirectResponse, host, {
           user_id: user.id,
           roles: snapshot.roles,
           isAdmin: snapshot.isAdmin,
@@ -235,7 +235,7 @@ export async function middleware(request: NextRequest) {
       producerRow.statut === "draft" ? "/onboarding" : "/dashboard";
     const redirectResponse = NextResponse.redirect(redirectUrl);
     if (snapshot.needsRefresh) {
-      setRoleSnapshotOnResponse(redirectResponse, host, {
+      await setRoleSnapshotOnResponse(redirectResponse, host, {
         user_id: user.id,
         roles: snapshot.roles,
         isAdmin: snapshot.isAdmin,
@@ -277,7 +277,7 @@ export async function middleware(request: NextRequest) {
     // fallthrough `return response` (cas nominal), le cookie est posé.
     // Pour les redirects ci-dessous on l'applique aussi sur la cible.
     if (snapshot.needsRefresh) {
-      setRoleSnapshotOnResponse(response, host, {
+      await setRoleSnapshotOnResponse(response, host, {
         user_id: user.id,
         roles,
         isAdmin,
@@ -290,7 +290,7 @@ export async function middleware(request: NextRequest) {
       redirectUrl.pathname = LOGIN_PATH;
       const redirectResponse = NextResponse.redirect(redirectUrl);
       if (snapshot.needsRefresh) {
-        setRoleSnapshotOnResponse(redirectResponse, host, {
+        await setRoleSnapshotOnResponse(redirectResponse, host, {
           user_id: user.id,
           roles,
           isAdmin,
@@ -325,7 +325,7 @@ export async function middleware(request: NextRequest) {
             redirectUrl.search = "";
             const redirectResponse = NextResponse.redirect(redirectUrl);
             if (snapshot.needsRefresh) {
-              setRoleSnapshotOnResponse(redirectResponse, host, {
+              await setRoleSnapshotOnResponse(redirectResponse, host, {
                 user_id: user.id,
                 roles,
                 isAdmin,
@@ -339,7 +339,7 @@ export async function middleware(request: NextRequest) {
             redirectUrl.search = "";
             const redirectResponse = NextResponse.redirect(redirectUrl);
             if (snapshot.needsRefresh) {
-              setRoleSnapshotOnResponse(redirectResponse, host, {
+              await setRoleSnapshotOnResponse(redirectResponse, host, {
                 user_id: user.id,
                 roles,
                 isAdmin,

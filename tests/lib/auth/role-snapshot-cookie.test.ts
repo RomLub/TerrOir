@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { createHmac } from "crypto";
 
 // `lib/auth/role-snapshot-cookie.ts` importe 'server-only' (virtuel Next.js,
 // non résolvable hors build webpack) → stub no-op pour vitest.
@@ -41,140 +42,160 @@ const futurePayload: RoleSnapshotPayload = {
   expires_at: Date.now() + 60_000,
 };
 
+// Helper : compute hex HMAC-SHA256 avec Node crypto (vitest runtime Node, OK).
+// Sert à fabriquer des signatures valides pour les tests qui exercent les
+// shape checks post-verify (ex: payload avec champ manquant). La prod utilise
+// crypto.subtle (Web Crypto) — la sortie hex est identique pour le même
+// secret + message, donc la sig calculée ici sera acceptée par
+// parseAndVerifyRoleSnapshot côté prod.
+function nodeHmacHex(message: string, secret: string): string {
+  return createHmac("sha256", secret).update(message).digest("hex");
+}
+
+function base64urlForTest(input: string): string {
+  return Buffer.from(input, "utf8")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
 describe("signRoleSnapshot + parseAndVerifyRoleSnapshot", () => {
-  it("roundtrip : sign puis parse retourne le payload original", () => {
-    const value = signRoleSnapshot(futurePayload);
-    const parsed = parseAndVerifyRoleSnapshot(value);
+  it("roundtrip : sign puis parse retourne le payload original", async () => {
+    const value = await signRoleSnapshot(futurePayload);
+    const parsed = await parseAndVerifyRoleSnapshot(value);
     expect(parsed).toEqual(futurePayload);
   });
 
-  it("roundtrip avec roles multiples + isAdmin true", () => {
+  it("roundtrip avec roles multiples + isAdmin true", async () => {
     const payload: RoleSnapshotPayload = {
       user_id: "admin-1",
       roles: ["consumer", "producer"],
       isAdmin: true,
       expires_at: Date.now() + 30_000,
     };
-    const parsed = parseAndVerifyRoleSnapshot(signRoleSnapshot(payload));
+    const parsed = await parseAndVerifyRoleSnapshot(
+      await signRoleSnapshot(payload),
+    );
     expect(parsed).toEqual(payload);
   });
 
-  it("rejette null / undefined / chaîne vide", () => {
-    expect(parseAndVerifyRoleSnapshot(null)).toBeNull();
-    expect(parseAndVerifyRoleSnapshot(undefined)).toBeNull();
-    expect(parseAndVerifyRoleSnapshot("")).toBeNull();
+  it("rejette null / undefined / chaîne vide", async () => {
+    expect(await parseAndVerifyRoleSnapshot(null)).toBeNull();
+    expect(await parseAndVerifyRoleSnapshot(undefined)).toBeNull();
+    expect(await parseAndVerifyRoleSnapshot("")).toBeNull();
   });
 
-  it("rejette payload tampered (signature ne match plus)", () => {
-    const value = signRoleSnapshot(futurePayload);
+  it("rejette payload tampered (signature ne match plus)", async () => {
+    const value = await signRoleSnapshot(futurePayload);
     const [encoded, sig] = value.split(".");
     // On modifie un bit du payload ; la sig recomputed côté verify différera.
     const tamperedEncoded = encoded!.replace(/^./, (c) =>
       c === "A" ? "B" : "A",
     );
     expect(
-      parseAndVerifyRoleSnapshot(`${tamperedEncoded}.${sig}`),
+      await parseAndVerifyRoleSnapshot(`${tamperedEncoded}.${sig}`),
     ).toBeNull();
   });
 
-  it("rejette signature tampered", () => {
-    const value = signRoleSnapshot(futurePayload);
+  it("rejette signature tampered", async () => {
+    const value = await signRoleSnapshot(futurePayload);
     const [encoded] = value.split(".");
     const fakeSig = "0".repeat(64);
-    expect(parseAndVerifyRoleSnapshot(`${encoded}.${fakeSig}`)).toBeNull();
+    expect(
+      await parseAndVerifyRoleSnapshot(`${encoded}.${fakeSig}`),
+    ).toBeNull();
   });
 
-  it("rejette signature de longueur incorrecte (pas 64 hex chars)", () => {
-    const value = signRoleSnapshot(futurePayload);
+  it("rejette signature de longueur incorrecte (pas 64 hex chars)", async () => {
+    const value = await signRoleSnapshot(futurePayload);
     const [encoded] = value.split(".");
-    expect(parseAndVerifyRoleSnapshot(`${encoded}.deadbeef`)).toBeNull();
+    expect(
+      await parseAndVerifyRoleSnapshot(`${encoded}.deadbeef`),
+    ).toBeNull();
   });
 
-  it("rejette signature avec caractères non-hex", () => {
-    const value = signRoleSnapshot(futurePayload);
+  it("rejette signature avec caractères non-hex", async () => {
+    const value = await signRoleSnapshot(futurePayload);
     const [encoded] = value.split(".");
-    expect(parseAndVerifyRoleSnapshot(`${encoded}.${"z".repeat(64)}`)).toBeNull();
+    expect(
+      await parseAndVerifyRoleSnapshot(`${encoded}.${"z".repeat(64)}`),
+    ).toBeNull();
   });
 
-  it("rejette format sans séparateur point", () => {
-    expect(parseAndVerifyRoleSnapshot("nopointhere")).toBeNull();
+  it("rejette format sans séparateur point", async () => {
+    expect(await parseAndVerifyRoleSnapshot("nopointhere")).toBeNull();
   });
 
-  it("rejette point en début ou fin (encodedPayload vide ou sig vide)", () => {
-    expect(parseAndVerifyRoleSnapshot(".sig")).toBeNull();
-    expect(parseAndVerifyRoleSnapshot("encoded.")).toBeNull();
+  it("rejette point en début ou fin (encodedPayload vide ou sig vide)", async () => {
+    expect(await parseAndVerifyRoleSnapshot(".sig")).toBeNull();
+    expect(await parseAndVerifyRoleSnapshot("encoded.")).toBeNull();
   });
 
-  it("rejette payload expiré (expires_at <= Date.now())", () => {
+  it("rejette payload expiré (expires_at <= Date.now())", async () => {
     const expiredPayload: RoleSnapshotPayload = {
       ...futurePayload,
       expires_at: Date.now() - 1,
     };
-    const value = signRoleSnapshot(expiredPayload);
-    expect(parseAndVerifyRoleSnapshot(value)).toBeNull();
+    const value = await signRoleSnapshot(expiredPayload);
+    expect(await parseAndVerifyRoleSnapshot(value)).toBeNull();
   });
 
-  it("rejette payload avec champs manquants (user_id absent)", () => {
-    const incomplete = { roles: [], isAdmin: false, expires_at: Date.now() + 60_000 };
-    const json = JSON.stringify(incomplete);
-    const encoded = Buffer.from(json, "utf8")
-      .toString("base64")
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/, "");
+  it("rejette payload avec champs manquants (user_id absent)", async () => {
+    const incomplete = {
+      roles: [],
+      isAdmin: false,
+      expires_at: Date.now() + 60_000,
+    };
+    const encoded = base64urlForTest(JSON.stringify(incomplete));
     // Sign manuellement avec le bon secret pour bien tester le shape check
-    // (pas le HMAC check).
-    const { createHmac } = require("crypto") as typeof import("crypto");
-    const sig = createHmac("sha256", TEST_SECRET).update(encoded).digest("hex");
-    expect(parseAndVerifyRoleSnapshot(`${encoded}.${sig}`)).toBeNull();
+    // (pas le HMAC check). Node createHmac == Web Crypto subtle pour
+    // HMAC-SHA256 hex — sortie identique.
+    const sig = nodeHmacHex(encoded, TEST_SECRET);
+    expect(
+      await parseAndVerifyRoleSnapshot(`${encoded}.${sig}`),
+    ).toBeNull();
   });
 
-  it("rejette payload avec types incorrects (roles non-array)", () => {
+  it("rejette payload avec types incorrects (roles non-array)", async () => {
     const wrongShape = {
       user_id: "u",
       roles: "consumer",
       isAdmin: false,
       expires_at: Date.now() + 60_000,
     };
-    const json = JSON.stringify(wrongShape);
-    const encoded = Buffer.from(json, "utf8")
-      .toString("base64")
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/, "");
-    const { createHmac } = require("crypto") as typeof import("crypto");
-    const sig = createHmac("sha256", TEST_SECRET).update(encoded).digest("hex");
-    expect(parseAndVerifyRoleSnapshot(`${encoded}.${sig}`)).toBeNull();
+    const encoded = base64urlForTest(JSON.stringify(wrongShape));
+    const sig = nodeHmacHex(encoded, TEST_SECRET);
+    expect(
+      await parseAndVerifyRoleSnapshot(`${encoded}.${sig}`),
+    ).toBeNull();
   });
 
-  it("rejette JSON invalide (payload pas un objet JSON sérialisable)", () => {
-    const encoded = Buffer.from("not-json{{", "utf8")
-      .toString("base64")
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/, "");
-    const { createHmac } = require("crypto") as typeof import("crypto");
-    const sig = createHmac("sha256", TEST_SECRET).update(encoded).digest("hex");
-    expect(parseAndVerifyRoleSnapshot(`${encoded}.${sig}`)).toBeNull();
+  it("rejette JSON invalide (payload pas un objet JSON sérialisable)", async () => {
+    const encoded = base64urlForTest("not-json{{");
+    const sig = nodeHmacHex(encoded, TEST_SECRET);
+    expect(
+      await parseAndVerifyRoleSnapshot(`${encoded}.${sig}`),
+    ).toBeNull();
   });
 
-  it("signature change si secret rotated (ancienne signature invalide)", () => {
-    const value = signRoleSnapshot(futurePayload);
+  it("signature change si secret rotated (ancienne signature invalide)", async () => {
+    const value = await signRoleSnapshot(futurePayload);
     process.env.ROLE_SNAPSHOT_SECRET = "b".repeat(64);
-    expect(parseAndVerifyRoleSnapshot(value)).toBeNull();
+    expect(await parseAndVerifyRoleSnapshot(value)).toBeNull();
   });
 
-  it("getSecret throws si ROLE_SNAPSHOT_SECRET absent (sign)", () => {
+  it("getSecret throws si ROLE_SNAPSHOT_SECRET absent (sign)", async () => {
     delete process.env.ROLE_SNAPSHOT_SECRET;
-    expect(() => signRoleSnapshot(futurePayload)).toThrow(
+    await expect(signRoleSnapshot(futurePayload)).rejects.toThrow(
       /ROLE_SNAPSHOT_SECRET is not set/,
     );
   });
 
-  it("getSecret throws si ROLE_SNAPSHOT_SECRET absent (verify)", () => {
-    const value = signRoleSnapshot(futurePayload);
+  it("getSecret throws si ROLE_SNAPSHOT_SECRET absent (verify)", async () => {
+    const value = await signRoleSnapshot(futurePayload);
     delete process.env.ROLE_SNAPSHOT_SECRET;
-    expect(() => parseAndVerifyRoleSnapshot(value)).toThrow(
+    await expect(parseAndVerifyRoleSnapshot(value)).rejects.toThrow(
       /ROLE_SNAPSHOT_SECRET is not set/,
     );
   });
@@ -243,22 +264,26 @@ describe("cookieOptionsForHost", () => {
 });
 
 describe("setRoleSnapshotOnResponseCookies / clearRoleSnapshotOnResponseCookies", () => {
-  it("set : cookie posé avec name + value signée + options corrects", () => {
+  it("set : cookie posé avec name + value signée + options corrects", async () => {
     const calls: { name: string; value: string; options: unknown }[] = [];
     const responseCookies = {
       set: (name: string, value: string, options: unknown) => {
         calls.push({ name, value, options });
       },
     };
-    setRoleSnapshotOnResponseCookies(responseCookies, "www.terroir-local.fr", {
-      user_id: "u-1",
-      roles: ["consumer"],
-      isAdmin: false,
-    });
+    await setRoleSnapshotOnResponseCookies(
+      responseCookies,
+      "www.terroir-local.fr",
+      {
+        user_id: "u-1",
+        roles: ["consumer"],
+        isAdmin: false,
+      },
+    );
     expect(calls).toHaveLength(1);
     expect(calls[0]!.name).toBe("__terroir_role_snapshot");
     // Valeur signée → parsable
-    const parsed = parseAndVerifyRoleSnapshot(calls[0]!.value);
+    const parsed = await parseAndVerifyRoleSnapshot(calls[0]!.value);
     expect(parsed?.user_id).toBe("u-1");
     expect(parsed?.roles).toEqual(["consumer"]);
     expect(parsed?.isAdmin).toBe(false);
@@ -266,7 +291,8 @@ describe("setRoleSnapshotOnResponseCookies / clearRoleSnapshotOnResponseCookies"
   });
 
   it("clear : cookie posé maxAge=0 + même name/options pour forcer suppression browser", () => {
-    const calls: { name: string; value: string; options: { maxAge?: number } }[] = [];
+    const calls: { name: string; value: string; options: { maxAge?: number } }[] =
+      [];
     const responseCookies = {
       set: (name: string, value: string, options: { maxAge?: number }) => {
         calls.push({ name, value, options });
@@ -284,14 +310,14 @@ describe("setRoleSnapshotOnResponseCookies / clearRoleSnapshotOnResponseCookies"
 });
 
 describe("setRoleSnapshotOnStore / clearRoleSnapshotOnStore", () => {
-  it("set : délègue à cookieStore.set avec name correct selon host", () => {
+  it("set : délègue à cookieStore.set avec name correct selon host", async () => {
     const calls: { name: string; value: string; options: unknown }[] = [];
     const cookieStore = {
       set: (name: string, value: string, options: unknown) => {
         calls.push({ name, value, options });
       },
     };
-    setRoleSnapshotOnStore(cookieStore, "pro.terroir-local.fr", {
+    await setRoleSnapshotOnStore(cookieStore, "pro.terroir-local.fr", {
       user_id: "u-2",
       roles: ["producer"],
       isAdmin: false,
@@ -301,7 +327,8 @@ describe("setRoleSnapshotOnStore / clearRoleSnapshotOnStore", () => {
   });
 
   it("clear : délègue avec maxAge=0", () => {
-    const calls: { name: string; value: string; options: { maxAge?: number } }[] = [];
+    const calls: { name: string; value: string; options: { maxAge?: number } }[] =
+      [];
     const cookieStore = {
       set: (name: string, value: string, options: { maxAge?: number }) => {
         calls.push({ name, value, options });

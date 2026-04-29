@@ -108,7 +108,9 @@ export async function loginAction(
   // signé HMAC pour que la prochaine request middleware skip 2 queries DB
   // (users.roles + admin_users). Le cookie est bind sur user.id pour
   // invalider naturellement quand un autre user se connecte.
-  setRoleSnapshotOnStore(cookies(), host, {
+  // Async (Web Crypto API) car middleware Edge Runtime ne supporte pas
+  // crypto Node natif.
+  await setRoleSnapshotOnStore(cookies(), host, {
     user_id: data.user.id,
     roles: role.roles,
     isAdmin: role.isAdmin,

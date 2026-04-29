@@ -1,5 +1,4 @@
 import "server-only";
-import { createHmac, timingSafeEqual } from "crypto";
 import type { NextRequest, NextResponse } from "next/server";
 
 // T-321 — Cache role snapshot dans cookie HttpOnly signé HMAC-SHA256.
@@ -13,6 +12,13 @@ import type { NextRequest, NextResponse } from "next/server";
 // Isolation Chantier 4 : nom distinct sur admin.* (sb-admin-role-snapshot)
 // pour ne pas leaker isAdmin=true vers www/pro via cookie partagé. Mirror
 // exact lib/supabase/cookie-domain.ts.
+//
+// Web Crypto API obligatoire ici (vs Node 'crypto') : middleware.ts tourne
+// en Edge Runtime qui ne supporte PAS le module 'crypto' Node natif. Toutes
+// les API utilisées (crypto.subtle, TextEncoder, btoa/atob) sont disponibles
+// en Edge + Node 18+ + Browser. Bug détecté en preview Vercel (PR #44 v1) :
+// 500 MIDDLEWARE_INVOCATION_FAILED sur premier hit /compte. crypto.subtle.verify
+// est intrinsèquement timing-safe → pas besoin de timingSafeEqual manuel.
 
 const COOKIE_NAME_DEFAULT = "__terroir_role_snapshot";
 const COOKIE_NAME_ADMIN = "sb-admin-role-snapshot";
@@ -82,9 +88,16 @@ export function cookieOptionsForHost(
   };
 }
 
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
+
 function base64urlEncode(input: string): string {
-  return Buffer.from(input, "utf8")
-    .toString("base64")
+  // btoa() encode binary string en base64. Pour de l'UTF-8, on passe par
+  // TextEncoder + uint8array → binary string. Edge-compatible (vs Buffer).
+  const bytes = textEncoder.encode(input);
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary)
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/, "");
@@ -96,21 +109,53 @@ function base64urlDecode(input: string): string | null {
     const padding = (4 - (input.length % 4)) % 4;
     const padded =
       input.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat(padding);
-    return Buffer.from(padded, "base64").toString("utf8");
+    const binary = atob(padded);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return textDecoder.decode(bytes);
   } catch {
     return null;
   }
 }
 
-function computeHmacHex(message: string): string {
-  return createHmac("sha256", getSecret()).update(message).digest("hex");
+function hexToBytes(hex: string): Uint8Array<ArrayBuffer> {
+  const buffer = new ArrayBuffer(hex.length / 2);
+  const bytes = new Uint8Array(buffer);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
 }
 
-export function signRoleSnapshot(payload: RoleSnapshotPayload): string {
+function bytesToHex(bytes: Uint8Array): string {
+  let out = "";
+  for (const b of bytes) out += b.toString(16).padStart(2, "0");
+  return out;
+}
+
+async function importHmacKey(usage: "sign" | "verify"): Promise<CryptoKey> {
+  return crypto.subtle.importKey(
+    "raw",
+    textEncoder.encode(getSecret()),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    [usage],
+  );
+}
+
+export async function signRoleSnapshot(
+  payload: RoleSnapshotPayload,
+): Promise<string> {
   const json = JSON.stringify(payload);
   const encoded = base64urlEncode(json);
-  const sig = computeHmacHex(encoded);
-  return `${encoded}.${sig}`;
+  const key = await importHmacKey("sign");
+  const sigBuffer = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    textEncoder.encode(encoded),
+  );
+  const sigHex = bytesToHex(new Uint8Array(sigBuffer));
+  return `${encoded}.${sigHex}`;
 }
 
 // Defensive type guard : on ne fait jamais confiance au cookie. Tout champ
@@ -127,9 +172,9 @@ function isValidPayloadShape(value: unknown): value is RoleSnapshotPayload {
   return true;
 }
 
-export function parseAndVerifyRoleSnapshot(
+export async function parseAndVerifyRoleSnapshot(
   cookieValue: string | null | undefined,
-): RoleSnapshotPayload | null {
+): Promise<RoleSnapshotPayload | null> {
   if (typeof cookieValue !== "string" || cookieValue.length === 0) return null;
 
   const dotIndex = cookieValue.indexOf(".");
@@ -140,12 +185,18 @@ export function parseAndVerifyRoleSnapshot(
 
   if (!/^[0-9a-f]{64}$/.test(providedSig)) return null;
 
-  // Recompute HMAC AVANT decode JSON : si la sig est invalide, on n'expose
+  // crypto.subtle.verify est intrinsèquement timing-safe (spec WebCrypto).
+  // Vérification AVANT decode JSON : si la sig est invalide, on n'expose
   // jamais le contenu du payload à JSON.parse (defense-in-depth).
-  const expectedSig = computeHmacHex(encodedPayload);
-  const a = Buffer.from(expectedSig, "hex");
-  const b = Buffer.from(providedSig, "hex");
-  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  const key = await importHmacKey("verify");
+  const sigBytes = hexToBytes(providedSig);
+  const valid = await crypto.subtle.verify(
+    "HMAC",
+    key,
+    sigBytes,
+    textEncoder.encode(encodedPayload),
+  );
+  if (!valid) return null;
 
   const json = base64urlDecode(encodedPayload);
   if (json === null) return null;
@@ -167,12 +218,15 @@ export function parseAndVerifyRoleSnapshot(
 // Helpers d'accès cookie : 2 surfaces selon le caller.
 //   - middleware : NextRequest (read) + NextResponse.cookies (write/clear)
 //   - server actions / route handlers : cookies() de next/headers
+//
+// Les set/read helpers sont async (sign/verify Web Crypto async). Les clear
+// helpers restent sync (pas de crypto, juste un set maxAge=0 sur cookieStore).
 // =============================================================================
 
-export function readRoleSnapshotFromRequest(
+export async function readRoleSnapshotFromRequest(
   request: NextRequest,
   host: string | null | undefined,
-): RoleSnapshotPayload | null {
+): Promise<RoleSnapshotPayload | null> {
   const name = cookieNameForHost(host);
   const raw = request.cookies.get(name)?.value;
   return parseAndVerifyRoleSnapshot(raw);
@@ -184,25 +238,25 @@ type ResponseCookieJar = {
   set(name: string, value: string, options: CookieAttrs): unknown;
 };
 
-export function setRoleSnapshotOnResponseCookies(
+export async function setRoleSnapshotOnResponseCookies(
   responseCookies: ResponseCookieJar,
   host: string | null | undefined,
   snapshot: Omit<RoleSnapshotPayload, "expires_at">,
-): void {
+): Promise<void> {
   const payload: RoleSnapshotPayload = {
     ...snapshot,
     expires_at: Date.now() + ROLE_SNAPSHOT_TTL_SECONDS * 1000,
   };
-  const value = signRoleSnapshot(payload);
+  const value = await signRoleSnapshot(payload);
   responseCookies.set(cookieNameForHost(host), value, cookieOptionsForHost(host));
 }
 
-export function setRoleSnapshotOnResponse(
+export async function setRoleSnapshotOnResponse(
   response: NextResponse,
   host: string | null | undefined,
   snapshot: Omit<RoleSnapshotPayload, "expires_at">,
-): void {
-  setRoleSnapshotOnResponseCookies(response.cookies, host, snapshot);
+): Promise<void> {
+  await setRoleSnapshotOnResponseCookies(response.cookies, host, snapshot);
 }
 
 export function clearRoleSnapshotOnResponseCookies(
@@ -239,16 +293,16 @@ function isClearableStore(
   );
 }
 
-export function setRoleSnapshotOnStore(
+export async function setRoleSnapshotOnStore(
   cookieStore: CookieStoreLike,
   host: string | null | undefined,
   snapshot: Omit<RoleSnapshotPayload, "expires_at">,
-): void {
+): Promise<void> {
   const payload: RoleSnapshotPayload = {
     ...snapshot,
     expires_at: Date.now() + ROLE_SNAPSHOT_TTL_SECONDS * 1000,
   };
-  const value = signRoleSnapshot(payload);
+  const value = await signRoleSnapshot(payload);
   cookieStore.set(cookieNameForHost(host), value, cookieOptionsForHost(host));
 }
 

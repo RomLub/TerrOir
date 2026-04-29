@@ -100,7 +100,7 @@ describe("middleware — role snapshot cookie cache (T-321)", () => {
   it("cache HIT : cookie valide + user.id match → skip DB lookup users/admin_users", async () => {
     mockGetUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
 
-    const cookieValue = signRoleSnapshot({
+    const cookieValue = await signRoleSnapshot({
       user_id: "user-1",
       roles: ["consumer"],
       isAdmin: false,
@@ -171,7 +171,7 @@ describe("middleware — role snapshot cookie cache (T-321)", () => {
     });
     mockAdminUsersMaybeSingle.mockResolvedValue({ data: null });
 
-    const expiredCookie = signRoleSnapshot({
+    const expiredCookie = await signRoleSnapshot({
       user_id: "user-1",
       roles: ["consumer"],
       isAdmin: false,
@@ -197,7 +197,7 @@ describe("middleware — role snapshot cookie cache (T-321)", () => {
     });
     mockAdminUsersMaybeSingle.mockResolvedValue({ data: null });
 
-    const otherUserCookie = signRoleSnapshot({
+    const otherUserCookie = await signRoleSnapshot({
       user_id: "user-2", // ≠ user-1 (getUser)
       roles: ["consumer"],
       isAdmin: false,
