@@ -5,6 +5,11 @@ import { stripe } from "@/lib/stripe/server";
 import { syncStripeAccountFlags } from "@/lib/stripe/sync-account-flags";
 import { syncStripePaymentFailed } from "@/lib/stripe/handle-payment-failed";
 import { syncStripePaymentSucceeded } from "@/lib/stripe/handle-payment-succeeded";
+import { syncStripeTransferFailed } from "@/lib/stripe/handle-transfer-failed";
+import { syncStripePayoutFailed } from "@/lib/stripe/handle-payout-failed";
+import { syncStripeDisputeCreated } from "@/lib/stripe/handle-dispute-created";
+import { syncStripeDisputeUpdated } from "@/lib/stripe/handle-dispute-updated";
+import { syncStripeDisputeClosed } from "@/lib/stripe/handle-dispute-closed";
 import { checkOrMarkProcessed } from "@/lib/webhook-events/check-or-mark-processed";
 import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -62,6 +67,14 @@ export async function POST(request: Request) {
     // un audit forensique + console.error sur ce case. Sans dédup, un
     // rejouage Stripe poserait un 2e event audit identique.
     "charge.dispute.created",
+    // Bundle 3 webhook events go-Live (T-401 + T-403 extended) : tous
+    // les nouveaux handlers ont des effets de bord (UPDATE DB, audit
+    // log, INSERT notifications, sendTemplate Resend) — dédup obligatoire
+    // pour idempotence sur rejouage Stripe.
+    "transfer.failed",
+    "payout.failed",
+    "charge.dispute.updated",
+    "charge.dispute.closed",
   ]);
 
   if (DEDUP_TARGETS.has(event.type)) {
@@ -86,7 +99,12 @@ export async function POST(request: Request) {
   }
 
   try {
-    switch (event.type) {
+    // event.type narrowing : on cast en string parce que `transfer.failed`
+    // n'apparaît pas dans la discriminated union du SDK Stripe v17 (déprécié
+    // au profit de `transfer.reversed` côté types, mais l'event reste émis
+    // sur certaines configurations Connect). Tous les `event.data.object as`
+    // sont déjà des casts manuels — pas de regression de safety.
+    switch (event.type as string) {
       case "payment_intent.succeeded": {
         const pi = event.data.object as Stripe.PaymentIntent;
 
@@ -382,22 +400,85 @@ export async function POST(request: Request) {
         // Émis quand un virement Stripe Connect → banque du producteur
         // est effectivement payé. event.account = Connect account id.
         // `source_transaction` n'est pas typé sur Stripe.Payout dans le SDK
-        // v17; on y accède via une extension optionnelle et on ne fait
-        // rien si Stripe ne le renseigne pas.
+        // v17; on y accède via une extension optionnelle.
         const payout = event.data.object as Stripe.Payout & {
           source_transaction?: string | null;
         };
+
+        let payoutMatched = false;
+        let matchSource:
+          | "source_transaction"
+          | "fallback_account"
+          | "no_match" = "no_match";
+
         if (payout.source_transaction) {
-          await admin
+          // Path nominal : Stripe nous donne le Transfer source qu'on a
+          // créé via stripe.transfers.create — match direct sur
+          // payouts.stripe_transfer_id.
+          const { data: updated } = await admin
             .from("payouts")
             .update({ statut: "paid", stripe_payout_id: payout.id })
-            .eq("stripe_transfer_id", payout.source_transaction);
+            .eq("stripe_transfer_id", payout.source_transaction)
+            .select("id");
+          payoutMatched = Array.isArray(updated) && updated.length > 0;
+          if (payoutMatched) matchSource = "source_transaction";
+        }
+
+        if (!payoutMatched) {
+          // T-402 fallback (décision PUSH 1 question D) : la metadata
+          // Transfer ne propage PAS vers Payout côté Stripe Connect.
+          // Vrai fallback = event.account (Connect account id) ->
+          // producers.stripe_account_id -> producer_id -> payouts récents
+          // statut IN ('processing','paid') des 30 derniers jours.
+          const eventAccount = event.account ?? null;
+          if (eventAccount) {
+            const { data: producer } = await admin
+              .from("producers")
+              .select("id")
+              .eq("stripe_account_id", eventAccount)
+              .maybeSingle();
+
+            if (producer) {
+              const since = new Date(
+                Date.now() - 30 * 24 * 60 * 60 * 1000,
+              ).toISOString();
+              const { data: matched } = await admin
+                .from("payouts")
+                .select("id")
+                .eq("producer_id", (producer as { id: string }).id)
+                .in("statut", ["processing", "paid"])
+                .gte("created_at", since)
+                .order("created_at", { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+              if (matched) {
+                await admin
+                  .from("payouts")
+                  .update({ statut: "paid", stripe_payout_id: payout.id })
+                  .eq("id", (matched as { id: string }).id);
+                payoutMatched = true;
+                matchSource = "fallback_account";
+              } else {
+                console.warn(
+                  `[PAYOUT_PAID_NO_TRANSACTION_NO_MATCH] payout=${payout.id} account=${eventAccount} producer=${(producer as { id: string }).id} — aucun payout récent matché`,
+                );
+              }
+            } else {
+              console.warn(
+                `[PAYOUT_PAID_NO_TRANSACTION_NO_PRODUCER] payout=${payout.id} account=${eventAccount} — producer introuvable via stripe_account_id`,
+              );
+            }
+          } else {
+            console.warn(
+              `[PAYOUT_PAID_NO_TRANSACTION_NO_ACCOUNT] payout=${payout.id} — ni source_transaction ni event.account`,
+            );
+          }
         }
 
         // Phase 3 multi-events audit (T-081 PR-B) — log APRÈS UPDATE
-        // payouts (no-op si source_transaction null, cohérent avec
-        // l'absence d'effet DB). destination peut être string (acct/ba_*)
-        // ou objet Stripe expansé ; on normalise en string ou null.
+        // payouts. destination peut être string (acct/ba_*) ou objet
+        // Stripe expansé ; on normalise en string ou null.
         await logPaymentEvent({
           eventType: "stripe_payout_paid",
           metadata: {
@@ -410,53 +491,75 @@ export async function POST(request: Request) {
                 ? payout.destination
                 : (payout.destination?.id ?? null),
             source_transaction: payout.source_transaction ?? null,
+            stripe_account: event.account ?? null,
+            match_source: matchSource,
+            matched: payoutMatched,
           },
         });
         break;
       }
 
       case "charge.dispute.created": {
-        // Phase 3 multi-events (T-081 PR-B) — case ajouté ici parce que
-        // l'event Stripe charge.dispute.created arrivait jusqu'ici en
-        // default no-op silencieux (pas de log applicatif, pas d'audit
-        // forensique). Stripe émet ce webhook quand un cardholder ouvre
-        // un litige (chargeback) sur une charge encaissée. Action admin
-        // attendue avant `evidence_due_by` (sinon perte du litige par
-        // défaut).
-        // Traitement minimal : alerte admin via console.error grep-able
-        // sur Vercel + audit forensique. Pas d'UPDATE DB (table disputes
-        // hors-scope T-081, chantier futur si volume).
-        const dispute = event.data.object as Stripe.Dispute;
-        const chargeId =
-          typeof dispute.charge === "string"
-            ? dispute.charge
-            : (dispute.charge?.id ?? null);
-        const paymentIntentId =
-          typeof dispute.payment_intent === "string"
-            ? dispute.payment_intent
-            : (dispute.payment_intent?.id ?? null);
-        // evidence_details.due_by est le path canonique Stripe (timestamp
-        // unix) pour la deadline de soumission de preuves. Optional dans
-        // certains états du dispute, on normalise en null si absent.
-        const evidenceDueBy = dispute.evidence_details?.due_by ?? null;
-
-        console.error(
-          `[STRIPE_DISPUTE_RECEIVED] dispute=${dispute.id} charge=${chargeId} amount=${dispute.amount} reason=${dispute.reason} status=${dispute.status} evidence_due_by=${evidenceDueBy}`,
+        // Bundle 3 webhook events go-Live (T-403) : extraction du traitement
+        // inline initial (T-081 PR-B) vers `lib/stripe/handle-dispute-created.tsx`.
+        // Le handler gère lookup order + INSERT public.disputes + audit log
+        // metadata étendu (requires_action, evidence_due_by, dispute_status)
+        // + INSERT notifications placeholder admin + waitUntil(sendTemplate(...))
+        // alerte email urgente vers SUPPORT_EMAIL.
+        await syncStripeDisputeCreated(
+          event.data.object as Stripe.Dispute,
+          admin,
         );
+        break;
+      }
 
-        await logPaymentEvent({
-          eventType: "stripe_dispute",
-          metadata: {
-            dispute_id: dispute.id,
-            charge_id: chargeId,
-            payment_intent_id: paymentIntentId,
-            amount: dispute.amount,
-            currency: dispute.currency,
-            reason: dispute.reason,
-            status: dispute.status,
-            evidence_due_by: evidenceDueBy,
-          },
-        });
+      case "charge.dispute.updated": {
+        // Bundle 3 (T-403 extended) : transitions non-terminales du dispute
+        // (under_review, warning_*). Info-only, pas d'email ni notification
+        // (l'admin a déjà l'alerte urgente sur dispute.created et l'info
+        // finale sur dispute.closed). UPDATE statut côté disputes + audit log.
+        await syncStripeDisputeUpdated(
+          event.data.object as Stripe.Dispute,
+          admin,
+        );
+        break;
+      }
+
+      case "charge.dispute.closed": {
+        // Bundle 3 (T-403 extended) : résolution terminale du dispute
+        // (won, lost, warning_closed). Info-only avec email résolution
+        // vers SUPPORT_EMAIL. UPDATE statut + closed_at côté disputes,
+        // audit log, notifications placeholder.
+        await syncStripeDisputeClosed(
+          event.data.object as Stripe.Dispute,
+          admin,
+        );
+        break;
+      }
+
+      case "transfer.failed": {
+        // Bundle 3 (T-401) : Transfer plateforme -> Connect account échoué.
+        // Stripe ne re-tente pas auto -> action admin requise. UPDATE
+        // payouts.statut='failed' (CHECK enum élargi T-422) + audit log
+        // + INSERT notifications placeholder + email admin SUPPORT_EMAIL.
+        await syncStripeTransferFailed(
+          event.data.object as Stripe.Transfer,
+          admin,
+        );
+        break;
+      }
+
+      case "payout.failed": {
+        // Bundle 3 (T-401) : Payout Connect account -> banque producteur
+        // échoué. Pareil que transfer.failed mais sur le row payouts via
+        // payout.metadata.payout_id (T-414 futur) ou fallback event.account
+        // -> producers.stripe_account_id -> producer_id (correction PUSH 1
+        // question D vs brief TD initial).
+        await syncStripePayoutFailed(
+          event.data.object as Stripe.Payout,
+          event.account ?? null,
+          admin,
+        );
         break;
       }
 
