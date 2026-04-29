@@ -225,9 +225,13 @@ describe("syncStripeAccountFlags — producer absent (UPDATE 0 rows)", () => {
 
     expect(result).toEqual({ updated: false, producerId: null });
     // L'UPDATE est tout de même émis (Supabase ne sait pas a priori si la
-    // WHERE matchera). Pas de warn — c'est un cas normal côté Stripe.
+    // WHERE matchera). T-419 : warn greppable [STRIPE_ACCOUNT_NOT_FOUND]
+    // pour permettre l'intervention manuelle admin sur les orphelins.
     expect(captured.update).toHaveLength(1);
-    expect(consoleWarnSpy).not.toHaveBeenCalled();
+    expect(consoleWarnSpy).toHaveBeenCalledTimes(1);
+    const warned = String(consoleWarnSpy.mock.calls[0]?.[0] ?? "");
+    expect(warned).toContain("[STRIPE_ACCOUNT_NOT_FOUND]");
+    expect(warned).toContain("account=acct_orphan");
   });
 });
 
