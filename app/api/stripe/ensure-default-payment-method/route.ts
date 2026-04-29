@@ -4,6 +4,7 @@ import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
+import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
 
 // Phase 6 Stripe Customer — fix Constat 1 + dedupe fingerprint :
 // Après un checkout avec save_card=true, Stripe attache la CB au Customer
@@ -124,6 +125,17 @@ export async function POST(request: Request) {
 
   await stripe.customers.update(customerId, {
     invoice_settings: { default_payment_method: refPm.id },
+  });
+
+  await logPaymentEvent({
+    eventType: "stripe_default_payment_method_set",
+    userId: session.id,
+    metadata: {
+      customer_id: customerId,
+      payment_method_id: refPm.id,
+      order_id: parsed.data.order_id,
+      ...(dedupeDetached ? { dedupe_detached_id: dedupeDetached } : {}),
+    },
   });
 
   return NextResponse.json({
