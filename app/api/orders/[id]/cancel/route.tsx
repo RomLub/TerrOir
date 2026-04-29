@@ -50,40 +50,33 @@ export async function POST(request: Request, { params }: RouteContext) {
     return NextResponse.json({ ok: true, already: true });
   }
 
-  // Auth: système (cron secret), admin, producteur propriétaire, ou
-  // consumer pour sa propre commande tant qu'elle est encore pending.
-  const cronSecret = process.env.CRON_SECRET;
-  const isSystemCall =
-    cronSecret !== undefined &&
-    request.headers.get("x-cron-secret") === cronSecret;
-
+  // Auth: admin, producteur propriétaire, ou consumer pour sa propre
+  // commande tant qu'elle est encore pending.
   let authorizedByProducer = false;
-  if (!isSystemCall) {
-    const session = await getSessionUser();
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    if (session.isAdmin) {
-      // OK
-    } else if (session.roles.includes("producer")) {
-      if (!(await userOwnsProducer(admin, session.id, order.producer_id))) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-      }
-      authorizedByProducer = true;
-    } else if (
-      session.id === order.consumer_id &&
-      order.statut === "pending"
-    ) {
-      // Fenêtre stricte : tant que le producteur n'a pas confirmé, zéro
-      // engagement de sa part → l'annulation consumer est sans préjudice.
-      // Après 'confirmed' le consumer doit passer par contact direct.
-      // reason forcée à "consumer_cancel" pour analytics propres + défense
-      // contre un client forgeant une reason réservée producteur ("stock").
-      // authorizedByProducer reste false → pas de recalcul du badge.
-      reason = "consumer_cancel";
-    } else {
+  const session = await getSessionUser();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (session.isAdmin) {
+    // OK
+  } else if (session.roles.includes("producer")) {
+    if (!(await userOwnsProducer(admin, session.id, order.producer_id))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
+    authorizedByProducer = true;
+  } else if (
+    session.id === order.consumer_id &&
+    order.statut === "pending"
+  ) {
+    // Fenêtre stricte : tant que le producteur n'a pas confirmé, zéro
+    // engagement de sa part → l'annulation consumer est sans préjudice.
+    // Après 'confirmed' le consumer doit passer par contact direct.
+    // reason forcée à "consumer_cancel" pour analytics propres + défense
+    // contre un client forgeant une reason réservée producteur ("stock").
+    // authorizedByProducer reste false → pas de recalcul du badge.
+    reason = "consumer_cancel";
+  } else {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   // T-410 : valider la transition d'etat AVANT d'emettre un refund Stripe

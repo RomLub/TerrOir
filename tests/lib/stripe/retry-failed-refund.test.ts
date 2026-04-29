@@ -97,6 +97,7 @@ describe("retryFailedRefund — succeeded path (attempt 1, blocked_stock)", () =
     const res = await retryFailedRefund({
       orderId: "order-42",
       paymentIntentId: "pi_blocked",
+      kind: "revival",
       attempt: 1,
       blockedReason: "blocked_stock",
       consumerId: "user-7",
@@ -105,11 +106,12 @@ describe("retryFailedRefund — succeeded path (attempt 1, blocked_stock)", () =
 
     expect(res).toBe("succeeded");
 
-    // Idempotency key dérivée de order_id + attempt — empêche double refund.
+    // Idempotency key dérivée de (order_id, kind, attempt) — empêche double
+    // refund + collision avec les autres paths refund (admin/timeout).
     expect(vi.mocked(stripe.refunds.create)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(stripe.refunds.create)).toHaveBeenCalledWith(
       { payment_intent: "pi_blocked" },
-      { idempotencyKey: "refund_order-42_1" },
+      { idempotencyKey: "refund_order-42_revival_1" },
     );
 
     // UPDATE order avec cancellation_reason mappée depuis blocked_stock.
@@ -118,7 +120,7 @@ describe("retryFailedRefund — succeeded path (attempt 1, blocked_stock)", () =
     ]);
     expect(captured.eqs).toEqual([["id", "order-42"]]);
 
-    // Audit log retried_succeeded avec metadata complète.
+    // Audit log retried_succeeded avec metadata complète + kind.
     expect(vi.mocked(logPaymentEvent)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(logPaymentEvent)).toHaveBeenCalledWith({
       eventType: "order_refund_retried_succeeded",
@@ -126,6 +128,7 @@ describe("retryFailedRefund — succeeded path (attempt 1, blocked_stock)", () =
       metadata: {
         order_id: "order-42",
         payment_intent_id: "pi_blocked",
+        kind: "revival",
         attempt: 1,
         refund_id: "re_retry_1",
         blocked_reason: "blocked_stock",
@@ -154,6 +157,7 @@ describe("retryFailedRefund — succeeded path (attempt 2, blocked_slot)", () =>
     const res = await retryFailedRefund({
       orderId: "order-99",
       paymentIntentId: "pi_slot",
+      kind: "revival",
       attempt: 2,
       blockedReason: "blocked_slot",
       consumerId: "user-12",
@@ -163,7 +167,7 @@ describe("retryFailedRefund — succeeded path (attempt 2, blocked_slot)", () =>
     expect(res).toBe("succeeded");
     expect(vi.mocked(stripe.refunds.create)).toHaveBeenCalledWith(
       { payment_intent: "pi_slot" },
-      { idempotencyKey: "refund_order-99_2" },
+      { idempotencyKey: "refund_order-99_revival_2" },
     );
     expect(captured.updates).toEqual([
       { table: "orders", payload: { cancellation_reason: "revival_blocked_slot" } },
@@ -172,6 +176,7 @@ describe("retryFailedRefund — succeeded path (attempt 2, blocked_slot)", () =>
       expect.objectContaining({
         eventType: "order_refund_retried_succeeded",
         metadata: expect.objectContaining({
+          kind: "revival",
           attempt: 2,
           blocked_reason: "blocked_slot",
         }),
@@ -193,6 +198,7 @@ describe("retryFailedRefund — succeeded with DB drift (UPDATE fails)", () => {
     const res = await retryFailedRefund({
       orderId: "order-drift",
       paymentIntentId: "pi_drift",
+      kind: "revival",
       attempt: 1,
       blockedReason: "blocked_stock",
       consumerId: "user-7",
@@ -232,6 +238,7 @@ describe("retryFailedRefund — failed_will_retry (attempt 1)", () => {
     const res = await retryFailedRefund({
       orderId: "order-fail",
       paymentIntentId: "pi_fail",
+      kind: "revival",
       attempt: 1,
       blockedReason: "blocked_stock",
       consumerId: "user-7",
@@ -245,7 +252,7 @@ describe("retryFailedRefund — failed_will_retry (attempt 1)", () => {
     // Pas de notif (pas exhausted).
     expect(captured.inserts).toEqual([]);
 
-    // Audit log refund_failed avec metadata attempt + retry_error.
+    // Audit log refund_failed avec metadata attempt + retry_error + kind.
     expect(vi.mocked(logPaymentEvent)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(logPaymentEvent)).toHaveBeenCalledWith({
       eventType: "order_revival_refund_failed",
@@ -253,6 +260,7 @@ describe("retryFailedRefund — failed_will_retry (attempt 1)", () => {
       metadata: {
         order_id: "order-fail",
         payment_intent_id: "pi_fail",
+        kind: "revival",
         attempt: 1,
         retry_error: "Stripe network error",
         blocked_reason: "blocked_stock",
@@ -277,6 +285,7 @@ describe("retryFailedRefund — failed_will_retry (attempt 2)", () => {
     const res = await retryFailedRefund({
       orderId: "order-fail-2",
       paymentIntentId: "pi_fail_2",
+      kind: "revival",
       attempt: 2,
       blockedReason: "blocked_slot",
       consumerId: null,
@@ -316,6 +325,7 @@ describe("retryFailedRefund — failed_exhausted (attempt 3)", () => {
     const res = await retryFailedRefund({
       orderId: "order-exhausted",
       paymentIntentId: "pi_exhausted",
+      kind: "revival",
       attempt: 3,
       blockedReason: "blocked_stock",
       consumerId: "user-7",
@@ -325,7 +335,7 @@ describe("retryFailedRefund — failed_exhausted (attempt 3)", () => {
     expect(res).toBe("failed_exhausted");
 
     // 2 audit logs : refund_failed (incrémente compteur) + retry_exhausted
-    // (sortie de boucle pour le cron).
+    // (sortie de boucle pour le cron). Tous deux portent metadata.kind.
     expect(vi.mocked(logPaymentEvent)).toHaveBeenCalledTimes(2);
 
     expect(vi.mocked(logPaymentEvent)).toHaveBeenNthCalledWith(1, {
@@ -334,6 +344,7 @@ describe("retryFailedRefund — failed_exhausted (attempt 3)", () => {
       metadata: {
         order_id: "order-exhausted",
         payment_intent_id: "pi_exhausted",
+        kind: "revival",
         attempt: 3,
         retry_error: "Stripe API down",
         blocked_reason: "blocked_stock",
@@ -346,6 +357,7 @@ describe("retryFailedRefund — failed_exhausted (attempt 3)", () => {
       metadata: {
         order_id: "order-exhausted",
         payment_intent_id: "pi_exhausted",
+        kind: "revival",
         attempts_total: 3,
         last_error: "Stripe API down",
         blocked_reason: "blocked_stock",
@@ -364,6 +376,7 @@ describe("retryFailedRefund — failed_exhausted (attempt 3)", () => {
           metadata: {
             order_id: "order-exhausted",
             payment_intent_id: "pi_exhausted",
+            kind: "revival",
             attempts_total: 3,
             last_error: "Stripe API down",
             blocked_reason: "blocked_stock",
@@ -393,6 +406,7 @@ describe("retryFailedRefund — failed_exhausted with notif insert error", () =>
     const res = await retryFailedRefund({
       orderId: "order-notif-fail",
       paymentIntentId: "pi_x",
+      kind: "revival",
       attempt: 3,
       blockedReason: "blocked_slot",
       consumerId: "user-9",
@@ -410,5 +424,158 @@ describe("retryFailedRefund — failed_exhausted with notif insert error", () =>
     );
     expect(notifWarnCall).toBeDefined();
     expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ============================================================================
+// T-412 : kind='admin' (path /api/stripe/refund) — pas de blockedReason,
+// cancellation_reason='admin_refund', event_type failed='order_admin_refund_failed'.
+// ============================================================================
+
+describe("retryFailedRefund — kind='admin' (T-412)", () => {
+  it("succeeded → idempotencyKey kind=admin + cancellation_reason='admin_refund' + audit kind=admin", async () => {
+    vi.mocked(stripe.refunds.create).mockResolvedValue({
+      id: "re_admin",
+    } as never);
+
+    const { client, captured } = makeSupabase();
+
+    const res = await retryFailedRefund({
+      orderId: "order-admin-1",
+      paymentIntentId: "pi_admin_1",
+      kind: "admin",
+      attempt: 1,
+      consumerId: "user-7",
+      admin: client,
+    });
+
+    expect(res).toBe("succeeded");
+    expect(vi.mocked(stripe.refunds.create)).toHaveBeenCalledWith(
+      { payment_intent: "pi_admin_1" },
+      { idempotencyKey: "refund_order-admin-1_admin_1" },
+    );
+    expect(captured.updates).toEqual([
+      { table: "orders", payload: { cancellation_reason: "admin_refund" } },
+    ]);
+    // Audit log retried_succeeded sans blocked_reason (admin path).
+    expect(vi.mocked(logPaymentEvent)).toHaveBeenCalledWith({
+      eventType: "order_refund_retried_succeeded",
+      userId: "user-7",
+      metadata: {
+        order_id: "order-admin-1",
+        payment_intent_id: "pi_admin_1",
+        kind: "admin",
+        attempt: 1,
+        refund_id: "re_admin",
+      },
+    });
+  });
+
+  it("failed_will_retry → audit event_type='order_admin_refund_failed' + metadata.kind='admin'", async () => {
+    vi.mocked(stripe.refunds.create).mockRejectedValue(
+      new Error("admin retry fail"),
+    );
+
+    const { client } = makeSupabase();
+
+    const res = await retryFailedRefund({
+      orderId: "order-admin-2",
+      paymentIntentId: "pi_admin_2",
+      kind: "admin",
+      attempt: 2,
+      consumerId: "user-7",
+      admin: client,
+    });
+
+    expect(res).toBe("failed_will_retry");
+    expect(vi.mocked(logPaymentEvent)).toHaveBeenCalledWith({
+      eventType: "order_admin_refund_failed",
+      userId: "user-7",
+      metadata: {
+        order_id: "order-admin-2",
+        payment_intent_id: "pi_admin_2",
+        kind: "admin",
+        attempt: 2,
+        retry_error: "admin retry fail",
+      },
+    });
+  });
+});
+
+// ============================================================================
+// T-412 : kind='timeout' (path cron order-timeout) — pas de blockedReason,
+// cancellation_reason='timeout', event_type failed='order_timeout_refund_failed'.
+// ============================================================================
+
+describe("retryFailedRefund — kind='timeout' (T-412)", () => {
+  it("succeeded → idempotencyKey kind=timeout + cancellation_reason='timeout' + audit kind=timeout", async () => {
+    vi.mocked(stripe.refunds.create).mockResolvedValue({
+      id: "re_timeout",
+    } as never);
+
+    const { client, captured } = makeSupabase();
+
+    const res = await retryFailedRefund({
+      orderId: "order-timeout-1",
+      paymentIntentId: "pi_timeout_1",
+      kind: "timeout",
+      attempt: 1,
+      consumerId: "user-7",
+      admin: client,
+    });
+
+    expect(res).toBe("succeeded");
+    expect(vi.mocked(stripe.refunds.create)).toHaveBeenCalledWith(
+      { payment_intent: "pi_timeout_1" },
+      { idempotencyKey: "refund_order-timeout-1_timeout_1" },
+    );
+    expect(captured.updates).toEqual([
+      { table: "orders", payload: { cancellation_reason: "timeout" } },
+    ]);
+  });
+
+  it("failed_exhausted → 2 audit logs avec metadata.kind='timeout' + notif metadata.kind", async () => {
+    vi.mocked(stripe.refunds.create).mockRejectedValue(new Error("timeout boom"));
+
+    const { client, captured } = makeSupabase();
+
+    const res = await retryFailedRefund({
+      orderId: "order-timeout-3",
+      paymentIntentId: "pi_timeout_3",
+      kind: "timeout",
+      attempt: 3,
+      consumerId: "user-7",
+      admin: client,
+    });
+
+    expect(res).toBe("failed_exhausted");
+
+    // 1er log : refund_failed timeout-specific
+    expect(vi.mocked(logPaymentEvent)).toHaveBeenNthCalledWith(1, {
+      eventType: "order_timeout_refund_failed",
+      userId: "user-7",
+      metadata: {
+        order_id: "order-timeout-3",
+        payment_intent_id: "pi_timeout_3",
+        kind: "timeout",
+        attempt: 3,
+        retry_error: "timeout boom",
+      },
+    });
+    // 2e log : exhausted générique avec kind
+    expect(vi.mocked(logPaymentEvent)).toHaveBeenNthCalledWith(2, {
+      eventType: "order_refund_retry_exhausted",
+      userId: "user-7",
+      metadata: expect.objectContaining({
+        kind: "timeout",
+        attempts_total: 3,
+      }),
+    });
+
+    // Notif metadata porte aussi le kind.
+    expect(captured.inserts[0]?.payload).toMatchObject({
+      template: "refund_retry_exhausted",
+      metadata: expect.objectContaining({ kind: "timeout" }),
+    });
   });
 });

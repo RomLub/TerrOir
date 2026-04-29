@@ -14,6 +14,9 @@ vi.mock("@/lib/stripe/server", () => ({
     refunds: {
       create: vi.fn(),
     },
+    paymentIntents: {
+      retrieve: vi.fn(),
+    },
   },
 }));
 
@@ -180,6 +183,13 @@ beforeEach(() => {
   vi.mocked(stripe.refunds.create).mockReset();
   vi.mocked(stripe.refunds.create).mockResolvedValue({
     id: "re_test",
+  } as never);
+
+  vi.mocked(stripe.paymentIntents.retrieve).mockReset();
+  // Default : PI succeeded → flow nominal refund émis. Tests T-409 path
+  // non-payé override avec status='requires_payment_method' ou autres.
+  vi.mocked(stripe.paymentIntents.retrieve).mockResolvedValue({
+    status: "succeeded",
   } as never);
 
   vi.mocked(sendTemplate).mockReset();
@@ -692,5 +702,80 @@ describe("POST /api/cron/order-timeout — T-107 audit log refund failed", () =>
         }),
       }),
     );
+  });
+});
+
+// =============================================================================
+// T-409. Pre-check PaymentIntent status — distinguer pending payé vs non-payé
+// =============================================================================
+describe("POST /api/cron/order-timeout — T-409 pre-check pi.status", () => {
+  it("T-409-A pi.status='requires_payment_method' → skip refund, audit no_payment, statut cancelled", async () => {
+    const order = makeOrder({ id: "order-T409A", paymentIntent: "pi_unpaid" });
+    const { client, captured } = makeSupabase({
+      selectOrders: { data: [order], error: null },
+    });
+    vi.mocked(createSupabaseAdminClient).mockReturnValue(client);
+    vi.mocked(stripe.paymentIntents.retrieve).mockResolvedValueOnce({
+      status: "requires_payment_method",
+    } as never);
+
+    const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
+    expect(res.status).toBe(200);
+
+    // Pre-check appelé, refund jamais tenté.
+    expect(vi.mocked(stripe.paymentIntents.retrieve)).toHaveBeenCalledWith(
+      "pi_unpaid",
+    );
+    expect(vi.mocked(stripe.refunds.create)).not.toHaveBeenCalled();
+
+    // Audit forensique distinct du retry path (pas de refund_failed posé).
+    expect(vi.mocked(logPaymentEvent)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(logPaymentEvent)).toHaveBeenCalledWith({
+      eventType: "order_timeout_no_payment",
+      userId: "consumer-order-T409A",
+      metadata: {
+        order_id: "order-T409A",
+        payment_intent_id: "pi_unpaid",
+        pi_status: "requires_payment_method",
+      },
+    });
+
+    // Statut → cancelled (pas refunded car aucun refund Stripe émis).
+    const orderUpdate = captured.updates.find((u) => u.table === "orders");
+    expect(orderUpdate?.payload.statut).toBe("cancelled");
+    expect(orderUpdate?.payload.cancellation_reason).toBe("timeout");
+
+    const json = await res.json();
+    expect(json.results[0].refunded).toBe(false);
+  });
+
+  it("T-409-B pi.status='succeeded' → flow nominal préservé, refund émis, statut refunded", async () => {
+    const order = makeOrder({ id: "order-T409B", paymentIntent: "pi_paid" });
+    const { client, captured } = makeSupabase({
+      selectOrders: { data: [order], error: null },
+    });
+    vi.mocked(createSupabaseAdminClient).mockReturnValue(client);
+    // Default mock pi.status='succeeded' → pas besoin d'override.
+
+    const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
+    expect(res.status).toBe(200);
+
+    expect(vi.mocked(stripe.paymentIntents.retrieve)).toHaveBeenCalledWith(
+      "pi_paid",
+    );
+    // T-409 idempotencyKey aligné avec convention TA Bundle 1 (T-408).
+    expect(vi.mocked(stripe.refunds.create)).toHaveBeenCalledWith(
+      { payment_intent: "pi_paid" },
+      { idempotencyKey: "refund_order-T409B_timeout" },
+    );
+
+    // Aucun audit forensique (path nominal succès).
+    expect(vi.mocked(logPaymentEvent)).not.toHaveBeenCalled();
+
+    const orderUpdate = captured.updates.find((u) => u.table === "orders");
+    expect(orderUpdate?.payload.statut).toBe("refunded");
+
+    const json = await res.json();
+    expect(json.results[0].refunded).toBe(true);
   });
 });

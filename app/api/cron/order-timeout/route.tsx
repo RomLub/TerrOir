@@ -42,36 +42,58 @@ export async function POST(request: Request) {
   }> = [];
 
   for (const order of orders) {
+    let refundEmitted = false;
     let refundError: string | undefined;
 
     if (order.stripe_payment_intent_id) {
-      try {
-        // T-408 idempotencyKey : `refund_${order.id}_timeout` (context
-        // discriminator distinct des paths manual_cancel / admin / retry).
-        await stripe.refunds.create(
-          { payment_intent: order.stripe_payment_intent_id },
-          { idempotencyKey: `refund_${order.id}_timeout` },
-        );
-      } catch (e) {
-        refundError = (e as Error).message;
-        // Instrumentation T-107 : audit_log forensique pour permettre la
-        // détection background par un cron retry futur (extension T-102).
-        // Pas de retry inline : la commande tombe en `cancelled` (fallback
-        // ci-dessous) et le refund reste à reconcilier hors-ligne.
+      // T-409 : pre-check status PI avant refund. Une order peut rester
+      // pending +24h pour 2 raisons distinctes :
+      //   1. PI succeeded reçu, producer n'a juste pas confirmé → order PAYÉE
+      //   2. PI créé mais succeeded jamais reçu (3DS abandonné) → NON PAYÉE
+      // Tenter refund sur (2) génère une erreur Stripe + faux positif retry.
+      const pi = await stripe.paymentIntents.retrieve(
+        order.stripe_payment_intent_id,
+      );
+
+      if (pi.status !== "succeeded") {
+        // Skip refund + audit forensique distinct (pas consommé par le
+        // cron retry T-412).
         await logPaymentEvent({
-          eventType: "order_timeout_refund_failed",
+          eventType: "order_timeout_no_payment",
           userId: order.consumer_id,
           metadata: {
             order_id: order.id,
             payment_intent_id: order.stripe_payment_intent_id,
-            refund_error: refundError,
+            pi_status: pi.status,
           },
         });
+      } else {
+        try {
+          // T-408 idempotencyKey : `refund_${order.id}_timeout` (context
+          // discriminator distinct des paths manual_cancel / admin / retry).
+          await stripe.refunds.create(
+            { payment_intent: order.stripe_payment_intent_id },
+            { idempotencyKey: `refund_${order.id}_timeout` },
+          );
+          refundEmitted = true;
+        } catch (e) {
+          refundError = (e as Error).message;
+          // Instrumentation T-107 : audit_log forensique pour permettre la
+          // détection background par le cron retry T-412 (3 paths refund).
+          await logPaymentEvent({
+            eventType: "order_timeout_refund_failed",
+            userId: order.consumer_id,
+            metadata: {
+              order_id: order.id,
+              payment_intent_id: order.stripe_payment_intent_id,
+              refund_error: refundError,
+            },
+          });
+        }
       }
     }
 
-    const nextStatus: OrderStatus =
-      order.stripe_payment_intent_id && !refundError ? "refunded" : "cancelled";
+    const nextStatus: OrderStatus = refundEmitted ? "refunded" : "cancelled";
 
     assertTransition("pending", nextStatus);
 
@@ -88,7 +110,7 @@ export async function POST(request: Request) {
       // Drift Stripe/DB : refund déjà émis chez Stripe mais statut DB
       // toujours pending → prochain run du cron retentera + risque de
       // double refund. Préfixe grep-able pour réconciliation manuelle.
-      if (order.stripe_payment_intent_id && !refundError) {
+      if (refundEmitted) {
         console.warn(
           `[REFUND_DB_DRIFT] order=${order.id} pi=${order.stripe_payment_intent_id} ${updateError.message}`,
         );
@@ -131,7 +153,7 @@ export async function POST(request: Request) {
 
     results.push({
       order_id: order.id,
-      refunded: !refundError && Boolean(order.stripe_payment_intent_id),
+      refunded: refundEmitted,
       error: refundError,
     });
   }

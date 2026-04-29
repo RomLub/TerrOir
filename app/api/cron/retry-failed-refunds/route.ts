@@ -11,21 +11,25 @@ import {
 } from "@/lib/cron/build-retry-targets";
 
 // Cron daily Vercel `0 4 * * *` (4h UTC, soit 5-6h Paris hors heures de
-// pointe). Tente de re-rembourser les orders dont le refund initial du
-// path résurrection bloquée a échoué (cf. `handle-payment-succeeded.ts:241`,
-// audit log `order_revival_refund_failed`).
+// pointe). Tente de re-rembourser les orders dont le refund initial a
+// échoué sur n'importe lequel des 3 paths refund retry-able :
+//   - revival : handle-payment-succeeded (audit `order_revival_refund_failed`)
+//   - admin   : /api/stripe/refund (audit `order_admin_refund_failed`, T-107)
+//   - timeout : cron order-timeout (audit `order_timeout_refund_failed`, T-107)
+//
+// T-412 : extension du scope (initialement revival uniquement, scope minimal
+// 28/04). Discriminator `kind` ∈ {revival, admin, timeout} dans le metadata
+// audit_log + idempotencyKey distinct par (orderId, kind, attempt).
 //
 // Pattern audit-log-driven background job : audit_logs est la single source
 // of truth. Pas de migration DB ni de table dédiée — extension TS pure +
-// query metadata JSONB. Cohérent avec le scope minimal validé 28/04 (cf.
-// décisions retry-failed-refunds session — backoff daily simple, scope
-// résurrection bloquée uniquement).
+// query metadata JSONB.
 //
 // Algorithme :
-//   1. SELECT audit_logs des 3 event_types pertinents (refund_failed +
-//      retried_succeeded + retry_exhausted), ordre desc, limit 1000.
-//   2. buildRetryTargets() : group by order_id, dédup par état résolu,
-//      compute attempt number depuis count(refund_failed).
+//   1. SELECT audit_logs des 5 event_types pertinents (3 refund_failed
+//      + retried_succeeded + retry_exhausted), ordre desc, limit 1000.
+//   2. buildRetryTargets() : group by (order_id, kind), dédup par état résolu
+//      (par kind), compute attempt number depuis count(refund_failed) par kind.
 //   3. SELECT orders.consumer_id en batch (.in()) pour un audit log avec
 //      userId correct (null toléré sur RGPD-deleted orders).
 //   4. Pour chaque target : retryFailedRefund(...) → résultat capturé
@@ -52,14 +56,16 @@ export async function POST(request: Request) {
   const admin = createSupabaseAdminClient();
 
   // Limite 1000 events suffisante : volume cumulé attendu très faible
-  // (cas exceptionnel = refund Stripe échoué sur path résurrection bloquée
-  // = lui-même rare). À monitorer en prod : si on tape la limite, c'est
-  // un signal d'incident plus large.
+  // (cas exceptionnel = refund Stripe échoué sur 1 des 3 paths = lui-même
+  // rare). À monitorer en prod : si on tape la limite, c'est un signal
+  // d'incident plus large.
   const { data: events, error } = await admin
     .from("audit_logs")
     .select("event_type, metadata, created_at")
     .in("event_type", [
       "order_revival_refund_failed",
+      "order_admin_refund_failed",
+      "order_timeout_refund_failed",
       "order_refund_retried_succeeded",
       "order_refund_retry_exhausted",
     ])
@@ -104,6 +110,7 @@ export async function POST(request: Request) {
     const result = await retryFailedRefund({
       orderId: target.orderId,
       paymentIntentId: target.paymentIntentId,
+      kind: target.kind,
       attempt: target.attempt,
       blockedReason: target.blockedReason,
       consumerId,

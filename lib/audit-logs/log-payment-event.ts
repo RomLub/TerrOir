@@ -55,6 +55,10 @@ export type PaymentEventType =
   // détection background ultérieure.
   | "order_admin_refund_failed"
   | "order_timeout_refund_failed"
+  // Path cron timeout sur order pending non payée (PI status !== 'succeeded').
+  // T-409 : skip refund Stripe + audit forensique pour ne pas polluer le
+  // cron retry T-412 avec des faux positifs (PI 3DS abandonné, etc.).
+  | "order_timeout_no_payment"
   // Phase 3 multi-events (T-081 PR-B) — events Stripe directs, pas liés à
   // un order_id spécifique côté plateforme. Préfixe `stripe_` pour
   // disambiguer des events `order_*` ci-dessus. user_id null par défaut
