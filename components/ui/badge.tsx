@@ -3,6 +3,7 @@ import type { HTMLAttributes } from "react";
 export type BadgeVariant =
   | "green"
   | "terra"
+  | "blue"
   | "neutral"
   | "gray"
   | "danger";
@@ -15,6 +16,7 @@ export type BadgeProps = HTMLAttributes<HTMLSpanElement> & {
 const variantStyles: Record<BadgeVariant, string> = {
   green: "bg-terroir-green-100 text-terroir-green-700",
   terra: "bg-terroir-terra-100 text-terroir-terra-700",
+  blue: "bg-blue-100 text-blue-700",
   neutral: "bg-white text-terroir-ink border border-terroir-border",
   gray: "bg-terroir-border/60 text-terroir-ink/80",
   danger: "bg-red-100 text-red-700",
