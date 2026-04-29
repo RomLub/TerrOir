@@ -6,6 +6,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { fetchProducerForUser } from '@/lib/producers/context';
 import { ProducerLayout } from '../_components/ProducerLayout';
+import { mapStatusToBadge } from './_lib/badge-mapping';
 
 function startOfWeek(d: Date): Date {
   const copy = new Date(d);
@@ -57,8 +58,13 @@ export default async function RevenusPage() {
     .eq('producer_id', producer.id)
     .order('periode_debut', { ascending: false });
 
+  // T-414 — Bundle 2 PR 2b. La nouvelle séquence cron weekly-payout (cf
+  // lib/stripe/payouts.ts) ne crée plus de rows 'pending' : INSERT direct
+  // 'processing'. Les rows 'pending' affichés en hero ne devraient subsister
+  // que pour les anciens cycles legacy. L'historique inclut désormais
+  // 'processing' (en cours), 'paid' (réglé), 'failed' (échec — Bundle 3 TB).
   const nextPending = (payouts ?? []).find((p) => p.statut === 'pending');
-  const paidPayouts = (payouts ?? []).filter((p) => p.statut !== 'pending');
+  const historicalPayouts = (payouts ?? []).filter((p) => p.statut !== 'pending');
 
   // Aggregate last 8 ISO weeks from orders (completed not cancelled).
   const now = new Date();
@@ -173,20 +179,23 @@ export default async function RevenusPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-dark/[0.06]">
-                {paidPayouts.length === 0 ? (
+                {historicalPayouts.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-6 py-8 text-center text-dark/55">Aucun virement pour le moment.</td>
                   </tr>
-                ) : paidPayouts.map((p) => (
+                ) : historicalPayouts.map((p) => {
+                  const badge = mapStatusToBadge(p.statut);
+                  return (
                   <tr key={p.id} className="hover:bg-green-100/20 transition-colors">
                     <td className="px-6 py-4 text-dark font-medium">{formatPeriod(p.periode_debut, p.periode_fin)}</td>
                     <td className="px-4 py-4 text-right tabular-nums text-dark/70">{formatEuro(Number(p.montant_brut ?? 0))}</td>
                     <td className="px-4 py-4 text-right tabular-nums text-terra-700">−{formatEuro(Number(p.commission ?? 0))}</td>
                     <td className="px-4 py-4 text-right tabular-nums font-serif text-[16px] text-green-900">{formatEuro(Number(p.montant_net ?? 0))}</td>
-                    <td className="px-4 py-4"><Badge>{p.statut === 'paid' ? 'Viré' : 'En attente'}</Badge></td>
+                    <td className="px-4 py-4"><Badge variant={badge.variant}>{badge.label}</Badge></td>
                     <td className="px-4 py-4"><Link href={`/revenus/${p.id}`} className="text-[12px] text-green-700 hover:text-green-900 font-medium">Détail →</Link></td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
