@@ -1,7 +1,7 @@
 // Vitest pour POST /api/orders/[id]/cancel.
 // Couverture multi-acteur : cron / admin / producer-owner (consumer rejeté
 // par le code actuel, cf D1). Couvre zod enum, isTerminal court-circuit,
-// Stripe refund avec fallback canTransition, revalidateTag, badge
+// Stripe refund + finalStatus dynamique, revalidateTag, badge
 // anti-annulation, alerte stock 2e rupture, email annulation.
 //
 // Pattern Supabase aligné sur tests/lib/stripe/handle-payment-failed.test.ts
@@ -522,9 +522,9 @@ describe("D. Auth — utilisateur", () => {
   });
 });
 
-// --- E. Stripe refund + state machine fallback ---------------------------
+// --- E. Stripe refund + finalStatus dynamique ----------------------------
 
-describe("E. Stripe refund + state machine fallback", () => {
+describe("E. Stripe refund + finalStatus dynamique", () => {
   it("E1 pas de stripe_pi → finalStatus cancelled, stripe.refunds.create jamais appelé", async () => {
     const res = await POST(makeRequest(), PARAMS);
     expect(res.status).toBe(200);
