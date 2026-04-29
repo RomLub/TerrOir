@@ -649,10 +649,14 @@ describe("processWeeklyPayouts — crash transfer.create (compensation A2)", () 
       payload: expect.objectContaining({ statut: "processing" }),
     });
 
-    // 2. UPDATE 'failed' posé sur la row (compensation A2).
+    // 2. UPDATE 'failed' + error_msg posés sur la row (compensation A2).
+    //    error_msg = column dénormalisée T-426, dérivé du throw message.
     expect(captured.updates).toContainEqual({
       table: "payouts",
-      payload: { statut: "failed" },
+      payload: {
+        statut: "failed",
+        error_msg: "Connect not authorized for this destination",
+      },
     });
 
     // 3. Audit log forensique stripe_transfer_failed avec metadata complète.
