@@ -87,12 +87,17 @@ export async function POST(request: Request, { params }: RouteContext) {
   }
 
   // 1. Remboursement Stripe si déjà payé
+  // T-408 idempotencyKey : `refund_${order.id}_manual_cancel` (UUID stable +
+  // context discriminator). Distinct de `refund_${order_id}_${attempt}`
+  // (cron retry-failed-refunds, retry-failed-refund.ts:80) et des autres
+  // contexts (admin, timeout) — pas de collision keys.
   let refundError: string | undefined;
   if (order.stripe_payment_intent_id) {
     try {
-      await stripe.refunds.create({
-        payment_intent: order.stripe_payment_intent_id,
-      });
+      await stripe.refunds.create(
+        { payment_intent: order.stripe_payment_intent_id },
+        { idempotencyKey: `refund_${order.id}_manual_cancel` },
+      );
     } catch (e) {
       refundError = (e as Error).message;
     }

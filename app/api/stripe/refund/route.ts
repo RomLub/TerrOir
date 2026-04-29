@@ -87,11 +87,14 @@ export async function POST(request: Request) {
   // Instrumentation T-107 : capture l'échec Stripe dans audit_logs avant
   // de propager le 500. Pré-requis pour qu'un cron retry futur (extension
   // T-102) puisse réconcilier les `order_admin_refund_failed` orphelins.
+  // T-408 idempotencyKey : `refund_${order.id}_admin` (context discriminator
+  // distinct des paths manual_cancel / timeout / retry).
   let refund;
   try {
-    refund = await stripe.refunds.create({
-      payment_intent: order.stripe_payment_intent_id,
-    });
+    refund = await stripe.refunds.create(
+      { payment_intent: order.stripe_payment_intent_id },
+      { idempotencyKey: `refund_${order.id}_admin` },
+    );
   } catch (e) {
     await logPaymentEvent({
       eventType: "order_admin_refund_failed",

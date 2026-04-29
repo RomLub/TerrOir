@@ -438,7 +438,13 @@ describe("D. Auth — utilisateur", () => {
     const res = await POST(makeRequest(), PARAMS);
     expect(res.status).toBe(200);
     expect(mockRefundCreate).toHaveBeenCalledTimes(1);
-    expect(mockRefundCreate).toHaveBeenCalledWith({ payment_intent: PI_ID });
+    // T-408 : refund consumer self-cancel passe aussi par le path manual_cancel
+    // (route + reason "consumer_cancel" sont deux choses distinctes; idempKey
+    // discrimine seulement la SOURCE d'appel, pas la reason metier).
+    expect(mockRefundCreate).toHaveBeenCalledWith(
+      { payment_intent: PI_ID },
+      { idempotencyKey: `refund_${ORDER_ID}_manual_cancel` },
+    );
     const json = await res.json();
     expect(json.statut).toBe("refunded");
     // Pas de badge update même avec refund réussi.
@@ -540,7 +546,11 @@ describe("E. Stripe refund + finalStatus dynamique", () => {
     const res = await POST(makeRequest(), PARAMS);
     expect(res.status).toBe(200);
     expect(mockRefundCreate).toHaveBeenCalledTimes(1);
-    expect(mockRefundCreate).toHaveBeenCalledWith({ payment_intent: PI_ID });
+    // T-408 : 1er arg params metier, 2e arg options idempotency.
+    expect(mockRefundCreate).toHaveBeenCalledWith(
+      { payment_intent: PI_ID },
+      { idempotencyKey: `refund_${ORDER_ID}_manual_cancel` },
+    );
     const json = await res.json();
     expect(json.statut).toBe("refunded");
     expect(json.refund_error).toBeUndefined();
