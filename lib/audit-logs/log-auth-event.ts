@@ -39,7 +39,23 @@ export type AuthEventType =
   // 0 rows (le claim a été grillé par une transaction parallèle). Sert de
   // signal forensique : volume anormal = soupçon d'attaque double-click /
   // replay automatisé sur lien d'invitation.
-  | "invitation_consumed_race_lost";
+  | "invitation_consumed_race_lost"
+  // T-310 : audit log forensique flow invitation producer (cluster cohérent
+  // race_lost ci-dessus). Émis par les server actions admin/* + producer/*.
+  //   - invitation_created : admin a créé une invitation (POST
+  //     /api/admin/producers/invite). userId = admin créateur, metadata
+  //     embarque invitation_id + email cible + token_prefix.
+  //   - invitation_revoked : pré-déclaration. Pas de call site actuel — la
+  //     fonction admin de révocation d'invitation pending n'est pas encore
+  //     implémentée. Type pré-déclaré pour qu'un câblage futur n'ait qu'à
+  //     appeler logAuthEvent sans toucher à l'enum (évite la dette).
+  //   - invitation_consumed_success : émis depuis completeOnboardingAction
+  //     quand le UPDATE producer_invitations.used_at affecte 1 row (token
+  //     marqué consumed avec succès). Pendant symétrique de race_lost ci-
+  //     dessus, sémantique propre : "consumed = used_at marqué".
+  | "invitation_created"
+  | "invitation_revoked"
+  | "invitation_consumed_success";
 
 type LogAuthEventParams = {
   eventType: AuthEventType;
