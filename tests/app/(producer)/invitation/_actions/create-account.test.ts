@@ -17,6 +17,7 @@ let captured: {
 };
 let responses: Record<string, Resp[]>;
 let createUserMock: Mock<AnyAsyncFn>;
+let deleteUserMock: Mock<AnyAsyncFn>;
 let signInMock: Mock<AnyAsyncFn>;
 
 vi.mock("@/lib/supabase/admin", () => ({
@@ -24,6 +25,7 @@ vi.mock("@/lib/supabase/admin", () => ({
     auth: {
       admin: {
         createUser: (...args: unknown[]) => createUserMock(...args),
+        deleteUser: (...args: unknown[]) => deleteUserMock(...args),
       },
     },
     from: (table: string) => {
@@ -88,6 +90,7 @@ beforeEach(() => {
     data: { user: { id: "user-42" } },
     error: null,
   });
+  deleteUserMock = vi.fn<AnyAsyncFn>().mockResolvedValue({ data: null, error: null });
   signInMock = vi.fn<AnyAsyncFn>().mockResolvedValue({ data: {}, error: null });
 });
 
@@ -163,5 +166,85 @@ describe("createAccountAction", () => {
     expect(res).toEqual({ error: "Email déjà enregistré" });
     expect(captured.inserts).toEqual([]);
     expect(signInMock).not.toHaveBeenCalled();
+  });
+
+  // --- T-302 — compensation orphelin auth.users ---------------------------
+
+  it("T-302 : INSERT users fail → admin.auth.admin.deleteUser appelé + error générique + pas de signIn", async () => {
+    responses.producer_invitations = [validInvitationResp("new@example.com")];
+    // INSERT users fail (resp[0] sur table 'users' = error).
+    responses.users = [
+      { data: null, error: { message: "duplicate key value violates unique constraint" } },
+    ];
+
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const res = await createAccountAction({}, makeFormData());
+
+    expect(res).toEqual({
+      error: "Création du compte impossible. Réessayez plus tard.",
+    });
+    expect(deleteUserMock).toHaveBeenCalledWith("user-42");
+    expect(deleteUserMock).toHaveBeenCalledTimes(1);
+    // Rollback OK → pas de console.error orphan log.
+    expect(errorSpy).not.toHaveBeenCalled();
+    // signIn ne doit pas être tenté après échec INSERT users.
+    expect(signInMock).not.toHaveBeenCalled();
+    // INSERT producers ne doit pas avoir été tenté non plus.
+    expect(captured.inserts.find((i) => i.table === "producers")).toBeUndefined();
+
+    errorSpy.mockRestore();
+  });
+
+  it("T-302 : INSERT producers fail (post users OK) → admin.auth.admin.deleteUser appelé + error générique", async () => {
+    responses.producer_invitations = [validInvitationResp("new@example.com")];
+    // INSERT users OK + INSERT producers fail.
+    responses.users = [{ data: null, error: null }];
+    responses.producers = [
+      { data: null, error: { message: "constraint violation siret" } },
+    ];
+
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const res = await createAccountAction({}, makeFormData());
+
+    expect(res).toEqual({
+      error: "Création du compte impossible. Réessayez plus tard.",
+    });
+    expect(deleteUserMock).toHaveBeenCalledWith("user-42");
+    expect(deleteUserMock).toHaveBeenCalledTimes(1);
+    expect(errorSpy).not.toHaveBeenCalled();
+    // INSERT users a bien eu lieu avant le fail producers.
+    expect(captured.inserts.find((i) => i.table === "users")).toBeDefined();
+    expect(captured.inserts.find((i) => i.table === "producers")).toBeDefined();
+    expect(signInMock).not.toHaveBeenCalled();
+
+    errorSpy.mockRestore();
+  });
+
+  it("T-302 : INSERT users fail + rollback deleteUser fail → console.error orphan log + error générique", async () => {
+    responses.producer_invitations = [validInvitationResp("new@example.com")];
+    responses.users = [
+      { data: null, error: { message: "RLS denied" } },
+    ];
+    deleteUserMock = vi.fn<AnyAsyncFn>().mockResolvedValue({
+      data: null,
+      error: { message: "auth.users delete forbidden" },
+    });
+
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const res = await createAccountAction({}, makeFormData());
+
+    expect(res).toEqual({
+      error: "Création du compte impossible. Réessayez plus tard.",
+    });
+    expect(deleteUserMock).toHaveBeenCalledWith("user-42");
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy.mock.calls[0]?.[0]).toMatch(
+      /INVITATION_CREATE_ACCOUNT_ORPHAN_AUTH user_id=user-42 email=new@example\.com.*rollback_error=auth\.users delete forbidden/,
+    );
+
+    errorSpy.mockRestore();
   });
 });

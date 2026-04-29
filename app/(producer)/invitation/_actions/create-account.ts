@@ -59,7 +59,20 @@ export async function createAccountAction(
     roles: ["consumer", "producer"],
   });
   if (profileError) {
-    return { error: `Profil non créé : ${profileError.message}` };
+    // T-302 : compensation orphelin. createUser() a réussi côté auth.users
+    // mais l'INSERT public.users a échoué — sans rollback, le user reste
+    // bloqué (impossible de re-créer un compte avec ce token tant que
+    // auth.users persiste). Pattern aligné T-301 (cf.
+    // app/(consumer)/auth/inscription/actions.ts:84-101).
+    const { error: rollbackError } =
+      await admin.auth.admin.deleteUser(userId);
+    if (rollbackError) {
+      console.error(
+        `INVITATION_CREATE_ACCOUNT_ORPHAN_AUTH user_id=${userId} email=${invitation.email} ` +
+          `profile_error=${profileError.message} rollback_error=${rollbackError.message}`,
+      );
+    }
+    return { error: "Création du compte impossible. Réessayez plus tard." };
   }
 
   // TODO Phase 3 finale : retirer prenom_affichage de cet INSERT après le
@@ -72,7 +85,19 @@ export async function createAccountAction(
     statut: "draft",
   });
   if (producerError) {
-    return { error: `Fiche producteur non créée : ${producerError.message}` };
+    // T-302 : compensation orphelin (post-INSERT users OK). Le rollback
+    // auth.users CASCADE sur public.users.id et producers.user_id (cf.
+    // migrations 20260419 + 20260421) supprime aussi les lignes
+    // partiellement créées.
+    const { error: rollbackError } =
+      await admin.auth.admin.deleteUser(userId);
+    if (rollbackError) {
+      console.error(
+        `INVITATION_CREATE_ACCOUNT_ORPHAN_AUTH_AFTER_PROFILE user_id=${userId} email=${invitation.email} ` +
+          `producer_error=${producerError.message} rollback_error=${rollbackError.message}`,
+      );
+    }
+    return { error: "Création du compte impossible. Réessayez plus tard." };
   }
 
   // Dépose les cookies de session pour que les étapes 2 et 3 puissent
