@@ -14,16 +14,25 @@
 //   4. Logique re-auth déportée serveur → cohérence avec
 //      delete-account-action.ts:104-117 (même pattern client temp).
 //
+// Architecture en 2 clients distincts (cf delete-account-action.ts) :
+//   - tempClient (anon + persistSession=false) → vérif identité via
+//     signInWithPassword(currentPassword) sans toucher les cookies de session.
+//   - admin (service_role) → updateUserById(id, { password }) bypass la
+//     contrainte Supabase « Secure password change » qui exige AAL2 ou
+//     nonce reauthenticate() côté user-client. Légitime car identité déjà
+//     vérifiée. Symétrique avec delete-account-action.ts:232.
+//
 // Validation Zod via strongPasswordSchema : 8+ chars + minuscule + majuscule
 // + chiffre, aligné Dashboard Supabase 29/04/2026 (T-312 partiel).
 // =============================================================================
 
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth/session";
 import { strongPasswordSchema } from "@/lib/auth/validators";
 import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
+import { maskEmail } from "@/lib/rgpd/mask-email";
 
 const changePasswordSchema = z
   .object({
@@ -83,15 +92,29 @@ export async function changePasswordAction(
     return { error: "Mot de passe actuel incorrect." };
   }
 
-  // 4. Update via client server authentifié (auth.uid() = session.id).
-  //    Pas d'admin client : c'est l'user lui-même qui change son mdp,
-  //    pas un override admin.
-  const supabase = createSupabaseServerClient();
-  const { error: updateError } = await supabase.auth.updateUser({
-    password: parsed.data.newPassword,
-  });
+  // 4. Update via admin client (service_role). Pourquoi pas le client server
+  //    user-side : Supabase Auth a la feature « Secure password change »
+  //    activée Dashboard (Authentication > Providers > Email). Quand ON,
+  //    PUT /auth/v1/user avec { password } exige soit AAL2 (MFA), soit un
+  //    nonce issu d'un flow auth.reauthenticate() (OTP email user-coller).
+  //    Notre re-auth tempClient (étape 3) vérifie l'identité mais ne pose
+  //    pas le marqueur AAL/nonce sur la session côté cookies — donc un
+  //    updateUser via createSupabaseServerClient échoue 400.
+  //    Symétrique avec delete-account-action.ts:232 qui appelle
+  //    admin.auth.admin.deleteUser après re-auth tempClient.
+  const admin = createSupabaseAdminClient();
+  const { error: updateError } = await admin.auth.admin.updateUserById(
+    session.id,
+    { password: parsed.data.newPassword },
+  );
 
   if (updateError) {
+    // Trace forensique pour grep alertes Vercel (cf. T-082 audit elargi).
+    // Le message brut Supabase peut être anglais ou cryptique — on garde
+    // une trace pour comprendre les futurs cas d'échec inattendus.
+    console.error(
+      `CHANGE_PASSWORD_UPDATE_USER_ERROR user=${maskEmail(session.email)} status=${updateError.status ?? "?"} message=${updateError.message}`,
+    );
     // Mapping FR au cas où la politique complexité Supabase évolue
     // au-delà du Zod local — évite de remonter le message brut anglais.
     const msg = updateError.message ?? "";

@@ -16,12 +16,14 @@ type AnyAsyncFn = (...args: unknown[]) => Promise<unknown>;
 // On mocke 4 surfaces :
 //   1. getSessionUser (lib/auth/session) → { id, email, ... } ou null
 //   2. createClient (@supabase/supabase-js) → tempClient pour vérif mdp actuel
-//   3. createSupabaseServerClient (lib/supabase/server) → updateUser
+//   3. createSupabaseAdminClient (lib/supabase/admin) → admin.auth.admin.updateUserById
+//      (admin path car « Secure password change » Dashboard exige AAL2 sur
+//      l'API user-side — bypass via service_role après re-auth tempClient)
 //   4. logAuthEvent (lib/audit-logs/log-auth-event) → assertion appel/non-appel
 
 let getSessionUserMock: Mock<AnyAsyncFn>;
 let tempSignInMock: Mock<AnyAsyncFn>;
-let serverUpdateUserMock: Mock<AnyAsyncFn>;
+let adminUpdateUserMock: Mock<AnyAsyncFn>;
 let logAuthEventMock: Mock<AnyAsyncFn>;
 
 vi.mock("@/lib/auth/session", () => ({
@@ -36,10 +38,12 @@ vi.mock("@supabase/supabase-js", () => ({
   }),
 }));
 
-vi.mock("@/lib/supabase/server", () => ({
-  createSupabaseServerClient: () => ({
+vi.mock("@/lib/supabase/admin", () => ({
+  createSupabaseAdminClient: () => ({
     auth: {
-      updateUser: (...args: unknown[]) => serverUpdateUserMock(...args),
+      admin: {
+        updateUserById: (...args: unknown[]) => adminUpdateUserMock(...args),
+      },
     },
   }),
 }));
@@ -77,7 +81,7 @@ beforeEach(() => {
     isAdmin: false,
   });
   tempSignInMock = vi.fn<AnyAsyncFn>().mockResolvedValue({ error: null });
-  serverUpdateUserMock = vi.fn<AnyAsyncFn>().mockResolvedValue({
+  adminUpdateUserMock = vi.fn<AnyAsyncFn>().mockResolvedValue({
     data: { user: { id: "user-1" } },
     error: null,
   });
@@ -100,7 +104,7 @@ describe("changePasswordAction", () => {
       email: "user@example.com",
       password: VALID_CURRENT,
     });
-    expect(serverUpdateUserMock).toHaveBeenCalledWith({
+    expect(adminUpdateUserMock).toHaveBeenCalledWith("user-1", {
       password: VALID_NEW,
     });
     expect(logAuthEventMock).toHaveBeenCalledWith({
@@ -116,7 +120,7 @@ describe("changePasswordAction", () => {
 
     expect(res.error).toMatch(/Session introuvable/);
     expect(tempSignInMock).not.toHaveBeenCalled();
-    expect(serverUpdateUserMock).not.toHaveBeenCalled();
+    expect(adminUpdateUserMock).not.toHaveBeenCalled();
     expect(logAuthEventMock).not.toHaveBeenCalled();
   });
 
@@ -129,7 +133,7 @@ describe("changePasswordAction", () => {
 
     expect(res.error).toMatch(/actuel incorrect/);
     expect(tempSignInMock).toHaveBeenCalledOnce();
-    expect(serverUpdateUserMock).not.toHaveBeenCalled();
+    expect(adminUpdateUserMock).not.toHaveBeenCalled();
     expect(logAuthEventMock).not.toHaveBeenCalled();
   });
 
@@ -141,7 +145,7 @@ describe("changePasswordAction", () => {
 
     expect(res.error).toMatch(/8 caractères/);
     expect(tempSignInMock).not.toHaveBeenCalled();
-    expect(serverUpdateUserMock).not.toHaveBeenCalled();
+    expect(adminUpdateUserMock).not.toHaveBeenCalled();
     expect(logAuthEventMock).not.toHaveBeenCalled();
   });
 
@@ -156,7 +160,7 @@ describe("changePasswordAction", () => {
 
     expect(res.error).toMatch(/majuscule/);
     expect(tempSignInMock).not.toHaveBeenCalled();
-    expect(serverUpdateUserMock).not.toHaveBeenCalled();
+    expect(adminUpdateUserMock).not.toHaveBeenCalled();
   });
 
   it("confirm mismatch → Zod refine fail", async () => {
@@ -167,11 +171,11 @@ describe("changePasswordAction", () => {
 
     expect(res.error).toMatch(/correspondent pas/);
     expect(tempSignInMock).not.toHaveBeenCalled();
-    expect(serverUpdateUserMock).not.toHaveBeenCalled();
+    expect(adminUpdateUserMock).not.toHaveBeenCalled();
   });
 
   it("updateUser Supabase rejette → error mappé FR + logAuthEvent NON appelé", async () => {
-    serverUpdateUserMock = vi.fn<AnyAsyncFn>().mockResolvedValue({
+    adminUpdateUserMock = vi.fn<AnyAsyncFn>().mockResolvedValue({
       data: null,
       error: { message: "Some unexpected error from Supabase" },
     });
@@ -180,7 +184,7 @@ describe("changePasswordAction", () => {
 
     expect(res.error).toMatch(/Impossible de mettre à jour/);
     expect(tempSignInMock).toHaveBeenCalledOnce();
-    expect(serverUpdateUserMock).toHaveBeenCalledOnce();
+    expect(adminUpdateUserMock).toHaveBeenCalledOnce();
     expect(logAuthEventMock).not.toHaveBeenCalled();
   });
 });
