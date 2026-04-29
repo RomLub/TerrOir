@@ -91,10 +91,19 @@ vi.mock("@/lib/supabase/server", () => ({
   }),
 }));
 
+// --- Audit log mock (T-429) ---------------------------------------------
+// Le helper logPaymentEvent est fail-safe interne (try/catch swallow).
+// On le mocke pour vérifier l'instrumentation T-429 sans dépendance DB
+// (cohérent pattern tests/lib/stripe/handle-payment-failed.test.ts:18-20).
+vi.mock("@/lib/audit-logs/log-payment-event", () => ({
+  logPaymentEvent: vi.fn(),
+}));
+
 // --- Import APRÈS les mocks ----------------------------------------------
 
 import { POST } from "@/app/api/orders/create/route";
 import { extractHeureRetrait } from "@/lib/slots/format-slot-time";
+import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
 
 // --- Helpers -------------------------------------------------------------
 
@@ -161,6 +170,8 @@ beforeEach(() => {
   pushSlotSelect({ data: { starts_at: SLOT_STARTS_AT }, error: null });
   pushRpc("create_order_with_items", { data: ORDER_ID, error: null });
   pushOrderSelect({ data: DEFAULT_ORDER, error: null });
+  // T-429 : reset le compteur d'appels audit log entre chaque test.
+  vi.mocked(logPaymentEvent).mockClear();
 });
 
 afterEach(() => {
@@ -238,6 +249,8 @@ describe("D. SQLSTATE → HTTP mapping", () => {
       error: "items must be a non-empty array",
       code: "22023",
     });
+    // T-429 : path erreur RPC → audit_log non posé (mutations DB seulement).
+    expect(logPaymentEvent).not.toHaveBeenCalled();
   });
 
   it("D2 — RPC error P0002 (no_data_found) → 404", async () => {
@@ -252,6 +265,7 @@ describe("D. SQLSTATE → HTTP mapping", () => {
       error: "Produit introuvable",
       code: "P0002",
     });
+    expect(logPaymentEvent).not.toHaveBeenCalled();
   });
 
   it("D3 — RPC error 23514 (stock insuffisant) → 409", async () => {
@@ -266,6 +280,7 @@ describe("D. SQLSTATE → HTTP mapping", () => {
       error: "Stock insuffisant pour XYZ",
       code: "23514",
     });
+    expect(logPaymentEvent).not.toHaveBeenCalled();
   });
 
   it("D4 — RPC error 42501 (consumer mismatch ou produit inactif) → 403", async () => {
@@ -280,6 +295,7 @@ describe("D. SQLSTATE → HTTP mapping", () => {
       error: "Consumer mismatch with auth.uid()",
       code: "42501",
     });
+    expect(logPaymentEvent).not.toHaveBeenCalled();
   });
 
   it("D5 — RPC error code inconnu → 500", async () => {
@@ -294,6 +310,7 @@ describe("D. SQLSTATE → HTTP mapping", () => {
       error: "Unexpected DB failure",
       code: "99999",
     });
+    expect(logPaymentEvent).not.toHaveBeenCalled();
   });
 });
 
@@ -333,6 +350,24 @@ describe("E. Happy path", () => {
     expect(
       captured.eqCalls.find((e) => e.table === "orders" && e.col === "id"),
     ).toEqual({ table: "orders", col: "id", val: ORDER_ID });
+
+    // T-429 : audit_log forensique posé après SELECT enrich, avant ack
+    // HTTP. userId = session.id (consumer), metadata aligne 8 champs DB.
+    expect(logPaymentEvent).toHaveBeenCalledTimes(1);
+    expect(logPaymentEvent).toHaveBeenCalledWith({
+      eventType: "order_created",
+      userId: CONSUMER_ID,
+      metadata: {
+        order_id: ORDER_ID,
+        producer_id: PRODUCER_ID,
+        slot_id: SLOT_ID,
+        date_retrait: "2026-05-15",
+        montant_total: 25.5,
+        commission: 1.28,
+        montant_net: 24.22,
+        items_count: 1,
+      },
+    });
   });
 });
 
@@ -348,6 +383,9 @@ describe("F. Edge cases", () => {
     expect(await res.json()).toEqual({ error: "RPC returned no order_id" });
     // Pas de fetch post-RPC quand l'order_id est absent.
     expect(captured.fromCalls).toEqual(["slots"]);
+    // T-429 : RPC sans order_id → audit_log non posé (pas de mutation
+    // DB confirmée, return early avant logPaymentEvent).
+    expect(logPaymentEvent).not.toHaveBeenCalled();
   });
 
   it("F2 — notes_client trimmé par Zod avant passage à la RPC", async () => {
@@ -371,5 +409,24 @@ describe("F. Edge cases", () => {
     expect("montant_total" in body).toBe(false);
     expect("commission" in body).toBe(false);
     expect("montant_net" in body).toBe(false);
+
+    // T-429 : audit_log posé MÊME si SELECT post-RPC échoue silencieusement.
+    // Fallback ?? null sur les 3 montants (T-427 documenté). order_id reste
+    // défini car retourné par la RPC, pas par le SELECT.
+    expect(logPaymentEvent).toHaveBeenCalledTimes(1);
+    expect(logPaymentEvent).toHaveBeenCalledWith({
+      eventType: "order_created",
+      userId: CONSUMER_ID,
+      metadata: {
+        order_id: ORDER_ID,
+        producer_id: PRODUCER_ID,
+        slot_id: SLOT_ID,
+        date_retrait: "2026-05-15",
+        montant_total: null,
+        commission: null,
+        montant_net: null,
+        items_count: 1,
+      },
+    });
   });
 });
