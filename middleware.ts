@@ -1,6 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { cookieConfigForHost } from "@/lib/supabase/cookie-domain";
+import {
+  readRoleSnapshotFromRequest,
+  setRoleSnapshotOnResponse,
+} from "@/lib/auth/role-snapshot-cookie";
 
 const PRODUCER_HOST = "pro.terroir-local.fr";
 const ADMIN_HOST = "admin.terroir-local.fr";
@@ -33,6 +38,38 @@ function isPublicPath(pathname: string): boolean {
     pathname.startsWith("/invitation/") ||
     pathname.startsWith("/api/public/")
   );
+}
+
+// T-321 — Cache role lookup. Lit le cookie role snapshot signé HMAC ; si
+// valide ET bind sur le user.id courant → utilise le snapshot (skip 2 queries
+// DB users.roles + admin_users). Sinon → DB lookup parallèle + flag pour
+// que l'appelant écrive un nouveau cookie sur la réponse.
+//
+// Pourquoi pas écrire le cookie ici directement : le caller doit pouvoir
+// mutate response (qui peut être réassigné par Supabase setAll callback).
+// On retourne juste le besoin d'écrire ; le caller fait le set sur la
+// réponse courante (cf. blocs admin/pro/needsAuth ci-dessous).
+async function resolveRoleSnapshot(
+  request: NextRequest,
+  supabase: SupabaseClient,
+  userId: string,
+  host: string | undefined,
+): Promise<{ roles: string[]; isAdmin: boolean; needsRefresh: boolean }> {
+  const cached = readRoleSnapshotFromRequest(request, host);
+  if (cached && cached.user_id === userId) {
+    return {
+      roles: cached.roles,
+      isAdmin: cached.isAdmin,
+      needsRefresh: false,
+    };
+  }
+  const [{ data: profile }, { data: adminRow }] = await Promise.all([
+    supabase.from("users").select("roles").eq("id", userId).maybeSingle(),
+    supabase.from("admin_users").select("id").eq("id", userId).maybeSingle(),
+  ]);
+  const roles = (profile?.roles as string[] | undefined) ?? [];
+  const isAdmin = !!adminRow;
+  return { roles, isAdmin, needsRefresh: true };
 }
 
 export async function middleware(request: NextRequest) {
@@ -113,16 +150,26 @@ export async function middleware(request: NextRequest) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.search = "";
 
-    const { data: adminRow } = await supabase
-      .from("admin_users")
-      .select("id")
-      .eq("id", user.id)
-      .maybeSingle();
+    // T-321 — Cache role snapshot : skip admin_users lookup si cookie hit.
+    const snapshot = await resolveRoleSnapshot(
+      request,
+      supabase,
+      user.id,
+      host,
+    );
 
     // Non-admin avec session sur admin.* : improbable depuis l'isolation
     // des cookies (Chantier 4), gardé en défensif → /connexion.
-    redirectUrl.pathname = adminRow ? "/tableau-de-bord" : LOGIN_PATH;
-    return NextResponse.redirect(redirectUrl);
+    redirectUrl.pathname = snapshot.isAdmin ? "/tableau-de-bord" : LOGIN_PATH;
+    const redirectResponse = NextResponse.redirect(redirectUrl);
+    if (snapshot.needsRefresh) {
+      setRoleSnapshotOnResponse(redirectResponse, host, {
+        user_id: user.id,
+        roles: snapshot.roles,
+        isAdmin: snapshot.isAdmin,
+      });
+    }
+    return redirectResponse;
   }
 
   // 0b. Cas spécial pro.*/ : symétrique du bloc admin ci-dessus. "/" est dans
@@ -142,16 +189,27 @@ export async function middleware(request: NextRequest) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.search = "";
 
-    const { data: profile } = await supabase
-      .from("users")
-      .select("roles")
-      .eq("id", user.id)
-      .maybeSingle();
-    const roles = (profile?.roles as string[] | undefined) ?? [];
+    // T-321 — Cache role snapshot : skip users.roles lookup si cookie hit.
+    // (producers.statut reste DB ci-dessous : valeur volatile draft↔active.)
+    const snapshot = await resolveRoleSnapshot(
+      request,
+      supabase,
+      user.id,
+      host,
+    );
+    const roles = snapshot.roles;
 
     if (!roles.includes("producer")) {
       redirectUrl.pathname = LOGIN_PATH;
-      return NextResponse.redirect(redirectUrl);
+      const redirectResponse = NextResponse.redirect(redirectUrl);
+      if (snapshot.needsRefresh) {
+        setRoleSnapshotOnResponse(redirectResponse, host, {
+          user_id: user.id,
+          roles: snapshot.roles,
+          isAdmin: snapshot.isAdmin,
+        });
+      }
+      return redirectResponse;
     }
 
     const { data: producerRow } = await supabase
@@ -162,12 +220,28 @@ export async function middleware(request: NextRequest) {
 
     if (!producerRow || producerRow.statut === "deleted") {
       redirectUrl.pathname = LOGIN_PATH;
-      return NextResponse.redirect(redirectUrl);
+      const redirectResponse = NextResponse.redirect(redirectUrl);
+      if (snapshot.needsRefresh) {
+        setRoleSnapshotOnResponse(redirectResponse, host, {
+          user_id: user.id,
+          roles: snapshot.roles,
+          isAdmin: snapshot.isAdmin,
+        });
+      }
+      return redirectResponse;
     }
 
     redirectUrl.pathname =
       producerRow.statut === "draft" ? "/onboarding" : "/dashboard";
-    return NextResponse.redirect(redirectUrl);
+    const redirectResponse = NextResponse.redirect(redirectUrl);
+    if (snapshot.needsRefresh) {
+      setRoleSnapshotOnResponse(redirectResponse, host, {
+        user_id: user.id,
+        roles: snapshot.roles,
+        isAdmin: snapshot.isAdmin,
+      });
+    }
+    return redirectResponse;
   }
 
   // 1. Chemins publics : pas de redirection.
@@ -186,23 +260,43 @@ export async function middleware(request: NextRequest) {
   // 3. Rôle nécessaire : lookup parallèle sur users + admin_users.
   //    Les deux tables sont mutuellement exclusives (trigger DB), donc au
   //    plus l'une des deux renvoie une ligne.
+  // T-321 — Cache role snapshot : si cookie hit, skip les 2 queries DB
+  // (gain ~50-100ms par request authentifiée). Sinon flag needsRefresh
+  // pour écrire le cookie avant return.
   if (needsAuth && user) {
-    const [{ data: profile }, { data: adminRow }] = await Promise.all([
-      supabase.from("users").select("roles").eq("id", user.id).maybeSingle(),
-      supabase
-        .from("admin_users")
-        .select("id")
-        .eq("id", user.id)
-        .maybeSingle(),
-    ]);
-    const roles = (profile?.roles as string[] | undefined) ?? [];
-    const isAdmin = !!adminRow;
+    const snapshot = await resolveRoleSnapshot(
+      request,
+      supabase,
+      user.id,
+      host,
+    );
+    const roles = snapshot.roles;
+    const isAdmin = snapshot.isAdmin;
+
+    // Refresh cookie sur la response courante : si on tombe dans le
+    // fallthrough `return response` (cas nominal), le cookie est posé.
+    // Pour les redirects ci-dessous on l'applique aussi sur la cible.
+    if (snapshot.needsRefresh) {
+      setRoleSnapshotOnResponse(response, host, {
+        user_id: user.id,
+        roles,
+        isAdmin,
+      });
+    }
 
     // 3a. admin.terroir-local.fr : admin uniquement.
     if (isAdminHost && !isAdmin) {
       const redirectUrl = request.nextUrl.clone();
       redirectUrl.pathname = LOGIN_PATH;
-      return NextResponse.redirect(redirectUrl);
+      const redirectResponse = NextResponse.redirect(redirectUrl);
+      if (snapshot.needsRefresh) {
+        setRoleSnapshotOnResponse(redirectResponse, host, {
+          user_id: user.id,
+          roles,
+          isAdmin,
+        });
+      }
+      return redirectResponse;
     }
 
     // 3b. Producer avec statut='draft' sur pro.* : redirige vers /onboarding
@@ -229,13 +323,29 @@ export async function middleware(request: NextRequest) {
             const redirectUrl = request.nextUrl.clone();
             redirectUrl.pathname = "/onboarding";
             redirectUrl.search = "";
-            return NextResponse.redirect(redirectUrl);
+            const redirectResponse = NextResponse.redirect(redirectUrl);
+            if (snapshot.needsRefresh) {
+              setRoleSnapshotOnResponse(redirectResponse, host, {
+                user_id: user.id,
+                roles,
+                isAdmin,
+              });
+            }
+            return redirectResponse;
           }
           if (!isDraft && isOnboardingPath) {
             const redirectUrl = request.nextUrl.clone();
             redirectUrl.pathname = "/ma-page";
             redirectUrl.search = "";
-            return NextResponse.redirect(redirectUrl);
+            const redirectResponse = NextResponse.redirect(redirectUrl);
+            if (snapshot.needsRefresh) {
+              setRoleSnapshotOnResponse(redirectResponse, host, {
+                user_id: user.id,
+                roles,
+                isAdmin,
+              });
+            }
+            return redirectResponse;
           }
         }
       }

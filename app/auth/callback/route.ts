@@ -11,6 +11,7 @@ import {
   clearRedirectAfterAuth,
   readRedirectAfterAuth,
 } from "@/lib/auth/redirect-cookie";
+import { setRoleSnapshotOnResponse } from "@/lib/auth/role-snapshot-cookie";
 import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 import { maskEmail } from "@/lib/rgpd/mask-email";
 
@@ -169,6 +170,16 @@ export async function GET(request: NextRequest) {
   // dicte le host (admin/pro/www) ; le path est ?redirectTo= s'il est valide,
   // sinon la cible canonique du rôle. Le rôle est lu via le client Supabase
   // qui voit déjà la session fraîchement créée.
+  // T-321 — Cache role snapshot pré-rempli post-OTP succès : la route a
+  // déjà résolu loadRoleSnapshot, on en profite pour pré-poser le cookie
+  // signé HMAC avant le redirect. La prochaine request middleware skip
+  // les 2 queries DB users.roles + admin_users.
+  let roleSnapshotToWrite: {
+    user_id: string;
+    roles: string[];
+    isAdmin: boolean;
+  } | null = null;
+
   let targetUrl: URL | string;
   if (next) {
     targetUrl = new URL(next, url.origin);
@@ -180,6 +191,11 @@ export async function GET(request: NextRequest) {
     } = await supabase.auth.getUser();
     if (user) {
       const role = await loadRoleSnapshot(supabase, user.id);
+      roleSnapshotToWrite = {
+        user_id: user.id,
+        roles: role.roles,
+        isAdmin: role.isAdmin,
+      };
 
       // Phase 3 multi-events audit (T-081 PR-A) — events forensiques
       // additionnels sur le callback OTP. email_change : audit le swap
@@ -244,5 +260,11 @@ export async function GET(request: NextRequest) {
   // n'a pas été utilisé, ex. flow recovery où on force /reinitialiser-mot-de-passe).
   // Évite qu'un redirectTo périmé persiste pour la session suivante.
   clearRedirectAfterAuth(response, host);
+  // T-321 — Pose le cookie role snapshot signé HMAC sur la réponse de redirect
+  // (cross-domain via canonicalPostLoginUrl, donc le cookie doit être sur le
+  // host courant pour être lisible par middleware au prochain hit).
+  if (roleSnapshotToWrite) {
+    setRoleSnapshotOnResponse(response, host, roleSnapshotToWrite);
+  }
   return response;
 }

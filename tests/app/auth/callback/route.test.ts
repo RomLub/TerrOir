@@ -75,6 +75,14 @@ vi.mock("@/lib/auth/redirect-cookie", () => ({
   clearRedirectAfterAuth: vi.fn(),
 }));
 
+// T-321 — Mock no-op pour role-snapshot-cookie : la route appelle désormais
+// setRoleSnapshotOnResponse post-loadRoleSnapshot, mais l'invalidation cookie
+// est couverte par tests/lib/auth/role-snapshot-cookie.test.ts. Évite aussi
+// d'avoir à set ROLE_SNAPSHOT_SECRET dans l'env de test.
+vi.mock("@/lib/auth/role-snapshot-cookie", () => ({
+  setRoleSnapshotOnResponse: vi.fn(),
+}));
+
 vi.mock("@/lib/audit-logs/log-auth-event", () => ({
   logAuthEvent: mockLogAuthEvent,
 }));
@@ -263,6 +271,7 @@ describe("GET /auth/callback — Phase 3 multi-events audit (T-081 PR-A)", () =>
       isAdmin: false,
       isProducer: false,
       producerStatut: null,
+      roles: ["consumer"],
     });
     mockCanonicalPostLoginUrl.mockReturnValue(
       new URL("https://www.terroir-local.fr/compte"),
@@ -293,6 +302,7 @@ describe("GET /auth/callback — Phase 3 multi-events audit (T-081 PR-A)", () =>
       isAdmin: true,
       isProducer: false,
       producerStatut: null,
+      roles: [],
     });
     mockCanonicalPostLoginUrl.mockReturnValue(
       new URL("https://admin.terroir-local.fr/tableau-de-bord"),
@@ -316,6 +326,7 @@ describe("GET /auth/callback — Phase 3 multi-events audit (T-081 PR-A)", () =>
       isAdmin: false,
       isProducer: false,
       producerStatut: null,
+      roles: ["consumer"],
     });
     mockCanonicalPostLoginUrl.mockReturnValue(
       new URL("https://www.terroir-local.fr/compte"),

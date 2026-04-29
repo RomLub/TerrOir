@@ -1,8 +1,10 @@
 "use server";
 
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
+import { clearRoleSnapshotOnStore } from "@/lib/auth/role-snapshot-cookie";
 
 // signOut() supprime les cookies sb-* via les options calculées par
 // lib/supabase/cookie-domain.ts en fonction du host (Chantier 4).
@@ -24,5 +26,13 @@ export async function logoutAction() {
   });
 
   await supabase.auth.signOut();
+
+  // T-321 — Invalide le cookie role snapshot HMAC. Sans ça, la prochaine
+  // request middleware lirait un snapshot tied à l'ancien user.id ; le check
+  // user_id mismatch (vs getUser() returning null) le rejetterait déjà
+  // côté middleware, mais on nettoie côté serveur pour ne pas garder un
+  // cookie signé valide circulant inutilement post-logout.
+  clearRoleSnapshotOnStore(cookies(), headers().get("host"));
+
   redirect("/");
 }

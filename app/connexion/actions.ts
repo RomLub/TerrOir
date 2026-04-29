@@ -1,7 +1,7 @@
 "use server";
 
 import { z } from "zod";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -14,6 +14,7 @@ import {
   resolvePostLoginPath,
 } from "@/lib/auth/post-login-redirect";
 import { setRedirectAfterAuth } from "@/lib/auth/redirect-cookie";
+import { setRoleSnapshotOnStore } from "@/lib/auth/role-snapshot-cookie";
 import {
   getAuthCallbackUrl,
   getPasswordResetUrl,
@@ -102,6 +103,17 @@ export async function loginAction(
   }
 
   const host = headers().get("host") ?? "";
+
+  // T-321 — Cache role lookup post-login : pré-pose le cookie role snapshot
+  // signé HMAC pour que la prochaine request middleware skip 2 queries DB
+  // (users.roles + admin_users). Le cookie est bind sur user.id pour
+  // invalider naturellement quand un autre user se connecte.
+  setRoleSnapshotOnStore(cookies(), host, {
+    user_id: data.user.id,
+    roles: role.roles,
+    isAdmin: role.isAdmin,
+  });
+
   // Invalide le cache RSC du root layout AVANT redirect : sans ça, Next 14
   // navigue côté client vers la cible (ex: /compte) en réutilisant le
   // RootLayout déjà rendu pré-login (avec initial.user=null). Résultat

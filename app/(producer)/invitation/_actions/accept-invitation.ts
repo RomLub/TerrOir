@@ -1,11 +1,13 @@
 "use server";
 
 import { z } from "zod";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth/session";
 import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 import { slugFromEmail } from "@/lib/producers/slug-from-email";
+import { clearRoleSnapshotOnStore } from "@/lib/auth/role-snapshot-cookie";
 
 export type State = { error?: string };
 
@@ -84,6 +86,14 @@ export async function acceptInvitationAction(
       userId: existingUser.id,
       metadata: { from: "consumer", to: "producer" },
     });
+
+    // T-321 — Invalide le cookie role snapshot post-promotion. Le snapshot
+    // précédent reflétait roles=['consumer'] ; la prochaine request middleware
+    // refera un DB lookup et reposera un cookie frais avec ['consumer',
+    // 'producer']. Conditionnel sur !currentRoles.includes('producer') :
+    // l'idempotence garde la cohérence côté cookie (pas d'invalidation si
+    // pas de changement réel).
+    clearRoleSnapshotOnStore(cookies(), headers().get("host"));
   }
 
   // Idempotent : si une ligne producers existe déjà (flux interrompu, reprise

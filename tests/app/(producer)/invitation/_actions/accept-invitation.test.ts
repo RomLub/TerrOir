@@ -54,6 +54,17 @@ vi.mock("@/lib/audit-logs/log-auth-event", () => ({
   logAuthEvent: logAuthEventMock,
 }));
 
+// T-321 — `lib/auth/role-snapshot-cookie.ts` importe 'server-only' (virtuel
+// Next.js). Mock no-op suffit : les tests vérifient les UPDATE/INSERT DB,
+// pas l'invalidation cookie (couverte par tests/lib/auth/role-snapshot-cookie).
+vi.mock("@/lib/auth/role-snapshot-cookie", () => ({
+  clearRoleSnapshotOnStore: vi.fn(),
+}));
+vi.mock("next/headers", () => ({
+  cookies: () => ({ set: vi.fn() }),
+  headers: () => ({ get: vi.fn(() => null) }),
+}));
+
 import { acceptInvitationAction } from "@/app/(producer)/invitation/_actions/accept-invitation";
 
 // --- Helpers --------------------------------------------------------------

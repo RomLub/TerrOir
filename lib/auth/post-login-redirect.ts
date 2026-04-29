@@ -15,6 +15,12 @@ export type RoleSnapshot = {
   isAdmin: boolean;
   isProducer: boolean;
   producerStatut: string | null;
+  // T-321 — exposé pour permettre aux callers (loginAction, /auth/callback,
+  // invitation server actions) d'écrire le cookie role snapshot sans re-query
+  // users.roles. Snapshot strict des rôles applicatifs persistés en DB ;
+  // isAdmin reste séparé (vient de admin_users, table distincte mutuellement
+  // exclusive avec users.roles).
+  roles: string[];
 };
 
 // Lecture parallèle admin_users + users.roles. La table producers n'est
@@ -51,7 +57,7 @@ export async function loadRoleSnapshot(
     producerStatut = (producerRow?.statut as string | undefined) ?? null;
   }
 
-  return { isAdmin, isProducer, producerStatut };
+  return { isAdmin, isProducer, producerStatut, roles };
 }
 
 // Cible canonique post-login : sur quel host+path l'user devrait atterrir
