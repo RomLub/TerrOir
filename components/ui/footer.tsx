@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Logo } from "./logo";
+import { NEXT_PUBLIC_PRODUCER_URL } from "@/lib/env/urls";
 
 export type FooterLink = {
   href: string;
@@ -28,7 +29,7 @@ const defaultColumns: FooterColumn[] = [
     links: [
       { href: "/devenir-producteur", label: "Devenir producteur" },
       {
-        href: "https://pro.terroir-local.fr",
+        href: NEXT_PUBLIC_PRODUCER_URL,
         label: "Espace producteur ↗",
         external: true,
       },
