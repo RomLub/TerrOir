@@ -19,6 +19,8 @@ vi.hoisted(() => {
     process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
   process.env.NEXT_PUBLIC_PRODUCER_URL =
     process.env.NEXT_PUBLIC_PRODUCER_URL ?? "http://localhost:3000";
+  process.env.NEXT_PUBLIC_ADMIN_URL =
+    process.env.NEXT_PUBLIC_ADMIN_URL ?? "http://localhost:3002";
 });
 
 // --- Hoisted mocks partagés avec les factories vi.mock -------------------

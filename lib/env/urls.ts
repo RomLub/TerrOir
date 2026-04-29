@@ -18,5 +18,11 @@ if (!producerUrl) {
   throw new Error("Missing NEXT_PUBLIC_PRODUCER_URL env variable");
 }
 
+const adminUrl = process.env.NEXT_PUBLIC_ADMIN_URL;
+if (!adminUrl) {
+  throw new Error("Missing NEXT_PUBLIC_ADMIN_URL env variable");
+}
+
 export const NEXT_PUBLIC_APP_URL: string = appUrl;
 export const NEXT_PUBLIC_PRODUCER_URL: string = producerUrl;
+export const NEXT_PUBLIC_ADMIN_URL: string = adminUrl;

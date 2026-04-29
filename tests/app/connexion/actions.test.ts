@@ -8,6 +8,18 @@ import {
   type Mock,
 } from "vitest";
 
+// lib/env/urls.ts fail-fast au load si NEXT_PUBLIC_APP_URL ou
+// NEXT_PUBLIC_ADMIN_URL ne sont pas définis (T-328 — email-redirect dérive
+// désormais de ces vars). Hoist le stub avant les imports static.
+vi.hoisted(() => {
+  process.env.NEXT_PUBLIC_APP_URL =
+    process.env.NEXT_PUBLIC_APP_URL ?? "https://www.terroir-local.fr";
+  process.env.NEXT_PUBLIC_PRODUCER_URL =
+    process.env.NEXT_PUBLIC_PRODUCER_URL ?? "https://pro.terroir-local.fr";
+  process.env.NEXT_PUBLIC_ADMIN_URL =
+    process.env.NEXT_PUBLIC_ADMIN_URL ?? "https://admin.terroir-local.fr";
+});
+
 // vitest 4 : `vi.fn()` retourne `Mock<Procedure | Constructable>` qui n'est
 // pas appelable. On force le type vers une signature de fonction concrète.
 type AnyAsyncFn = (...args: unknown[]) => Promise<unknown>;
