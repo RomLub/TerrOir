@@ -1,10 +1,25 @@
 import { z } from "zod";
 
+// Mot de passe création/changement : 8+ chars + minuscule + majuscule + chiffre.
+// Aligné avec les règles Auth Dashboard Supabase (paramétrage 29/04/2026).
+// Évite l'incohérence où Zod accepterait un mdp simple que Supabase rejetterait
+// ensuite avec un message anglais brut peu user-friendly.
+//
+// loginSchema ne l'utilise PAS : un login passe le mdp existant à Supabase
+// qui vérifie le hash. Si la politique change, les anciens mdp doivent
+// continuer de pouvoir se logger.
+export const strongPasswordSchema = z
+  .string()
+  .min(8, "Mot de passe : 8 caractères minimum")
+  .regex(/[a-z]/, "Doit contenir au moins une minuscule")
+  .regex(/[A-Z]/, "Doit contenir au moins une majuscule")
+  .regex(/[0-9]/, "Doit contenir au moins un chiffre");
+
 export const signupSchema = z.object({
   prenom: z.string().trim().min(1, "Prénom requis"),
   nom: z.string().trim().min(1, "Nom requis"),
   email: z.string().trim().email("Email invalide"),
-  password: z.string().min(8, "Mot de passe : 8 caractères minimum"),
+  password: strongPasswordSchema,
   telephone: z
     .string()
     .trim()
@@ -30,7 +45,7 @@ export const inviteProducerSchema = z.object({
 export const invitationCreateAccountSchema = z
   .object({
     token: z.string().min(16, "Token invalide"),
-    password: z.string().min(8, "Mot de passe : 8 caractères minimum"),
+    password: strongPasswordSchema,
     passwordConfirm: z.string(),
   })
   .refine((d) => d.password === d.passwordConfirm, {
