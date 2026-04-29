@@ -14,7 +14,10 @@ import {
   resolvePostLoginPath,
 } from "@/lib/auth/post-login-redirect";
 import { setRedirectAfterAuth } from "@/lib/auth/redirect-cookie";
-import { getAuthCallbackUrl } from "@/lib/auth/email-redirect";
+import {
+  getAuthCallbackUrl,
+  getPasswordResetUrl,
+} from "@/lib/auth/email-redirect";
 
 export type LoginState = { error?: string };
 
@@ -182,13 +185,22 @@ export async function requestMagicLinkAction(
 //   1. Audit log côté serveur fiable (pas de bypass possible par client modifié).
 //   2. Cohérence avec requestMagicLinkAction (même surface).
 //
-// redirectTo dynamique calculé depuis headers() — équivalent
-// `${window.location.origin}` côté client. Sur Vercel: x-forwarded-proto=https
-// + host=admin.terroir-local.fr / pro.terroir-local.fr / www.terroir-local.fr.
-// En dev local: pas de x-forwarded-proto → fallback http (localhost).
+// redirectTo figé côté serveur via getPasswordResetUrl(isAdmin) — pas de
+// dérivation depuis headers() Host/x-forwarded-proto. Raison T-317 : un
+// reverse proxy mal configuré ou un cache poisoning permettrait à un
+// attaquant d'injecter Host: evil.attacker.com et de capturer le token
+// recovery via un mail pointant sur son domaine. URLs hardcodées dans
+// lib/auth/email-redirect.ts (cf. AUTH_CALLBACK_*).
+//
+// Lookup admin via admin_users (mirror requestMagicLinkAction) pour préserver
+// l'isolation Chantier 4 : un admin demandant reset depuis admin.* revient
+// sur admin.*/reinitialiser-mot-de-passe (cookies admin isolés). Fail-open
+// si lookup KO (DB down) → bascule sur le default www, l'admin pourra
+// retenter.
 //
 // Enumeration-resistance : Supabase resetPasswordForEmail retourne success
-// même pour email inexistant. On retourne toujours le même message ambigu.
+// même pour email inexistant. On retourne toujours le même message ambigu,
+// et on logue audit systématiquement (succès apparent ou pas).
 // =============================================================================
 
 const passwordResetSchema = z.object({
@@ -210,10 +222,23 @@ export async function requestPasswordResetAction(
   }
 
   const email = parsed.data.email;
-  const h = headers();
-  const host = h.get("host") ?? "localhost:3000";
-  const proto = h.get("x-forwarded-proto") ?? "http";
-  const redirectTo = `${proto}://${host}/reinitialiser-mot-de-passe`;
+
+  let isAdmin = false;
+  try {
+    const admin = createSupabaseAdminClient();
+    const { data: adminRow } = await admin
+      .from("admin_users")
+      .select("id")
+      .ilike("email", email)
+      .maybeSingle();
+    isAdmin = !!adminRow;
+  } catch (err) {
+    console.warn(
+      `PASSWORD_RESET_ADMIN_LOOKUP_WARN email=${maskEmail(email)} error=${(err as Error).message}`,
+    );
+  }
+
+  const redirectTo = getPasswordResetUrl(isAdmin);
 
   try {
     const supabase = createSupabaseServerClient();

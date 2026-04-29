@@ -9,11 +9,13 @@ import { requestPasswordResetAction } from "@/app/connexion/actions";
 // directement vers /reinitialiser-mot-de-passe?token_hash=…&type=recovery
 // (étape 2 — formulaire nouveau mot de passe).
 //
-// Server action requestPasswordResetAction : redirectTo dynamique calculé
-// côté serveur depuis headers() (host + x-forwarded-proto). Un admin qui
-// demande reset depuis admin.* revient sur admin.*/reinitialiser-mot-de-passe
-// et garde son cookie admin isolé (Chantier 4). Audit log écrit côté serveur
-// pour conformité (cf. lib/audit-logs/log-auth-event.ts).
+// Server action requestPasswordResetAction : redirectTo figé côté serveur
+// via getPasswordResetUrl(isAdmin) — URLs hardcodées (cf. lib/auth/email-redirect.ts)
+// pour bloquer toute host header injection (T-317). Lookup admin via la
+// table admin_users (même pattern que magic link) pour préserver l'isolation
+// Chantier 4 : un admin demandant reset revient sur admin.*/reinitialiser-mot-de-passe
+// et garde son cookie admin isolé. Audit log écrit côté serveur pour
+// conformité (cf. lib/audit-logs/log-auth-event.ts).
 //
 // Enumeration-resistance : Supabase resetPasswordForEmail retourne success
 // même pour un email inexistant — on affiche toujours le même message
