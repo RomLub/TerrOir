@@ -65,8 +65,8 @@ export async function POST(request: Request) {
     .maybeSingle();
   if (!slot) {
     return NextResponse.json(
-      { error: "Créneau introuvable ou producteur inactif" },
-      { status: 400 },
+      { error: "Créneau invalide ou indisponible" },
+      { status: 409 },
     );
   }
 

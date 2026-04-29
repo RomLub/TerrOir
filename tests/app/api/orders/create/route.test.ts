@@ -1,6 +1,6 @@
 // Vitest pour POST /api/orders/create.
 // Couverture : auth (401), validation Zod (items vide / uuid invalide),
-// pré-check slot (400 introuvable), mapping SQLSTATE → HTTP via la RPC
+// pré-check slot (409 invalide), mapping SQLSTATE → HTTP via la RPC
 // create_order_with_items (22023/P0002/23514/42501/inconnu), happy path
 // avec vérification des params RPC (extractHeureRetrait, notes_client null,
 // items.prix_unitaire forcé à 0), edges (RPC null silencieux 500, trim
@@ -220,12 +220,12 @@ describe("B. Validation Zod", () => {
 // --- C. Pré-check slot ---------------------------------------------------
 
 describe("C. Pré-check slot", () => {
-  it("C1 — slot inexistant → 400 'Créneau introuvable', RPC non appelée", async () => {
+  it("C1 — slot inexistant → 409 'Créneau invalide', RPC non appelée", async () => {
     responses.slots = { select: [{ data: null, error: null }] };
     const res = await POST(makeRequest());
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(409);
     expect(await res.json()).toEqual({
-      error: "Créneau introuvable ou producteur inactif",
+      error: "Créneau invalide ou indisponible",
     });
     expect(captured.rpcCalls).toEqual([]);
     // Le SELECT slot est filtré sur le slot_id passé.
