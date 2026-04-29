@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { strongPasswordSchema } from "@/lib/auth/validators";
 import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 
 // Action serveur de l'étape 2 du flow reset password (étape 1 = email envoyé
@@ -19,7 +20,7 @@ import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 const updatePasswordSchema = z
   .object({
     token_hash: z.string().min(10, "Token invalide"),
-    password: z.string().min(8, "Mot de passe : 8 caractères minimum"),
+    password: strongPasswordSchema,
     passwordConfirm: z.string(),
   })
   .refine((d) => d.password === d.passwordConfirm, {

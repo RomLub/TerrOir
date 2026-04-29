@@ -60,8 +60,8 @@ const VALID_TOKEN = "a".repeat(32);
 function makeFormData(overrides: Record<string, string> = {}): FormData {
   const fd = new FormData();
   fd.set("token", VALID_TOKEN);
-  fd.set("password", "password123");
-  fd.set("passwordConfirm", "password123");
+  fd.set("password", "Password123");
+  fd.set("passwordConfirm", "Password123");
   for (const [k, v] of Object.entries(overrides)) fd.set(k, v);
   return fd;
 }
@@ -117,7 +117,7 @@ describe("createAccountAction", () => {
     expect(createUserMock).toHaveBeenCalledTimes(1);
     expect(signInMock).toHaveBeenCalledWith({
       email: "new@example.com",
-      password: "password123",
+      password: "Password123",
     });
   });
 
