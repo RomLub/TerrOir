@@ -5,18 +5,13 @@ import { redirect } from "next/navigation";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth/session";
 import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
+import { slugFromEmail } from "@/lib/producers/slug-from-email";
 
 export type State = { error?: string };
 
 const schema = z.object({
   token: z.string().min(16, "Token invalide"),
 });
-
-function slugFromEmail(email: string) {
-  const base = email.split("@")[0]!.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
-  const suffix = Math.random().toString(36).slice(2, 8);
-  return `${base}-${suffix}`;
-}
 
 // T-303 — bascule auto-upgrade GET → server action POST avec confirmation
 // explicite UI. La session de l'utilisateur connecté est l'attestation

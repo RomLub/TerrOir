@@ -3,14 +3,9 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { invitationCreateAccountSchema } from "@/lib/auth/validators";
+import { slugFromEmail } from "@/lib/producers/slug-from-email";
 
 export type State = { error?: string; success?: boolean };
-
-function slugFromEmail(email: string) {
-  const base = email.split("@")[0]!.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
-  const suffix = Math.random().toString(36).slice(2, 8);
-  return `${base}-${suffix}`;
-}
 
 export async function createAccountAction(
   _prev: State,
