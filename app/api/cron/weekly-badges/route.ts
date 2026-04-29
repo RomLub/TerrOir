@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { assertCronAuth } from "@/lib/cron/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { NEXT_PUBLIC_APP_URL } from "@/lib/env/urls";
+import { recomputeBadgesForProducer } from "@/lib/producers/recompute-badges";
 
-// Cron hebdomadaire — appelle PATCH /api/producers/[id]/badges pour chaque
-// producteur actif. Séquentiel pour rester simple et éviter la pression
-// DB/Stripe ; à batcher si le nombre de producteurs grossit.
+// Cron hebdomadaire — recompute des 3 scores badges pour chaque producteur
+// actif. Séquentiel pour rester simple et éviter la pression DB ; à batcher
+// si le nombre de producteurs grossit. Appel direct au helper depuis T-417
+// (suppression de l'ancien proxy fetch HTTP interne avec Bearer manuel).
 export async function POST(request: Request) {
   const authError = assertCronAuth(request);
   if (authError) return authError;
@@ -23,27 +24,22 @@ export async function POST(request: Request) {
     return NextResponse.json({ processed: 0, errors: [] });
   }
 
-  const cronSecret = process.env.CRON_SECRET!;
   const errors: Array<{ producer_id: string; error: string }> = [];
   let processed = 0;
 
   for (const p of producers) {
     try {
-      const res = await fetch(`${NEXT_PUBLIC_APP_URL}/api/producers/${p.id}/badges`, {
-        method: "PATCH",
-        headers: { authorization: `Bearer ${cronSecret}` },
-      });
-      if (res.ok) {
-        processed += 1;
+      const res = await recomputeBadgesForProducer(admin, p.id);
+      if (res.error) {
+        errors.push({ producer_id: p.id, error: res.error });
       } else {
-        const text = await res.text().catch(() => "");
-        errors.push({
-          producer_id: p.id,
-          error: `HTTP ${res.status}: ${text.slice(0, 200)}`,
-        });
+        processed += 1;
       }
     } catch (e) {
-      errors.push({ producer_id: p.id, error: (e as Error).message });
+      errors.push({
+        producer_id: p.id,
+        error: e instanceof Error ? e.message : "unknown",
+      });
     }
   }
 
