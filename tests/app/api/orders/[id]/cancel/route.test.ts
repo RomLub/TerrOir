@@ -350,11 +350,39 @@ describe("C. Auth — système (cron)", () => {
 // --- D. Auth — utilisateur -----------------------------------------------
 
 describe("D. Auth — utilisateur", () => {
-  it("D1 session consumer (non-admin, non-producer) → 403", async () => {
-    // Comportement actuel : le consumer ne peut pas annuler sa propre
-    // commande via cet endpoint. Voulu (philosophie anti-abus) ou bug
-    // (oubli) ? Investigation produit en TODO. Si décision = autoriser,
-    // ce test devra être inversé.
+  // T-150 : consumer peut annuler sa propre commande tant qu'elle est
+  // pending (producteur pas confirmé → zéro engagement). Après
+  // 'confirmed' / 'ready' → 403 (passage par contact direct producteur).
+  // reason forcée à "consumer_cancel" côté route (analytics + défense).
+  it("D1a consumer-owner + statut=pending → 200 + statut cancelled", async () => {
+    sessionUser = {
+      id: CONSUMER_ID,
+      email: "c@example.com",
+      roles: ["consumer"],
+      isAdmin: false,
+    };
+    const res = await POST(makeRequest(), PARAMS);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.statut).toBe("cancelled");
+    const orderUpdate = captured.updates.find((u) => u.table === "orders");
+    expect(orderUpdate).toBeDefined();
+    expect((orderUpdate!.payload as Record<string, unknown>).statut).toBe(
+      "cancelled",
+    );
+    // Pas de badge recalculé (authorizedByProducer reste false côté consumer).
+    expect(
+      captured.updates.find((u) => u.table === "producers"),
+    ).toBeUndefined();
+    expect(
+      captured.gteCalls.find(
+        (g) => g.table === "orders" && g.col === "created_at",
+      ),
+    ).toBeUndefined();
+  });
+
+  it("D1b consumer-owner + statut=confirmed → 403 (fenêtre fermée)", async () => {
+    setOrderFetch({ statut: "confirmed" });
     sessionUser = {
       id: CONSUMER_ID,
       email: "c@example.com",
@@ -365,6 +393,82 @@ describe("D. Auth — utilisateur", () => {
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: "Forbidden" });
     expect(captured.updates).toEqual([]);
+    expect(mockRefundCreate).not.toHaveBeenCalled();
+    expect(mockSendTemplate).not.toHaveBeenCalled();
+  });
+
+  it("D1c consumer-owner + statut=ready → 403 (fenêtre fermée)", async () => {
+    setOrderFetch({ statut: "ready" });
+    sessionUser = {
+      id: CONSUMER_ID,
+      email: "c@example.com",
+      roles: ["consumer"],
+      isAdmin: false,
+    };
+    const res = await POST(makeRequest(), PARAMS);
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "Forbidden" });
+    expect(captured.updates).toEqual([]);
+  });
+
+  it("D1d consumer non-owner + statut=pending → 403 (n'est pas sa commande)", async () => {
+    sessionUser = {
+      id: "other-consumer",
+      email: "other@example.com",
+      roles: ["consumer"],
+      isAdmin: false,
+    };
+    const res = await POST(makeRequest(), PARAMS);
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "Forbidden" });
+    expect(captured.updates).toEqual([]);
+  });
+
+  it("D1e consumer-owner + pending + stripe_pi → refund déclenché + statut refunded + pas de badge", async () => {
+    setOrderFetch({ stripe_payment_intent_id: PI_ID });
+    mockRefundCreate.mockResolvedValue({ id: "re_1" });
+    sessionUser = {
+      id: CONSUMER_ID,
+      email: "c@example.com",
+      roles: ["consumer"],
+      isAdmin: false,
+    };
+    const res = await POST(makeRequest(), PARAMS);
+    expect(res.status).toBe(200);
+    expect(mockRefundCreate).toHaveBeenCalledTimes(1);
+    expect(mockRefundCreate).toHaveBeenCalledWith({ payment_intent: PI_ID });
+    const json = await res.json();
+    expect(json.statut).toBe("refunded");
+    // Pas de badge update même avec refund réussi.
+    expect(
+      captured.updates.find((u) => u.table === "producers"),
+    ).toBeUndefined();
+  });
+
+  it("D1f consumer-owner force reason='consumer_cancel' même si client envoie autre", async () => {
+    sessionUser = {
+      id: CONSUMER_ID,
+      email: "c@example.com",
+      roles: ["consumer"],
+      isAdmin: false,
+    };
+    // Client tente de poser reason="stock" (réservée producteur, pourrait
+    // déclencher l'alerte admin 2e rupture). La route doit l'écraser.
+    const res = await POST(
+      makeRequest({ body: { reason: "stock" } }),
+      PARAMS,
+    );
+    expect(res.status).toBe(200);
+    const orderUpdate = captured.updates.find((u) => u.table === "orders");
+    expect(
+      (orderUpdate!.payload as Record<string, unknown>).cancellation_reason,
+    ).toBe("consumer_cancel");
+    // Le bloc d'alerte stock ne doit pas avoir été déclenché (count
+    // SELECT puis INSERT notifications) — la reason a été écrasée AVANT
+    // le bloc reason==='stock'.
+    expect(
+      captured.inserts.find((i) => i.table === "notifications"),
+    ).toBeUndefined();
   });
 
   it("D2 session producer pas owner → 403", async () => {
