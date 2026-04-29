@@ -156,6 +156,22 @@ export async function completeOnboardingAction(
           token_prefix: tokenPrefix,
         },
       });
+    } else {
+      // T-310 : success path symétrique race_lost ci-dessus. Émis quand le
+      // UPDATE used_at a effectivement marqué la ligne (rowcount=1) — c'est
+      // le moment forensique où l'invitation est réellement "consumed".
+      // Cohabitation avec role_changed (login-and-upgrade.ts +
+      // accept-invitation.ts) : sémantique distincte — role_changed = transition
+      // rôle DB générique, invitation_consumed_success = token spécifiquement
+      // marqué used_at (lien email "claim").
+      await logAuthEvent({
+        eventType: "invitation_consumed_success",
+        userId: session.id,
+        metadata: {
+          invitation_id: invitationId,
+          token_prefix: tokenPrefix,
+        },
+      });
     }
   }
 

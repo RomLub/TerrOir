@@ -6,6 +6,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { sendTemplate } from "@/lib/resend/send";
 import { generateOptOutToken } from "@/lib/rgpd/opt-out-token";
 import { maskEmail } from "@/lib/rgpd/mask-email";
+import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 import ProducerInvitation, {
   subject as invitationSubject,
 } from "@/lib/resend/templates/producer-invitation";
@@ -153,7 +154,7 @@ export async function POST(request: Request) {
       token,
       created_by: session.id,
     })
-    .select("token, expires_at")
+    .select("id, token, expires_at")
     .single();
   if (invitationError || !invitation) {
     return NextResponse.json(
@@ -161,6 +162,22 @@ export async function POST(request: Request) {
       { status: 500 },
     );
   }
+
+  // T-310 : audit log forensique cluster invitation. Émis dès l'INSERT OK
+  // (avant l'envoi email) pour ne pas perdre l'event si l'email échoue —
+  // l'invitation existe bien en base, l'admin l'a bien créée. userId =
+  // admin créateur (pas l'invité, qui n'a pas encore de compte). Token
+  // jamais loggé en clair : prefix 8 chars suffit pour cross-référencer
+  // avec le warn race_lost côté complete-onboarding.
+  await logAuthEvent({
+    eventType: "invitation_created",
+    userId: session.id,
+    metadata: {
+      invitation_id: invitation.id,
+      invitation_email: input.email,
+      token_prefix: token.slice(0, 8),
+    },
+  });
 
   const invitationUrl = `${NEXT_PUBLIC_PRODUCER_URL}/invitation?token=${invitation.token}`;
 

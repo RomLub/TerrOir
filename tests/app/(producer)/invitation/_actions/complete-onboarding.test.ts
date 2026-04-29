@@ -320,7 +320,7 @@ function makeValidInvitationRead(): Resp {
 }
 
 describe("completeOnboardingAction — race condition consommation token (T-307)", () => {
-  it("happy path : claim succeeds → UPDATE invitation chaîne .is('used_at', null) + .select('id'), aucun log race ni audit log", async () => {
+  it("happy path : claim succeeds → UPDATE invitation chaîne .is('used_at', null) + .select('id'), aucun log race + audit log invitation_consumed_success", async () => {
     responses.producer_invitations = [
       makeValidInvitationRead(),
       // 2e from() pour producer_invitations = UPDATE final → claim OK,
@@ -350,6 +350,17 @@ describe("completeOnboardingAction — race condition consommation token (T-307)
     expect(logAuthEvent).not.toHaveBeenCalledWith(
       expect.objectContaining({ eventType: "invitation_consumed_race_lost" }),
     );
+
+    // T-310 : audit log success path symétrique race_lost. Émis avec
+    // préfixe token (8 chars), jamais le token complet.
+    expect(logAuthEvent).toHaveBeenCalledWith({
+      eventType: "invitation_consumed_success",
+      userId: "user-42",
+      metadata: {
+        invitation_id: "inv-99",
+        token_prefix: "abcdef01",
+      },
+    });
   });
 
   it("race lost : claim renvoie rowcount=0 → console.warn [INVITATION_RACE_LOST] + audit log invitation_consumed_race_lost, redirect happy quand même", async () => {
@@ -385,6 +396,10 @@ describe("completeOnboardingAction — race condition consommation token (T-307)
         token_prefix: "abcdef01",
       },
     });
+    // T-310 : exclusion mutuelle race_lost / consumed_success.
+    expect(logAuthEvent).not.toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "invitation_consumed_success" }),
+    );
   });
 
   it("claimError DB authentique → console.error [INVITATION_CLAIM_ERROR] + pas d'audit log race + redirect happy", async () => {
@@ -408,6 +423,11 @@ describe("completeOnboardingAction — race condition consommation token (T-307)
     );
     expect(logAuthEvent).not.toHaveBeenCalledWith(
       expect.objectContaining({ eventType: "invitation_consumed_race_lost" }),
+    );
+    // T-310 : claimError n'est NI race lost NI success → aucun event T-310
+    // émis (seul le console.error forensique trace l'incident DB).
+    expect(logAuthEvent).not.toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "invitation_consumed_success" }),
     );
   });
 });

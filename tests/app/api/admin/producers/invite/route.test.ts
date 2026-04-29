@@ -42,6 +42,13 @@ vi.mock("@/lib/resend/templates/producer-invitation", () => ({
   subject: () => "Invitation TerrOir",
 }));
 
+// T-310 — mock logAuthEvent : la SUT l'appelle après l'INSERT invitation OK
+// pour câbler l'event 'invitation_created'. On veut vérifier eventType +
+// metadata sans déclencher l'INSERT réel dans audit_logs (suite dédiée).
+vi.mock("@/lib/audit-logs/log-auth-event", () => ({
+  logAuthEvent: vi.fn(),
+}));
+
 // --- Auth mock (closure variable) ----------------------------------------
 type SessionUser = {
   id: string;
@@ -85,7 +92,11 @@ function defaultResp(table: string, op: Op): Resp {
   if (op === "update" || op === "insert") {
     if (table === "producer_invitations") {
       return {
-        data: { token: "tok-test", expires_at: "2030-01-01T00:00:00Z" },
+        data: {
+          id: "inv-test",
+          token: "tok-test",
+          expires_at: "2030-01-01T00:00:00Z",
+        },
         error: null,
       };
     }
@@ -148,6 +159,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 // --- Import APRÈS les mocks ----------------------------------------------
 
 import { POST } from "@/app/api/admin/producers/invite/route";
+import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 
 // --- Helpers -------------------------------------------------------------
 
@@ -193,6 +205,7 @@ beforeEach(() => {
   mockSendTemplate
     .mockReset()
     .mockResolvedValue({ ok: true, id: "res_1" });
+  vi.mocked(logAuthEvent).mockClear();
   consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
   consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 });
@@ -510,5 +523,75 @@ describe("G. existing_account flag", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.existing_account).toBe("consumer");
+  });
+});
+
+// --- H. T-310 : audit log forensique invitation_created ------------------
+// L'event est émis dès l'INSERT producer_invitations OK (avant l'envoi
+// email) pour ne pas perdre la trace si l'email échoue. userId = admin
+// créateur, metadata embarque invitation_id + email cible + token_prefix.
+// Pre-checks (403/400/409 admin/producer) → pas d'event car pas d'INSERT.
+
+describe("H. T-310 audit log invitation_created", () => {
+  it("H1 happy path (prospect direct) → logAuthEvent('invitation_created') avec invitation_id + email + token_prefix", async () => {
+    pushResp("admin_users", "select", { data: null, error: null });
+    pushResp("users", "select", { data: null, error: null });
+    const res = await POST(makeRequest(VALID_BODY));
+    expect(res.status).toBe(200);
+    expect(logAuthEvent).toHaveBeenCalledTimes(1);
+    expect(logAuthEvent).toHaveBeenCalledWith({
+      eventType: "invitation_created",
+      userId: "admin-1",
+      metadata: {
+        invitation_id: "inv-test",
+        invitation_email: "prospect@example.com",
+        token_prefix: expect.stringMatching(/^[a-f0-9]{8}$/),
+      },
+    });
+  });
+
+  it("H2 insert producer_invitations échoue → 500 + logAuthEvent JAMAIS appelé", async () => {
+    pushResp("admin_users", "select", { data: null, error: null });
+    pushResp("users", "select", { data: null, error: null });
+    pushResp("producer_invitations", "insert", {
+      data: null,
+      error: { message: "constraint violation" },
+    });
+    const res = await POST(makeRequest(VALID_BODY));
+    expect(res.status).toBe(500);
+    expect(logAuthEvent).not.toHaveBeenCalled();
+  });
+
+  it("H3 email échoue mais INSERT OK → logAuthEvent appelé quand même (event indépendant email)", async () => {
+    pushResp("admin_users", "select", { data: null, error: null });
+    pushResp("users", "select", { data: null, error: null });
+    mockSendTemplate.mockResolvedValue({ ok: false, error: "smtp down" });
+    const res = await POST(makeRequest(VALID_BODY));
+    expect(res.status).toBe(200);
+    expect((await res.json()).email_sent).toBe(false);
+    // L'invitation existe bien en DB, l'admin l'a bien créée → event émis.
+    expect(logAuthEvent).toHaveBeenCalledTimes(1);
+    expect(logAuthEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "invitation_created" }),
+    );
+  });
+
+  it("H4 pre-check 403 (session non-admin) → logAuthEvent JAMAIS appelé", async () => {
+    sessionUser = {
+      id: "user-1",
+      email: "user@example.com",
+      roles: ["consumer"],
+      isAdmin: false,
+    };
+    const res = await POST(makeRequest(VALID_BODY));
+    expect(res.status).toBe(403);
+    expect(logAuthEvent).not.toHaveBeenCalled();
+  });
+
+  it("H5 pre-check 409 (admin existant) → logAuthEvent JAMAIS appelé", async () => {
+    pushResp("admin_users", "select", { data: { id: "admin-9" }, error: null });
+    const res = await POST(makeRequest(VALID_BODY));
+    expect(res.status).toBe(409);
+    expect(logAuthEvent).not.toHaveBeenCalled();
   });
 });
