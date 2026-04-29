@@ -52,6 +52,10 @@ export async function syncStripeAccountFlags(
   }
 
   if (!Array.isArray(data) || data.length === 0) {
+    // T-419 — log greppable pour identifier les orphelins (account.id Stripe
+    // sans row producer en DB). Permet l'intervention manuelle admin (cas
+    // T-418 orphelin pré-fix, ou producer RGPD-anonymisé après webhook).
+    console.warn(`[STRIPE_ACCOUNT_NOT_FOUND] account=${account.id}`);
     return { updated: false, producerId: null };
   }
 
