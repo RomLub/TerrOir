@@ -394,3 +394,124 @@ describe("G. Edge fingerprint", () => {
     });
   });
 });
+
+// =============================================================================
+// H. T-433 try/catch fail-open Stripe errors
+// =============================================================================
+// Option C hybride fail-open : 4 try/catch granulaires, retournent
+// 200 + {success: false, reason: 'stripe_error_*'}. Cohérent contrat
+// documenté en tête de route ("Fail-open côté client : si ça échoue, pas
+// de blocage"). Logs greppables [ENSURE_DEFAULT_*_ERR] pour traçabilité
+// forensique. Audit log NON posé sur fail paths (cohérent T-429 audit =
+// mutation effective).
+
+describe("H. T-433 try/catch fail-open", () => {
+  it("T13 — customers.retrieve throw → 200 + reason stripe_error_retrieve_customer + no audit log", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockCustomersRetrieve.mockReset().mockRejectedValueOnce(
+      new Error("network timeout"),
+    );
+
+    const res = await POST(makeRequest());
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      success: false,
+      reason: "stripe_error_retrieve_customer",
+    });
+    expect(mockPaymentMethodsList).not.toHaveBeenCalled();
+    expect(mockCustomersUpdate).not.toHaveBeenCalled();
+    expect(mockLogPaymentEvent).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/^\[ENSURE_DEFAULT_RETRIEVE_CUSTOMER_ERR\]/),
+    );
+  });
+
+  it("T14 — paymentMethods.list throw → 200 + reason stripe_error_list_pms + no audit log", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockPaymentMethodsList.mockReset().mockRejectedValueOnce(
+      new Error("rate_limit_exceeded"),
+    );
+
+    const res = await POST(makeRequest());
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      success: false,
+      reason: "stripe_error_list_pms",
+    });
+    expect(mockCustomersUpdate).not.toHaveBeenCalled();
+    expect(mockPaymentMethodsDetach).not.toHaveBeenCalled();
+    expect(mockLogPaymentEvent).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/^\[ENSURE_DEFAULT_LIST_PMS_ERR\]/),
+    );
+  });
+
+  it("T15 — paymentMethods.detach throw (path dedupe) → Q7 fail-open extension : update continue avec pms[0] + dedupeFailed:true + audit log posé", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    // 2 PMs même fingerprint → trigger dedupe path. Detach échoue, mais
+    // le flow continue avec refPm = pms[0] (PM fraîchement attaché).
+    mockPaymentMethodsList.mockResolvedValueOnce(
+      pmList(pm(PM_NEW_ID, "fp_dup"), pm(PM_EXISTING_ID, "fp_dup")),
+    );
+    mockPaymentMethodsDetach.mockReset().mockRejectedValueOnce(
+      new Error("PM already detached"),
+    );
+
+    const res = await POST(makeRequest());
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      success: true,
+      changed: true,
+      payment_method_id: PM_NEW_ID, // refPm reste pms[0] (detach failed)
+      dedupeFailed: true, // flag Q7 pour audit ultérieur (T-441)
+    });
+    // customers.update est appelé avec PM_NEW_ID (pas PM_EXISTING_ID)
+    expect(mockCustomersUpdate).toHaveBeenCalledTimes(1);
+    expect(mockCustomersUpdate).toHaveBeenCalledWith(CUSTOMER_ID, {
+      invoice_settings: { default_payment_method: PM_NEW_ID },
+    });
+    // Audit log posé sur update success (cohérent T-431)
+    expect(mockLogPaymentEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "stripe_default_payment_method_set",
+        userId: CONSUMER_ID,
+        metadata: expect.objectContaining({
+          customer_id: CUSTOMER_ID,
+          payment_method_id: PM_NEW_ID,
+          order_id: ORDER_ID,
+        }),
+      }),
+    );
+    // dedupe_detached_id NON présent dans metadata (detach failed)
+    const auditCall = mockLogPaymentEvent.mock.calls[0]?.[0] as {
+      metadata: Record<string, unknown>;
+    };
+    expect("dedupe_detached_id" in auditCall.metadata).toBe(false);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/^\[ENSURE_DEFAULT_DETACH_PM_ERR\]/),
+    );
+  });
+
+  it("T16 — customers.update throw → 200 + reason stripe_error_update_customer + no audit log", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockCustomersUpdate.mockReset().mockRejectedValueOnce(
+      new Error("invalid_request_error"),
+    );
+
+    const res = await POST(makeRequest());
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      success: false,
+      reason: "stripe_error_update_customer",
+    });
+    // Audit NON posé (cohérent T-429 pattern : audit = mutation effective)
+    expect(mockLogPaymentEvent).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/^\[ENSURE_DEFAULT_UPDATE_CUSTOMER_ERR\]/),
+    );
+  });
+});
