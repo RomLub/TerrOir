@@ -6,8 +6,10 @@
 //     .terroir-local.fr couvrent pro)
 //
 // Source unique vs duplication entre flows. Aligné sur magic link
-// (cf. requestMagicLinkAction), change email (cf. changeEmailAction) et
-// password reset (cf. requestPasswordResetAction).
+// (cf. requestMagicLinkAction) et password reset (cf. requestPasswordResetAction).
+// Note T-013 PR2 : le change_email ne passe plus par ce helper — il utilise
+// désormais un flow custom 2 OTP successifs (cf. _actions/request-otp,
+// verify-otp, complete-email-change) sans emailRedirectTo.
 //
 // URLs construites au module-load depuis NEXT_PUBLIC_APP_URL et
 // NEXT_PUBLIC_ADMIN_URL (T-328) — env vars inlinées par Next.js au build,

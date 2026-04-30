@@ -7,6 +7,57 @@ Pour les priorités forward-looking, voir [`TODO.md`](./TODO.md).
 
 ---
 
+## 2026-04-30 (T-013 Secure Email Change refonte)
+
+> Refonte du flow de changement d'email côté `/compte/profil` depuis Supabase Secure Email Change (lien magique asynchrone double confirmation) vers un flow custom 2 OTP successifs in-session (modèle Amazon-like). Architecture en 3 PRs :
+>
+> - **PR1 (#87 mergée matin 30/04, premier write-prod via MCP Supabase CC)** : schéma DB pose UNIQUE preventive sur `lower(public.users.email)` + tables `email_change_otp_codes` + `email_change_undo_tokens` + filet sécurité (toggle Dashboard "Secure email change" laissé ON volontairement). Migration `20260430161902` apply prod via `mcp__supabase__apply_migration`. Premier usage du MCP Supabase configuré aujourd'hui — workflow CC + MCP standard documenté ([`METHODOLOGY.md`](./METHODOLOGY.md) section "Migrations DB"). Gotcha timestamp détecté : MCP génère son propre timestamp à l'apply, fix via `git mv` du fichier disque pour matcher tracking DB.
+>
+> - **PR2 (cette PR, à merger après preview tests)** : flow OTP code (helpers + templates + 3 server actions + UI stepper) — détail ci-dessous.
+>
+> - **PR3 (à venir, hors scope cette CHANGELOG)** : route `/api/email-change/undo` + persistance `email_change_undo_tokens` à completion + email Resend post-fait à l'ancienne adresse pour annulation 7 jours.
+
+### PR2 — flow OTP custom + UI stepper (14 commits atomiques C2.1 → C2.14)
+
+🟢 **Layer helpers** (3 commits) :
+- **C2.1 HMAC Web Crypto** (`lib/email-change/hmac.ts`) : sign + verify constant-time avec `crypto.subtle`. Fail-fast au module-load sur `EMAIL_CHANGE_OTP_SECRET` absent. Singleton key cache. Pattern aligné T-321.
+- **C2.2 OTP generator bias-free** (`lib/email-change/otp.ts`) : 6 chiffres via `crypto.getRandomValues` + rejection sampling (~0.023% rejets). `isValidOtpFormat` strict ASCII /^\d{6}$/ (anti-collision homoglyphes unicode).
+- **C2.3 Rate-limit DB-based** (`lib/email-change/rate-limit.ts`) : 3/60s par (userId, step) via COUNT sur `email_change_otp_codes`. Fail-open sur erreur DB. Pattern différent d'Upstash (T-305) qui sert les call sites haute fréquence.
+
+🟢 **Layer email** (1 commit) :
+- **C2.4 Templates Resend** : `email-change-otp-current` (à ancienne adresse, affiche newEmail anti-phishing) + `email-change-otp-new` (à nouvelle adresse, sans révéler ancienne). Code OTP rendu en gros monospace (32px letterSpacing 6), validity 10min, disclaimer sécurité.
+
+🟢 **Layer server actions** (3 commits) :
+- **C2.5 requestOtp** : auth + Zod + rate-limit + INVALIDATE rows précédents + INSERT row + sendTemplate + audit log `account_otp_requested`.
+- **C2.6 verifyOtp** : auth + format check + SELECT latest row + check expiration + cap attempts (5 = invalidation atomique sur la 5e wrong) + verifyHash constant-time. Audit logs granulaires (verified/invalid/expired/attempts_exceeded).
+- **C2.7 completeEmailChange** : auth + defensive recheck (2 SELECT cohérence step=current+new consumed + email match) + `admin.auth.admin.updateUserById` + UPDATE `public.users` + `userClient.auth.signOut({ scope: 'others' })` + audit log `account_email_change_completed`. Workaround découvert : `auth.admin.signOut` requiert un JWT, pas un userId — d'où le passage par userClient (cf LESSONS section dédiée).
+
+🟢 **Layer UI** (3 commits) :
+- **C2.8 Refonte ChangeEmailSection** : state machine `idle → enter-email → verify-current → verify-new → completed` + step 1 (input email) + suppression legacy `_actions/change-email.ts` (utilisait l'anti-pattern `auth.updateUser({email})`) + cleanup commentaires stale dans `email-redirect.ts` + `compte/profil/page.tsx`.
+- **C2.9 Step 2 (verify-current)** : extraction sous-composant `VerifyOtpStep` (réutilisable step 2+3) + bouton "Renvoyer le code" cooldown 30s + chaining auto vers requestOtp(new) post-verify ok.
+- **C2.10 Step 3 (verify-new) + completion** : VerifyOtpStep réutilisé + chaining auto vers completeEmailChange post-verify ok + écran succès `CompletedStep` + `CompleteErrorPanel` pour erreurs (collision UNIQUE, désynchro). ChangeEmailSection.tsx maintenu sous le seuil 300 lignes via extraction sous-composants.
+
+🟢 **Layer tests** (2 commits) :
+- **C2.11 Integration full flow** : 5 scénarios cross-actions (happy path 5 actions chaînées + audit logs cumulés cohérents 5 events, collision UNIQUE sur completion, re-request invalidates, rate-limit hit, wrong code).
+- **C2.12 Concurrency edge cases** : 7 scénarios state-machine (verify code obsolète post re-request, cap attempts perpétuel post-invalidation, complete prématuré flow_invalid, email tampering newRow.email !== newEmail).
+
+🟢 **Layer docs** (2 commits) :
+- **C2.13 LESSONS + CHANGELOG** (cette entrée).
+- **C2.14 TODO + HANDOFF** : T-016 cron purge `email_change_otp_codes` rows expirées + T-018 doc Vercel CLI workflow METHODOLOGY (capitalise setup d'aujourd'hui) + statut PR3 = SUITE T-013.
+
+⚙️ **Action externe Romain** :
+- `EMAIL_CHANGE_OTP_SECRET` configuré Vercel All Environments (sensitive mode via Vercel CLI) + `.env.local` (commit C2.5 prep). Bonus session : Vercel CLI v52.2.1 installée globalement + repo lié projet `terr-oir-21cl` (capitalise pour T-018 doc post-merge).
+
+🧪 **Tests effectués** : 109 fichiers vitest, 1258 baseline + nouveaux tests PR2 → tous verts. Lints + tsc strict zero warning.
+
+⚠️ **Méthodologie / nouveautés capitalisées** :
+- **Workflow CC + MCP Supabase pour migrations** (T-013 PR1) : premier write-prod réussi via `apply_migration`. Calibrage dual-GO (display tool call + GO 1, exec tool + GO 2) testé et validé. Gotcha timestamp documenté. Ouvre la voie pour automatiser les apply prod côté CC sans Studio Editor manuel.
+- **Anti-pattern `supabase.auth.updateUser({email})` officiellement proscrit** : LESSONS section dédiée, applicable à tout flow futur qui touche à l'email. Toujours `auth.admin.updateUserById` côté service_role + sync `public.users` manuelle.
+- **Pattern flow OTP custom multi-étape** : reproductible pour autres flows sensibles (ex: futur reset password custom, transfert producteur, etc.). Composants HMAC + OTP gen + rate-limit + 2 actions (request, verify) + 1 action finale (commit) + UI stepper sous 300 lignes via extraction sous-composants.
+- **API Supabase JS limitation `auth.admin.signOut(jwt, scope)`** : la signature requiert un JWT, pas un userId. Workaround userClient (server client cookies-aware) documenté pour futurs flows qui force-logout.
+
+---
+
 ## 2026-04-29 (purge audit Auth #1)
 
 > Session marathon multi-terminal (TA/TB/TC/TD/TE) consacrée à la purge des findings de l'audit Auth #1 Cluster A/B/C/D + mineurs/cosmétiques + bloqueurs lancement code. **16 PRs mergées sur master** sur la séance complète (continuations cumulées). Master HEAD final : `d1be726` post-merge PR #48 T-325. **Audit Auth #1 close côté code** ; bloqueurs lancement résiduels non-code (T-041 pages légales + T-046 HIBP Pro plan).
