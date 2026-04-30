@@ -81,6 +81,10 @@ export const AUTH_EVENT_TYPES = [
   // soupçon brute-force, account_otp_attempts_exceeded = invalidation forcée.
   // metadata embarque step (current|new) + email_target_masked.
   "account_otp_requested",
+  "account_otp_verified",
+  "account_otp_invalid",
+  "account_otp_expired",
+  "account_otp_attempts_exceeded",
 ] as const;
 
 export type AuthEventType = (typeof AUTH_EVENT_TYPES)[number];
