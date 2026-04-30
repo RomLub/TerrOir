@@ -61,6 +61,19 @@ export function getRawAdminClient(): SupabaseClient {
 }
 
 /**
+ * READ-ONLY admin client. NE JAMAIS utiliser pour des writes.
+ *
+ * Pour les writes : utiliser safeInsert/safeUpdate/safeDelete/safeUpsert
+ * qui passent par les garde-fous (assertSafeEmail, tracking IDs, audit log).
+ *
+ * Cette fonction est un alias public de getRawAdminClient pour rendre
+ * le mauvais usage immédiatement visible à la lecture du code de test.
+ */
+export function getReadOnlyAdminClient(): SupabaseClient {
+  return getRawAdminClient();
+}
+
+/**
  * Reset du singleton (utile pour tests vitest).
  */
 export function __resetRawClient(): void {
