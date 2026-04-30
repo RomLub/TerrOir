@@ -71,3 +71,34 @@ export function assertTransition(from: OrderStatus, to: OrderStatus): void {
 export function isTerminal(status: OrderStatus): boolean {
   return TRANSITIONS[status].length === 0;
 }
+
+/**
+ * T-420 : helper pure pour la fenêtre d'annulation consumer.
+ *
+ * Source de vérité : route /api/orders/[id]/cancel/route.tsx encode la
+ * règle "consumer ne peut cancel que pending" (pas d'engagement
+ * producteur encore = annulation sans préjudice).
+ *
+ * Helper exporté pour permettre future UI consumer d'afficher/cacher
+ * un bouton cohérent avec server.
+ */
+export function canConsumerCancel(status: OrderStatus): boolean {
+  return status === "pending";
+}
+
+/**
+ * T-420 : helper pure pour la fenêtre d'annulation producer.
+ *
+ * Source de vérité : route /api/orders/[id]/cancel/route.tsx encode la
+ * règle "producer owner peut cancel toute order non-terminal" (= pending,
+ * confirmed, ready). Couvre les cas légitimes :
+ *   - pending   : annulation pré-confirmation
+ *   - confirmed : annulation pré-préparation (changement d'avis producer)
+ *   - ready     : annulation post-préparation (perte produit, panne, accident)
+ *
+ * Helper exporté pour aligner Producer UI avec server (ferme la divergence
+ * historique où l'UI cachait le bouton sur `ready`).
+ */
+export function canProducerCancel(status: OrderStatus): boolean {
+  return !isTerminal(status);
+}

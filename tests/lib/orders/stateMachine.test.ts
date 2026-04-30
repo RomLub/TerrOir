@@ -3,6 +3,8 @@ import {
   canTransition,
   assertTransition,
   isTerminal,
+  canConsumerCancel,
+  canProducerCancel,
   InvalidOrderTransitionError,
   type OrderStatus,
 } from "@/lib/orders/stateMachine";
@@ -183,5 +185,57 @@ describe("InvalidOrderTransitionError — contrat erreur", () => {
       expect(caught.from).toBe("completed");
       expect(caught.to).toBe("ready");
     }
+  });
+});
+
+describe("canConsumerCancel — T-420", () => {
+  it("1 — pending → true", () => {
+    expect(canConsumerCancel("pending")).toBe(true);
+  });
+
+  it("2 — confirmed → false", () => {
+    expect(canConsumerCancel("confirmed")).toBe(false);
+  });
+
+  it("3 — ready → false", () => {
+    expect(canConsumerCancel("ready")).toBe(false);
+  });
+
+  it("4 — completed → false", () => {
+    expect(canConsumerCancel("completed")).toBe(false);
+  });
+
+  it("5 — cancelled → false", () => {
+    expect(canConsumerCancel("cancelled")).toBe(false);
+  });
+
+  it("6 — refunded → false", () => {
+    expect(canConsumerCancel("refunded")).toBe(false);
+  });
+});
+
+describe("canProducerCancel — T-420", () => {
+  it("1 — pending → true", () => {
+    expect(canProducerCancel("pending")).toBe(true);
+  });
+
+  it("2 — confirmed → true", () => {
+    expect(canProducerCancel("confirmed")).toBe(true);
+  });
+
+  it("3 — ready → true (Option (a) Romain : alignement UI ↔ server)", () => {
+    expect(canProducerCancel("ready")).toBe(true);
+  });
+
+  it("4 — completed → false (terminal)", () => {
+    expect(canProducerCancel("completed")).toBe(false);
+  });
+
+  it("5 — cancelled → false (terminal)", () => {
+    expect(canProducerCancel("cancelled")).toBe(false);
+  });
+
+  it("6 — refunded → false (terminal)", () => {
+    expect(canProducerCancel("refunded")).toBe(false);
   });
 });
