@@ -19,9 +19,6 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-// `lib/stripe/payouts.tsx` importe 'server-only' (virtuel Next) — stub.
-vi.mock("server-only", () => ({}));
-
 const {
   mockTransferCreate,
   mockCreateAdminClient,

@@ -1,9 +1,11 @@
+import Link from "next/link";
 import { StatusDotBadge } from "@/components/ui";
 import {
   categorizeEventType,
   CATEGORY_PALETTE,
 } from "../_lib/categorize-event-type";
 import type { AuditEventType } from "../_lib/event-types";
+import { buildProducerHref } from "../_lib/build-producer-href";
 
 export type AuditLogRow = {
   id: string;
@@ -95,9 +97,12 @@ export function AuditLogsTable({ rows, producerUserIds }: Props) {
                         title={row.user_id}
                       >
                         {isProducer && (
-                          <span className="mr-1 inline-flex rounded-full bg-terroir-green-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-terroir-green-700">
+                          <Link
+                            href={buildProducerHref(row.user_id)}
+                            className="mr-1 inline-flex rounded-full bg-terroir-green-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-terroir-green-700 hover:bg-terroir-green-200"
+                          >
                             Prod
-                          </span>
+                          </Link>
                         )}
                         {shortenUuid(row.user_id)}
                       </span>

@@ -11,8 +11,6 @@ vi.hoisted(() => {
     process.env.NEXT_PUBLIC_ADMIN_URL ?? "http://localhost:3002";
 });
 
-vi.mock("server-only", () => ({}));
-
 import { render } from "@react-email/render";
 import StockAlertBackInStock, {
   subject,

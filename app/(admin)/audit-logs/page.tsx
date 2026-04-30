@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AdminPageHeader } from "@/components/ui";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { parisCalendarDayBoundsUtc } from "@/lib/format/paris-day-bounds";
 import { parseSearchParams } from "./_lib/parse-search-params";
 import { decodeCursor, encodeCursor } from "./_lib/cursor";
 import { AuditLogsFilters } from "./_components/AuditLogsFilters";
@@ -54,16 +55,15 @@ export default async function AuditLogsPage({ searchParams }: Props) {
     query = query.eq("user_id", filters.userId);
   }
   if (filters.dateFrom) {
-    query = query.gte("created_at", `${filters.dateFrom}T00:00:00Z`);
+    // Interprétation calendrier Europe/Paris : le jour saisi commence à
+    // 00:00 Paris (UTC+1 ou UTC+2 selon DST), pas à 00:00Z. Cf. helper.
+    const { startUtc } = parisCalendarDayBoundsUtc(filters.dateFrom);
+    query = query.gte("created_at", startUtc.toISOString());
   }
   if (filters.dateTo) {
-    // dateTo inclusif : on borne strictement à minuit UTC du lendemain.
-    // Caveat timezone : un admin filtrant "2026-04-30" verra les rows
-    // 2026-04-30T00:00 UTC → 2026-05-01T00:00 UTC, soit 02:00–02:00 Paris
-    // en heure d'été. Acceptable pour MVP forensique.
-    const to = new Date(`${filters.dateTo}T00:00:00Z`);
-    to.setUTCDate(to.getUTCDate() + 1);
-    query = query.lt("created_at", to.toISOString());
+    // dateTo inclusif : on borne strictement à 00:00 Paris du lendemain.
+    const { endUtc } = parisCalendarDayBoundsUtc(filters.dateTo);
+    query = query.lt("created_at", endUtc.toISOString());
   }
   if (cursor) {
     query = query.lte("created_at", cursor.createdAt);

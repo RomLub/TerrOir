@@ -1,10 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createHmac } from "crypto";
 
-// `lib/auth/role-snapshot-cookie.ts` importe 'server-only' (virtuel Next.js,
-// non résolvable hors build webpack) → stub no-op pour vitest.
-vi.mock("server-only", () => ({}));
-
 // Secret figé pour la durée des tests : permet de calculer des fixtures
 // déterministes (signatures connues à l'avance pour les cas tamper).
 const TEST_SECRET = "a".repeat(64);

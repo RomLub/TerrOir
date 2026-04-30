@@ -1,9 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
 
-// `server-only` est un module virtuel Next.js qui throw côté client. Il n'est
-// pas résolu par vitest, on le stub avant l'import du helper.
-vi.mock("server-only", () => ({}));
-
 // Mocks next/headers AVANT l'import du module testé : cookies/headers ne
 // peuvent être appelés qu'en contexte server (App Router). On simule juste
 // l'API minimale dont le helper a besoin.

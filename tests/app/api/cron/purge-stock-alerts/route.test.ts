@@ -9,8 +9,6 @@ vi.hoisted(() => {
   process.env.CRON_SECRET = process.env.CRON_SECRET ?? "test-cron-secret";
 });
 
-vi.mock("server-only", () => ({}));
-
 const { mockClientHolder } = vi.hoisted(() => ({
   mockClientHolder: { current: null as SupabaseClient | null },
 }));

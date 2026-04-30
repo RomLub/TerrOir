@@ -1,9 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-// Stub server-only AVANT tout import qui pourrait le tirer transitive
-// (lib/auth/role-snapshot-cookie.ts importe 'server-only').
-vi.mock("server-only", () => ({}));
-
 // Secret figé pour signatures déterministes des cookies de test.
 const TEST_SECRET = "c".repeat(64);
 const ORIGINAL_SECRET = process.env.ROLE_SNAPSHOT_SECRET;

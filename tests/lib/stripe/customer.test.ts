@@ -20,9 +20,6 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-// `lib/stripe/customer.ts` importe 'server-only' (virtuel Next) — stub.
-vi.mock("server-only", () => ({}));
-
 const { mockCustomersCreate, mockCreateAdminClient } = vi.hoisted(() => ({
   mockCustomersCreate: vi.fn(),
   mockCreateAdminClient: vi.fn(),

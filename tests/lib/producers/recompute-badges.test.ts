@@ -6,8 +6,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-vi.mock("server-only", () => ({}));
-
 import { recomputeBadgesForProducer } from "@/lib/producers/recompute-badges";
 
 type SelectResp = {

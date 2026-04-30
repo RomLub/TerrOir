@@ -13,8 +13,6 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-vi.mock("server-only", () => ({}));
-
 const { mockAccountsDel, mockCustomersDel } = vi.hoisted(() => ({
   mockAccountsDel: vi.fn(),
   mockCustomersDel: vi.fn(),

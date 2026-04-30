@@ -21,8 +21,6 @@ type AnyAsyncFn = (...args: unknown[]) => Promise<unknown>;
 //      + @/lib/audit-logs/log-auth-event (logAuthEvent + extractRequestContext)
 //      + next/headers (headers() pour extractRequestContext).
 
-vi.mock("server-only", () => ({}));
-
 vi.mock("next/headers", () => ({
   headers: vi.fn(() => ({ get: () => null })),
 }));

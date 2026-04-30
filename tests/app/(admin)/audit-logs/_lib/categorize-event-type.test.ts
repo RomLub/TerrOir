@@ -1,9 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
-
-// `lib/audit-logs/log-auth-event.ts` (importé transitivement via
-// _lib/event-types.ts) a `import "server-only"` — virtuel Next.js,
-// non résolvable hors webpack. Stub no-op pour vitest.
-vi.mock("server-only", () => ({}));
+import { describe, it, expect } from "vitest";
 
 import {
   categorizeEventType,

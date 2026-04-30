@@ -33,8 +33,6 @@ type AnySyncFn = (...args: unknown[]) => unknown;
 // requestPasswordResetAction ne fasse pas tomber les autres actions à la
 // compilation du module — même si elles ne sont pas appelées dans ces tests.
 
-vi.mock("server-only", () => ({}));
-
 vi.mock("next/headers", () => ({
   headers: vi.fn(() => ({ get: () => null })),
   cookies: vi.fn(),

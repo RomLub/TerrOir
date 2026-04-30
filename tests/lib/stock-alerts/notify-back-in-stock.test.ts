@@ -20,8 +20,6 @@ vi.hoisted(() => {
     process.env.NEXT_PUBLIC_ADMIN_URL ?? "http://localhost:3002";
 });
 
-vi.mock("server-only", () => ({}));
-
 // Hoist le mock pour que la factory vi.mock puisse référencer mockSendTemplate.
 const { mockSendTemplate } = vi.hoisted(() => ({
   mockSendTemplate: vi.fn(),

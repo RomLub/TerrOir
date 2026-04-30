@@ -1,11 +1,14 @@
 'use client';
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { AdminModal, AdminPageHeader, Button, FilterTabs, ProducerStatusBadge, TableActionButton, TableStatus, type ProducerStatus } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { revalidatePublicStats } from '@/lib/stats/revalidate';
 import { formatDateFr } from '@/lib/format/date';
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Statuts producers visibles côté admin. 'draft' et 'deleted' sont exclus
 // au fetch par défaut (formulaire d'onboarding incomplet / anonymisé RGPD
@@ -23,6 +26,10 @@ type Producer = {
   plan: string;
   joinedAt: string;
   email: string;
+  // Présent pour permettre le pré-filtrage `?user_id=<uuid>` (deep-link
+  // depuis /audit-logs). Peut être null sur les vieilles rows ou les
+  // producers en draft sans user lié.
+  userId: string | null;
 };
 
 type Filter = 'all' | 'pending' | 'active' | 'suspended' | 'draft' | 'deleted';
@@ -107,7 +114,7 @@ function AdminProducteursPageInner() {
     const supabase = createSupabaseBrowserClient();
     let query = supabase
       .from('producers')
-      .select('id, slug, nom_exploitation, commune, code_postal, statut, abonnement_niveau, created_at, user:user_id ( email )');
+      .select('id, slug, nom_exploitation, commune, code_postal, statut, abonnement_niveau, created_at, user_id, user:user_id ( email )');
     if (!showAll) {
       query = query.neq('statut', 'draft').neq('statut', 'deleted');
     }
@@ -124,6 +131,7 @@ function AdminProducteursPageInner() {
       statut: Status;
       abonnement_niveau: string | null;
       created_at: string;
+      user_id: string | null;
       user: { email: string | null } | Array<{ email: string | null }> | null;
     }>).map((p) => {
       const user = Array.isArray(p.user) ? p.user[0] : p.user;
@@ -137,6 +145,7 @@ function AdminProducteursPageInner() {
         plan: PLAN_LABEL[p.abonnement_niveau ?? ''] ?? '—',
         joinedAt: formatDateFr(p.created_at),
         email: user?.email ?? '—',
+        userId: p.user_id ?? null,
       };
     });
 
@@ -154,6 +163,14 @@ function AdminProducteursPageInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showAll]);
 
+  // Pré-filtre `?user_id=<uuid>` (deep-link depuis /audit-logs T-080).
+  // Lu directement depuis l'URL pour rester réactif à un Link → /gestion-producteurs
+  // sans param qui doit re-afficher la liste complète sans rechargement.
+  // UUID invalide = ignoré silencieusement (cohérent parse-search-params côté audit-logs).
+  const prefillUserIdRaw = searchParams?.get('user_id') ?? null;
+  const prefillUserId =
+    prefillUserIdRaw && UUID_REGEX.test(prefillUserIdRaw) ? prefillUserIdRaw : null;
+
   const counts = useMemo(() => ({
     all: producers.length,
     pending: producers.filter((p) => p.status === 'pending').length,
@@ -163,7 +180,9 @@ function AdminProducteursPageInner() {
     deleted: producers.filter((p) => p.status === 'deleted').length,
   }), [producers]);
 
-  const filtered = producers.filter((p) => matchesFilter(p.status, filter));
+  const filtered = producers
+    .filter((p) => matchesFilter(p.status, filter))
+    .filter((p) => (prefillUserId ? p.userId === prefillUserId : true));
 
   const setStatus = async (id: string, status: Status) => {
     setBusy(id);
@@ -196,6 +215,24 @@ function AdminProducteursPageInner() {
           error={error}
           right={<Button variant="accent" size="lg" onClick={() => setInviting(true)}>+ Inviter un producteur</Button>}
         />
+
+        {prefillUserId && (
+          <div
+            role="status"
+            className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-blue-200 bg-blue-50 px-4 py-2.5 text-[13px] text-blue-900"
+          >
+            <span>
+              Filtré sur user{' '}
+              <span className="font-mono text-[12px]">{prefillUserId.slice(0, 8)}…</span>
+            </span>
+            <Link
+              href="/gestion-producteurs"
+              className="text-[13px] font-medium text-blue-900 underline hover:text-blue-700"
+            >
+              Effacer
+            </Link>
+          </div>
+        )}
 
         <div className="mb-6 flex flex-wrap items-end justify-between gap-3 border-b border-gray-200">
           <FilterTabs filters={FILTERS} counts={counts} active={filter} onChange={setFilter} />

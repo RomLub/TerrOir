@@ -27,6 +27,9 @@ export default defineConfig({
     environment: "node",
     globals: false,
     reporters: "default",
+    // Setup file global : mocke `server-only` (import virtuel Next.js
+    // non résolvable hors webpack) une fois pour tous les tests.
+    setupFiles: ["./tests/setup.ts"],
   },
   resolve: {
     alias: {

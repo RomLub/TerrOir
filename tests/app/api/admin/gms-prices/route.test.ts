@@ -6,8 +6,6 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-vi.mock("server-only", () => ({}));
-
 type SessionUser = {
   id: string;
   email: string | null;

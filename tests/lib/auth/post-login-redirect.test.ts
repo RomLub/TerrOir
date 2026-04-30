@@ -1,9 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
 
-// `lib/auth/post-login-redirect.ts` importe 'server-only' (virtuel Next.js,
-// non résolvable hors build webpack) → stub no-op pour vitest.
-vi.mock("server-only", () => ({}));
-
 import {
   isValidRedirectPath,
   resolvePostLoginPath,

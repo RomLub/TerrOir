@@ -8,8 +8,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-vi.mock("server-only", () => ({}));
-
 import { checkOrMarkProcessed } from "@/lib/webhook-events/check-or-mark-processed";
 
 type Resp = { error: { message?: string; code?: string } | null };

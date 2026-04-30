@@ -9,8 +9,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-vi.mock("server-only", () => ({}));
-
 import { upsertProducerInterest } from "@/lib/producer-interests/upsert-interest";
 
 type Resp = { data?: unknown; error?: unknown };
