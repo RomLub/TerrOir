@@ -87,7 +87,7 @@ afterEach(() => {
 // ============================================================================
 
 describe("retryFailedRefund — succeeded path (attempt 1, blocked_stock)", () => {
-  it("Stripe refund OK → UPDATE cancellation_reason + audit log + idempotencyKey passé", async () => {
+  it("Stripe refund OK → UPDATE closure_reason + audit log + idempotencyKey passé", async () => {
     vi.mocked(stripe.refunds.create).mockResolvedValue({
       id: "re_retry_1",
     } as never);
@@ -114,9 +114,9 @@ describe("retryFailedRefund — succeeded path (attempt 1, blocked_stock)", () =
       { idempotencyKey: "refund_order-42_revival_1" },
     );
 
-    // UPDATE order avec cancellation_reason mappée depuis blocked_stock.
+    // UPDATE order avec closure_reason mappée depuis blocked_stock.
     expect(captured.updates).toEqual([
-      { table: "orders", payload: { cancellation_reason: "revival_blocked_stock" } },
+      { table: "orders", payload: { closure_reason: "revival_blocked_stock" } },
     ]);
     expect(captured.eqs).toEqual([["id", "order-42"]]);
 
@@ -147,7 +147,7 @@ describe("retryFailedRefund — succeeded path (attempt 1, blocked_stock)", () =
 });
 
 describe("retryFailedRefund — succeeded path (attempt 2, blocked_slot)", () => {
-  it("blocked_slot → cancellation_reason='revival_blocked_slot' + idempotencyKey attempt 2", async () => {
+  it("blocked_slot → closure_reason='revival_blocked_slot' + idempotencyKey attempt 2", async () => {
     vi.mocked(stripe.refunds.create).mockResolvedValue({
       id: "re_retry_2",
     } as never);
@@ -170,7 +170,7 @@ describe("retryFailedRefund — succeeded path (attempt 2, blocked_slot)", () =>
       { idempotencyKey: "refund_order-99_revival_2" },
     );
     expect(captured.updates).toEqual([
-      { table: "orders", payload: { cancellation_reason: "revival_blocked_slot" } },
+      { table: "orders", payload: { closure_reason: "revival_blocked_slot" } },
     ]);
     expect(vi.mocked(logPaymentEvent)).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -429,11 +429,11 @@ describe("retryFailedRefund — failed_exhausted with notif insert error", () =>
 
 // ============================================================================
 // T-412 : kind='admin' (path /api/stripe/refund) — pas de blockedReason,
-// cancellation_reason='admin_refund', event_type failed='order_admin_refund_failed'.
+// closure_reason='admin_refund', event_type failed='order_admin_refund_failed'.
 // ============================================================================
 
 describe("retryFailedRefund — kind='admin' (T-412)", () => {
-  it("succeeded → idempotencyKey kind=admin + cancellation_reason='admin_refund' + audit kind=admin", async () => {
+  it("succeeded → idempotencyKey kind=admin + closure_reason='admin_refund' + audit kind=admin", async () => {
     vi.mocked(stripe.refunds.create).mockResolvedValue({
       id: "re_admin",
     } as never);
@@ -455,7 +455,7 @@ describe("retryFailedRefund — kind='admin' (T-412)", () => {
       { idempotencyKey: "refund_order-admin-1_admin_1" },
     );
     expect(captured.updates).toEqual([
-      { table: "orders", payload: { cancellation_reason: "admin_refund" } },
+      { table: "orders", payload: { closure_reason: "admin_refund" } },
     ]);
     // Audit log retried_succeeded sans blocked_reason (admin path).
     expect(vi.mocked(logPaymentEvent)).toHaveBeenCalledWith({
@@ -504,11 +504,11 @@ describe("retryFailedRefund — kind='admin' (T-412)", () => {
 
 // ============================================================================
 // T-412 : kind='timeout' (path cron order-timeout) — pas de blockedReason,
-// cancellation_reason='timeout', event_type failed='order_timeout_refund_failed'.
+// closure_reason='timeout', event_type failed='order_timeout_refund_failed'.
 // ============================================================================
 
 describe("retryFailedRefund — kind='timeout' (T-412)", () => {
-  it("succeeded → idempotencyKey kind=timeout + cancellation_reason='timeout' + audit kind=timeout", async () => {
+  it("succeeded → idempotencyKey kind=timeout + closure_reason='timeout' + audit kind=timeout", async () => {
     vi.mocked(stripe.refunds.create).mockResolvedValue({
       id: "re_timeout",
     } as never);
@@ -530,7 +530,7 @@ describe("retryFailedRefund — kind='timeout' (T-412)", () => {
       { idempotencyKey: "refund_order-timeout-1_timeout_1" },
     );
     expect(captured.updates).toEqual([
-      { table: "orders", payload: { cancellation_reason: "timeout" } },
+      { table: "orders", payload: { closure_reason: "timeout" } },
     ]);
   });
 

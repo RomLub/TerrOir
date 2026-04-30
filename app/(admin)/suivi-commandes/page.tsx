@@ -12,7 +12,7 @@ import { AdminPageHeader, MetricCard, StatusDotBadge, TableStatus } from '@/comp
 
 type Status = 'pending' | 'confirmed' | 'ready' | 'completed' | 'cancelled' | 'refunded';
 
-// Pseudo-statuts UI : commandes cancelled avec cancellation_reason
+// Pseudo-statuts UI : commandes cancelled avec closure_reason
 // spécifiques au flow Stripe webhook, affichées avec badges distincts
 // (gris doux pour payment_failed, terra clair pour les revival_blocked_*)
 // pour drill-down admin. Visible côté admin uniquement, le consumer ne
@@ -20,7 +20,7 @@ type Status = 'pending' | 'confirmed' | 'ready' | 'completed' | 'cancelled' | 'r
 //
 // 2 pseudo-statuts distincts pour revival_blocked_* (vs 1 générique) :
 // permet l'analytics fine "combien de blocages stock vs slot ce mois-ci"
-// et la cohérence avec le drill-down par cancellation_reason.
+// et la cohérence avec le drill-down par closure_reason.
 type DisplayStatus =
   | Status
   | 'payment_failed_pseudo'
@@ -37,11 +37,11 @@ type Order = {
   slot_label: string;
   total: number;
   status: Status;
-  cancellation_reason: string | null;
+  closure_reason: string | null;
 };
 
 // Pseudo-valeurs UI (pas des statuts DB) qui filtrent sur des couples
-// (status, cancellation_reason) spécifiques. Drill-down admin séparé pour
+// (status, closure_reason) spécifiques. Drill-down admin séparé pour
 // chaque type de blocage Stripe.
 type Filter =
   | 'all'
@@ -73,23 +73,23 @@ const STATUS_META: Record<DisplayStatus, { label: string; dot: string; bg: strin
   revival_blocked_slot_pseudo:   { label: 'Bloquée (créneau)',  dot: 'bg-terroir-terra-700', bg: 'bg-terroir-terra-100', text: 'text-terroir-terra-700' },
 };
 
-function isPaymentFailedOrder(o: { status: Status; cancellation_reason: string | null }): boolean {
-  return o.status === 'cancelled' && o.cancellation_reason === 'payment_failed';
+function isPaymentFailedOrder(o: { status: Status; closure_reason: string | null }): boolean {
+  return o.status === 'cancelled' && o.closure_reason === 'payment_failed';
 }
 
-function isRevivalBlockedStockOrder(o: { status: Status; cancellation_reason: string | null }): boolean {
-  return o.status === 'cancelled' && o.cancellation_reason === 'revival_blocked_stock';
+function isRevivalBlockedStockOrder(o: { status: Status; closure_reason: string | null }): boolean {
+  return o.status === 'cancelled' && o.closure_reason === 'revival_blocked_stock';
 }
 
-function isRevivalBlockedSlotOrder(o: { status: Status; cancellation_reason: string | null }): boolean {
-  return o.status === 'cancelled' && o.cancellation_reason === 'revival_blocked_slot';
+function isRevivalBlockedSlotOrder(o: { status: Status; closure_reason: string | null }): boolean {
+  return o.status === 'cancelled' && o.closure_reason === 'revival_blocked_slot';
 }
 
 // Une order est "void" du point de vue métier : pas d'engagement réel
 // (paiement non finalisé ou refundé automatiquement par le webhook).
 // Couvre les 3 reasons générées par le flow Stripe webhook, exclues des
 // metrics today + completion (commit 3 chantier résurrection robuste).
-function isVoidOrder(o: { status: Status; cancellation_reason: string | null }): boolean {
+function isVoidOrder(o: { status: Status; closure_reason: string | null }): boolean {
   return (
     isPaymentFailedOrder(o) ||
     isRevivalBlockedStockOrder(o) ||
@@ -126,7 +126,7 @@ export default function AdminCommandesPage() {
       const { data, error: fetchError } = await supabase
         .from('orders')
         .select(`
-          id, code_commande, created_at, statut, cancellation_reason, montant_total, date_retrait, heure_retrait,
+          id, code_commande, created_at, statut, closure_reason, montant_total, date_retrait, heure_retrait,
           consumer:consumer_id ( prenom, nom ),
           producer:producer_id ( nom_exploitation ),
           slots:slot_id ( starts_at, ends_at )
@@ -142,7 +142,7 @@ export default function AdminCommandesPage() {
         code_commande: string | null;
         created_at: string;
         statut: Status;
-        cancellation_reason: string | null;
+        closure_reason: string | null;
         montant_total: number | null;
         date_retrait: string | null;
         heure_retrait: string | null;
@@ -166,7 +166,7 @@ export default function AdminCommandesPage() {
           slot_label: `${formatDateFr(o.date_retrait, { year: false })}${slotTime ? ' ' + slotTime : ''}`,
           total: Number(o.montant_total ?? 0),
           status: o.statut,
-          cancellation_reason: o.cancellation_reason,
+          closure_reason: o.closure_reason,
         };
       });
 

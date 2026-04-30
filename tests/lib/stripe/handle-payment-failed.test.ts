@@ -223,7 +223,7 @@ describe("syncStripePaymentFailed — Cas 6 : guard_confirmed (statut=ready)", (
 });
 
 describe("syncStripePaymentFailed — Cas 7 : cancelled (cas nominal pending)", () => {
-  it("order pending → UPDATE avec cancellation_reason='payment_failed' + revalidatePublicStats", async () => {
+  it("order pending → UPDATE avec closure_reason='payment_failed' + revalidatePublicStats", async () => {
     const { client, captured } = makeSupabase();
     const pi = makePaymentIntent({ orderId: "order-42" });
 
@@ -238,7 +238,7 @@ describe("syncStripePaymentFailed — Cas 7 : cancelled (cas nominal pending)", 
     expect(captured.update).toHaveLength(1);
     const payload = captured.update[0] as Record<string, unknown>;
     expect(payload.statut).toBe("cancelled");
-    expect(payload.cancellation_reason).toBe("payment_failed");
+    expect(payload.closure_reason).toBe("payment_failed");
     expect(payload.cancelled_at).toEqual(expect.any(String));
     expect(() => new Date(payload.cancelled_at as string)).not.toThrow();
 

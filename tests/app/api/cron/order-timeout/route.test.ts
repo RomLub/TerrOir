@@ -315,7 +315,7 @@ describe("POST /api/cron/order-timeout — single order", () => {
     const ordersUpdate = captured.updates.find((u) => u.table === "orders");
     expect(ordersUpdate?.payload).toEqual({
       statut: "cancelled",
-      cancellation_reason: "timeout",
+      closure_reason: "timeout",
       cancelled_at: FROZEN_NOW.toISOString(),
     });
 
@@ -356,7 +356,7 @@ describe("POST /api/cron/order-timeout — single order", () => {
 
     const ordersUpdate = captured.updates.find((u) => u.table === "orders");
     expect(ordersUpdate?.payload.statut).toBe("refunded");
-    expect(ordersUpdate?.payload.cancellation_reason).toBe("timeout");
+    expect(ordersUpdate?.payload.closure_reason).toBe("timeout");
     expect(ordersUpdate?.payload.cancelled_at).toBe(FROZEN_NOW.toISOString());
 
     expect(body.processed).toBe(1);
@@ -743,7 +743,7 @@ describe("POST /api/cron/order-timeout — T-409 pre-check pi.status", () => {
     // Statut → cancelled (pas refunded car aucun refund Stripe émis).
     const orderUpdate = captured.updates.find((u) => u.table === "orders");
     expect(orderUpdate?.payload.statut).toBe("cancelled");
-    expect(orderUpdate?.payload.cancellation_reason).toBe("timeout");
+    expect(orderUpdate?.payload.closure_reason).toBe("timeout");
 
     const json = await res.json();
     expect(json.results[0].refunded).toBe(false);

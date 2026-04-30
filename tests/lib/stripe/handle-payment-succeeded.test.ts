@@ -27,7 +27,7 @@ vi.mock("@/lib/stripe/server", () => ({
 }));
 
 // Mock Supabase. Le helper effectue jusqu'à 3 chaînes selon le path :
-//   1. from('orders').select('id, statut, cancellation_reason, consumer_id').eq.maybeSingle()
+//   1. from('orders').select('id, statut, closure_reason, consumer_id').eq.maybeSingle()
 //        → fetchResp
 //   2. (résurrection) admin.rpc('revive_order_with_stock_check', ...)
 //        → rpcResp
@@ -48,7 +48,7 @@ const DEFAULT_FETCH_PENDING: Resp = {
   data: {
     id: "order-42",
     statut: "pending",
-    cancellation_reason: null,
+    closure_reason: null,
     consumer_id: "user-7",
   },
   error: null,
@@ -217,7 +217,7 @@ describe("syncStripePaymentSucceeded — Cas 4 : already_confirmed (statut=confi
         data: {
           id: "order-42",
           statut: "confirmed",
-          cancellation_reason: null,
+          closure_reason: null,
           consumer_id: "user-7",
         },
         error: null,
@@ -242,7 +242,7 @@ describe("syncStripePaymentSucceeded — Cas 5 : already_confirmed (statut=compl
         data: {
           id: "order-42",
           statut: "completed",
-          cancellation_reason: null,
+          closure_reason: null,
           consumer_id: "user-7",
         },
         error: null,
@@ -269,7 +269,7 @@ describe("syncStripePaymentSucceeded — Cas 6 : revived_to_notify (RPC=revived)
         data: {
           id: "order-42",
           statut: "cancelled",
-          cancellation_reason: "payment_failed",
+          closure_reason: "payment_failed",
           consumer_id: "user-7",
         },
         error: null,
@@ -309,7 +309,7 @@ describe("syncStripePaymentSucceeded — Cas 6 : revived_to_notify (RPC=revived)
 });
 
 describe("syncStripePaymentSucceeded — Cas 7 : revival_blocked_stock + refund OK", () => {
-  it("RPC blocked_stock + Stripe refund OK → UPDATE cancellation_reason + audit log + log warn", async () => {
+  it("RPC blocked_stock + Stripe refund OK → UPDATE closure_reason + audit log + log warn", async () => {
     vi.mocked(stripe.refunds.create).mockResolvedValue({
       id: "re_123",
     } as never);
@@ -319,7 +319,7 @@ describe("syncStripePaymentSucceeded — Cas 7 : revival_blocked_stock + refund 
         data: {
           id: "order-42",
           statut: "cancelled",
-          cancellation_reason: "payment_failed",
+          closure_reason: "payment_failed",
           consumer_id: "user-7",
         },
         error: null,
@@ -341,10 +341,10 @@ describe("syncStripePaymentSucceeded — Cas 7 : revival_blocked_stock + refund 
       payment_intent: "pi_blocked_s",
     });
 
-    // UPDATE cancellation_reason='revival_blocked_stock' (statut reste
+    // UPDATE closure_reason='revival_blocked_stock' (statut reste
     // cancelled, cancelled_at reste figé).
     expect(captured.update).toEqual([
-      { cancellation_reason: "revival_blocked_stock" },
+      { closure_reason: "revival_blocked_stock" },
     ]);
 
     // Audit log avec metadata refund='ok'.
@@ -367,7 +367,7 @@ describe("syncStripePaymentSucceeded — Cas 7 : revival_blocked_stock + refund 
 });
 
 describe("syncStripePaymentSucceeded — Cas 8 : revival_blocked_slot + refund OK", () => {
-  it("RPC blocked_slot + Stripe refund OK → cancellation_reason='revival_blocked_slot' + audit", async () => {
+  it("RPC blocked_slot + Stripe refund OK → closure_reason='revival_blocked_slot' + audit", async () => {
     vi.mocked(stripe.refunds.create).mockResolvedValue({ id: "re_456" } as never);
 
     const { client, captured } = makeSupabase({
@@ -375,7 +375,7 @@ describe("syncStripePaymentSucceeded — Cas 8 : revival_blocked_slot + refund O
         data: {
           id: "order-42",
           statut: "cancelled",
-          cancellation_reason: "payment_failed",
+          closure_reason: "payment_failed",
           consumer_id: "user-7",
         },
         error: null,
@@ -391,7 +391,7 @@ describe("syncStripePaymentSucceeded — Cas 8 : revival_blocked_slot + refund O
       orderId: "order-42",
     });
     expect(captured.update).toEqual([
-      { cancellation_reason: "revival_blocked_slot" },
+      { closure_reason: "revival_blocked_slot" },
     ]);
     expect(vi.mocked(logPaymentEvent)).toHaveBeenCalledWith({
       eventType: "order_revival_blocked_slot",
@@ -416,7 +416,7 @@ describe("syncStripePaymentSucceeded — Cas 9 : revival_refund_failed (stock bl
         data: {
           id: "order-42",
           statut: "cancelled",
-          cancellation_reason: "payment_failed",
+          closure_reason: "payment_failed",
           consumer_id: "user-7",
         },
         error: null,
@@ -470,7 +470,7 @@ describe("syncStripePaymentSucceeded — Cas 10 : revival_refund_failed (slot bl
         data: {
           id: "order-42",
           statut: "cancelled",
-          cancellation_reason: "payment_failed",
+          closure_reason: "payment_failed",
           consumer_id: "user-7",
         },
         error: null,
@@ -503,7 +503,7 @@ describe("syncStripePaymentSucceeded — Cas 11 : RPC retourne error (PostgREST)
         data: {
           id: "order-42",
           statut: "cancelled",
-          cancellation_reason: "payment_failed",
+          closure_reason: "payment_failed",
           consumer_id: "user-7",
         },
         error: null,
@@ -532,7 +532,7 @@ describe("syncStripePaymentSucceeded — Cas 12 : RPC retourne valeur inattendue
         data: {
           id: "order-42",
           statut: "cancelled",
-          cancellation_reason: "payment_failed",
+          closure_reason: "payment_failed",
           consumer_id: "user-7",
         },
         error: null,
@@ -563,7 +563,7 @@ describe("syncStripePaymentSucceeded — Cas 13 : anomaly (cancelled+consumer_ca
         data: {
           id: "order-42",
           statut: "cancelled",
-          cancellation_reason: "consumer_cancel",
+          closure_reason: "consumer_cancel",
           consumer_id: "user-7",
         },
         error: null,
@@ -592,7 +592,7 @@ describe("syncStripePaymentSucceeded — Cas 14 : anomaly (refunded)", () => {
         data: {
           id: "order-42",
           statut: "refunded",
-          cancellation_reason: null,
+          closure_reason: null,
           consumer_id: "user-7",
         },
         error: null,

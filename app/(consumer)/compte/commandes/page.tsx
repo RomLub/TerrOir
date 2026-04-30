@@ -11,7 +11,7 @@ type OrderRow = {
   code_commande: string | null;
   created_at: string;
   statut: OrderStatus;
-  cancellation_reason: string | null;
+  closure_reason: string | null;
   montant_total: number;
   producer_id: string;
   producer_name: string;
@@ -23,7 +23,7 @@ type OrderRow = {
 // engagée du point de vue consumer : pas d'argent débité (ou refundé), pas
 // de produit réservé. Filtre côté front pour ne pas polluer l'historique.
 //
-// Couvre 3 cancellation_reason générés par le flow Stripe webhook :
+// Couvre 3 closure_reason générés par le flow Stripe webhook :
 //   - 'payment_failed'          : 3DS-fail / fonds insuffisants / carte
 //                                 refusée (commit P2 9482e5b).
 //   - 'revival_blocked_stock'   : 3DS-retry succeeded mais stock épuisé
@@ -40,11 +40,11 @@ const VOID_ORDER_REASONS: ReadonlySet<string> = new Set([
   'revival_blocked_slot',
 ]);
 
-function isVoidOrderRow(o: { statut: OrderStatus; cancellation_reason: string | null }): boolean {
+function isVoidOrderRow(o: { statut: OrderStatus; closure_reason: string | null }): boolean {
   return (
     o.statut === 'cancelled' &&
-    o.cancellation_reason !== null &&
-    VOID_ORDER_REASONS.has(o.cancellation_reason)
+    o.closure_reason !== null &&
+    VOID_ORDER_REASONS.has(o.closure_reason)
   );
 }
 
@@ -83,7 +83,7 @@ export default function CommandesPage() {
       const { data, error: fetchError } = await supabase
         .from('orders')
         .select(`
-          id, code_commande, created_at, statut, cancellation_reason, montant_total, producer_id,
+          id, code_commande, created_at, statut, closure_reason, montant_total, producer_id,
           producers:producer_id ( nom_exploitation, slug ),
           order_items ( id )
         `)
@@ -107,7 +107,7 @@ export default function CommandesPage() {
             code_commande: (o.code_commande as string | null) ?? null,
             created_at: o.created_at as string,
             statut: o.statut as OrderStatus,
-            cancellation_reason: (o.cancellation_reason as string | null) ?? null,
+            closure_reason: (o.closure_reason as string | null) ?? null,
             montant_total: Number(o.montant_total ?? 0),
             producer_id: o.producer_id as string,
             producer_name: prod?.nom_exploitation ?? 'Producteur',
@@ -129,7 +129,7 @@ export default function CommandesPage() {
             const updated = payload.new as {
               id: string;
               statut: OrderStatus;
-              cancellation_reason: string | null;
+              closure_reason: string | null;
             };
             // Si la commande visible bascule en void (payment_failed,
             // revival_blocked_stock, revival_blocked_slot — UPDATE webhook
@@ -141,7 +141,7 @@ export default function CommandesPage() {
               }
               return prev.map((o) =>
                 o.id === updated.id
-                  ? { ...o, statut: updated.statut, cancellation_reason: updated.cancellation_reason }
+                  ? { ...o, statut: updated.statut, closure_reason: updated.closure_reason }
                   : o,
               );
             });

@@ -33,7 +33,7 @@ export async function recomputeBadgesForProducer(
 
   const { data: orders, error: selectError } = await admin
     .from("orders")
-    .select("id, statut, created_at, confirmed_at, cancellation_reason")
+    .select("id, statut, created_at, confirmed_at, closure_reason")
     .eq("producer_id", producerId)
     .gte("created_at", cutoff.toISOString());
 
@@ -47,7 +47,7 @@ export async function recomputeBadgesForProducer(
 
   const total = orders.length;
   const cancelledStock = orders.filter(
-    (o) => o.cancellation_reason === "stock",
+    (o) => o.closure_reason === "stock",
   ).length;
   const cancelled = orders.filter(
     (o) => o.statut === "cancelled" || o.statut === "refunded",
