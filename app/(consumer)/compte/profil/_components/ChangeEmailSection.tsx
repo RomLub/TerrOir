@@ -66,7 +66,21 @@ export default function ChangeEmailSection({
     requestOtpAction,
     INITIAL_REQUEST,
   );
-  const [verifyState, verifyAction] = useFormState(
+  // Deux useFormState distincts pour les 2 phases verify (current + new)
+  // du flow A3. Critique : un seul useFormState partagé causerait un
+  // déclenchement prématuré de completeEmailChange dès la transition
+  // step verify-current → verify-new — verifyState.ok resterait à true
+  // entre les 2 phases et le useEffect chaining (deps step) re-firerait
+  // sur changement de step en interprétant l'ancien ok=true comme une
+  // validation fraîche de step=new. Bug détecté par le premier run E2E
+  // Playwright (cf. tests/e2e/change-email.spec.ts) — defense in depth
+  // côté serveur via le test "completeEmailChange refuse si verifyOtp(new)
+  // pas consommé" dans integration-flow.test.tsx.
+  const [verifyCurrentState, verifyCurrentAction] = useFormState(
+    verifyOtpAction,
+    INITIAL_VERIFY,
+  );
+  const [verifyNewState, verifyNewAction] = useFormState(
     verifyOtpAction,
     INITIAL_VERIFY,
   );
@@ -87,23 +101,25 @@ export default function ChangeEmailSection({
     });
   }, [requestState]);
 
-  // Chaining post-verify :
-  //   verify(current) ok → trigger requestOtp(step=new) auto
-  //   verify(new) ok     → trigger completeEmailChange auto
+  // Chaining post-verify, splitté en 2 useEffect distincts (un par phase)
+  // pour éviter le bug de re-fire prématuré (cf. commentaire au-dessus
+  // des useFormState verifyCurrent/verifyNew). Chaque useEffect ne
+  // dépend QUE de son state propre — pas de step en deps — donc ne
+  // peut être déclenché que par une nouvelle réponse serveur de SA phase.
   useEffect(() => {
-    if (!verifyState.ok) return;
-    if (step === "verify-current") {
-      const fd = new FormData();
-      fd.set("step", "new");
-      fd.set("newEmail", newEmailValue);
-      requestAction(fd);
-    }
-    if (step === "verify-new") {
-      const fd = new FormData();
-      fd.set("newEmail", newEmailValue);
-      completeAction(fd);
-    }
-  }, [verifyState, step, newEmailValue, requestAction, completeAction]);
+    if (!verifyCurrentState.ok) return;
+    const fd = new FormData();
+    fd.set("step", "new");
+    fd.set("newEmail", newEmailValue);
+    requestAction(fd);
+  }, [verifyCurrentState, newEmailValue, requestAction]);
+
+  useEffect(() => {
+    if (!verifyNewState.ok) return;
+    const fd = new FormData();
+    fd.set("newEmail", newEmailValue);
+    completeAction(fd);
+  }, [verifyNewState, newEmailValue, completeAction]);
 
   // Transition finale : complete ok → completed
   useEffect(() => {
@@ -160,8 +176,8 @@ export default function ChangeEmailSection({
           stepName="current"
           newEmailValue={newEmailValue}
           targetDescription={`à votre adresse actuelle (${currentEmail})`}
-          verifyState={verifyState}
-          verifyAction={verifyAction}
+          verifyState={verifyCurrentState}
+          verifyAction={verifyCurrentAction}
           requestAction={requestAction}
           onCancel={cancelFlow}
         />
@@ -178,8 +194,8 @@ export default function ChangeEmailSection({
             stepName="new"
             newEmailValue={newEmailValue}
             targetDescription={`à ${newEmailValue}`}
-            verifyState={verifyState}
-            verifyAction={verifyAction}
+            verifyState={verifyNewState}
+            verifyAction={verifyNewAction}
             requestAction={requestAction}
             onCancel={cancelFlow}
           />

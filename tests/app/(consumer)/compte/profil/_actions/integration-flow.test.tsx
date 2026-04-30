@@ -405,7 +405,69 @@ describe("Integration flow — edge cases cross-actions", () => {
       attemptsRemaining: 4,
     });
     // Si l'UI ne gère pas la transition, completeEmailChange ne sera jamais
-    // appelé (responsabilité côté ChangeEmailSection useEffect verifyState.ok)
+    // appelé (responsabilité côté ChangeEmailSection useEffect — chaque
+    // phase a son useFormState dédié verifyCurrentState/verifyNewState
+    // pour éviter le re-fire prématuré, cf. tests/e2e/change-email.spec.ts).
     expect(adminUpdateUserByIdMock).not.toHaveBeenCalled();
+  });
+
+  // Defense in depth pour le bug UI détecté au premier run E2E Playwright
+  // (cf. tests/e2e/change-email.spec.ts) : avant le fix de séparation des
+  // useFormState verifyCurrentState/verifyNewState dans ChangeEmailSection.tsx,
+  // le useEffect chaining déclenchait completeEmailChange dès la transition
+  // step verify-current → verify-new, sans que verifyOtp(step=new) ait tourné
+  // (verifyState.ok restait à true entre les 2 phases — trace t0→t8 dans
+  // l'investigation Playwright). La fix UI sépare les états, mais ce test
+  // verrouille la défense côté serveur : même si une régression UI ré-introduit
+  // le bug, completeEmailChange doit refuser avec reason='flow_invalid' tant
+  // que la row step=new n'est pas consumed_at NOT NULL.
+  it("completeEmailChange refuse si verifyOtp(new) pas consommé récemment (defense in depth pour bug UI Playwright t0→t8)", async () => {
+    // Step 1 : requestOtp(current) ok
+    const res1 = await requestOtpAction(
+      {},
+      makeRequestFD("current", "new@example.com"),
+    );
+    expect(res1).toEqual({ ok: true });
+
+    // Step 2 : verifyOtp(current) ok → row step=current consumed
+    selectMaybeSingleQueue = [
+      { data: makeOtpRow({ step: "current" }), error: null },
+    ];
+    const res2 = await verifyOtpAction({}, makeVerifyFD("current", "123456"));
+    expect(res2).toEqual({ ok: true });
+
+    // Step 3 : requestOtp(new) ok → row step=new INSERT mais PAS consumed
+    const res3 = await requestOtpAction(
+      {},
+      makeRequestFD("new", "new@example.com"),
+    );
+    expect(res3).toEqual({ ok: true });
+
+    // Step 4 : completeEmailChange APPELÉ DIRECTEMENT (skip verifyOtp(new)).
+    // Mock le defensive recheck DB : row step=current consumed, row step=new
+    // PAS consumed (consumed_at IS NULL) — état incohérent que l'UI buggé
+    // produirait avant le fix.
+    selectMaybeSingleQueue = [
+      {
+        data: {
+          consumed_at: new Date().toISOString(),
+          email: "old@example.com",
+        },
+        error: null,
+      },
+      {
+        data: { consumed_at: null, email: "new@example.com" },
+        error: null,
+      },
+    ];
+    const res4 = await completeEmailChangeAction(
+      {},
+      makeCompleteFD("new@example.com"),
+    );
+    expect(res4).toEqual({ ok: false, reason: "flow_invalid" });
+
+    // Aucune mutation : ni auth.users.email, ni public.users, ni signOut.
+    expect(adminUpdateUserByIdMock).not.toHaveBeenCalled();
+    expect(userSignOutMock).not.toHaveBeenCalled();
   });
 });
