@@ -47,6 +47,8 @@
 >
 > **Migrations apply confirmées prod** : `20260424000000` (Stripe Connect flags), `20260427100000` (audit_logs), `20260427200000` (trigger stock à l'annulation), `20260427300000` (RPC résurrection avec check stock + slot), **`20260428000000` (gms_prices + gms_prices_history + RLS public read + indexes — PR #2 28/04)**.
 >
+> **Migrations en attente d'apply prod** : `20260430153937_t013_email_change_a3_schema` (T-013/T-014 PR1 30/04 — UNIQUE preventive sur `public.users.email` + tables `email_change_otp_codes` + `email_change_undo_tokens` pour le flow A3 custom 2 OTP successifs + undo. Apply manuel via Supabase Studio SQL Editor après merge PR1, pre-flight check doublons inclus en tête de migration).
+>
 > **Design system Phase 1 livré** : tokens terra complets dans `tailwind.config.js` + CSS vars dans `app/globals.css` + Caveat font + composants `<Logo variant="wordmark|wordmark-dark|icon|icon-dark|mono"/>`, `<Button variant="primary|secondary|ghost|success|accent"/>`, `<PostIt/>`, `<MapSarthe/>`, `<NavbarPublic/>` refondue, `<Footer/>` dark refondu. Sources officielles : `~/Desktop/Logo.svg` (8 paths vectoriels) et `public/logo/logo-source.svg` (~10KB nettoyé). Bundle Claude Design archivé dans `~/Downloads/design_handoff_terroir/` (39 fichiers, ~21KB) en cas de besoin pour Phase 2.
 >
 > **Brand assets externes Phase 1 livrés** (PR #3 28/04 PM) : `app/icon.png` régénéré + `app/apple-icon.png` (180×180 fond terra-700) + `app/opengraph-image.png` (1200×630 wordmark fond crème) + `app/twitter-image.png` (identique OG) + `scripts/_logo-paths.mjs` partagé + `scripts/generate-brand-assets.mjs` (générateur unique) + métadonnées Next 14 file-based dans `app/layout.tsx` (metadataBase + openGraph + twitter.card). Régénération via `node scripts/generate-brand-assets.mjs` (idempotent).
@@ -179,6 +181,10 @@ Gérées via Vercel Dashboard. Jamais dans le code.
   - `https://admin.terroir-local.fr/auth/callback`
   - `https://pro.terroir-local.fr/auth/callback` (si flow magic link étendu au producer)
 - **Supabase Dashboard > Authentication > URL Configuration > Site URL** : `https://www.terroir-local.fr`.
+- **Supabase Dashboard > Authentication > Sign In/Up > Email > "Secure email change"** : **ON** (filet de sécurité, cf. T-013 PR1 30/04).
+  - Côté flow applicatif : **non emprunté** depuis T-013. Le flow custom A3 (modèle Amazon-like 2 OTP successifs in-session + email d'annulation post-fait à l'ancien email, livré PR2/PR3) utilise `supabase.auth.admin.updateUserById()` côté service_role qui **bypass ce toggle**.
+  - Le toggle ON est conservé volontairement : si `supabase.auth.updateUser({ email })` est ré-introduit par erreur dans le code applicatif (refacto, nouveau dev, copy-paste), Secure Email Change ON force la double confirmation Supabase plutôt que de devenir 1-clic vulnérable.
+  - **Anti-pattern à proscrire** : ne JAMAIS ré-utiliser `supabase.auth.updateUser({ email })` côté code applicatif. Toute mutation d'email passe exclusivement par `auth.admin.updateUserById()` au sein du flow A3 (`app/(consumer)/compte/profil/_actions/email-change-*` après merge PR2).
 - **OVH Zone DNS `terroir-local.fr`** : SPF inclut `include:mx.ovh.com` (MX OVH) et `include:amazonses.com` (Resend via SES) pour permettre Resend → boîtes `@terroir-local.fr` sans rejet MX interne.
   - Enregistrement complet : `v=spf1 include:mx.ovh.com include:amazonses.com ~all`.
 - **Resend Dashboard** : domaine `terroir-local.fr` vérifié (DKIM + SPF + MX + DMARC). Clé API Full Access utilisée par le code app (`RESEND_API_KEY` Vercel) ET par le SMTP custom Supabase.
