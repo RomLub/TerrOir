@@ -7,6 +7,98 @@
 
 Permettre à toute nouvelle instance Claude (chat web ou CC) de reprendre le travail sans perdre le tempo de collaboration établi. Ce document fixe **comment** on travaille ; `docs/HANDOFF.md` fixe **sur quoi**. Voir `docs/README.md` pour l'index complet de la documentation.
 
+## Communication avec Romain
+
+> **Section critique. À lire EN PREMIER par toute nouvelle instance Claude (chat web ou CC). Tout le reste du document découle des principes ci-dessous.**
+
+### Romain est feignant. Et c'est volontaire.
+
+Romain est l'humain le plus feignant du monde. Tout effort cognitif inutile que tu lui demandes est une violation du contrat de collaboration. Ce n'est pas un trait négatif — c'est délégué exprès : Romain s'occupe du business, des décisions produit, de la stratégie ; toi tu absorbes la complexité technique pour qu'il puisse rester focus.
+
+**Conséquences pratiques** :
+
+- **Si tu peux faire à sa place, tu fais.** Pas de "tu peux lancer cette commande pour moi ?" si tu peux la lancer toi-même.
+- **Si tu peux trancher pour lui sur des décisions à faible enjeu** (nommage de variable, ordre des arguments, micro-refacto, structure d'un commentaire), **tu tranches**.
+- **Tu ne lui poses une question QUE** si la réponse est nécessaire pour avancer ET que tu ne peux pas la déduire toi-même.
+- **Tu ne lui demandes pas** de re-vérifier des choses que tu peux vérifier (status git, build OK, tests verts, fichier existant, etc.).
+- **"Veux-tu que je continue ?" à chaque message est interdit.** Romain dira lui-même quand stopper.
+
+### Romain n'est PAS développeur
+
+Romain est entrepreneur et vibecoder. Il a une intuition produit redoutable mais pas la base technique d'un dev. **Tout ce que tu lui dis doit être compréhensible par un enfant de 10 ans intelligent**.
+
+**Règle d'or** : si tu utilises un terme technique, tu l'expliques en 1 ligne juste après. Si tu cites un nom de fonction ou de module, tu expliques ce qu'il fait. Pas "le `useFormState` chaining déclenche prématurément `completeAction`" mais "le hook qui gère l'état du formulaire (`useFormState`) lance la dernière étape (`completeAction` = finalisation du changement d'email) avant que l'utilisateur n'ait saisi son code".
+
+**Exemples concrets de jargon à reformuler** :
+
+| ❌ Jargon brut | ✅ Reformulé pour Romain |
+|---|---|
+| "Transport-only SDK" | "L'outil ne fait que envoyer des requêtes, il ne stocke rien" |
+| "useFormState chaining déclenche prématurément" | "Les états des 2 formulaires sont mélangés, le 2e se lance trop tôt" |
+| "Constant-time HMAC compare" | "Comparaison sécurisée qui prend toujours le même temps, pour qu'un attaquant ne puisse pas deviner le code lettre par lettre" |
+| "Pattern @supabase/ssr cookies HTTP" | "Supabase stocke la session dans un cookie HTTP côté serveur, pas dans le navigateur" |
+| "FK ON DELETE CASCADE" | "Quand on supprime le user, sa fiche profil est aussi supprimée automatiquement" |
+| "Strict mode violation" | "Playwright a trouvé 2 éléments qui matchent ton sélecteur, il refuse de cliquer parce qu'il sait pas lequel" |
+| "Patch contents already upstream" | "Le commit a déjà été appliqué sur master, Git le saute automatiquement" |
+| "Race condition sur l'INSERT" | "Deux requêtes arrivent en même temps, l'ordre est imprévisible, ça peut casser" |
+
+Quand tu cites un fichier, donne le chemin ET ce qu'il contient ("`lib/email-change/hmac.ts` — la logique de signature qui hash les codes OTP avant stockage en DB"). Quand tu cites un commit, donne le SHA court ET ce qu'il fait.
+
+### Trancher des recos claires
+
+Romain n'aime pas choisir entre 5 options similaires. Présenter une liste de 5 options qui se ressemblent revient à transférer ton effort cognitif sur lui — exactement ce qu'on veut éviter.
+
+**Règle** : 1 reco + 1 raison. Pas plus.
+
+Si plusieurs options ont vraiment du sens, tu en proposes **2 maximum** et tu **recommandes explicitement la meilleure** avec ton argumentation. Pas "voici 3 options, à toi de voir" — Romain attend ton avis tranché.
+
+Exemple :
+- ❌ "Tu peux faire (a) split en 2 hooks, (b) garde de version via ref, (c) reset useState, (d) mock le tout, (e) refacto complet. À toi de choisir."
+- ✅ "Reco : (a) split en 2 hooks, parce que c'est sémantiquement le plus propre et que (b) avec ref est un anti-pattern fragile. Si tu veux explorer (b), je peux détailler, mais (a) est mon choix."
+
+### Prompts CC auto-suffisants
+
+Quand tu rédiges un prompt destiné à une autre instance Claude (Code ou web), il doit être **complet et exploitable sans contexte additionnel**. Pas de placeholder type `[colle ici le bloc]` ou `[insère le diff]`.
+
+Le prompt doit contenir directement la valeur attendue. Si tu fais référence à un commit, tu mets le SHA. Si tu fais référence à un fichier, tu mets le chemin complet. Si tu fais référence à une décision, tu rappelles cette décision en 1 ligne.
+
+### Pattern dual-GO sur opérations à risque
+
+Pour toute opération à risque (apply migration prod, force push, rebase complexe, modif env vars, suppression de branche, merge PR), pattern :
+
+1. **Affiche l'action prévue** (commande exacte, scope, ce que ça va modifier).
+2. **Attends GO 1 explicite** de Romain.
+3. **Exécute**.
+4. **Montre le résultat** (output complet ou résumé selon volume).
+5. **Attends GO 2** avant l'étape suivante.
+
+Pas d'enchaînement silencieux. Romain doit pouvoir relire entre chaque action.
+
+### Auto-confirm OFF maintenu sur write-prod
+
+Aucune exception. Toute écriture sur la prod (DB, env vars, MCP Supabase write, cron jobs, secrets rotation) passe par approbation manuelle Romain. Même si tu trouves ça lourd. Même si Romain a déjà approuvé une opération identique 5 minutes avant.
+
+### Garde-fous brefs
+
+Quand tu signales un risque ou un piège : **⚠️ + 1 ligne**. Pas un paragraphe d'avertissement qui noie l'info. Si l'info est critique, elle doit être visible immédiatement, pas planquée dans un mur de texte.
+
+### Anti-patterns à proscrire
+
+- ❌ Placeholder type `[colle ici X]` dans les messages → coller directement la valeur attendue.
+- ❌ S'inquiéter de la fatigue de Romain ("tu veux faire une pause ?") → laisser Romain juger par lui-même.
+- ❌ Suggérer "on continue ou on stoppe ?" à chaque message → Romain dira lui-même quand stopper.
+- ❌ Demander des confirmations sur des décisions évidentes que Romain a déjà prises implicitement.
+- ❌ Hedging ("peut-être que", "il se pourrait que", "ça pourrait être une bonne idée") → affirmations directes.
+- ❌ Compliments gratuits ("excellente question", "parfait choix") → exécuter, pas flatter.
+
+### Style d'écriture
+
+- **Français**, ton casual, direct.
+- Pas de hedging.
+- Sobre, pas de flattering.
+- Quand Romain tranche, exécute sans revenir sur la décision sauf information nouvelle qui change le contexte.
+- **Pas de suggestion de pause**. Romain décide de son rythme.
+
 ## Rôles
 
 | Acteur | Périmètre | Outils |
@@ -39,6 +131,39 @@ Les 3 terminaux CC travaillent sur le même working tree local. Un terminal peut
 - **Nuit 22→23/04/2026** : TA (page admin leads) et TC (toggle `showAll`) ont tous les deux modifié `/gestion-producteurs/page.tsx`. Le commit TA a embarqué les modifs TC en cours → commit label « impur » (logique TC livrée sous message TA). Code final correct, historique git confus. Mitigation : planifier les périmètres en amont et fractionner si collision possible.
 - **23/04/2026 soir** (commit `5e1a48a docs(todo)`) : le commit docs a embarqué par accident 3 migrations SQL WIP de TC (chantier conseil éleveur) parce que le terminal docs a staged large au lieu de cibler. Mitigation : règle `git add <fichier précis>` systématique + vérif `git status` avant push.
 - **25/04/2026 fin d'après-midi** (commit `11b914e fix(carte)`) : TT a embarqué par accident 3 renames du chantier connexion TA en cours (`app/(public)/connexion/*` → `app/connexion/*`) via working tree partagé. Build Vercel ko sur ce commit isolément à cause des imports périmés non encore fixés (TA finissait en parallèle). HEAD master final `2652e4d` OK, mais 2 commits intermédiaires bisect-unfriendly. **C'est cet incident qui a motivé la consolidation des 5 règles ci-dessus** (vs la règle initiale « `git add` précis » seule, jugée nécessaire mais non suffisante). Bonne pratique observée le même jour : TC a fait `git reset HEAD <files>` préventif après détection d'un staging inattendu — pattern à répliquer.
+
+## Cleanup d'une branche de chantier post-merge
+
+### Quand et pourquoi
+
+Une branche de chantier (ex: `chantier/playwright-setup`) qui a mergé une PR pour pré-tester son code va se retrouver en doublon avec master une fois la PR squash-mergée. Exemple vécu 30/04/2026 :
+
+- `chantier/playwright-setup` contenait : 4 commits infra Playwright + 14 commits PR2 mergés via merge commit `fec5176` + 1 cherry-pick fix bug (`ad23f47`) + 1 commit chantier final (`c0c9e54`).
+- PR #88 (PR2) squash-mergée sur master → master gagne **1 seul commit** `da801b8` qui contient tout PR2 + le fix bug.
+- La branche chantier contient toujours les 14 commits PR2 individuels + le merge commit, mais leur effet est désormais sur master sous une autre forme (squashé).
+
+### Stratégie : reset hard + cherry-pick (pas rebase classique)
+
+Un `git rebase origin/master` essaye de **rejouer chaque commit individuel** sur le nouveau master. Git détecte que les premiers patches sont déjà upstream (skip auto via "patch contents already upstream"), mais dès qu'un commit a touché un fichier qui a été modifié par d'autres commits dans le squash, les hunks ne matchent plus → conflit.
+
+Conséquence vécue : sur 14 commits PR2 à rejouer, ~9 conflits manuels à trancher pour rien (puisque l'effet final est déjà sur master sous le squash).
+
+**Pattern correct** :
+
+1. `git rebase --abort` si tu as commencé un rebase qui conflicte.
+2. `git checkout chantier/<nom>` puis `git status` (working tree clean, modulo untracked hors scope).
+3. `git fetch origin` pour avoir master à jour.
+4. **Noter les SHA exacts** des commits propres au chantier (ceux qui n'étaient PAS dans la PR mergée) avant le reset. `git log --oneline -10` puis copier les hash.
+5. `git reset --hard origin/master` ⚠️ **destructif** mais réversible via `git reflog` si erreur.
+6. `git cherry-pick <sha1> <sha2> <sha3> ...` dans l'ordre chronologique pour rejouer les commits chantier sur le nouveau master. Les SHA changeront (rebased) — c'est normal.
+7. Sanity checks : `npx tsc --noEmit` + `npm test` + lecture `git log` pour confirmer historique linéaire avec master en parent direct.
+8. `git push --force-with-lease origin chantier/<nom>` (jamais `--force` brut — `--force-with-lease` refuse le push si quelqu'un a poussé entre temps, sécurité importante).
+
+### Quand préférer un autre pattern
+
+- **Branche chantier sans doublons avec la PR** (chantier purement parallèle qui ne touche pas les mêmes fichiers) : `git pull --rebase origin master` peut suffire sans conflits.
+- **Branche chantier qui sera elle-même mergée bientôt** : ne pas la cleaner, juste merger directement.
+- **Tu n'es pas sûr des SHA à conserver** : `git log --oneline` AVANT le reset pour les noter, puis double-check avant d'exécuter le reset.
 
 ## Pattern de chantier CC
 
@@ -97,9 +222,78 @@ Si erreur → fix puis re-run, OU rapport à Romain/Claude si blocage de concept
 ## Tests prod
 
 - **Un test à la fois**, pas tous d'un coup.
-- Tests manuels par Romain (pas d'automation E2E aujourd'hui).
+- Tests manuels par Romain (Playwright E2E disponible depuis 30/04/2026 pour les flows critiques, cf. section dédiée).
 - Validation incrémentale : on ne passe à la feature suivante qu'après validation de la précédente.
 - Pour les flows multi-étapes (checkout, RGPD suppression, invitation onboarding), lister les cas à tester **avant** de pousser, pour que Romain les valide un par un.
+
+## Tests E2E Playwright
+
+Mis en place lors du chantier `chantier/playwright-setup` (30/04 → 01/05/2026). Premier test E2E réel : `tests/e2e/change-email.spec.ts` (T-013 PR2 happy path).
+
+### Pyramide de tests TerrOir
+
+- **80% unit** (vitest, helpers + fonctions pures) : `tests/lib/email-change/hmac.test.ts`, `tests/lib/auth/sanitize-next.test.ts`, etc.
+- **15% intégration** (vitest, server actions avec mocks Supabase) : `tests/app/(consumer)/compte/profil/_actions/integration-flow.test.tsx`.
+- **5% E2E** (Playwright, parcours complet UI + DB prod) : `tests/e2e/*.spec.ts`.
+
+**Convention TerrOir** : pas d'`@testing-library/react`. Tout test UI passe donc par Playwright. Si une feature ne peut être testée qu'au niveau composant React, on accepte de ne pas avoir de test unit pour elle et on couvre via Playwright.
+
+### Helpers existants (`tests/e2e/helpers/`)
+
+| Helper | Rôle |
+|---|---|
+| `test-context.ts` | Fixture Playwright `ctx: TestContext` avec `runId` (worker scope) + `testId` + `trackedIds`/`trackedEmails` (test scope). Cleanup auto en afterEach. |
+| `guards.ts` | Allow-list email pattern `playwright-test-{ts}@mailinator.com` + deny-list 4 emails personnels. `assertSafeEmail()` throw si non-safe. `generateTestEmail(suffix?)` produit un email conforme. |
+| `supabase-admin.ts` | 4 helpers `safeInsert/safeUpdate/safeDelete/safeUpsert` qui valident email + tracking IDs + écrivent un audit log JSONL. `getReadOnlyAdminClient()` pour les SELECT post-flow (sans risque). |
+| `user-lifecycle.ts` | `createTestUser(ctx, options?)` crée un user via `auth.admin.createUser` ET INSERT la row `public.users` (reproduit le pattern signup prod `actions.ts:102-110`). `loginAs(page, user)` traverse le formulaire `/connexion` réel (pas de bypass localStorage). `cleanupTestUser` cascade. |
+| `otp-capture.ts` | `seedOtp(ctx, opts)` DELETE+INSERT une row OTP avec hash d'un code clair connu. `assertOtpRowExists`, `assertAuditLogContains` pour vérifier l'état post-flow. |
+| `audit-log.ts` | Append JSONL `tests/e2e/.audit-log.jsonl` (gitignored) à chaque write des helpers safe*. Permet le debug post-mortem ("qu'est-ce qui a été écrit ce run ?"). |
+
+### Pattern type pour ajouter un test E2E
+
+```ts
+import { test, expect } from "./helpers/test-context";
+import { generateTestEmail } from "./helpers/guards";
+import { createTestUser, loginAs } from "./helpers/user-lifecycle";
+import { seedOtp } from "./helpers/otp-capture";
+import { getReadOnlyAdminClient } from "./helpers/supabase-admin";
+
+test.describe("Mon flow (T-XXX)", () => {
+  test("happy path", async ({ page, ctx }) => {
+    // 1. Setup user (auth.users + public.users)
+    const user = await createTestUser(ctx, { suffix: "happy" });
+    await loginAs(page, user);
+
+    // 2. Naviguer
+    await page.goto("/compte/profil");
+
+    // 3. Stratégie seed : attendre un hint discriminant qui garantit
+    //    que le serveur a fini son INSERT avant de DELETE+INSERT notre row
+    await expect(page.getByText(/discriminateur unique/i)).toBeVisible();
+    await seedOtp(ctx, { userId: user.id, step: "current", email: user.email, code: "123456" });
+
+    // 4. Assertions DB post-flow via getReadOnlyAdminClient
+    const admin = getReadOnlyAdminClient();
+    const { data } = await admin.from("...").select("...").eq("id", user.id).single();
+    expect(data).toBeDefined();
+  });
+});
+```
+
+### Lancement
+
+1. **Terminal séparé** : `npm run dev` (Romain le lance, pas CC). Le serveur Next.js doit répondre sur `localhost:3000` AVANT de lancer Playwright.
+2. **Terminal CC** : `npx playwright test tests/e2e/[spec].spec.ts --reporter=list`.
+3. **Volumétrie** : ~10-20 tests E2E max pour respecter le quota Resend (~3000 mails/mois).
+
+### Pièges connus
+
+- ⚠️ **Strict mode violations** : Playwright refuse les sélecteurs ambigus qui matchent plusieurs éléments. Solutions : `{ exact: true }` sur `getByLabel`/`getByRole`, ou phrases discriminantes complètes (ex : `getByText(/Saisissez le code à 6 chiffres reçu à votre adresse actuelle/i)` au lieu de `getByText(/à votre adresse actuelle/i)` qui matchait aussi un paragraphe header).
+- ⚠️ **Cookies Supabase SSR vs localStorage** : `loginAs` DOIT passer par le formulaire UI réel (`page.goto('/connexion')` + fill + submit). Une injection synthétique dans `localStorage` ne marche pas — `@supabase/ssr` lit la session depuis les cookies HTTP côté serveur, pas depuis localStorage côté client.
+- ⚠️ **`RESEND_API_KEY` `.env.local`** : vérifier qu'elle est valide AVANT tout test E2E qui déclenche un envoi mail. Une clé cassée fait que `sendTemplate` retourne `{ ok: false }` silencieusement, et le serveur affiche "Impossible d'envoyer le code" sans cause évidente. Diagnostic : grep `[EMAIL_SEND_FAIL]` dans les logs `npm run dev`, ou query `SELECT metadata->>'error' FROM public.notifications WHERE statut='failed'` (rows purgées par cleanup donc fenêtre courte).
+- ⚠️ **`auth.admin.createUser` ne crée PAS la row `public.users`** : il n'y a pas de trigger DB qui le fait automatiquement (cf. migration `20260419000000`). Le pattern signup prod fait l'INSERT manuel (`app/(consumer)/auth/inscription/actions.ts:102-110`). Le helper `createTestUser` reproduit ce pattern avec fail-fast.
+- ⚠️ **Tracking `trackedIds` unifié** : le Set `ctx.trackedIds` contient à la fois les UUIDs user ET les UUIDs de rows OTP créées par `seedOtp`. `cleanupAllTrackedUsers` itère naïvement et appelle `auth.admin.deleteUser` sur chaque, produisant des warnings "User not found" sur les row UUIDs. **Non bloquant** (catché en interne) mais bruit visible dans les logs. Ticket T-021 prévu pour séparer `trackedUserIds` / `trackedRowIds`.
+- ⚠️ **Stratégie seed timing** : avant un `seedOtp(ctx, { step })`, attendre la visibilité d'un hint UI **discriminant** qui garantit que le serveur a fini son INSERT (ex : transition step `verify-current` → `verify-new`). Sinon race condition : DELETE peut s'exécuter avant que le serveur ait inséré sa row.
 
 ## Migrations DB
 
@@ -107,7 +301,7 @@ Si erreur → fix puis re-run, OU rapport à Romain/Claude si blocage de concept
 
 ### Apply via CC + MCP Supabase (workflow standard depuis 30/04/2026)
 
-Mis en place lors de T-013 PR1. CC dispose désormais du MCP Supabase en read-write sur le projet `exsxharjqqpohkbznhss`. Workflow nominal :
+Mis en place lors de T-013 PR1. CC dispose désormais du MCP Supabase en read-write sur le projet `exsxharjqqpohkbznhss`. **Activation** : config `~/.claude.json` scope local avec `features=database,docs` sur le serveur MCP Supabase (write-prod activé seulement sur ce scope, pas en global). Workflow nominal :
 
 1. PR mergée sur master via GitHub (CC peut le faire via `gh pr merge --rebase --delete-branch` après approbation Romain).
 2. `git pull origin master` local pour récupérer le fichier migration.
@@ -170,14 +364,6 @@ Toujours inclure les GRANT sur `supabase_auth_admin` quand une migration touche 
 - 🔐 Avant lancement public (audit, sécurité, conformité)
 - 🔵 Idées / améliorations
 - 🗺️ Roadmap produit
-
-## Communication
-
-- Romain communique en français, ton casual, direct, **pas de hedging**.
-- Claude répond sobrement, pas de flattering, pas de compliments gratuits.
-- **Pas de suggestion de pause** (Romain décide de son rythme).
-- Décisions rapides : présenter **3 options maximum** par question, avec pour chaque option un trade-off en 1 ligne.
-- Quand Romain tranche, Claude exécute sans revenir sur la décision sauf information nouvelle.
 
 ## Secrets et sécurité
 
