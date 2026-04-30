@@ -85,6 +85,7 @@ export const AUTH_EVENT_TYPES = [
   "account_otp_invalid",
   "account_otp_expired",
   "account_otp_attempts_exceeded",
+  "account_email_change_completed",
 ] as const;
 
 export type AuthEventType = (typeof AUTH_EVENT_TYPES)[number];
