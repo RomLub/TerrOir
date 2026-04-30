@@ -277,6 +277,27 @@ describe("processWeeklyPayouts — path nominal (0 existing row)", () => {
       }),
       { idempotencyKey: expectedIdempotencyKey() },
     );
+
+    // T-416 audit log forensique posé après UPDATE 'paid' succès.
+    // userId=null, format cents, resumed=false sur path nominal.
+    expect(mockLogPaymentEvent).toHaveBeenCalledTimes(1);
+    expect(mockLogPaymentEvent).toHaveBeenCalledWith({
+      eventType: "stripe_transfer_initiated",
+      userId: null,
+      metadata: {
+        payout_id: "payout-new-1",
+        stripe_transfer_id: "tr_new_1",
+        producer_id: PRODUCER_ID,
+        periode_debut: expect.any(String),
+        periode_fin: expect.any(String),
+        montant_brut_cents: 10000,
+        commission_cents: 600,
+        montant_net_cents: 9400,
+        currency: "eur",
+        orders_count: 1,
+        resumed: false,
+      },
+    });
   });
 
   it("anti-régression T-414 : INSERT 'processing' invocation order < transfer.create order", async () => {
@@ -367,6 +388,8 @@ describe("processWeeklyPayouts — skip existing 'paid'", () => {
     expect(mockTransferCreate).not.toHaveBeenCalled();
     expect(captured.inserts).toEqual([]);
     expect(captured.updates).toEqual([]);
+    // T-416 : skip 'paid' (cas d) → audit_log non posé.
+    expect(mockLogPaymentEvent).not.toHaveBeenCalled();
   });
 });
 
@@ -385,6 +408,8 @@ describe("processWeeklyPayouts — resume existing 'processing' (cas b)", () => 
               statut: "processing",
               stripe_transfer_id: null,
               montant_net: 94,
+              montant_brut: 100,
+              commission: 6,
             },
             error: null,
           },
@@ -430,6 +455,27 @@ describe("processWeeklyPayouts — resume existing 'processing' (cas b)", () => 
       expect.objectContaining({ amount: 9400, destination: "acct_test" }),
       { idempotencyKey: expectedIdempotencyKey() },
     );
+
+    // T-416 audit log forensique posé après UPDATE 'paid' resume.
+    // resumed=true, montants depuis existing row (source of truth DB).
+    expect(mockLogPaymentEvent).toHaveBeenCalledTimes(1);
+    expect(mockLogPaymentEvent).toHaveBeenCalledWith({
+      eventType: "stripe_transfer_initiated",
+      userId: null,
+      metadata: {
+        payout_id: "payout-resume-1",
+        stripe_transfer_id: "tr_resume_b",
+        producer_id: PRODUCER_ID,
+        periode_debut: expect.any(String),
+        periode_fin: expect.any(String),
+        montant_brut_cents: 10000,
+        commission_cents: 600,
+        montant_net_cents: 9400,
+        currency: "eur",
+        orders_count: 1,
+        resumed: true,
+      },
+    });
   });
 
   it("cas (c) : Stripe renvoie le Transfer existant via idempotency cache → UPDATE 'paid' OK", async () => {
@@ -445,6 +491,8 @@ describe("processWeeklyPayouts — resume existing 'processing' (cas b)", () => 
               statut: "processing",
               stripe_transfer_id: null,
               montant_net: 94,
+              montant_brut: 100,
+              commission: 6,
             },
             error: null,
           },
@@ -475,6 +523,20 @@ describe("processWeeklyPayouts — resume existing 'processing' (cas b)", () => 
       table: "payouts",
       payload: { statut: "paid", stripe_transfer_id: "tr_original_from_cache" },
     });
+
+    // T-416 : cas (c) idempotency cache → audit log identique resume cas (b).
+    expect(mockLogPaymentEvent).toHaveBeenCalledTimes(1);
+    expect(mockLogPaymentEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "stripe_transfer_initiated",
+        userId: null,
+        metadata: expect.objectContaining({
+          payout_id: "payout-resume-c",
+          stripe_transfer_id: "tr_original_from_cache",
+          resumed: true,
+        }),
+      }),
+    );
   });
 });
 
@@ -507,6 +569,8 @@ describe("processWeeklyPayouts — skip existing 'failed' (défensif)", () => {
     expect(mockTransferCreate).not.toHaveBeenCalled();
     expect(captured.inserts).toEqual([]);
     expect(captured.updates).toEqual([]);
+    // T-416 : skip 'failed' → audit_log non posé.
+    expect(mockLogPaymentEvent).not.toHaveBeenCalled();
   });
 });
 
@@ -538,6 +602,8 @@ describe("processWeeklyPayouts — skip 'pending' legacy (T-424)", () => {
     expect(results[0].error).toContain("T-424");
     expect(mockTransferCreate).not.toHaveBeenCalled();
     expect(captured.inserts).toEqual([]);
+    // T-416 : skip 'pending' legacy (T-424) → audit_log non posé.
+    expect(mockLogPaymentEvent).not.toHaveBeenCalled();
   });
 });
 
@@ -564,6 +630,8 @@ describe("processWeeklyPayouts — producer not_ready (R1)", () => {
     expect(results[0].error).toContain("no stripe_account_id");
     expect(captured.inserts).toEqual([]);
     expect(mockTransferCreate).not.toHaveBeenCalled();
+    // T-416 : producer not_ready → audit_log non posé.
+    expect(mockLogPaymentEvent).not.toHaveBeenCalled();
   });
 
   it("aucun INSERT 'processing' si stripe_payouts_enabled=false + log [PAYOUT_SKIP_NOT_READY]", async () => {
@@ -593,6 +661,8 @@ describe("processWeeklyPayouts — producer not_ready (R1)", () => {
     expect(String(consoleWarnSpy.mock.calls[0]?.[0])).toContain(
       "[PAYOUT_SKIP_NOT_READY]",
     );
+    // T-416 : producer payouts_enabled=false → audit_log non posé.
+    expect(mockLogPaymentEvent).not.toHaveBeenCalled();
   });
 });
 
@@ -708,6 +778,13 @@ describe("processWeeklyPayouts — crash transfer.create (compensation A2)", () 
     const warnedFirst = String(consoleWarnSpy.mock.calls[0]?.[0] ?? "");
     expect(warnedFirst).toContain("[STRIPE_TRANSFER_FAILED_SYNC]");
     expect(warnedFirst).toContain("payout=payout-crash-transfer");
+
+    // T-416 : path 7 catch synchrone → stripe_transfer_initiated NON posé
+    // (le path return early avant l'audit log success post-UPDATE 'paid').
+    const initiatedCalls = mockLogPaymentEvent.mock.calls.filter(
+      (c) => (c[0] as { eventType: string }).eventType === "stripe_transfer_initiated",
+    );
+    expect(initiatedCalls).toHaveLength(0);
   });
 
   it("cas pathologique : UPDATE 'failed' échoue → log [WEEKLY_PAYOUT_FAILED_UPDATE_FAILED] + alerte admin quand même", async () => {
@@ -751,6 +828,12 @@ describe("processWeeklyPayouts — crash transfer.create (compensation A2)", () 
     // dernier recours.
     expect(mockLogPaymentEvent).toHaveBeenCalledTimes(1);
     expect(mockSendTemplate).toHaveBeenCalledTimes(1);
+    // T-416 : seul stripe_transfer_failed posé (pas stripe_transfer_initiated
+    // qui n'est posé qu'après UPDATE 'paid' succès).
+    const initiatedCalls = mockLogPaymentEvent.mock.calls.filter(
+      (c) => (c[0] as { eventType: string }).eventType === "stripe_transfer_initiated",
+    );
+    expect(initiatedCalls).toHaveLength(0);
   });
 });
 
@@ -790,5 +873,9 @@ describe("processWeeklyPayouts — crash UPDATE 'paid' (path nominal)", () => {
     expect(consoleWarnSpy).toHaveBeenCalledWith(
       expect.stringContaining("[WEEKLY_PAYOUT_UPDATE_FAILED]"),
     );
+    // T-416 : crash UPDATE 'paid' → audit_log non posé (placement post-UPDATE
+    // succès, le path return early avec error 'will resume'). Trade-off
+    // documenté : récupération via Stripe API + log [WEEKLY_PAYOUT_UPDATE_FAILED].
+    expect(mockLogPaymentEvent).not.toHaveBeenCalled();
   });
 });
