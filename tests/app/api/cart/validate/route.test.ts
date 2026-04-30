@@ -159,6 +159,10 @@ function pushOrders(slotIds: string[]) {
 
 // --- Setup / teardown ----------------------------------------------------
 
+// T-450 : spy console.warn pour assert log greppable
+// [CART_VALIDATE_SELECT_FAIL] sur fail SELECT batch (section W).
+let warnSpy: ReturnType<typeof vi.spyOn>;
+
 beforeEach(() => {
   captured = { fromCalls: [], selects: [], inCalls: [] };
   responses = {};
@@ -168,6 +172,7 @@ beforeEach(() => {
     roles: ["consumer"],
     isAdmin: false,
   };
+  warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -555,5 +560,77 @@ describe("H. Multi-items + ordre évaluation", () => {
       reason: "stock_insufficient",
       maxQuantite: 10,
     });
+  });
+});
+
+// =============================================================================
+// W. Fail SELECT batch (forensique T-450)
+// =============================================================================
+//
+// Pattern aligné T-427 (orders/create:182-201). Si Supabase retourne
+// {data: null, error: <err>} sur un SELECT batch (RLS bug, statement_timeout,
+// network blip), le `?? []` côté route masque l'erreur silencieusement → tous
+// items flag *_unavailable (faux négatifs UX). Avant T-450, aucune trace
+// forensique. T-450 ajoute 4 console.warn inline (1 par SELECT) avec tag
+// unifié [CART_VALIDATE_SELECT_FAIL] + metadata table=X. Fail-soft préservé
+// (Q-1 strict scope) : `?? []` inchangé, route reste 200.
+
+describe("W. Fail SELECT batch (forensique T-450)", () => {
+  it("W1 — producers SELECT fail (RLS denied) → log [CART_VALIDATE_SELECT_FAIL] table=producers + items flag producer_unavailable (fail-soft)", async () => {
+    // SELECT producers échoue (data:null + error). Les 3 autres consomment
+    // le default {data: [], error: null} (queue vide pour cette table).
+    pushResp("producers", {
+      data: null,
+      error: { message: "RLS denied" },
+    });
+
+    const item = makeValidItem();
+    const res = await POST(makeRequest({ items: [item] }));
+
+    // Route reste 200, fail-soft préservé via `?? []`.
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      results: {
+        [itemKey(item)]: {
+          ok: false,
+          fatal: true,
+          reason: "producer_unavailable",
+        },
+      },
+    });
+
+    // Log greppable posé avec tag unifié + metadata table.
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[CART_VALIDATE_SELECT_FAIL] table=producers error=RLS denied",
+    );
+  });
+
+  it("W2 — slots SELECT fail (statement_timeout) → log [CART_VALIDATE_SELECT_FAIL] table=slots + items flag slot_unavailable (fail-soft)", async () => {
+    // SELECT producers + products OK, slots échoue, orders default OK.
+    pushNominalProducer();
+    pushProduct(10, false);
+    pushResp("slots", {
+      data: null,
+      error: { message: "statement_timeout" },
+    });
+
+    const item = makeValidItem();
+    const res = await POST(makeRequest({ items: [item] }));
+
+    // Route reste 200, items flag slot_unavailable (slotsMap vide via `?? []`).
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      results: {
+        [itemKey(item)]: {
+          ok: false,
+          fatal: true,
+          reason: "slot_unavailable",
+        },
+      },
+    });
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[CART_VALIDATE_SELECT_FAIL] table=slots error=statement_timeout",
+    );
   });
 });
