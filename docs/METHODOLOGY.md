@@ -104,9 +104,36 @@ Si erreur → fix puis re-run, OU rapport à Romain/Claude si blocage de concept
 ## Migrations DB
 
 - Fichiers dans `supabase/migrations/` avec préfixe timestamp `YYYYMMDDHHMMSS_description.sql`.
-- **Apply manuelle** par Romain via Supabase Studio SQL Editor (pas de CLI Supabase configurée aujourd'hui).
-- Dans le rapport de chantier qui inclut une migration, CC **doit rappeler à Romain en fin de message** : « Migration `X.sql` à apply en prod via SQL Editor. ».
-- Toujours inclure les GRANT sur `supabase_auth_admin` quand une migration touche une FK vers `auth.users` (USAGE schema + ALL PRIVILEGES sur `public.*`). Sinon GoTrue renvoie « Database error querying schema » sur `/token` et `/recover`.
+
+### Apply via CC + MCP Supabase (workflow standard depuis 30/04/2026)
+
+Mis en place lors de T-013 PR1. CC dispose désormais du MCP Supabase en read-write sur le projet `exsxharjqqpohkbznhss`. Workflow nominal :
+
+1. PR mergée sur master via GitHub (CC peut le faire via `gh pr merge --rebase --delete-branch` après approbation Romain).
+2. `git pull origin master` local pour récupérer le fichier migration.
+3. CC apply via MCP `apply_migration` en lisant le fichier depuis le repo local. La query passée au MCP doit **omettre les `begin;`/`commit;` explicites** : l'API Management `POST /v1/projects/{ref}/database/migrations` wrappe sa propre transaction et insère le row de tracking dans `supabase_migrations` après le DDL. Un `commit;` explicite couperait la transaction wrapper avant l'insert metadata.
+4. CC vérifie via MCP `list_migrations` + `list_tables verbose=true` + `execute_sql` sur `pg_indexes` et `pg_tables.rowsecurity` que l'apply a réussi (indexes, contraintes, RLS).
+5. ⚠️ **Gotcha timestamp** : le MCP génère son propre timestamp à l'apply (ex : `20260430161902`) au lieu de réutiliser celui du nom de fichier (ex : `20260430153937`). Conséquence : si le fichier disque garde l'ancien timestamp, un futur `supabase db push` local verra une migration disque non trackée en DB et tentera de la réapply → CREATE TABLE échoue. **Toujours renommer le fichier disque pour matcher le timestamp DB tracking** avant le commit doc final. Procédure : `git mv supabase/migrations/<old_ts>_<name>.sql supabase/migrations/<new_ts>_<name>.sql` (préserve trace de rename via R100).
+6. CC commit + push update `HANDOFF.md` "Migrations apply confirmées prod" avec le timestamp DB final (post-rename).
+
+⚠️ **Garde-fous obligatoires** :
+- Auto-confirm OFF dans CC sur les outils MCP write : chaque appel `apply_migration` ou `execute_sql` non-trivial passe par approbation manuelle Romain.
+- Lecture explicite de chaque SQL avant approbation. Identifier la clause `WHERE` sur les `UPDATE`/`DELETE`. Si manquante → refus.
+- Migrations auth-sensibles (FK vers `auth.users`, RLS, triggers Supabase Auth) : validation explicite Romain avant push code, et re-validation explicite avant apply via MCP.
+- **Tests collision UNIQUE / CHECK runtime non recommandés sur prod** : la garantie structurelle de `pg_indexes` (type, expression, predicate) suffit. PostgreSQL respecte ses contraintes par design. Le test runtime touche prod (WAL, triggers, locks) pour zéro info-gain.
+
+### Apply manuel via Studio (fallback)
+
+Mode pré-30/04/2026 (CLI Supabase non configurée à l'époque). Reste un fallback légitime si MCP indisponible (extinction Supabase, problème OAuth, panne Anthropic, etc.). Procédure :
+
+1. Ouvrir Supabase Studio SQL Editor.
+2. Copier-coller le DDL depuis le fichier migration (avec `begin;`/`commit;` cette fois — Studio ne wrappe pas).
+3. Run.
+4. Mettre à jour `HANDOFF.md` manuellement.
+
+### Règle GRANT cross-schema
+
+Toujours inclure les GRANT sur `supabase_auth_admin` quand une migration touche une FK vers `auth.users` (USAGE schema + ALL PRIVILEGES sur `public.*`). Sinon GoTrue renvoie « Database error querying schema » sur `/token` et `/recover`.
 
 ## Gestion de la dette technique
 
