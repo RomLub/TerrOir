@@ -445,13 +445,13 @@ describe("D. SQLSTATE → HTTP mapping", () => {
     expect(logPaymentEvent).not.toHaveBeenCalled();
   });
 
-  it("D10 — RPC error P0001 (auto-purchase guard) → 403 + message brut (T-442)", async () => {
+  it("D10 — RPC error P0001 (auto-purchase guard) → 403 + message brut (T-442 + T-448 wording UX)", async () => {
     responses.rpc = {
       create_order_with_items: [
         {
           data: null,
           error: {
-            message: "Un producteur ne peut pas commander son propre produit",
+            message: "Vous ne pouvez pas commander vos propres produits.",
             code: "P0001",
           },
         },
@@ -460,7 +460,7 @@ describe("D. SQLSTATE → HTTP mapping", () => {
     const res = await POST(makeRequest());
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({
-      error: "Un producteur ne peut pas commander son propre produit",
+      error: "Vous ne pouvez pas commander vos propres produits.",
       code: "P0001",
     });
     expect(logPaymentEvent).not.toHaveBeenCalled();
