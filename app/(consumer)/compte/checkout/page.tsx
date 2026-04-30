@@ -9,6 +9,7 @@ import { getStripe } from '@/lib/stripe/client';
 import { useCartStore, type CartItem } from '@/lib/store/cart';
 import { itemKey, type ValidateResponse } from '@/lib/cart/validate';
 import { classifyStripeError, type CheckoutError } from '@/lib/checkout/classify-stripe-error';
+import { SUPPORT_EMAIL_PUBLIC } from '@/lib/env/support-email-public';
 import { listPaymentMethodsAction, type PaymentMethodSummary } from './actions';
 
 const BRAND_LABEL: Record<string, string> = {
@@ -53,10 +54,6 @@ type TechnicalError = {
   code: string;
   details?: string;
 };
-
-// Email support hardcodé côté client (var env `SUPPORT_EMAIL` est server-only,
-// cf lib/env/support-email.ts). Si valeur change, grep + replace.
-const SUPPORT_EMAIL_CLIENT = "support@terroir-local.fr";
 
 type CheckoutGroup = {
   producerId: string;
@@ -331,7 +328,7 @@ export default function CheckoutPage() {
                     {technicalError.details ? ` — ${technicalError.details}` : ''}
                   </p>
                   <a
-                    href={`mailto:${SUPPORT_EMAIL_CLIENT}?subject=${encodeURIComponent(`Erreur technique commande - ${technicalError.code}`)}&body=${encodeURIComponent(`Code erreur : ${technicalError.code}\nDétails : ${technicalError.details ?? 'N/A'}\n\nContexte : (décrivez ce que vous tentiez de faire)`)}`}
+                    href={`mailto:${SUPPORT_EMAIL_PUBLIC}?subject=${encodeURIComponent(`Erreur technique commande - ${technicalError.code}`)}&body=${encodeURIComponent(`Code erreur : ${technicalError.code}\nDétails : ${technicalError.details ?? 'N/A'}\n\nContexte : (décrivez ce que vous tentiez de faire)`)}`}
                     className="inline-block mt-3 text-[13px] underline text-terra-900 hover:text-terra-700"
                   >
                     Contacter le support →
