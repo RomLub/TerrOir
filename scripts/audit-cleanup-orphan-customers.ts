@@ -73,6 +73,18 @@
  * Couplage T-432 #69 (race anti-orphelin getOrCreateStripeCustomer) +
  *           T-441 #79 (script audit/cleanup PMs orphelins, pattern référence) +
  *           T-419 (pattern backfill original).
+ *
+ * T-453 (post-T-439 reflag) : skip Merchants Connect v2 via combo défensif
+ *  A) Pre-flight metadata.user_id heuristique (Customers consumers TerrOir
+ *     ont TOUJOURS metadata.user_id set depuis 1er commit lib/stripe/customer.ts
+ *     7992727 ; absence → candidat Merchant Connect v2 auto-créé Stripe).
+ *  B) Post-delete error catch substring match "linked to a v2 Account" /
+ *     "v2/core/accounts" → reclassifier en customersConnectMerchantSkip
+ *     plutôt que orphansDeleteFailed (autorité Stripe-side authoritative).
+ *  Trace : faux positif cus_UMfaaMmcCd9BHP détecté en smoke Test 30/04/2026.
+ *  SDK Stripe typé v18 acacia 2025-02-24 ne discrimine PAS Customer simple
+ *  vs Merchant Connect v2 via field public — heuristique + substring match
+ *  sont les seuls patterns sains sans extra API call.
  */
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
@@ -119,6 +131,7 @@ type Counters = {
   customersTooRecent: number;
   customersWithDbMatch: number;
   customersWithMetadataMatch: number;
+  customersConnectMerchantSkip: number;
   orphansDetected: number;
   orphansWithCharges: number;
   orphansDeleted: number;
@@ -141,6 +154,7 @@ async function main() {
     customersTooRecent: 0,
     customersWithDbMatch: 0,
     customersWithMetadataMatch: 0,
+    customersConnectMerchantSkip: 0,
     orphansDetected: 0,
     orphansWithCharges: 0,
     orphansDeleted: 0,
@@ -189,6 +203,7 @@ async function main() {
   console.log(`customers trop récents     : ${counters.customersTooRecent} (skip < 24h)`);
   console.log(`customers avec match DB    : ${counters.customersWithDbMatch}`);
   console.log(`customers metadata match   : ${counters.customersWithMetadataMatch} (intervention manuelle)`);
+  console.log(`customers Connect Merchant : ${counters.customersConnectMerchantSkip} (skip safety, v2 Account)`);
   console.log(`orphelins détectés         : ${counters.orphansDetected}`);
   console.log(`orphelins avec charges     : ${counters.orphansWithCharges} (skip safety)`);
   if (APPLY) {
@@ -228,6 +243,20 @@ async function processStripeCustomer(
     const ageMs = Date.now() - cust.created * 1000;
     if (ageMs < ONE_DAY_MS) {
       counters.customersTooRecent += 1;
+      return;
+    }
+
+    // T-453 pre-flight Connect Merchant heuristique : Customers consumers TerrOir
+    // ont TOUJOURS metadata.user_id set (lib/stripe/customer.ts:48 depuis 1er
+    // commit 7992727). Absence → candidat Merchant Connect v2 auto-créé Stripe
+    // (faux positif détecté smoke cus_UMfaaMmcCd9BHP). Skip défensif anti-pollution
+    // orphansDetected/orphansDeleteFailed. Rattrapage post-delete (E) couvre les
+    // rares cas Dashboard-créés ayant metadata.user_id mais réellement Merchant.
+    if (!cust.metadata?.user_id) {
+      counters.customersConnectMerchantSkip += 1;
+      console.log(
+        `[T-453] customer=${cid} email=${cust.email ?? "?"} no metadata.user_id — likely Connect Merchant skip=safety`,
+      );
       return;
     }
 
@@ -313,11 +342,29 @@ async function processStripeCustomer(
       counters.orphansDeleted += 1;
       console.log(`  delete OK ${cid}`);
     } catch (e) {
-      counters.orphansDeleteFailed += 1;
       const err = e as { code?: string; message?: string };
-      console.warn(
-        `  delete FAIL ${cid} (${err.code ?? "unknown"}): ${err.message ?? "no message"}`,
-      );
+      const msg = err.message ?? "";
+
+      // T-453 rattrapage Connect Merchant post-delete : si Stripe rejette le
+      // delete avec message "linked to a v2 Account" / "v2/core/accounts",
+      // c'est un Merchant Connect que la pre-flight A (metadata.user_id) a
+      // manqué (cas Dashboard-créé ayant metadata.user_id mais lié Connect v2).
+      // Reclassifier dans counter dédié plutôt que orphansDeleteFailed pour
+      // ne pas masquer les vrais fails (rate limit, network blip).
+      if (
+        msg.includes("linked to a v2 Account") ||
+        msg.includes("v2/core/accounts")
+      ) {
+        counters.customersConnectMerchantSkip += 1;
+        console.warn(
+          `  delete SKIP ${cid} Connect Merchant v2 (rattrapage post-delete)`,
+        );
+      } else {
+        counters.orphansDeleteFailed += 1;
+        console.warn(
+          `  delete FAIL ${cid} (${err.code ?? "unknown"}): ${msg || "no message"}`,
+        );
+      }
     }
     // Sleep après delete pour respecter rate limit.
     await sleep(100);
