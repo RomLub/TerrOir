@@ -169,6 +169,8 @@ function pushRpc(name: string, ...resps: Resp[]) {
 
 // --- Setup / teardown ----------------------------------------------------
 
+let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+
 beforeEach(() => {
   captured = {
     fromCalls: [],
@@ -197,9 +199,13 @@ beforeEach(() => {
   pushRpc("create_order_with_items", { data: ORDER_ID, error: null });
   // T-429 : reset le compteur d'appels audit log entre chaque test.
   vi.mocked(logPaymentEvent).mockClear();
+  // T-427 : spy console.warn pour assert log greppable [ORDER_CREATE_ENRICH_FAIL]
+  // sur paths SELECT post-RPC fail (cf F3 enrichi + F4 nouveau).
+  consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 });
 
 afterEach(() => {
+  consoleWarnSpy.mockRestore();
   vi.restoreAllMocks();
 });
 
@@ -523,9 +529,11 @@ describe("F. Edge cases", () => {
     expect(rpcArgs.p_notes_client).toBe("Notes avec espaces");
   });
 
-  it("F3 — SELECT post-RPC fail silencieux → 200 + code_commande absent (T-427 documenté)", async () => {
-    // Override : le post-fetch orders renvoie data null sans error → la
-    // route ne check pas error et continue avec order = null.
+  it("F3 — SELECT post-RPC fail silencieux → 200 + warn log + body minimal (T-427 résolu)", async () => {
+    // Override : le post-fetch orders renvoie data null sans error
+    // (cas race : row supprimé entre RPC commit et SELECT). T-427
+    // post-fix : le try/catch log warn même quand error est null si
+    // data est aussi null (cohérence forensique).
     responses.orders = { select: [{ data: null, error: null }] };
     const res = await POST(makeRequest());
     expect(res.status).toBe(200);
@@ -537,9 +545,17 @@ describe("F. Edge cases", () => {
     expect("commission" in body).toBe(false);
     expect("montant_net" in body).toBe(false);
 
-    // T-429 : audit_log posé MÊME si SELECT post-RPC échoue silencieusement.
-    // Fallback ?? null sur les 3 montants (T-427 documenté). order_id reste
-    // défini car retourné par la RPC, pas par le SELECT.
+    // T-427 : assertion log greppable [ORDER_CREATE_ENRICH_FAIL] (cas
+    // race "row not found" — error null + data null).
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /^\[ORDER_CREATE_ENRICH_FAIL\] order_id=.+ error=row not found$/,
+      ),
+    );
+
+    // T-429 : audit_log posé MÊME si SELECT post-RPC échoue. Fallback
+    // ?? null sur les 3 montants. order_id reste défini car retourné
+    // par la RPC, pas par le SELECT.
     expect(logPaymentEvent).toHaveBeenCalledTimes(1);
     expect(logPaymentEvent).toHaveBeenCalledWith({
       eventType: "order_created",
@@ -555,6 +571,59 @@ describe("F. Edge cases", () => {
         items_count: 1,
       },
     });
+  });
+
+  it("F4 — SELECT post-RPC error non-null (RLS bug / lock_timeout) → 200 + warn log + body minimal + audit log posé (T-427)", async () => {
+    // Override : le 1er SELECT (dedup T-428) miss propre, le 2ème
+    // SELECT (enrich post-RPC) retourne une error non-null. T-427 :
+    // try/catch capture, log warn forensique, fallback graceful order=null,
+    // audit log T-429 posé quand même (mutation DB de la RPC effective).
+    responses.orders = {
+      select: [
+        // 1er consume : dedup pré-RPC T-428 → miss
+        { data: null, error: null },
+        // 2ème consume : enrich post-RPC → error RLS (cas dominant prod)
+        {
+          data: null,
+          error: {
+            message: "new row violates row-level security policy",
+            code: "42501",
+          },
+        },
+      ],
+    };
+    const res = await POST(makeRequest());
+
+    // Body minimal { order_id } — sémantique préservée (path SELECT-fail
+    // = body partiel, asymétrie acceptable vs T-428 dedup hit complet).
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.order_id).toBe(ORDER_ID);
+    expect("code_commande" in body).toBe(false);
+    expect("montant_total" in body).toBe(false);
+
+    // T-427 : log greppable forensique avec message error Supabase préservé.
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /^\[ORDER_CREATE_ENRICH_FAIL\] order_id=.+ error=new row violates row-level security policy$/,
+      ),
+    );
+
+    // T-429 : audit log posé même sur error SELECT (mutation DB effective
+    // post-RPC), metadata partielle (montants null) acceptable.
+    expect(logPaymentEvent).toHaveBeenCalledTimes(1);
+    expect(logPaymentEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "order_created",
+        userId: CONSUMER_ID,
+        metadata: expect.objectContaining({
+          order_id: ORDER_ID,
+          montant_total: null,
+          commission: null,
+          montant_net: null,
+        }),
+      }),
+    );
   });
 });
 
