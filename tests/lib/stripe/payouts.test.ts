@@ -879,3 +879,79 @@ describe("processWeeklyPayouts — crash UPDATE 'paid' (path nominal)", () => {
     expect(mockLogPaymentEvent).not.toHaveBeenCalled();
   });
 });
+
+// =============================================================================
+// 9. T-415-suite — précision aggregations sumCents (anti-drift IEEE 754)
+// =============================================================================
+describe("processWeeklyPayouts — T-415-suite précision aggregations sumCents", () => {
+  it("100 orders cent-aligned → transfer.amount = 2800 cents exact + audit metadata cents exacts", async () => {
+    // Documentation/expressivité : sumCents convertit chaque item via
+    // eurosToCents (Math.round per-item) AVANT de sommer. Sur des valeurs
+    // cent-alignées (0.30 = 30 cents pile), sumCents et l'ancien
+    // Math.round(reduce * 100) donnent strictement le même résultat.
+    //
+    // Sur des valeurs sub-cent (ex. 0.282 = 28.2 cents), sumCents arrondit
+    // PAR item (28 cents/item × 100 = 2800) tandis que l'ancien code
+    // accumulait avant d'arrondir (28.2 × 100 = 2820). Différence sémantique
+    // assumée : Stripe n'accepte que des integer cents, le coût de
+    // l'arrondi per-item est borné à 1 cent/item et plus prévisible que
+    // l'accumulation float drift sur N items.
+    //
+    // Fixture cent-alignée pour démontrer la précision préservée :
+    //   - montant_total = 0.30 (30 cents)
+    //   - commission_terroir = 0.02 (2 cents, ~6.7% de 0.30)
+    //   - montant_net_producteur = 0.28 (28 cents)
+    const orders100 = Array.from({ length: 100 }, (_, i) => ({
+      ...defaultOrder(),
+      id: `order-${i}`,
+      code_commande: `ABC${i}`,
+      montant_total: 0.3,
+      commission_terroir: 0.02,
+      montant_net_producteur: 0.28,
+    }));
+
+    responses = {
+      orders: { select: [{ data: orders100, error: null }] },
+      payouts: {
+        select: [{ data: null, error: null }],
+        insert: [{ data: { id: "payout-100" }, error: null }],
+        update: [{ data: null, error: null }],
+      },
+      producers: {
+        select: [
+          {
+            data: {
+              stripe_account_id: "acct_test",
+              stripe_payouts_enabled: true,
+            },
+            error: null,
+          },
+        ],
+      },
+    };
+
+    mockTransferCreate.mockResolvedValue({ id: "tr_100" } as never);
+
+    await processWeeklyPayouts();
+
+    // Aggregation cent-alignée : 100 × 28 cents = 2800 cents exact.
+    expect(mockTransferCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ amount: 2800 }),
+      expect.any(Object),
+    );
+
+    // Audit log T-416 metadata cents = sumCents direct (pas de re-conversion).
+    expect(mockLogPaymentEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "stripe_transfer_initiated",
+        metadata: expect.objectContaining({
+          montant_brut_cents: 3000, // 100 × 30 cents
+          commission_cents: 200, // 100 × 2 cents
+          montant_net_cents: 2800, // 100 × 28 cents
+          orders_count: 100,
+          resumed: false,
+        }),
+      }),
+    );
+  });
+});
