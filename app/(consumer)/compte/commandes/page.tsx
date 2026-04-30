@@ -59,7 +59,7 @@ const FILTERS: { value: Filter; label: string }[] = [
 function formatDateFr(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+  return d.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', day: 'numeric', month: 'long', year: 'numeric' });
 }
 
 export default function CommandesPage() {

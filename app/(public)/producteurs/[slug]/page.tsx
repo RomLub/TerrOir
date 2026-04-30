@@ -25,7 +25,7 @@ function scoreFromBadge(v: number | null | undefined): number {
 
 function formatDateFr(iso: string): string {
   const d = new Date(iso);
-  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+  return d.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', day: 'numeric', month: 'long', year: 'numeric' });
 }
 
 function firstNameFrom(user: { prenom: string | null; nom: string | null } | null): string {
