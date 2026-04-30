@@ -8,7 +8,7 @@ export type ConfirmationProps = {
   orderId: string;
   codeCommande: string;
   statut: string;
-  cancellationReason: string | null;
+  closureReason: string | null;
   items: { name: string; qty: string; price: number }[];
   producer: { name: string; address: string };
   slot: { dateLabel: string; timeLabel: string; dateISO: string; startISO: string; endISO: string };
@@ -22,18 +22,18 @@ export type ConfirmationProps = {
 // "Merci, c'est payé." qui serait trompeur.
 function RevivalBlockedView({
   codeCommande,
-  cancellationReason,
+  closureReason,
   producer,
   items,
   total,
 }: {
   codeCommande: string;
-  cancellationReason: 'revival_blocked_stock' | 'revival_blocked_slot';
+  closureReason: 'revival_blocked_stock' | 'revival_blocked_slot';
   producer: { name: string };
   items: { name: string; qty: string; price: number }[];
   total: number;
 }) {
-  const isStock = cancellationReason === 'revival_blocked_stock';
+  const isStock = closureReason === 'revival_blocked_stock';
   const headline = 'Commande non honorée';
   const reasonText = isStock
     ? 'Le stock du produit a été épuisé entre votre tentative initiale de paiement et la validation finale.'
@@ -89,7 +89,7 @@ function RevivalBlockedView({
   );
 }
 
-export function ConfirmationClient({ orderId, codeCommande, statut, cancellationReason, items, producer, slot, total }: ConfirmationProps) {
+export function ConfirmationClient({ orderId, codeCommande, statut, closureReason, items, producer, slot, total }: ConfirmationProps) {
   // Hooks d'animation du path nominal — déclarés AVANT le branchement
   // conditionnel pour respecter les rules-of-hooks (mêmes hooks dans le
   // même ordre à chaque render). Inutilisés sur le path RevivalBlockedView
@@ -102,13 +102,13 @@ export function ConfirmationClient({ orderId, codeCommande, statut, cancellation
   // au lieu du banner "Merci, c'est payé." qui serait trompeur.
   if (
     statut === 'cancelled' &&
-    (cancellationReason === 'revival_blocked_stock' ||
-      cancellationReason === 'revival_blocked_slot')
+    (closureReason === 'revival_blocked_stock' ||
+      closureReason === 'revival_blocked_slot')
   ) {
     return (
       <RevivalBlockedView
         codeCommande={codeCommande}
-        cancellationReason={cancellationReason}
+        closureReason={closureReason}
         producer={{ name: producer.name }}
         items={items}
         total={total}

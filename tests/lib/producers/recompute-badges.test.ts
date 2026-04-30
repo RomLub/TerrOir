@@ -118,35 +118,35 @@ describe("recomputeBadgesForProducer", () => {
         statut: "completed",
         created_at: "2026-04-01T10:00:00Z",
         confirmed_at: "2026-04-01T10:30:00Z", // 30min < 2h → fast
-        cancellation_reason: null,
+        closure_reason: null,
       },
       {
         id: "o2",
         statut: "completed",
         created_at: "2026-04-02T10:00:00Z",
         confirmed_at: "2026-04-02T11:00:00Z", // 1h < 2h → fast
-        cancellation_reason: null,
+        closure_reason: null,
       },
       {
         id: "o3",
         statut: "completed",
         created_at: "2026-04-03T10:00:00Z",
         confirmed_at: "2026-04-03T13:00:00Z", // 3h > 2h → slow
-        cancellation_reason: null,
+        closure_reason: null,
       },
       {
         id: "o4",
         statut: "cancelled",
         created_at: "2026-04-04T10:00:00Z",
         confirmed_at: null,
-        cancellation_reason: "stock",
+        closure_reason: "stock",
       },
       {
         id: "o5",
         statut: "cancelled",
         created_at: "2026-04-05T10:00:00Z",
         confirmed_at: null,
-        cancellation_reason: "consumer_cancel",
+        closure_reason: "consumer_cancel",
       },
     ];
     const { client, captured } = buildClient({
@@ -197,7 +197,7 @@ describe("recomputeBadgesForProducer", () => {
         statut: "completed",
         created_at: "2026-04-01T10:00:00Z",
         confirmed_at: "2026-04-01T10:30:00Z",
-        cancellation_reason: null,
+        closure_reason: null,
       },
     ];
     const { client, captured } = buildClient({
@@ -222,7 +222,7 @@ describe("recomputeBadgesForProducer", () => {
         statut: "pending",
         created_at: "2026-04-01T10:00:00Z",
         confirmed_at: null,
-        cancellation_reason: null,
+        closure_reason: null,
       },
     ];
     const { client } = buildClient({

@@ -28,17 +28,17 @@ import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
 //     ack 200 quand même.
 //   - pending_to_notify : statut='pending' (cas nominal). Le caller doit
 //     déclencher email + SMS producer.
-//   - revived_to_notify : statut='cancelled' AND cancellation_reason=
+//   - revived_to_notify : statut='cancelled' AND closure_reason=
 //     'payment_failed', RPC revive_order_with_stock_check a réussi (lock +
 //     check stock OK + check slot OK + décrément stock + UPDATE statut).
 //     Le caller déclenche aussi email + SMS producer.
 //   - revival_blocked_stock : RPC a retourné 'blocked_stock' (un item du
 //     panier est en rupture entre temps), refund Stripe a réussi, UPDATE
-//     cancellation_reason='revival_blocked_stock' posé. Caller déclenchera
+//     closure_reason='revival_blocked_stock' posé. Caller déclenchera
 //     email consumer (commit 3 du chantier).
 //   - revival_blocked_slot : RPC a retourné 'blocked_slot' (slot saturé
 //     entre temps ou supprimé), refund Stripe a réussi, UPDATE
-//     cancellation_reason='revival_blocked_slot' posé. Caller déclenchera
+//     closure_reason='revival_blocked_slot' posé. Caller déclenchera
 //     email consumer (commit 3).
 //   - revival_refund_failed : RPC blocked_* mais le refund Stripe a échoué.
 //     Audit log poussé pour retry admin manuel (cf dette ouverte
@@ -46,7 +46,7 @@ import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
 //     cancelled+payment_failed pour permettre un retry manuel.
 //   - already_confirmed : statut ∈ {confirmed, ready, completed} →
 //     idempotent webhook rejoué après confirm manuel producer. No-op.
-//   - anomaly : statut ∈ {refunded} ou cancelled avec cancellation_reason
+//   - anomaly : statut ∈ {refunded} ou cancelled avec closure_reason
 //     ≠ 'payment_failed' (consumer_cancel, producer_cancel, timeout, stock,
 //     other), OU RPC a retourné une erreur/valeur inattendue. Cas patho-
 //     logique : Stripe a encaissé mais l'order est terminée pour une autre
@@ -59,7 +59,7 @@ import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
 //   - [WEBHOOK_SUCCEEDED_REVIVAL]      : résurrection 3DS-retry effectuée.
 //   - [WEBHOOK_SUCCEEDED_RPC_ERR]      : erreur PostgREST sur appel RPC.
 //   - [WEBHOOK_SUCCEEDED_RPC_UNKNOWN]  : RPC retourne une valeur inattendue.
-//   - [WEBHOOK_SUCCEEDED_REVIVAL_BLOCKED] : refund OK + UPDATE cancellation_reason.
+//   - [WEBHOOK_SUCCEEDED_REVIVAL_BLOCKED] : refund OK + UPDATE closure_reason.
 //   - [WEBHOOK_SUCCEEDED_REFUND_FAILED]   : refund Stripe a throw, état préservé.
 //   - [WEBHOOK_SUCCEEDED_ANOMALY]      : statut terminal incompatible.
 //
@@ -91,7 +91,7 @@ export async function syncStripePaymentSucceeded(
 
   const { data: order, error: fetchError } = await admin
     .from("orders")
-    .select("id, statut, cancellation_reason, consumer_id")
+    .select("id, statut, closure_reason, consumer_id")
     .eq("id", orderId)
     .maybeSingle();
 
@@ -110,7 +110,7 @@ export async function syncStripePaymentSucceeded(
   }
 
   const currentStatus = order.statut as string;
-  const currentReason = order.cancellation_reason as string | null;
+  const currentReason = order.closure_reason as string | null;
   const consumerId = (order.consumer_id as string | null) ?? null;
 
   if (currentStatus === "pending") {
@@ -200,12 +200,12 @@ export async function syncStripePaymentSucceeded(
       try {
         await stripe.refunds.create({ payment_intent: paymentIntent.id });
 
-        // UPDATE cancellation_reason pour drill-down UI consumer/admin.
+        // UPDATE closure_reason pour drill-down UI consumer/admin.
         // statut reste 'cancelled' (l'order n'a jamais été engagée),
         // cancelled_at reste figé (déjà posé lors du payment_failed initial).
         await admin
           .from("orders")
-          .update({ cancellation_reason: blockedReason })
+          .update({ closure_reason: blockedReason })
           .eq("id", orderId);
 
         await logPaymentEvent({
@@ -260,7 +260,7 @@ export async function syncStripePaymentSucceeded(
     return { result: "anomaly", orderId };
   }
 
-  // Cas anomaly : refunded, ou cancelled avec autre cancellation_reason
+  // Cas anomaly : refunded, ou cancelled avec autre closure_reason
   // (consumer_cancel, producer_cancel, timeout, stock, other, ou NULL).
   // Stripe a encaissé mais l'order est terminée côté plateforme pour une
   // raison incompatible — race condition rare, à investiguer par admin.

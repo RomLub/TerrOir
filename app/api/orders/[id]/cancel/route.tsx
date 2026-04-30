@@ -137,7 +137,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     .from("orders")
     .update({
       statut: finalStatus,
-      cancellation_reason: reason,
+      closure_reason: reason,
       cancelled_at: new Date().toISOString(),
     })
     .eq("id", order.id);
@@ -182,7 +182,7 @@ export async function POST(request: Request, { params }: RouteContext) {
       .from("orders")
       .select("id", { count: "exact", head: true })
       .eq("producer_id", order.producer_id)
-      .eq("cancellation_reason", "stock")
+      .eq("closure_reason", "stock")
       .gte("cancelled_at", monthStart.toISOString());
 
     if ((count ?? 0) >= 2) {

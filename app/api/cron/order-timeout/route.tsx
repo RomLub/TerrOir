@@ -101,7 +101,7 @@ export async function POST(request: Request) {
       .from("orders")
       .update({
         statut: nextStatus,
-        cancellation_reason: "timeout",
+        closure_reason: "timeout",
         cancelled_at: new Date().toISOString(),
       })
       .eq("id", order.id);

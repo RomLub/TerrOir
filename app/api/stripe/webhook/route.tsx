@@ -110,7 +110,7 @@ export async function POST(request: Request) {
         // distingue cas nominal (pending), résurrection 3DS-retry
         // (cancelled+payment_failed → pending), idempotence (déjà
         // confirmed/ready/completed) et anomaly (refunded ou cancelled
-        // avec autre cancellation_reason). Cf doc fonction.
+        // avec autre closure_reason). Cf doc fonction.
         const { result, orderId } = await syncStripePaymentSucceeded(pi, admin);
 
         // No-op paths : pas de notif ni d'anomaly à écrire.
@@ -141,7 +141,7 @@ export async function POST(request: Request) {
         }
 
         // Résurrection bloquée stock/slot : refund Stripe OK + UPDATE
-        // cancellation_reason déjà fait dans syncStripePaymentSucceeded.
+        // closure_reason déjà fait dans syncStripePaymentSucceeded.
         // Audit log déjà poussé. Reste à notifier le consumer par email
         // pour fermer proprement le flow (le client a vu son paiement
         // s'effectuer, doit comprendre qu'il a été remboursé).
@@ -359,7 +359,7 @@ export async function POST(request: Request) {
 
       case "payment_intent.payment_failed": {
         // Logique extraite dans `lib/stripe/handle-payment-failed.ts` :
-        // pose cancellation_reason='payment_failed', guard contre la
+        // pose closure_reason='payment_failed', guard contre la
         // rétrogradation confirmed/ready→cancelled (rejouage Stripe tardif),
         // assertTransition + revalidatePublicStats. Cf doc fonction.
         await syncStripePaymentFailed(

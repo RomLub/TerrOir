@@ -103,7 +103,7 @@ export async function POST(request: Request) {
     .from("orders")
     .update({
       statut: "refunded",
-      cancellation_reason: "admin_refund",
+      closure_reason: "admin_refund",
       cancelled_at: new Date().toISOString(),
     })
     .eq("id", order.id);

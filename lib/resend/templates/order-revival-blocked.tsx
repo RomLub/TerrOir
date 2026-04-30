@@ -10,7 +10,7 @@ import { EmailLayout, emailTheme } from "./layout";
 //
 // Dans les deux cas, Stripe a encaissé puis le webhook a auto-déclenché
 // un refund total (cf handle-payment-succeeded.ts commit 9d6cb13). L'order
-// reste en cancelled avec cancellation_reason='revival_blocked_stock' ou
+// reste en cancelled avec closure_reason='revival_blocked_stock' ou
 // 'revival_blocked_slot' pour drill-down côté admin et exclusion UI
 // consumer.
 //

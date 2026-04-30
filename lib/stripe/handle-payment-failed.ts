@@ -24,7 +24,7 @@ import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
 //     failed tardif (rare mais possible : rejouage webhook, race latence
 //     réseau). Le payment a réussi, le producer a été notifié, c'est figé.
 //   - Cas nominal `pending → cancelled` : assertTransition (state machine
-//     est la source de vérité), UPDATE avec cancellation_reason='payment_failed'
+//     est la source de vérité), UPDATE avec closure_reason='payment_failed'
 //     pour permettre le filtrage UI consumer (la commande n'a jamais été
 //     "engagée" du point de vue consumer). revalidatePublicStats car le
 //     count public est filtré sur statut IN ('confirmed','ready','completed').
@@ -106,7 +106,7 @@ export async function syncStripePaymentFailed(
     .update({
       statut: "cancelled",
       cancelled_at: new Date().toISOString(),
-      cancellation_reason: "payment_failed",
+      closure_reason: "payment_failed",
     })
     .eq("id", orderId);
 

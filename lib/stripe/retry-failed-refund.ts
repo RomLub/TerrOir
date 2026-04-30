@@ -34,7 +34,7 @@ import type { RefundKind } from "@/lib/cron/build-retry-targets";
 // truth = audit_logs (cohérent avec le pattern audit-log-driven background job).
 //
 // Sémantique retour :
-//   - "succeeded" : refund OK → cancellation_reason posée + audit log
+//   - "succeeded" : refund OK → closure_reason posée + audit log
 //     `order_refund_retried_succeeded` (avec metadata.kind). Order sort de
 //     la query targets via le filtre composite (orderId, kind).
 //   - "failed_will_retry" : refund a échoué, attempt < 3 → audit log
@@ -62,7 +62,7 @@ export type RetryRefundParams = {
   // groupé par (order_id, kind)).
   attempt: 1 | 2 | 3;
   // Repris depuis le metadata du dernier event refund_failed posé sur le
-  // path resurrection. Sert à poser cancellation_reason côté UPDATE order
+  // path resurrection. Sert à poser closure_reason côté UPDATE order
   // au succès du retry. Required uniquement si kind='revival'.
   blockedReason?: "blocked_stock" | "blocked_slot";
   consumerId: string | null;
@@ -79,11 +79,11 @@ const FAILED_EVENT_BY_KIND: Record<RefundKind, string> = {
   timeout: "order_timeout_refund_failed",
 };
 
-// Map kind → cancellation_reason posée sur l'order au succès retry.
+// Map kind → closure_reason posée sur l'order au succès retry.
 // - revival : revival_blocked_stock / revival_blocked_slot (depuis blockedReason)
 // - admin   : admin_refund (idempotent : déjà posée par /api/stripe/refund)
 // - timeout : timeout (idempotent : déjà posée par cron order-timeout)
-function cancellationReasonFor(
+function closureReasonFor(
   kind: RefundKind,
   blockedReason?: "blocked_stock" | "blocked_slot",
 ): string {
@@ -117,14 +117,14 @@ export async function retryFailedRefund(
       { idempotencyKey },
     );
 
-    // UPDATE cancellation_reason adaptatif par kind. Statut reste cancelled,
+    // UPDATE closure_reason adaptatif par kind. Statut reste cancelled,
     // cancelled_at reste figé. Symétrique au path nominal des call sites
     // initiaux (handle-payment-succeeded / refund admin / cron timeout).
-    const cancellationReason = cancellationReasonFor(kind, blockedReason);
+    const closureReason = closureReasonFor(kind, blockedReason);
 
     const { error: updateError } = await admin
       .from("orders")
-      .update({ cancellation_reason: cancellationReason })
+      .update({ closure_reason: closureReason })
       .eq("id", orderId);
 
     if (updateError) {

@@ -276,7 +276,7 @@ describe("A. Body validation (zod)", () => {
     expect(res.status).toBe(200);
     const orderUpdate = captured.updates.find((u) => u.table === "orders");
     expect(
-      (orderUpdate!.payload as Record<string, unknown>).cancellation_reason,
+      (orderUpdate!.payload as Record<string, unknown>).closure_reason,
     ).toBe("other");
   });
 });
@@ -454,7 +454,7 @@ describe("D. Auth — utilisateur", () => {
     expect(res.status).toBe(200);
     const orderUpdate = captured.updates.find((u) => u.table === "orders");
     expect(
-      (orderUpdate!.payload as Record<string, unknown>).cancellation_reason,
+      (orderUpdate!.payload as Record<string, unknown>).closure_reason,
     ).toBe("consumer_cancel");
     // Le bloc d'alerte stock ne doit pas avoir été déclenché (count
     // SELECT puis INSERT notifications) — la reason a été écrasée AVANT
@@ -577,7 +577,7 @@ describe("E. Stripe refund + finalStatus dynamique", () => {
 // --- F. UPDATE payload ---------------------------------------------------
 
 describe("F. UPDATE payload", () => {
-  it("F1 cas nominal admin pending → cancelled : statut + cancellation_reason + cancelled_at ISO", async () => {
+  it("F1 cas nominal admin pending → cancelled : statut + closure_reason + cancelled_at ISO", async () => {
     const res = await POST(
       makeRequest({ body: { reason: "consumer_cancel" } }),
       PARAMS,
@@ -587,7 +587,7 @@ describe("F. UPDATE payload", () => {
     expect(orderUpdate).toBeDefined();
     const payload = orderUpdate!.payload as Record<string, unknown>;
     expect(payload.statut).toBe("cancelled");
-    expect(payload.cancellation_reason).toBe("consumer_cancel");
+    expect(payload.closure_reason).toBe("consumer_cancel");
     expect(payload.cancelled_at).toEqual(expect.any(String));
     expect(() =>
       new Date(payload.cancelled_at as string).toISOString(),
@@ -604,7 +604,7 @@ describe("F. UPDATE payload", () => {
     expect(res.status).toBe(200);
     const orderUpdate = captured.updates.find((u) => u.table === "orders");
     expect(
-      (orderUpdate!.payload as Record<string, unknown>).cancellation_reason,
+      (orderUpdate!.payload as Record<string, unknown>).closure_reason,
     ).toBe("other");
   });
 });

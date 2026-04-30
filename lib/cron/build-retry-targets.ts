@@ -183,7 +183,7 @@ export function buildRetryTargets(events: AuditLogRow[]): {
       continue;
     }
 
-    // blocked_reason requis uniquement pour kind='revival' (cancellation_reason
+    // blocked_reason requis uniquement pour kind='revival' (closure_reason
     // côté UPDATE order au succès retry). Pour admin/timeout, optionnel.
     let blockedReason: "blocked_stock" | "blocked_slot" | undefined;
     if (kind === "revival") {

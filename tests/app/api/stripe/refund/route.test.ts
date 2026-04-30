@@ -369,7 +369,7 @@ describe("E. Happy path + side effects", () => {
     expect(orderUpdate).toBeDefined();
     const payload = orderUpdate!.payload as Record<string, unknown>;
     expect(payload.statut).toBe("refunded");
-    expect(payload.cancellation_reason).toBe("admin_refund");
+    expect(payload.closure_reason).toBe("admin_refund");
     expect(payload.cancelled_at).toEqual(expect.any(String));
     expect(() =>
       new Date(payload.cancelled_at as string).toISOString(),
