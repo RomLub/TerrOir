@@ -85,10 +85,10 @@ export default function ProfilPage() {
     setError(null);
     setSaved(false);
 
-    // Email volontairement exclu : il transite via supabase.auth.updateUser
-    // côté server action ChangeEmailSection (cf. _actions/change-email.ts) →
-    // évite la désynchro auth.users ↔ public.users (le sync public.users.email
-    // est fait dans /auth/callback case email_change après verifyOtp).
+    // Email volontairement exclu : il transite via le flow A3 custom OTP
+    // (T-013 PR2, cf. _actions/request-otp + verify-otp + complete-email-change)
+    // qui orchestre auth.admin.updateUserById + sync public.users.email
+    // atomiquement. Évite la désynchro auth.users ↔ public.users.
     const supabase = createSupabaseBrowserClient();
     const { error: updateError } = await supabase
       .from("users")
