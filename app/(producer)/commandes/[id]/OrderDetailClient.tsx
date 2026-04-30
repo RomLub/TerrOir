@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { Button, OrderStatusBadge, type OrderStatus } from '@/components/ui';
+import { canProducerCancel } from '@/lib/orders/stateMachine';
 
 type OrderItem = { name: string; qty: string; unitPrice: number; total: number };
 export type OrderDetailData = {
@@ -215,25 +216,20 @@ export function OrderDetailClient({ data }: { data: OrderDetailData }) {
             <h2 className="font-serif text-[18px] text-green-900 mb-4">Actions</h2>
             <div className="flex flex-col gap-2">
               {order.status === 'pending' && (
-                <>
-                  <Button variant="success" size="lg" disabled={busy !== null} onClick={() => call('confirm')}>
-                    {busy === 'confirm' ? 'Confirmation…' : 'Confirmer la commande'}
-                  </Button>
-                  <Button variant="ghost" size="lg" disabled={busy !== null} onClick={() => call('cancel', { reason: 'producer_cancel' })}>
-                    Annuler
-                  </Button>
-                </>
+                <Button variant="success" size="lg" disabled={busy !== null} onClick={() => call('confirm')}>
+                  {busy === 'confirm' ? 'Confirmation…' : 'Confirmer la commande'}
+                </Button>
               )}
               {order.status === 'confirmed' && (
-                <>
-                  <p className="text-[13px] text-dark/60">Préparez la commande puis validez le retrait avec le code client.</p>
-                  <Button variant="ghost" size="lg" disabled={busy !== null} onClick={() => call('cancel', { reason: 'producer_cancel' })}>
-                    Annuler
-                  </Button>
-                </>
+                <p className="text-[13px] text-dark/60">Préparez la commande puis validez le retrait avec le code client.</p>
               )}
               {order.status === 'ready' && (
                 <p className="text-[13px] text-dark/60">Saisissez le code client ci-contre pour finaliser.</p>
+              )}
+              {canProducerCancel(order.status) && (
+                <Button variant="ghost" size="lg" disabled={busy !== null} onClick={() => call('cancel', { reason: 'producer_cancel' })}>
+                  Annuler
+                </Button>
               )}
               {order.status === 'completed' && (
                 <p className="text-[13px] text-dark/60">Commande finalisée. Le règlement sera inclus dans le prochain virement.</p>
