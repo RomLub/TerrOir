@@ -1,10 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { User } from "@supabase/supabase-js";
 
-// `lib/auth/session.ts` importe 'server-only' (module virtuel Next.js, non
-// résolvable hors build webpack) → stub no-op pour vitest.
-vi.mock("server-only", () => ({}));
-
 // Mock du client server : dispatch sur from(table) entre admin_users et
 // producers. Chaque table a son propre maybeSingle stubable indépendamment
 // → permet de tester le fail-safe PAR lookup (un throw n'affecte pas l'autre).

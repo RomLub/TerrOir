@@ -20,26 +20,31 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 // seul le bypass RLS du service_role permet d'écrire. Un client browser
 // authentifié ne pourra jamais forger un event (même s'il essayait).
 
-export type AuthEventType =
-  | "password_reset_request"
-  | "password_changed"
-  | "account_login_password"
-  | "account_login_magic_link"
-  | "account_logout"
+// T-080 Phase 1 : source unique des event_types Auth. Array runtime
+// dérivé en type union pour rester strictement aligné avec la déclaration
+// historique (`AuthEventType`) tout en exposant la liste itérable côté UI
+// admin (page /audit-logs filtres). Pas de duplication possible : le type
+// est calculé via `(typeof ...)[number]`.
+export const AUTH_EVENT_TYPES = [
+  "password_reset_request",
+  "password_changed",
+  "account_login_password",
+  "account_login_magic_link",
+  "account_logout",
   // Phase 3 multi-events (T-081 PR-A) — events Auth additionnels pour
   // couverture forensique élargie. Cohérent contrat fail-safe
   // (swallow + console.warn, pas de re-throw) et même surface params.
-  | "account_signup"
-  | "account_deleted"
-  | "email_change"
-  | "admin_login"
-  | "role_changed"
+  "account_signup",
+  "account_deleted",
+  "email_change",
+  "admin_login",
+  "role_changed",
   // T-307 : race condition perdue sur consommation token invitation.
   // Émis quand le UPDATE producer_invitations.used_at concurrent affecte
   // 0 rows (le claim a été grillé par une transaction parallèle). Sert de
   // signal forensique : volume anormal = soupçon d'attaque double-click /
   // replay automatisé sur lien d'invitation.
-  | "invitation_consumed_race_lost"
+  "invitation_consumed_race_lost",
   // T-310 : audit log forensique flow invitation producer (cluster cohérent
   // race_lost ci-dessus). Émis par les server actions admin/* + producer/*.
   //   - invitation_created : admin a créé une invitation (POST
@@ -53,15 +58,15 @@ export type AuthEventType =
   //     quand le UPDATE producer_invitations.used_at affecte 1 row (token
   //     marqué consumed avec succès). Pendant symétrique de race_lost ci-
   //     dessus, sémantique propre : "consumed = used_at marqué".
-  | "invitation_created"
-  | "invitation_revoked"
-  | "invitation_consumed_success"
+  "invitation_created",
+  "invitation_revoked",
+  "invitation_consumed_success",
   // T-309 : tentative login échouée (signInWithPassword fail). Émis depuis
   // loginAction quand Supabase rejette les credentials. userId = null (user
   // pas authentifié), metadata embarque email tenté + reason_code catégoriel
   // (invalid_credentials | email_not_confirmed | rate_limited | technical)
   // pour permettre détection forensique brute-force / énumération.
-  | "login_failed"
+  "login_failed",
   // T-305 PR-B : cap rate-limit applicatif dépassé. Émis depuis chaque call
   // site auth (signup, login, magic_link, recovery, invitation create/login)
   // quand consumeRateLimit() retourne success=false. userId=null (user souvent
@@ -69,7 +74,10 @@ export type AuthEventType =
   // pour grep forensique pattern d'attaque (bruteforce IP, flooding recovery).
   // Cap rate-limited Supabase distinct (cf. login_failed reason_code=rate_limited
   // côté T-309) — celui-ci est notre defensive layer applicative.
-  | "rate_limit_exceeded";
+  "rate_limit_exceeded",
+] as const;
+
+export type AuthEventType = (typeof AUTH_EVENT_TYPES)[number];
 
 type LogAuthEventParams = {
   eventType: AuthEventType;

@@ -8,7 +8,6 @@ vi.hoisted(() => {
     process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 });
 
-vi.mock("server-only", () => ({}));
 vi.mock("@/lib/audit-logs/log-payment-event", () => ({
   logPaymentEvent: vi.fn(),
 }));

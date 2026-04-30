@@ -24,10 +24,6 @@ vi.hoisted(() => {
     process.env.OPT_OUT_TOKEN_SECRET ?? "test-opt-out-secret";
 });
 
-// `server-only` est importé par lib/rgpd/opt-out-token et lib/auth/session
-// (chargés transitivement par la route). Stub-out en environnement test.
-vi.mock("server-only", () => ({}));
-
 // --- Hoisted mocks partagés avec les factories vi.mock -------------------
 const { mockSendTemplate } = vi.hoisted(() => ({
   mockSendTemplate: vi.fn(),

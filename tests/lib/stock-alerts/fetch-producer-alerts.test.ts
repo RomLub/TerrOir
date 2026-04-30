@@ -3,8 +3,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-vi.mock("server-only", () => ({}));
-
 import { fetchProducerAlerts } from "@/lib/stock-alerts/fetch-producer-alerts";
 
 type Resp = { data?: unknown; error?: unknown };

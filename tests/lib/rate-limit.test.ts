@@ -1,9 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-// server-only throw côté browser ; en test environment, mock le pour éviter
-// le throw au top-level import.
-vi.mock("server-only", () => ({}));
-
 // --- Mocks ----------------------------------------------------------------
 // On mock @upstash/ratelimit + @upstash/redis pour ne pas appeler le vrai
 // service en CI. Pattern hoisted pour être disponible avant les vi.mock.

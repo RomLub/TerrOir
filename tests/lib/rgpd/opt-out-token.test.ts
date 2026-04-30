@@ -1,8 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-
-// `lib/rgpd/opt-out-token.ts` importe 'server-only' (virtuel Next.js, non
-// résolvable hors build webpack) → stub no-op pour vitest.
-vi.mock("server-only", () => ({}));
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
 import {
   generateOptOutToken,

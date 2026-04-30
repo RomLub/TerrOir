@@ -1,9 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-// `lib/audit-logs/log-payment-event.ts` importe 'server-only' (virtuel
-// Next.js, non résolvable hors build webpack) → stub no-op.
-vi.mock("server-only", () => ({}));
-
 // Capture des inserts pour assertions. Pattern identique à
 // log-auth-event.test.ts.
 type InsertSpy = ((table: string, payload: unknown) => Promise<unknown>) & {

@@ -1,8 +1,6 @@
 // Tests vitest pour lib/stock-alerts/tokens.ts.
 
-import { describe, it, expect, vi } from "vitest";
-
-vi.mock("server-only", () => ({}));
+import { describe, it, expect } from "vitest";
 
 import { generateAlertToken } from "@/lib/stock-alerts/tokens";
 

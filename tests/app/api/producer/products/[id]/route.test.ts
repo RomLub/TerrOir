@@ -14,8 +14,6 @@ vi.hoisted(() => {
     process.env.NEXT_PUBLIC_PRODUCER_URL ?? "http://localhost:3001";
 });
 
-vi.mock("server-only", () => ({}));
-
 const {
   mockGetSessionUser,
   mockNotifyBackInStock,

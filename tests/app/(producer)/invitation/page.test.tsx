@@ -10,11 +10,6 @@ vi.hoisted(() => {
   process.env.NEXT_PUBLIC_ADMIN_URL = "http://localhost:3002";
 });
 
-// `server-only` est un module virtuel Next.js qui throw côté client. Importé
-// indirectement via la chaîne app/connexion/logout-action → lib/audit-logs.
-// Pattern aligné sur les autres tests du repo (cf. log-auth-event.test.ts).
-vi.mock("server-only", () => ({}));
-
 // --- Mocks ---------------------------------------------------------------
 // On test au niveau ReactElement : le Server Component retourne du JSX qu'on
 // inspecte via .type / .props sans passer par un rendu DOM (env=node, pas

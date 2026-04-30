@@ -8,8 +8,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-vi.mock("server-only", () => ({}));
-
 import { createStockAlert } from "@/lib/stock-alerts/create-alert";
 
 type Resp = { data?: unknown; error?: unknown };

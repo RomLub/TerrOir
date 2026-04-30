@@ -1,9 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-// `lib/audit-logs/log-auth-event.ts` importe 'server-only' (virtuel
-// Next.js, non résolvable hors build webpack) → stub no-op.
-vi.mock("server-only", () => ({}));
-
 // `next/headers` n'est dispo qu'en runtime serveur Next.js. On expose un
 // mock contrôlable depuis chaque test pour simuler "headers présents",
 // "headers absents (throws)", etc.

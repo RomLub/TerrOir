@@ -29,8 +29,6 @@ vi.hoisted(() => {
     process.env.SUPPORT_EMAIL ?? "admin@terroir-local.fr";
 });
 
-vi.mock("server-only", () => ({}));
-
 // --- Hoisted mocks pour les dépendances -----------------------------------
 const {
   mockConstructEvent,
