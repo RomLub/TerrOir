@@ -1,15 +1,17 @@
 // Vitest pour POST /api/orders/create.
 // Couverture : auth (401), validation Zod (items vide / uuid invalide),
-// pré-check slot (409 invalide), mapping SQLSTATE → HTTP via la RPC
-// create_order_with_items (22023/P0002/23514/42501/inconnu), happy path
-// avec vérification des params RPC (extractHeureRetrait, notes_client null,
-// items.prix_unitaire forcé à 0), edges (RPC null silencieux 500, trim
-// notes_client, SELECT post-RPC fail silencieux — comportement actuel à
-// fixer T-427).
+// pré-check slot (409 invalide), idempotence dedup pré-RPC (T-428 fenêtre
+// 5 min), mapping SQLSTATE → HTTP via la RPC create_order_with_items
+// (22023/P0002/23514/42501/inconnu), happy path avec vérification des
+// params RPC (extractHeureRetrait, notes_client null, items.prix_unitaire
+// forcé à 0), edges (RPC null silencieux 500, trim notes_client, SELECT
+// post-RPC fail silencieux — comportement actuel à fixer T-427).
 //
 // Pattern aligné tests/app/api/orders/[id]/cancel/route.test.ts :
 // builder Supabase chaînable multi-table avec queues séparées par opération.
 // Extension : support .rpc() (pas dans cancel) avec capture + queue par nom.
+// Extension T-428 : support .gt() + .limit() chainables pour le SELECT
+// dedup pré-RPC (consumer_id + slot_id + date_retrait + statut + cutoff).
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
@@ -41,6 +43,8 @@ type Captured = {
   fromCalls: string[];
   selects: Array<{ table: string; cols: string }>;
   eqCalls: Array<{ table: string; col: string; val: unknown }>;
+  gtCalls: Array<{ table: string; col: string; val: unknown }>;
+  limitCalls: Array<{ table: string; n: number }>;
   rpcCalls: Array<{ name: string; args: unknown }>;
 };
 
@@ -78,6 +82,14 @@ vi.mock("@/lib/supabase/server", () => ({
       };
       builder.eq = (col: string, val: unknown) => {
         captured.eqCalls.push({ table, col, val });
+        return builder;
+      };
+      builder.gt = (col: string, val: unknown) => {
+        captured.gtCalls.push({ table, col, val });
+        return builder;
+      };
+      builder.limit = (n: number) => {
+        captured.limitCalls.push({ table, n });
         return builder;
       };
       builder.maybeSingle = () => Promise.resolve(consumeFrom(t, builder._op));
@@ -158,7 +170,14 @@ function pushRpc(name: string, ...resps: Resp[]) {
 // --- Setup / teardown ----------------------------------------------------
 
 beforeEach(() => {
-  captured = { fromCalls: [], selects: [], eqCalls: [], rpcCalls: [] };
+  captured = {
+    fromCalls: [],
+    selects: [],
+    eqCalls: [],
+    gtCalls: [],
+    limitCalls: [],
+    rpcCalls: [],
+  };
   responses = {};
   sessionUser = {
     id: CONSUMER_ID,
@@ -166,10 +185,16 @@ beforeEach(() => {
     roles: ["consumer"],
     isAdmin: false,
   };
-  // Defaults flow nominal : slot existe, RPC retourne ORDER_ID, post-fetch OK.
+  // Defaults flow nominal : slot existe, dedup T-428 miss (pas d'order
+  // pending récente), RPC retourne ORDER_ID, post-fetch enrich OK.
   pushSlotSelect({ data: { starts_at: SLOT_STARTS_AT }, error: null });
+  pushOrderSelect(
+    // 1er consume : dedup pré-RPC T-428 → miss (pas d'order existante)
+    { data: null, error: null },
+    // 2ème consume : enrich post-RPC → DEFAULT_ORDER
+    { data: DEFAULT_ORDER, error: null },
+  );
   pushRpc("create_order_with_items", { data: ORDER_ID, error: null });
-  pushOrderSelect({ data: DEFAULT_ORDER, error: null });
   // T-429 : reset le compteur d'appels audit log entre chaque test.
   vi.mocked(logPaymentEvent).mockClear();
 });
@@ -345,8 +370,8 @@ describe("E. Happy path", () => {
       ],
     });
 
-    // Pré-check slot + post-fetch order : 2 SELECTs au total.
-    expect(captured.fromCalls).toEqual(["slots", "orders"]);
+    // Pré-check slot + dedup T-428 (orders) + post-fetch enrich (orders) : 3 SELECTs.
+    expect(captured.fromCalls).toEqual(["slots", "orders", "orders"]);
     expect(
       captured.eqCalls.find((e) => e.table === "orders" && e.col === "id"),
     ).toEqual({ table: "orders", col: "id", val: ORDER_ID });
@@ -381,8 +406,9 @@ describe("F. Edge cases", () => {
     const res = await POST(makeRequest());
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ error: "RPC returned no order_id" });
-    // Pas de fetch post-RPC quand l'order_id est absent.
-    expect(captured.fromCalls).toEqual(["slots"]);
+    // Pré-check slot + dedup T-428 (miss) ; pas de fetch enrich quand
+    // l'order_id RPC est absent (early return avant SELECT enrich).
+    expect(captured.fromCalls).toEqual(["slots", "orders"]);
     // T-429 : RPC sans order_id → audit_log non posé (pas de mutation
     // DB confirmée, return early avant logPaymentEvent).
     expect(logPaymentEvent).not.toHaveBeenCalled();
@@ -428,5 +454,125 @@ describe("F. Edge cases", () => {
         items_count: 1,
       },
     });
+  });
+});
+
+// --- G. Idempotence T-428 (dedup pre-RPC) -------------------------------
+
+describe("G. Idempotence T-428 (dedup pre-RPC)", () => {
+  const EXISTING_ORDER_ID = "66666666-6666-4666-8666-666666666666";
+  const EXISTING_ORDER = {
+    id: EXISTING_ORDER_ID,
+    code_commande: "EXIST-007",
+    montant_total: 18.4,
+    commission_terroir: 1.1,
+    montant_net_producteur: 17.3,
+  };
+
+  it("G1 — order pending existe < 5min même consumer/slot/date → return existante, RPC non appelée, pas de double audit log", async () => {
+    // Override : 1er consume = dedup hit (existing order), 2ème consume
+    // ne sera pas atteint (early return avant RPC + enrich).
+    responses.orders = { select: [{ data: EXISTING_ORDER, error: null }] };
+
+    const res = await POST(makeRequest());
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      order_id: EXISTING_ORDER_ID,
+      code_commande: "EXIST-007",
+      montant_total: 18.4,
+      commission: 1.1,
+      montant_net: 17.3,
+    });
+    // RPC non appelée : la dedup court-circuite avant.
+    expect(captured.rpcCalls).toEqual([]);
+    // Pas de duplication audit log (1ère création a déjà loggé via T-429).
+    expect(logPaymentEvent).not.toHaveBeenCalled();
+    // Vérifier que les 4 filtres dedup sont posés sur la query orders.
+    const ordersEqs = captured.eqCalls.filter((e) => e.table === "orders");
+    expect(ordersEqs).toEqual(
+      expect.arrayContaining([
+        { table: "orders", col: "consumer_id", val: CONSUMER_ID },
+        { table: "orders", col: "slot_id", val: SLOT_ID },
+        { table: "orders", col: "date_retrait", val: "2026-05-15" },
+        { table: "orders", col: "statut", val: "pending" },
+      ]),
+    );
+    // Vérifier la fenêtre temporelle : .gt('created_at', cutoff ISO).
+    expect(captured.gtCalls).toEqual([
+      {
+        table: "orders",
+        col: "created_at",
+        val: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+      },
+    ]);
+    // Vérifier .limit(1) pour bornage perf.
+    expect(captured.limitCalls).toEqual([{ table: "orders", n: 1 }]);
+  });
+
+  it("G2 — dedup miss (pas d'order pending récente) → RPC appelée nominal", async () => {
+    // Default beforeEach : 1er consume orders = dedup miss → RPC nominal.
+    const res = await POST(makeRequest());
+
+    expect(res.status).toBe(200);
+    expect(captured.rpcCalls).toHaveLength(1);
+    expect(logPaymentEvent).toHaveBeenCalledTimes(1);
+    // 3 from au total : slots (pré-check) + orders (dedup miss) + orders (enrich post-RPC).
+    expect(captured.fromCalls).toEqual(["slots", "orders", "orders"]);
+  });
+
+  it("G3 — dedup query : cutoff ISO = now() - 5min (fenêtre temporelle)", async () => {
+    const before = Date.now();
+    await POST(makeRequest());
+    const after = Date.now();
+
+    expect(captured.gtCalls).toHaveLength(1);
+    const cutoffIso = captured.gtCalls[0]!.val as string;
+    const cutoffMs = new Date(cutoffIso).getTime();
+    const FIVE_MIN_MS = 5 * 60 * 1000;
+    // Le cutoff doit être dans la fenêtre [before - 5min, after - 5min].
+    expect(cutoffMs).toBeGreaterThanOrEqual(before - FIVE_MIN_MS - 10);
+    expect(cutoffMs).toBeLessThanOrEqual(after - FIVE_MIN_MS + 10);
+  });
+
+  it("G4 — dedup hit n'appelle ni la RPC ni le SELECT enrich post-RPC", async () => {
+    responses.orders = { select: [{ data: EXISTING_ORDER, error: null }] };
+
+    await POST(makeRequest());
+
+    // Pas de RPC, pas de 2ème SELECT orders (enrich) → 2 from total.
+    expect(captured.fromCalls).toEqual(["slots", "orders"]);
+    expect(captured.rpcCalls).toEqual([]);
+  });
+
+  it("G5 — dedup query : .select() inclut les 5 colonnes nécessaires au shape de réponse", async () => {
+    responses.orders = { select: [{ data: EXISTING_ORDER, error: null }] };
+
+    await POST(makeRequest());
+
+    // Le 1er .select() sur orders est le dedup pré-RPC.
+    const ordersSelects = captured.selects.filter((s) => s.table === "orders");
+    expect(ordersSelects.length).toBeGreaterThanOrEqual(1);
+    const dedupCols = ordersSelects[0]!.cols;
+    // 5 colonnes : id + 4 enrich cohérent shape réponse path nominal.
+    expect(dedupCols).toContain("id");
+    expect(dedupCols).toContain("code_commande");
+    expect(dedupCols).toContain("montant_total");
+    expect(dedupCols).toContain("commission_terroir");
+    expect(dedupCols).toContain("montant_net_producteur");
+  });
+
+  it("G6 — order pending existe mais query rend null (autre consumer / slot / date / statut / hors fenêtre) → RPC nominal", async () => {
+    // Toutes les variantes "miss" produisent le même résultat côté Supabase :
+    // .maybeSingle() retourne { data: null, error: null }. Le default beforeEach
+    // simule déjà ce cas (1er consume = null). On vérifie le path nominal.
+    const res = await POST(makeRequest());
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { order_id: string };
+    expect(body.order_id).toBe(ORDER_ID); // nouvelle order créée par la RPC
+    expect(captured.rpcCalls).toHaveLength(1);
+    // Audit log T-429 posé (path nominal, pas dedup hit).
+    expect(logPaymentEvent).toHaveBeenCalledTimes(1);
   });
 });
