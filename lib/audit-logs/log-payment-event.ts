@@ -28,7 +28,12 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 // seul le bypass RLS du service_role permet d'écrire. Cohérent avec
 // log-auth-event (même contrat).
 
-export type PaymentEventType =
+// T-080 Phase 1 : source unique des event_types Payment. Array runtime
+// dérivé en type union pour rester strictement aligné avec la déclaration
+// historique (`PaymentEventType`) tout en exposant la liste itérable côté
+// UI admin (page /audit-logs filtres). Pas de duplication possible : le
+// type est calculé via `(typeof ...)[number]`.
+export const PAYMENT_EVENT_TYPES = [
   // T-429 : audit forensique post-création atomique d'une order via la
   // RPC create_order_with_items. Posé dès le retour OK (avant ack HTTP au
   // client), couvre le path happy de POST /api/orders/create. userId =
@@ -37,16 +42,16 @@ export type PaymentEventType =
   // RGPD pré-Live : symétrique aux audit_logs cancel/refund/webhook/cron
   // (Bundles 1+3+4) — aucune mutation DB importante n'échappe désormais
   // à l'audit trail.
-  | "order_created"
+  "order_created",
   // Path nominal et failed (instrumentation rétroactive Phase 2).
-  | "order_payment_succeeded"
-  | "order_payment_failed"
+  "order_payment_succeeded",
+  "order_payment_failed",
   // Path résurrection 3DS-retry (P1 commit 49c0f1b).
-  | "order_revival_succeeded"
+  "order_revival_succeeded",
   // Paths résurrection bloquée (chantier en cours).
-  | "order_revival_blocked_stock"
-  | "order_revival_blocked_slot"
-  | "order_revival_refund_failed"
+  "order_revival_blocked_stock",
+  "order_revival_blocked_slot",
+  "order_revival_refund_failed",
   // Path retry cron daily (chantier retry-failed-refunds — scope minimal
   // résurrection bloquée). Cron `/api/cron/retry-failed-refunds` retente
   // jusqu'à 3 fois les refunds bloqués sur le path résurrection. Idempotency
@@ -54,28 +59,28 @@ export type PaymentEventType =
   // Sortie de boucle : `_retried_succeeded` (refund OK enfin) OU
   // `_retry_exhausted` (3 attempts épuisés, alerte admin via notifications
   // template='refund_retry_exhausted').
-  | "order_refund_retried_succeeded"
-  | "order_refund_retry_exhausted"
+  "order_refund_retried_succeeded",
+  "order_refund_retry_exhausted",
   // Paths refund autres que résurrection (chantier T-107 instrumentation
   // pré-requis avant extension du cron retry-failed-refunds aux 3 paths).
   // Aujourd'hui pure instrumentation forensique : le cron retry actuel ne
   // les consomme pas encore. Posent un audit_log à chaque échec
   // `stripe.refunds.create` sur leur path respectif pour permettre la
   // détection background ultérieure.
-  | "order_admin_refund_failed"
-  | "order_timeout_refund_failed"
+  "order_admin_refund_failed",
+  "order_timeout_refund_failed",
   // Path cron timeout sur order pending non payée (PI status !== 'succeeded').
   // T-409 : skip refund Stripe + audit forensique pour ne pas polluer le
   // cron retry T-412 avec des faux positifs (PI 3DS abandonné, etc.).
-  | "order_timeout_no_payment"
+  "order_timeout_no_payment",
   // Phase 3 multi-events (T-081 PR-B) — events Stripe directs, pas liés à
   // un order_id spécifique côté plateforme. Préfixe `stripe_` pour
   // disambiguer des events `order_*` ci-dessus. user_id null par défaut
   // (orphelin), traçable a posteriori via metadata (stripe_account_id,
   // payout_id, payment_intent_id).
-  | "stripe_account_updated"
-  | "stripe_payout_paid"
-  | "stripe_dispute"
+  "stripe_account_updated",
+  "stripe_payout_paid",
+  "stripe_dispute",
   // Bundle 3 webhook events go-Live (T-401) — Stripe signale les échecs
   // de virement Connect plateforme -> producteur.
   //   - stripe_transfer_failed : Transfer plateforme -> Connect account
@@ -94,7 +99,7 @@ export type PaymentEventType =
   //                              migration 20260429010000 T-422). Alerte
   //                              l'admin via email Resend (SUPPORT_EMAIL)
   //                              + notification placeholder DB.
-  | "stripe_transfer_failed"
+  "stripe_transfer_failed",
   // T-416 : "stripe_transfer_initiated" — émis après UPDATE 'paid' succès
   // dans processWeeklyPayouts (cron weekly-payout). Pose 1 event par
   // producer dont le transfer Stripe Connect a été créé et confirmé en DB.
@@ -108,14 +113,17 @@ export type PaymentEventType =
   // userId = null (traçable via metadata.producer_id, cohérent
   // stripe_transfer_failed). Format cents (cohérent Stripe API +
   // stripe_transfer_failed existant).
-  | "stripe_transfer_initiated"
-  | "stripe_payout_failed"
+  "stripe_transfer_initiated",
+  "stripe_payout_failed",
   // T-431 : stripe_default_payment_method_set — émis quand le default
   // payment method d'un Customer Stripe est modifié via
   // app/api/stripe/ensure-default-payment-method/route.ts (paths F1, F2).
   // Pas émis sur path F3 (detach seul sans changement de default) ni
   // E1 (no-op default déjà set).
-  | "stripe_default_payment_method_set";
+  "stripe_default_payment_method_set",
+] as const;
+
+export type PaymentEventType = (typeof PAYMENT_EVENT_TYPES)[number];
 
 type LogPaymentEventParams = {
   eventType: PaymentEventType;

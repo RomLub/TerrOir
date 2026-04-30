@@ -78,6 +78,24 @@ const OrdersIcon = (
   </svg>
 );
 
+const AuditLogsIcon = (
+  <svg
+    aria-hidden="true"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="h-4 w-4"
+  >
+    <path d="M15 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <polyline points="14 2 14 8 20 8" />
+    <line x1="9" y1="13" x2="15" y2="13" />
+    <line x1="9" y1="17" x2="13" y2="17" />
+  </svg>
+);
+
 const ReviewsIcon = (
   <svg
     aria-hidden="true"
@@ -114,6 +132,7 @@ const NAV: NavItem[] = [
   { href: "/producer-interests", label: "Leads producteurs", icon: LeadsIcon },
   { href: "/gestion-producteurs", label: "Gestion producteurs", icon: ProducersIcon },
   { href: "/suivi-commandes", label: "Suivi commandes", icon: OrdersIcon },
+  { href: "/audit-logs", label: "Journal d'audit", icon: AuditLogsIcon },
   { href: "/avis", label: "Avis", icon: ReviewsIcon },
   { href: "/gms-prices", label: "Prix GMS", icon: GmsPricesIcon },
 ];
