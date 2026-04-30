@@ -75,6 +75,12 @@ export const AUTH_EVENT_TYPES = [
   // Cap rate-limited Supabase distinct (cf. login_failed reason_code=rate_limited
   // côté T-309) — celui-ci est notre defensive layer applicative.
   "rate_limit_exceeded",
+  // T-013 PR2 : flow A3 change_email custom (2 OTP successifs). Émis depuis
+  // les server actions request-otp / verify-otp / complete-email-change.
+  // Trace forensique granulaire : volume anormal de account_otp_invalid =
+  // soupçon brute-force, account_otp_attempts_exceeded = invalidation forcée.
+  // metadata embarque step (current|new) + email_target_masked.
+  "account_otp_requested",
 ] as const;
 
 export type AuthEventType = (typeof AUTH_EVENT_TYPES)[number];
