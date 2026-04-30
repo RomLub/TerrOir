@@ -49,7 +49,19 @@ function generatePassword(): string {
 }
 
 /**
- * Crée un user de test via auth.admin (Supabase service_role).
+ * Crée un user de test via auth.admin (Supabase service_role) + reproduit
+ * le pattern signup prod en INSERT-ant la row public.users associée.
+ *
+ * Pas de trigger DB qui crée public.users automatiquement (cf. migration
+ * 20260419000000_initial_schema) : le code prod fait l'INSERT manuel après
+ * signUp (cf. app/(consumer)/auth/inscription/actions.ts:102-110). Pour
+ * que le helper produise un user cohérent avec un signup réel, on
+ * reproduit ce pattern ici.
+ *
+ * Cleanup : public.users est purgée automatiquement via la FK
+ * `id REFERENCES auth.users(id) ON DELETE CASCADE` quand cleanupTestUser
+ * appelle auth.admin.deleteUser(userId) — pas besoin de delete explicite.
+ *
  * Push automatiquement id + email dans le contexte tracké.
  */
 export async function createTestUser(
@@ -77,77 +89,52 @@ export async function createTestUser(
     password,
   };
 
-  // Track AVANT de retourner : safeDelete pourra cibler cet id ensuite
+  // Track AVANT l'INSERT public.users : si l'INSERT fail, l'afterEach
+  // cleanupAllTrackedUsers pourra purger l'auth.users orphelin via le id tracké.
   trackId(ctx, user.id);
   trackEmail(ctx, user.email);
+
+  // Reproduit le pattern signup prod (actions.ts:102-110). Fail-fast :
+  // un user half-created (auth.users sans public.users) est un état
+  // corrompu qu'on ne veut pas masquer dans les tests.
+  const { error: profileError } = await admin.from('users').insert({
+    id: user.id,
+    email: user.email,
+    roles: ['consumer'],
+  });
+  if (profileError) {
+    throw new Error(
+      `createTestUser INSERT public.users failed: ${profileError.message}`,
+    );
+  }
 
   return user;
 }
 
 /**
- * Bypass UI login : génère une session via auth.admin et set les cookies
- * Supabase directement dans le contexte browser Playwright.
+ * Login UI rapide via /connexion en mode password.
  *
- * Cette fonction NE TESTE PAS le flow de login (c'est volontaire, hors scope
- * ChangeEmailSection). Le flow login UI sera testé en phase 2 via un smoke
- * dédié signup → magic link Resend → click → arrivée loggé.
+ * Le projet utilise @supabase/ssr (App Router) qui stocke la session
+ * dans des cookies HTTP, pas dans localStorage. Le seul moyen fiable
+ * de poser ces cookies sans dépendre du format interne (qui peut
+ * changer entre versions du SDK) est de traverser le formulaire de
+ * login : la server action loginAction posera les cookies via
+ * createSupabaseServerClient() comme pour un vrai user.
+ *
+ * Coût ~2-3s par test, pas de mail Resend gaspillé (password mode,
+ * pas magic link). Bonus : ce flow valide aussi le login en passant.
+ *
+ * Marqueur de fin : on quitte /connexion (resolvePostLoginPath redirige
+ * vers /compte ou la cible redirectTo selon le rôle).
  */
 export async function loginAs(page: Page, user: TestUser): Promise<void> {
-  const admin = getRawAdminClient();
-
-  // Génère un magic link mais on ne l'envoie pas par mail : on extrait
-  // directement les tokens via la propriété `properties.action_link` de
-  // la response, ou plus proprement via signInWithPassword côté admin.
-  // Approche retenue : signInWithPassword via un client temporaire user-side.
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!anonKey) {
-    throw new Error('NEXT_PUBLIC_SUPABASE_ANON_KEY manquant dans .env.local');
-  }
-
-  // Import dynamique pour éviter de créer un autre singleton
-  const { createClient } = await import('@supabase/supabase-js');
-  const userClient = createClient(url, anonKey);
-  const { data, error } = await userClient.auth.signInWithPassword({
-    email: user.email,
-    password: user.password,
-  });
-
-  if (error || !data.session) {
-    throw new Error(`loginAs failed: ${error?.message ?? 'no session returned'}`);
-  }
-
-  // Inject tokens dans le browser Playwright via localStorage
-  // (Supabase JS client utilise localStorage par défaut côté client).
-  const projectRef = url.match(/https:\/\/([^.]+)\.supabase\.co/)?.[1];
-  if (!projectRef) {
-    throw new Error(`Impossible d'extraire le project ref depuis ${url}`);
-  }
-  const storageKey = `sb-${projectRef}-auth-token`;
-  const sessionPayload = {
-    access_token: data.session.access_token,
-    refresh_token: data.session.refresh_token,
-    expires_at: data.session.expires_at,
-    expires_in: data.session.expires_in,
-    token_type: data.session.token_type,
-    user: data.session.user,
-  };
-
-  // Le browser doit être déjà sur le bon domaine pour que localStorage soit accessible.
-  // Si on n'est sur aucune page, navigate d'abord vers /
-  if (!page.url() || page.url() === 'about:blank') {
-    await page.goto('/');
-  }
-
-  await page.evaluate(
-    ({ key, payload }) => {
-      window.localStorage.setItem(key, JSON.stringify(payload));
-    },
-    { key: storageKey, payload: sessionPayload },
-  );
-
-  // Refresh pour que Supabase JS pickup la session depuis localStorage
-  await page.reload();
+  await page.goto('/connexion');
+  await page.getByLabel('Email', { exact: true }).fill(user.email);
+  await page.getByLabel('Mot de passe', { exact: true }).fill(user.password);
+  await page
+    .getByRole('button', { name: 'Se connecter', exact: true })
+    .click();
+  await page.waitForURL((url) => !url.pathname.startsWith('/connexion'));
 }
 
 /**
