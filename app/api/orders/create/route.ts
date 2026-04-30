@@ -132,13 +132,42 @@ export async function POST(request: Request) {
     );
   }
 
-  const { data: order } = await supabase
-    .from("orders")
-    .select(
-      "code_commande, montant_total, commission_terroir, montant_net_producteur",
-    )
-    .eq("id", orderId as string)
-    .single();
+  // T-427 : try/catch SELECT post-RPC enrich. Cas dominant prod (RLS bug,
+  // lock_timeout, etc.) : Supabase retourne {data: null, error: <err>}
+  // silencieusement — sans le destructure de error, le pattern précédent
+  // ignorait l'erreur et continuait avec order=null sans log forensique.
+  // Cas rare (network blip via .single()) : exception propagée jusqu'au
+  // handler → 500 + audit log T-429 NON posé (incohérence forensique
+  // RPC committed mais audit miss). Le try/catch + destructure couvre
+  // les deux paths avec log greppable [ORDER_CREATE_ENRICH_FAIL] +
+  // fallback graceful order=null. L'audit log T-429 ci-dessous est posé
+  // quel que soit le résultat (cas 4 résolu).
+  let order: {
+    code_commande?: string;
+    montant_total?: number;
+    commission_terroir?: number;
+    montant_net_producteur?: number;
+  } | null = null;
+  try {
+    const { data, error } = await supabase
+      .from("orders")
+      .select(
+        "code_commande, montant_total, commission_terroir, montant_net_producteur",
+      )
+      .eq("id", orderId as string)
+      .single();
+    if (error || !data) {
+      console.warn(
+        `[ORDER_CREATE_ENRICH_FAIL] order_id=${orderId} error=${error?.message ?? "row not found"}`,
+      );
+    } else {
+      order = data;
+    }
+  } catch (e) {
+    console.warn(
+      `[ORDER_CREATE_ENRICH_FAIL] order_id=${orderId} error=${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
 
   // T-429 audit forensique pré-Live (RGPD compliance + reporting). Pose
   // un audit_log post-RPC réussie, avant retour HTTP au client. Pattern
