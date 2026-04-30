@@ -444,6 +444,27 @@ describe("D. SQLSTATE → HTTP mapping", () => {
     });
     expect(logPaymentEvent).not.toHaveBeenCalled();
   });
+
+  it("D10 — RPC error P0001 (auto-purchase guard) → 403 + message brut (T-442)", async () => {
+    responses.rpc = {
+      create_order_with_items: [
+        {
+          data: null,
+          error: {
+            message: "Un producteur ne peut pas commander son propre produit",
+            code: "P0001",
+          },
+        },
+      ],
+    };
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({
+      error: "Un producteur ne peut pas commander son propre produit",
+      code: "P0001",
+    });
+    expect(logPaymentEvent).not.toHaveBeenCalled();
+  });
 });
 
 // --- E. Happy path -------------------------------------------------------
