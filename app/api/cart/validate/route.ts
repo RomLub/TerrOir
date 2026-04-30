@@ -96,6 +96,35 @@ export async function POST(request: Request) {
       .in("statut", ["pending", "confirmed", "ready"]),
   ]);
 
+  // T-450 forensique : log greppable [CART_VALIDATE_SELECT_FAIL] sur fail
+  // SELECT batch. Si Supabase retourne {data: null, error: <err>} (RLS bug,
+  // statement_timeout, etc.), le `?? []` ci-dessous masque silencieusement
+  // → tous items flag *_unavailable (faux négatifs UX) sans trace forensique.
+  // Pattern aligné T-427 (orders/create:182-201) inline console.warn template
+  // literal UPPER_SNAKE_CASE. Fail-soft préservé : `?? []` inchangé, route
+  // reste 200, comportement client inchangé. Diagnostic post-incident :
+  // grep "CART_VALIDATE_SELECT_FAIL" logs/ filtrable par table=X.
+  if (producersRes.error) {
+    console.warn(
+      `[CART_VALIDATE_SELECT_FAIL] table=producers error=${producersRes.error.message}`,
+    );
+  }
+  if (productsRes.error) {
+    console.warn(
+      `[CART_VALIDATE_SELECT_FAIL] table=products error=${productsRes.error.message}`,
+    );
+  }
+  if (slotsRes.error) {
+    console.warn(
+      `[CART_VALIDATE_SELECT_FAIL] table=slots error=${slotsRes.error.message}`,
+    );
+  }
+  if (ordersRes.error) {
+    console.warn(
+      `[CART_VALIDATE_SELECT_FAIL] table=orders error=${ordersRes.error.message}`,
+    );
+  }
+
   const validProducers = new Set(
     (producersRes.data ?? []).map((p) => p.id as string),
   );
