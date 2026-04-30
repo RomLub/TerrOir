@@ -70,6 +70,36 @@ export async function POST(request: Request) {
     );
   }
 
+  // T-428 idempotence : si une order pending existe déjà pour
+  // {consumer_id, slot_id, date_retrait} dans les 5 dernières minutes,
+  // on la renvoie directement (dedup race condition refresh / multi-tab /
+  // back-forward post-init partielle). Pattern aligné T-405 (anti-race
+  // requery DB) + T-407 (state guards UX). Pas de duplication audit log :
+  // la 1ère création a déjà loggé via T-429.
+  const FIVE_MIN_MS = 5 * 60 * 1000;
+  const dedupCutoff = new Date(Date.now() - FIVE_MIN_MS).toISOString();
+  const { data: existingOrder } = await supabase
+    .from("orders")
+    .select(
+      "id, code_commande, montant_total, commission_terroir, montant_net_producteur",
+    )
+    .eq("consumer_id", session.id)
+    .eq("slot_id", slot_id)
+    .eq("date_retrait", date_retrait)
+    .eq("statut", "pending")
+    .gt("created_at", dedupCutoff)
+    .limit(1)
+    .maybeSingle();
+  if (existingOrder) {
+    return NextResponse.json({
+      order_id: existingOrder.id,
+      code_commande: existingOrder.code_commande,
+      montant_total: existingOrder.montant_total,
+      commission: existingOrder.commission_terroir,
+      montant_net: existingOrder.montant_net_producteur,
+    });
+  }
+
   const { data: orderId, error: rpcError } = await supabase.rpc(
     "create_order_with_items",
     {
