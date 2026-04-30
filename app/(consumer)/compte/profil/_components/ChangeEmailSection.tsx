@@ -31,6 +31,11 @@ import {
   requestOtpAction,
   type RequestOtpState,
 } from "../_actions/request-otp";
+import {
+  verifyOtpAction,
+  type VerifyOtpState,
+} from "../_actions/verify-otp";
+import { VerifyOtpStep } from "./ChangeEmailVerifyOtpStep";
 
 type FlowStep =
   | "idle"
@@ -40,6 +45,7 @@ type FlowStep =
   | "completed";
 
 const INITIAL_REQUEST: RequestOtpState = {};
+const INITIAL_VERIFY: VerifyOtpState = {};
 
 export default function ChangeEmailSection({
   currentEmail,
@@ -52,10 +58,15 @@ export default function ChangeEmailSection({
     requestOtpAction,
     INITIAL_REQUEST,
   );
+  const [verifyState, verifyAction] = useFormState(
+    verifyOtpAction,
+    INITIAL_VERIFY,
+  );
 
   // Transition d'étape sur succès de requestOtp
   // - depuis "enter-email" → "verify-current"
-  // - depuis "verify-current" → "verify-new" (re-request pour step=new)
+  // - depuis "verify-current" → "verify-new" (post-chaining verify ok →
+  //   requestOtp step=new auto-déclenché par useEffect ci-dessous)
   useEffect(() => {
     if (!requestState.ok) return;
     setStep((prev) => {
@@ -64,6 +75,20 @@ export default function ChangeEmailSection({
       return prev;
     });
   }, [requestState]);
+
+  // Chaining post-verify : si verify(step=current) ok → trigger
+  // automatiquement requestOtp(step=new). La transition d'étape arrivera
+  // ensuite via le useEffect requestState ci-dessus.
+  // (verify(step=new) ok → completeEmailChange est implémenté en C2.10.)
+  useEffect(() => {
+    if (!verifyState.ok) return;
+    if (step === "verify-current") {
+      const fd = new FormData();
+      fd.set("step", "new");
+      fd.set("newEmail", newEmailValue);
+      requestAction(fd);
+    }
+  }, [verifyState, step, newEmailValue, requestAction]);
 
   function cancelFlow() {
     setStep("idle");
@@ -109,10 +134,13 @@ export default function ChangeEmailSection({
       ) : null}
 
       {step === "verify-current" ? (
-        <PlaceholderStep
-          title="Étape 2/3 — code envoyé à l'adresse actuelle"
-          message={`Un code à 6 chiffres a été envoyé à ${currentEmail}. La saisie du code arrive dans la prochaine itération.`}
-          newEmail={newEmailValue}
+        <VerifyOtpStep
+          stepName="current"
+          newEmailValue={newEmailValue}
+          targetDescription={`à votre adresse actuelle (${currentEmail})`}
+          verifyState={verifyState}
+          verifyAction={verifyAction}
+          requestAction={requestAction}
           onCancel={cancelFlow}
         />
       ) : null}
