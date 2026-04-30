@@ -6,6 +6,7 @@ import {
 } from "../_lib/categorize-event-type";
 
 const BASE_PATH = "/audit-logs";
+const EXPORT_PATH = "/api/admin/audit-logs/export";
 
 type Props = {
   selectedEventTypes: AuditEventType[];
@@ -35,6 +36,25 @@ function toggleEventTypeHref(
   if (dateTo) params.set("date_to", dateTo);
   const qs = params.toString();
   return qs ? `${BASE_PATH}?${qs}` : BASE_PATH;
+}
+
+// Construit l'URL d'export CSV en propageant les filtres courants (sans
+// le cursor de pagination, l'export n'étant jamais paginé). Le bouton est
+// un simple <a> : le browser télécharge via Content-Disposition côté
+// route handler /api/admin/audit-logs/export.
+function buildExportHref(
+  selected: AuditEventType[],
+  userId: string | null,
+  dateFrom: string | null,
+  dateTo: string | null,
+): string {
+  const params = new URLSearchParams();
+  for (const t of selected) params.append("event_type", t);
+  if (userId) params.set("user_id", userId);
+  if (dateFrom) params.set("date_from", dateFrom);
+  if (dateTo) params.set("date_to", dateTo);
+  const qs = params.toString();
+  return qs ? `${EXPORT_PATH}?${qs}` : EXPORT_PATH;
 }
 
 export function AuditLogsFilters({
@@ -94,7 +114,22 @@ export function AuditLogsFilters({
           />
         </label>
 
-        <div className="flex items-center justify-end gap-3 sm:col-span-3">
+        <div className="flex flex-wrap items-center justify-end gap-3 sm:col-span-3">
+          <a
+            href={buildExportHref(
+              selectedEventTypes,
+              userId,
+              dateFrom,
+              dateTo,
+            )}
+            title="Limité à 10 000 lignes — affinez vos filtres pour un export complet"
+            className="rounded-md border border-gray-300 bg-white px-4 py-2 text-[13px] font-medium text-gray-700 transition-colors hover:bg-gray-50"
+          >
+            Exporter CSV
+          </a>
+          <span className="text-[11px] italic text-gray-500">
+            Limité à 10 000 lignes
+          </span>
           {hasActiveFilters && (
             <Link
               href={BASE_PATH}
