@@ -17,7 +17,12 @@
     "db:reset": "supabase db reset",
     "db:new": "supabase migration new",
     "db:status": "supabase migration list",
-    "db:seed": "npx tsx scripts/seed.ts"
+    "db:seed": "npx tsx scripts/seed.ts",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:debug": "playwright test --debug",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:report": "playwright show-report"
   },
   "dependencies": {
     "@date-fns/tz": "^1.4.1",
@@ -44,6 +49,7 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@types/mapbox-gl": "^3.4.1",
     "@types/node": "^22.7.5",
     "@types/react": "^18.3.11",
