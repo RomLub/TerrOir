@@ -3,25 +3,24 @@
 // =============================================================================
 // ChangeEmailSection — flow A3 change_email custom (T-013 PR2 stepper)
 // =============================================================================
-// Bascule depuis l'ancien flow Supabase Secure Email Change (lien magique
-// asynchrone double confirmation) vers un flow custom 2 OTP successifs
-// in-session :
+// Flow custom 2 OTP successifs in-session (modèle Amazon-like) qui remplace
+// l'ancien Supabase Secure Email Change (lien magique asynchrone double
+// confirmation). Cf. lib/email-change/* + _actions/{request,verify}-otp +
+// _actions/complete-email-change.
 //
 //   idle           → user n'a pas encore cliqué "Modifier"
 //   enter-email    → input new email + submit triggers requestOtp(step=current)
-//   verify-current → input OTP 6 chiffres + bouton "Renvoyer le code" (30s)
-//                    submit triggers verifyOtp(step=current). Si ok →
-//                    requestOtp(step=new) auto + transition verify-new.
+//   verify-current → input OTP 6 chiffres + bouton "Renvoyer" (cooldown 30s).
+//                    submit triggers verifyOtp(step=current). Si ok → request
+//                    Otp(step=new) auto-déclenché + transition verify-new.
 //   verify-new     → input OTP + renvoi. Submit triggers verifyOtp(step=new).
-//                    Si ok → completeEmailChange(newEmail) auto + transition
-//                    completed.
+//                    Si ok → completeEmailChange(newEmail) auto-déclenché.
+//                    Si complete ok → transition completed.
+//                    Si complete erreur → message inline + Recommencer.
 //   completed      → écran succès + indication "autres devices déconnectés"
 //
-// Ce commit (C2.8) implémente uniquement le scaffold + step 1 (enter-email).
-// Steps 2-3-4 sont des placeholders explicites — implémentés en C2.9 / C2.10.
-//
-// useFormState pour la step 1 (action requestOtpAction, retour { ok, error,
-// retryAfterSeconds }). useEffect pour détecter ok=true et transitionner.
+// 3 useFormState chaînés : request, verify, complete. 3 useEffect orchestrent
+// les transitions automatiques sur ok=true des actions précédentes.
 // =============================================================================
 
 import { useEffect, useState } from "react";
@@ -35,7 +34,15 @@ import {
   verifyOtpAction,
   type VerifyOtpState,
 } from "../_actions/verify-otp";
+import {
+  completeEmailChangeAction,
+  type CompleteEmailChangeState,
+} from "../_actions/complete-email-change";
 import { VerifyOtpStep } from "./ChangeEmailVerifyOtpStep";
+import {
+  CompletedStep,
+  CompleteErrorPanel,
+} from "./ChangeEmailCompletedStep";
 
 type FlowStep =
   | "idle"
@@ -46,6 +53,7 @@ type FlowStep =
 
 const INITIAL_REQUEST: RequestOtpState = {};
 const INITIAL_VERIFY: VerifyOtpState = {};
+const INITIAL_COMPLETE: CompleteEmailChangeState = {};
 
 export default function ChangeEmailSection({
   currentEmail,
@@ -62,11 +70,14 @@ export default function ChangeEmailSection({
     verifyOtpAction,
     INITIAL_VERIFY,
   );
+  const [completeState, completeAction] = useFormState(
+    completeEmailChangeAction,
+    INITIAL_COMPLETE,
+  );
 
-  // Transition d'étape sur succès de requestOtp
-  // - depuis "enter-email" → "verify-current"
-  // - depuis "verify-current" → "verify-new" (post-chaining verify ok →
-  //   requestOtp step=new auto-déclenché par useEffect ci-dessous)
+  // Transition d'étape sur succès de requestOtp :
+  //   enter-email → verify-current  (request initial step=current)
+  //   verify-current → verify-new   (request step=new auto-déclenché)
   useEffect(() => {
     if (!requestState.ok) return;
     setStep((prev) => {
@@ -76,10 +87,9 @@ export default function ChangeEmailSection({
     });
   }, [requestState]);
 
-  // Chaining post-verify : si verify(step=current) ok → trigger
-  // automatiquement requestOtp(step=new). La transition d'étape arrivera
-  // ensuite via le useEffect requestState ci-dessus.
-  // (verify(step=new) ok → completeEmailChange est implémenté en C2.10.)
+  // Chaining post-verify :
+  //   verify(current) ok → trigger requestOtp(step=new) auto
+  //   verify(new) ok     → trigger completeEmailChange auto
   useEffect(() => {
     if (!verifyState.ok) return;
     if (step === "verify-current") {
@@ -88,7 +98,19 @@ export default function ChangeEmailSection({
       fd.set("newEmail", newEmailValue);
       requestAction(fd);
     }
-  }, [verifyState, step, newEmailValue, requestAction]);
+    if (step === "verify-new") {
+      const fd = new FormData();
+      fd.set("newEmail", newEmailValue);
+      completeAction(fd);
+    }
+  }, [verifyState, step, newEmailValue, requestAction, completeAction]);
+
+  // Transition finale : complete ok → completed
+  useEffect(() => {
+    if (completeState.ok) {
+      setStep("completed");
+    }
+  }, [completeState]);
 
   function cancelFlow() {
     setStep("idle");
@@ -146,28 +168,26 @@ export default function ChangeEmailSection({
       ) : null}
 
       {step === "verify-new" ? (
-        <PlaceholderStep
-          title="Étape 3/3 — code envoyé à la nouvelle adresse"
-          message={`Un code à 6 chiffres a été envoyé à ${newEmailValue}. La saisie du code et la finalisation arrivent dans la prochaine itération.`}
-          newEmail={newEmailValue}
-          onCancel={cancelFlow}
-        />
+        completeState.reason ? (
+          <CompleteErrorPanel
+            reason={completeState.reason}
+            onRestart={cancelFlow}
+          />
+        ) : (
+          <VerifyOtpStep
+            stepName="new"
+            newEmailValue={newEmailValue}
+            targetDescription={`à ${newEmailValue}`}
+            verifyState={verifyState}
+            verifyAction={verifyAction}
+            requestAction={requestAction}
+            onCancel={cancelFlow}
+          />
+        )
       ) : null}
 
       {step === "completed" ? (
-        <div className="mt-6 space-y-3">
-          <p className="text-sm text-terroir-green-700">
-            Email mis à jour avec succès. Vos sessions sur les autres appareils
-            ont été déconnectées.
-          </p>
-          <button
-            type="button"
-            onClick={cancelFlow}
-            className="rounded-md border border-terroir-border bg-white px-4 py-2 text-sm font-medium text-terroir-ink hover:bg-terroir-bg/60"
-          >
-            Fermer
-          </button>
-        </div>
+        <CompletedStep newEmail={newEmailValue} onClose={cancelFlow} />
       ) : null}
     </section>
   );
@@ -191,7 +211,7 @@ function EnterEmailStep({
 }) {
   return (
     <form action={requestAction} className="mt-6 space-y-4" noValidate>
-      {/* step est fixe à "current" pour cette étape — l'OTP part à l'ancienne
+      {/* step fixe à "current" pour cette étape — l'OTP part à l'ancienne
           adresse pour vérifier l'identité de l'user qui initie le changement. */}
       <input type="hidden" name="step" value="current" />
       <Input
@@ -242,33 +262,5 @@ function SubmitButton({
     >
       {pending ? pendingLabel : label}
     </button>
-  );
-}
-
-// -----------------------------------------------------------------------------
-// Placeholder pour les steps 2/3 (à implémenter en C2.9 / C2.10)
-// -----------------------------------------------------------------------------
-function PlaceholderStep({
-  title,
-  message,
-  onCancel,
-}: {
-  title: string;
-  message: string;
-  newEmail: string;
-  onCancel: () => void;
-}) {
-  return (
-    <div className="mt-6 space-y-3 rounded-md border border-terroir-border bg-terroir-bg/40 p-4">
-      <p className="text-sm font-medium text-terroir-ink">{title}</p>
-      <p className="text-sm text-terroir-muted">{message}</p>
-      <button
-        type="button"
-        onClick={onCancel}
-        className="rounded-md border border-terroir-border bg-white px-3 py-1.5 text-xs font-medium text-terroir-ink hover:bg-terroir-bg/60"
-      >
-        Annuler
-      </button>
-    </div>
   );
 }
