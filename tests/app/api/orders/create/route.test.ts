@@ -293,17 +293,28 @@ describe("D. SQLSTATE → HTTP mapping", () => {
     expect(logPaymentEvent).not.toHaveBeenCalled();
   });
 
-  it("D3 — RPC error 23514 (stock insuffisant) → 409", async () => {
+  it("D3 — RPC error 23514 hint='stock_depleted' → 409 + message UX + hint + details (T-434)", async () => {
     responses.rpc = {
       create_order_with_items: [
-        { data: null, error: { message: "Stock insuffisant pour XYZ", code: "23514" } },
+        {
+          data: null,
+          error: {
+            message: "Stock insuffisant pour XYZ",
+            code: "23514",
+            hint: "stock_depleted",
+            details: "product_id=xyz-uuid",
+          },
+        },
       ],
     };
     const res = await POST(makeRequest());
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({
-      error: "Stock insuffisant pour XYZ",
+      error:
+        "Un produit de votre panier n'est plus disponible. Ajustez votre panier.",
       code: "23514",
+      hint: "stock_depleted",
+      details: "product_id=xyz-uuid",
     });
     expect(logPaymentEvent).not.toHaveBeenCalled();
   });
@@ -334,6 +345,96 @@ describe("D. SQLSTATE → HTTP mapping", () => {
     expect(await res.json()).toEqual({
       error: "Unexpected DB failure",
       code: "99999",
+    });
+    expect(logPaymentEvent).not.toHaveBeenCalled();
+  });
+
+  it("D6 — RPC error 23514 hint='slot_invalid' → 409 + message UX (T-434)", async () => {
+    responses.rpc = {
+      create_order_with_items: [
+        {
+          data: null,
+          error: {
+            message: "Slot abc invalide pour ce producteur",
+            code: "23514",
+            hint: "slot_invalid",
+            details: "slot_id=abc-uuid",
+          },
+        },
+      ],
+    };
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      error: "Ce créneau n'est plus disponible. Choisissez un autre créneau.",
+      code: "23514",
+      hint: "slot_invalid",
+      details: "slot_id=abc-uuid",
+    });
+    expect(logPaymentEvent).not.toHaveBeenCalled();
+  });
+
+  it("D7 — RPC error 23514 hint='slot_full' → 409 + message UX + details capacity/taken (T-434)", async () => {
+    responses.rpc = {
+      create_order_with_items: [
+        {
+          data: null,
+          error: {
+            message: "Slot abc complet : 3 / 3 réservations actives",
+            code: "23514",
+            hint: "slot_full",
+            details: "slot_id=abc-uuid;capacity=3;taken=3",
+          },
+        },
+      ],
+    };
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      error: "Ce créneau de retrait est complet. Choisissez un autre créneau.",
+      code: "23514",
+      hint: "slot_full",
+      details: "slot_id=abc-uuid;capacity=3;taken=3",
+    });
+    expect(logPaymentEvent).not.toHaveBeenCalled();
+  });
+
+  it("D8 — RPC error 23514 hint='product_producer_mismatch' → 409 + message générique (T-434, anomalie technique)", async () => {
+    responses.rpc = {
+      create_order_with_items: [
+        {
+          data: null,
+          error: {
+            message: "Produit xyz appartient à un autre producteur",
+            code: "23514",
+            hint: "product_producer_mismatch",
+            details: "product_id=xyz-uuid",
+          },
+        },
+      ],
+    };
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      error: "Erreur technique. Contactez le support.",
+      code: "23514",
+      hint: "product_producer_mismatch",
+      details: "product_id=xyz-uuid",
+    });
+    expect(logPaymentEvent).not.toHaveBeenCalled();
+  });
+
+  it("D9 — RPC error 23514 sans hint (legacy / migration pas appliquée) → 409 + fallback message brut (T-434)", async () => {
+    responses.rpc = {
+      create_order_with_items: [
+        { data: null, error: { message: "Stock insuffisant pour XYZ", code: "23514" } },
+      ],
+    };
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      error: "Stock insuffisant pour XYZ",
+      code: "23514",
     });
     expect(logPaymentEvent).not.toHaveBeenCalled();
   });

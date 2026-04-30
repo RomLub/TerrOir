@@ -36,6 +36,22 @@ function sqlstateToStatus(code: string | undefined): number {
   }
 }
 
+// T-434 : mapping hint RPC → message UX user-friendly. La RPC pose
+// `using errcode='23514', hint='<discriminator>', detail='<key=value;...>'`
+// pour discriminer les 4 cas raise 23514 (slot_invalid / slot_full /
+// product_producer_mismatch / stock_depleted). Le route lit error.hint
+// pour router vers le message UX. Fallback rpcError.message brut si hint
+// inconnu ou null (compat fenêtre fail-safe pré-migration appliquée).
+const RPC_ERROR_HINTS: Record<string, string> = {
+  slot_invalid:
+    "Ce créneau n'est plus disponible. Choisissez un autre créneau.",
+  slot_full:
+    "Ce créneau de retrait est complet. Choisissez un autre créneau.",
+  stock_depleted:
+    "Un produit de votre panier n'est plus disponible. Ajustez votre panier.",
+  product_producer_mismatch: "Erreur technique. Contactez le support.",
+};
+
 export async function POST(request: Request) {
   const session = await getSessionUser();
   if (!session) {
@@ -120,8 +136,15 @@ export async function POST(request: Request) {
   );
 
   if (rpcError) {
+    const userMessage =
+      (rpcError.hint && RPC_ERROR_HINTS[rpcError.hint]) ?? rpcError.message;
     return NextResponse.json(
-      { error: rpcError.message, code: rpcError.code },
+      {
+        error: userMessage,
+        code: rpcError.code,
+        ...(rpcError.hint ? { hint: rpcError.hint } : {}),
+        ...(rpcError.details ? { details: rpcError.details } : {}),
+      },
       { status: sqlstateToStatus(rpcError.code) },
     );
   }
