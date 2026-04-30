@@ -69,7 +69,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, reason: "no_customer" });
   }
 
-  const customer = await stripe.customers.retrieve(customerId);
+  // T-433 fail-open Option C : try/catch granulaires sur les 4 calls Stripe
+  // pour éviter le 500 + stack trace exposé en cas d'erreur Stripe
+  // (rate_limit, network, invalid_request, etc.). Cohérent contrat
+  // documenté ci-dessus : "Fail-open côté client : si ça échoue, pas de
+  // blocage". Logs greppables [ENSURE_DEFAULT_*_ERR] pour traçabilité
+  // forensique post-incident.
+  let customer;
+  try {
+    customer = await stripe.customers.retrieve(customerId);
+  } catch (err) {
+    console.warn(
+      `[ENSURE_DEFAULT_RETRIEVE_CUSTOMER_ERR] customer=${customerId} order=${parsed.data.order_id} error=${err instanceof Error ? err.message : String(err)}`,
+    );
+    return NextResponse.json({
+      success: false,
+      reason: "stripe_error_retrieve_customer",
+    });
+  }
   if (customer.deleted) {
     return NextResponse.json({ success: false, reason: "customer_deleted" });
   }
@@ -83,11 +100,22 @@ export async function POST(request: Request) {
   // List AVANT le check default : on doit pouvoir dédupliquer même si un
   // default est déjà set (cas : user rajoute une CB en double via checkout
   // alors qu'il avait déjà une default).
-  const paymentMethods = await stripe.paymentMethods.list({
-    customer: customerId,
-    type: "card",
-    limit: 10,
-  });
+  let paymentMethods;
+  try {
+    paymentMethods = await stripe.paymentMethods.list({
+      customer: customerId,
+      type: "card",
+      limit: 10,
+    });
+  } catch (err) {
+    console.warn(
+      `[ENSURE_DEFAULT_LIST_PMS_ERR] customer=${customerId} order=${parsed.data.order_id} error=${err instanceof Error ? err.message : String(err)}`,
+    );
+    return NextResponse.json({
+      success: false,
+      reason: "stripe_error_list_pms",
+    });
+  }
 
   if (paymentMethods.data.length === 0) {
     // Edge case : confirmPayment a retourné succeeded mais l'attach côté
@@ -100,6 +128,12 @@ export async function POST(request: Request) {
   // (= celui qui vient d'être attaché via setup_future_usage).
   let refPm = paymentMethods.data[0];
   let dedupeDetached: string | undefined;
+  // T-433 Q7 fail-open extension : si le detach échoue, on log warn +
+  // continue avec refPm = pms[0] (le PM fraîchement attaché) au lieu de
+  // basculer sur l'existing. Le default PM est l'objectif principal, pas
+  // le nettoyage. Doublon orphelin tracé via flag dedupeFailed:true dans
+  // le payload (T-441 reflag : cleanup PMs orphelins post-Live).
+  let dedupeFailed = false;
 
   if (paymentMethods.data.length > 1) {
     const newFingerprint = refPm.card?.fingerprint ?? null;
@@ -108,9 +142,18 @@ export async function POST(request: Request) {
         .slice(1)
         .find((pm) => pm.card?.fingerprint === newFingerprint);
       if (existingMatch) {
-        await stripe.paymentMethods.detach(refPm.id);
-        dedupeDetached = refPm.id;
-        refPm = existingMatch;
+        try {
+          await stripe.paymentMethods.detach(refPm.id);
+          dedupeDetached = refPm.id;
+          refPm = existingMatch;
+        } catch (err) {
+          dedupeFailed = true;
+          console.warn(
+            `[ENSURE_DEFAULT_DETACH_PM_ERR] customer=${customerId} order=${parsed.data.order_id} pm=${refPm.id} error=${err instanceof Error ? err.message : String(err)}`,
+          );
+          // Continue le flow : refPm reste pms[0] (PM fraîchement attaché),
+          // le customers.update peut quand même réussir.
+        }
       }
     }
   }
@@ -120,12 +163,23 @@ export async function POST(request: Request) {
       success: true,
       changed: false,
       ...(dedupeDetached ? { dedupeDetached } : {}),
+      ...(dedupeFailed ? { dedupeFailed: true } : {}),
     });
   }
 
-  await stripe.customers.update(customerId, {
-    invoice_settings: { default_payment_method: refPm.id },
-  });
+  try {
+    await stripe.customers.update(customerId, {
+      invoice_settings: { default_payment_method: refPm.id },
+    });
+  } catch (err) {
+    console.warn(
+      `[ENSURE_DEFAULT_UPDATE_CUSTOMER_ERR] customer=${customerId} order=${parsed.data.order_id} error=${err instanceof Error ? err.message : String(err)}`,
+    );
+    return NextResponse.json({
+      success: false,
+      reason: "stripe_error_update_customer",
+    });
+  }
 
   await logPaymentEvent({
     eventType: "stripe_default_payment_method_set",
@@ -143,5 +197,6 @@ export async function POST(request: Request) {
     changed: true,
     payment_method_id: refPm.id,
     ...(dedupeDetached ? { dedupeDetached } : {}),
+    ...(dedupeFailed ? { dedupeFailed: true } : {}),
   });
 }
