@@ -34,6 +34,30 @@ type OrderCreated = {
   montant_net: number;
 };
 
+// T-443 : payload erreur exposé par /api/orders/create depuis T-434.
+// Le serveur joint le hint structuré (`slot_invalid`/`slot_full`/`stock_depleted`/
+// `product_producer_mismatch`) + details `key=value;key=value` quand la RPC
+// raise SQLSTATE 23514. Avant T-443, le client lisait uniquement `error`.
+type OrderCreateErrorPayload = {
+  error?: string;
+  code?: string;
+  hint?: string;
+  details?: string;
+};
+
+// T-443 : anomalie technique détectée côté RPC (cas `product_producer_mismatch` :
+// un item du panier appartient à un autre producer). Friction user-facing
+// minimale (pas de modal lourde) : div + mailto support pour signaler.
+type TechnicalError = {
+  message: string;
+  code: string;
+  details?: string;
+};
+
+// Email support hardcodé côté client (var env `SUPPORT_EMAIL` est server-only,
+// cf lib/env/support-email.ts). Si valeur change, grep + replace.
+const SUPPORT_EMAIL_CLIENT = "support@terroir-local.fr";
+
 type CheckoutGroup = {
   producerId: string;
   slug: string;
@@ -81,6 +105,11 @@ export default function CheckoutPage() {
   const [order, setOrder] = useState<OrderCreated | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [initError, setInitError] = useState<CheckoutError | null>(null);
+  // T-443 : état séparé pour anomalie technique product_producer_mismatch
+  // (rare). Distinct de CheckoutError dont l'enum kind ne couvre pas ce cas.
+  const [technicalError, setTechnicalError] = useState<TechnicalError | null>(
+    null,
+  );
   const [preparing, setPreparing] = useState(false);
 
   const subtotal = group ? group.items.reduce((s, i) => s + i.prix * i.quantite, 0) : 0;
@@ -144,18 +173,53 @@ export default function CheckoutPage() {
         });
         const orderData = await orderRes.json();
         if (!orderRes.ok) {
-          // T-407 : 409 sur create-order (cas borderline, ex. order existante).
-          // Même UX que 409 PI : rediriger vers commandes au lieu de retry.
-          if (orderRes.status === 409) {
-            console.warn('[CHECKOUT_INIT_409]', 'orders/create', orderData?.error);
-            setInitError({ kind: 'init_409', message: 'Cette commande n\'est plus payable.' });
-            return;
+          // T-443 : route /api/orders/create expose `{error, code, hint, details}`
+          // depuis T-434. Discriminer par hint pour UX riche au lieu d'un
+          // message hardcodé qui masquait les hints UX FR du serveur.
+          const errPayload = orderData as OrderCreateErrorPayload;
+          console.warn(
+            '[CHECKOUT_ORDER_CREATE_ERR]',
+            `status=${orderRes.status}`,
+            `hint=${errPayload.hint ?? 'none'}`,
+            errPayload.error,
+          );
+          switch (errPayload.hint) {
+            // Slot devenu indisponible/saturé entre cart/validate initial et
+            // POST orders/create (race rare). Le panier re-validera via ?stale=1
+            // et affichera StaleItemsBanner avec le changement détecté.
+            case 'slot_invalid':
+            case 'slot_full':
+            case 'stock_depleted':
+              router.replace('/compte/panier?stale=1');
+              return;
+            // Anomalie technique : item du panier appartient à un autre
+            // producer (corruption store/manipulation client). Cas patho
+            // rare → div + mailto support, pas de retry pertinent.
+            case 'product_producer_mismatch':
+              setTechnicalError({
+                message:
+                  errPayload.error ?? 'Erreur technique. Contactez le support.',
+                code: errPayload.code ?? 'P_MISMATCH',
+                details: errPayload.details,
+              });
+              return;
+            // Fallback : autres 409 sans hint (ex: route line 84 "Créneau
+            // invalide ou indisponible" hors RPC) ou status non-409. Préserve
+            // T-407 init_409 (UX commande morte → "Voir mes commandes").
+            default:
+              if (orderRes.status === 409) {
+                setInitError({
+                  kind: 'init_409',
+                  message: errPayload.error ?? 'Cette commande n\'est plus payable.',
+                });
+                return;
+              }
+              setInitError({
+                kind: 'generic',
+                message: errPayload.error ?? 'Impossible de créer la commande',
+              });
+              return;
           }
-          setInitError({
-            kind: 'generic',
-            message: orderData.error ?? 'Impossible de créer la commande',
-          });
-          return;
         }
         const created = orderData as OrderCreated;
         setOrder(created);
@@ -252,7 +316,28 @@ export default function CheckoutPage() {
                 <span className="text-[11px] mono text-dark/50">🔒 Stripe · SSL</span>
               </div>
 
-              {initError?.kind === 'init_409' ? (
+              {technicalError ? (
+                // T-443 product_producer_mismatch : anomalie technique rare
+                // (item du panier appartient à un autre producer). Pas de retry
+                // pertinent — div + mailto support pour signaler. Cohérent
+                // style terra des autres erreurs init.
+                <div className="p-4 rounded-xl bg-terra-100/60 border border-terra-300/40">
+                  <div className="text-[11px] uppercase tracking-[0.14em] text-terra-700 font-semibold mb-1">
+                    Erreur technique
+                  </div>
+                  <p className="text-[13px] text-terra-900">{technicalError.message}</p>
+                  <p className="text-[11px] mono text-dark/60 mt-2">
+                    Code : {technicalError.code}
+                    {technicalError.details ? ` — ${technicalError.details}` : ''}
+                  </p>
+                  <a
+                    href={`mailto:${SUPPORT_EMAIL_CLIENT}?subject=${encodeURIComponent(`Erreur technique commande - ${technicalError.code}`)}&body=${encodeURIComponent(`Code erreur : ${technicalError.code}\nDétails : ${technicalError.details ?? 'N/A'}\n\nContexte : (décrivez ce que vous tentiez de faire)`)}`}
+                    className="inline-block mt-3 text-[13px] underline text-terra-900 hover:text-terra-700"
+                  >
+                    Contacter le support →
+                  </a>
+                </div>
+              ) : initError?.kind === 'init_409' ? (
                 // T-407 : order morte (T-406 guard 409 sur create-PI/create-order).
                 // Webhook payment_failed a probablement déjà cancelle l'order,
                 // ou statut confirmed/ready/completed/refunded. Pas de retry
@@ -282,7 +367,7 @@ export default function CheckoutPage() {
                 <div className="p-4 rounded-xl bg-terra-100/60 border border-terra-300/40 text-[13px] text-terra-900">{initError.message}</div>
               ) : null}
 
-              {!initError && !clientSecret && (
+              {!initError && !technicalError && !clientSecret && (
                 <p className="text-[13px] text-dark/60">Initialisation du paiement…</p>
               )}
 
