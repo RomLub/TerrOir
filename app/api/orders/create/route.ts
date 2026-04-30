@@ -31,6 +31,14 @@ function sqlstateToStatus(code: string | undefined): number {
       return 409;
     case "42501":
       return 403;
+    case "P0001":
+      // T-442 : auto-purchase guard (scope orders/create only). La RPC
+      // create_order_with_items raise P0001 quand p_consumer_id correspond
+      // au user_id du producer ciblé (cf migration 20260423130000:91-94).
+      // Sémantiquement Forbidden côté HTTP. delete_user_account RPC
+      // utilise aussi P0001 pour Conflict (active orders), mais via
+      // Server Action (pas HTTP route) → pas couplé avec ce mapping.
+      return 403;
     default:
       return 500;
   }
