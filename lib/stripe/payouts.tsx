@@ -5,6 +5,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
 import { sendTemplate } from "@/lib/resend/send";
 import { SUPPORT_EMAIL } from "@/lib/env/support-email";
+import { eurosToCents, centsToEuros, sumCents } from "@/lib/money/cents";
 import AdminTransferFailed, {
   subject as adminTransferFailedSubject,
 } from "@/lib/resend/templates/admin-transfer-failed";
@@ -112,18 +113,30 @@ export async function processWeeklyPayouts(): Promise<{
   const results: PayoutResult[] = [];
 
   for (const [producerId, producerOrders] of groups) {
-    const montantBrut = producerOrders.reduce(
-      (s, o) => s + Number(o.montant_total),
-      0,
-    );
-    const commission = producerOrders.reduce(
-      (s, o) => s + Number(o.commission_terroir),
-      0,
-    );
-    const montantNet = producerOrders.reduce(
-      (s, o) => s + Number(o.montant_net_producteur),
-      0,
-    );
+    // T-415-suite : aggregations en cents pour précision arithmétique
+    // (anti-drift IEEE 754 sur reduce 100+ orders avec montants
+    // fractionnaires). Variables cents = source of truth pour Stripe API
+    // + audit log T-416. Variables décimales dérivées via centsToEuros =
+    // consommées par DB INSERT (numeric €), baseResult tuple (PayoutResult)
+    // et Resend props (FR formatting admin_transfer_failed template).
+    //
+    // ⚠️ Sémantique sub-cent : sumCents() arrondit chaque item via
+    // Math.round(* 100) AVANT la sum. Si des montants sub-cent (ex:
+    // 0.018€ = 1.8 cents) entraient dans le reduce, sumCents bornerait
+    // à 2 cents par item (pas 1.8). Ce comportement est cohérent avec
+    // Stripe API (integer cents only).
+    //
+    // En prod, le trigger DB compute_order_commission (migration
+    // 20260419000000) garantit cent-alignement (`round(montant_total *
+    // 0.06, 2)`), donc les sub-cent ne peuvent pas exister via le flow
+    // normal. Cette protection défensive est documentée pour les cas
+    // hypothétiques (import manuel Dashboard, edge case bypass trigger).
+    const montantBrutCents = sumCents(producerOrders.map((o) => o.montant_total));
+    const commissionCents = sumCents(producerOrders.map((o) => o.commission_terroir));
+    const montantNetCents = sumCents(producerOrders.map((o) => o.montant_net_producteur));
+    const montantBrut = centsToEuros(montantBrutCents);
+    const commission = centsToEuros(commissionCents);
+    const montantNet = centsToEuros(montantNetCents);
 
     const baseResult = {
       producer_id: producerId,
@@ -229,7 +242,7 @@ export async function processWeeklyPayouts(): Promise<{
       // Cas (b) ou (c) — resume. Montant lu depuis DB (source of truth
       // post-INSERT, immune aux changements d'orders entre INSERT et resume
       // ex. résurrection 3DS-retry).
-      const resumeAmount = Math.round(Number(existing.montant_net) * 100);
+      const resumeAmount = eurosToCents(existing.montant_net);
       try {
         const transfer = await stripe.transfers.create(
           {
@@ -268,9 +281,9 @@ export async function processWeeklyPayouts(): Promise<{
             producer_id: producerId,
             periode_debut: periodeDebut,
             periode_fin: periodeFin,
-            montant_brut_cents: Math.round(Number(existing.montant_brut) * 100),
-            commission_cents: Math.round(Number(existing.commission) * 100),
-            montant_net_cents: Math.round(Number(existing.montant_net) * 100),
+            montant_brut_cents: eurosToCents(existing.montant_brut),
+            commission_cents: eurosToCents(existing.commission),
+            montant_net_cents: eurosToCents(existing.montant_net),
             currency: "eur",
             orders_count: producerOrders.length,
             resumed: true,
@@ -327,7 +340,7 @@ export async function processWeeklyPayouts(): Promise<{
     try {
       const transfer = await stripe.transfers.create(
         {
-          amount: Math.round(montantNet * 100),
+          amount: montantNetCents,
           currency: "eur",
           destination: producer.stripe_account_id,
           metadata: transferMetadata,
@@ -384,7 +397,7 @@ export async function processWeeklyPayouts(): Promise<{
           producer_id: producerId,
           periode_debut: periodeDebut,
           periode_fin: periodeFin,
-          montant_net_cents: Math.round(montantNet * 100),
+          montant_net_cents: montantNetCents,
           currency: "eur",
           error_message: msg,
           // Discrimine du futur webhook (n'arrive jamais sur Express, mais
@@ -404,7 +417,7 @@ export async function processWeeklyPayouts(): Promise<{
           payout_id: newRow.id,
           producer_id: producerId,
           periode_debut: periodeDebut,
-          montant_net_cents: Math.round(montantNet * 100),
+          montant_net_cents: montantNetCents,
           error_message: msg,
         },
       });
@@ -482,9 +495,9 @@ export async function processWeeklyPayouts(): Promise<{
         producer_id: producerId,
         periode_debut: periodeDebut,
         periode_fin: periodeFin,
-        montant_brut_cents: Math.round(montantBrut * 100),
-        commission_cents: Math.round(commission * 100),
-        montant_net_cents: Math.round(montantNet * 100),
+        montant_brut_cents: montantBrutCents,
+        commission_cents: commissionCents,
+        montant_net_cents: montantNetCents,
         currency: "eur",
         orders_count: producerOrders.length,
         resumed: false,
