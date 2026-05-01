@@ -417,6 +417,37 @@ Périmètre typique :
 
 **Règle** : toute modification d'une de ces configs par Romain doit être reportée dans `docs/HANDOFF.md` dans la session où elle a été faite. Sinon un Claude frais (ou Romain dans 3 mois) ne pourra pas reproduire l'environnement.
 
+## Vercel CLI (depuis 30/04/2026)
+
+Vercel CLI v52.2.1+ installée globalement permet à CC de manipuler les env vars et lire les logs runtime sans passer par le Dashboard (workflow analogue au MCP Supabase).
+
+### Setup initial (one-shot)
+```bash
+npm install -g vercel
+cd C:\Users\lubin\documents\github\terroir
+vercel link
+# Sélectionner team Lubin's projects + project terr-oir-21cl
+```
+
+### Commandes utiles
+- `vercel env ls` : liste env vars Production/Preview/Development
+- `vercel env add <NAME> <env>` : ajoute une env var
+- `vercel env rm <NAME> <env>` : supprime une env var
+- `vercel logs <deployment-url>` : logs runtime d'un deployment
+- `vercel logs --follow` : tail logs en live
+- `vercel list` : list deployments récents
+- `vercel inspect <url>` : détails d'un deployment
+
+### Garde-fous
+- Auto-confirm OFF maintenu sur les opérations destructives (rm env var, redeploy)
+- Toujours afficher l'env var content (sauf valeur secrète) AVANT modification pour confirmation Romain
+- Lecture logs : pas de modif état Vercel, OK auto-confirm
+- Modif env vars : passe par approbation manuelle Romain
+
+### Cas d'usage typique
+- T-013 PR2 (30/04/2026) : ajout de `RESEND_API_KEY` via `vercel env add` Production
+- Debugging runtime : tail logs via `vercel logs --follow` pendant qu'un test E2E tourne en local
+
 ## Taxonomie closure_reason
 
 Champ DB : `orders.closure_reason` (string nullable). Renseigné lors d'une transition vers un statut terminal (`cancelled` ou `refunded`), ou lors d'un événement post-clôture qui modifie le motif (overwrites). Permet de tracer pourquoi un order a été clôturé sans devoir inférer depuis le contexte.
