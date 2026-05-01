@@ -9,18 +9,29 @@ import { uploadProducerPhoto } from '@/lib/producers/upload';
 import { promoteProducerToPublicIfActive } from '@/lib/producers/promote-to-public';
 import { revalidatePublicStats } from '@/lib/stats/revalidate';
 import { ProducerLayout } from '../../_components/ProducerLayout';
+import {
+  fetchProductCategories,
+  fetchAnimals,
+  fetchCuts,
+} from '@/lib/products/fetch-references';
+import { CATEGORIES_WITH_ANIMAL } from '@/lib/products/categories-with-animal';
+import type { Animal, Cut, ProductCategory } from '@/lib/products/types';
 
 type Form = {
-  name: string; description: string; category: string; price: string; unit: string;
+  name: string; description: string; price: string; unit: string;
   weightStep: string; estimatedWeight: string; stock: string; stockUnlimited: boolean;
   delai: string; active: boolean;
   conseilActive: boolean; conseilTexte: string;
+  // T-220 PR-B : tagging catégorisation produit (FK nullable transitoire
+  // pendant le backfill — cf. migration PR-A 20260501002856).
+  categoryId: string | null; animalId: string | null; cutId: string | null;
 };
 
 const EMPTY: Form = {
-  name: '', description: '', category: 'Bœuf', price: '', unit: 'kg',
+  name: '', description: '', price: '', unit: 'kg',
   weightStep: '0.25', estimatedWeight: '', stock: '', stockUnlimited: false, delai: '2', active: true,
   conseilActive: false, conseilTexte: '',
+  categoryId: null, animalId: null, cutId: null,
 };
 
 const CONSEIL_MAX = 280;
@@ -35,6 +46,15 @@ export default function ProductNewPage() {
   const [producerName, setProducerName] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // T-220 PR-B : référentiels catégorisation (categories, animals, cuts)
+  // fetchés au mount via lib/products/fetch-references. RLS read public, donc
+  // pas besoin d'attendre la session. Tant que `referencesLoading` est true,
+  // les 3 selects de la cascade sont disabled avec hint "Chargement…".
+  const [categories, setCategories] = useState<ProductCategory[]>([]);
+  const [animals, setAnimals] = useState<Animal[]>([]);
+  const [cuts, setCuts] = useState<Cut[]>([]);
+  const [referencesLoading, setReferencesLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
@@ -51,6 +71,32 @@ export default function ProductNewPage() {
       if (!prod) { setError('Profil producteur introuvable.'); return; }
       setProducerId(prod.id);
       setProducerName(prod.nom_exploitation);
+    })();
+    return () => { active = false; };
+  }, []);
+
+  // Fetch parallèle des 3 référentiels au mount. Pas de retry : en cas
+  // d'erreur, on log + les selects restent disabled (UX dégradée graceful).
+  useEffect(() => {
+    let active = true;
+    const supabase = createSupabaseBrowserClient();
+    (async () => {
+      try {
+        const [c, a, cu] = await Promise.all([
+          fetchProductCategories(supabase),
+          fetchAnimals(supabase),
+          fetchCuts(supabase),
+        ]);
+        if (!active) return;
+        setCategories(c);
+        setAnimals(a);
+        setCuts(cu);
+      } catch (e) {
+        if (!active) return;
+        console.error(`PRODUCT_NEW_REFS_FETCH_ERROR ${(e as Error).message}`);
+      } finally {
+        if (active) setReferencesLoading(false);
+      }
     })();
     return () => { active = false; };
   }, []);
@@ -79,8 +125,37 @@ export default function ProductNewPage() {
     });
   };
 
+  // T-220 PR-B : computed values pour la cascade de selects et le preview.
+  // - selectedCategory : lookup categoryId → row pour récupérer le slug
+  //   (utilisé pour décider si on affiche le select Animal) et le name
+  //   (utilisé pour le badge du ProductCard preview).
+  // - hasAnimalSelect/hasCutSelect : drivers de l'affichage conditionnel.
+  // - filteredCuts : cuts filtrés client-side par animal_id sélectionné.
+  const selectedCategory = categories.find((c) => c.id === form.categoryId) ?? null;
+  const hasAnimalSelect = !!selectedCategory && CATEGORIES_WITH_ANIMAL.includes(selectedCategory.slug);
+  const hasCutSelect = hasAnimalSelect && form.animalId !== null;
+  const filteredCuts = form.animalId
+    ? cuts.filter((c) => c.animal_id === form.animalId)
+    : [];
+
+  // Handlers cascade : reset silencieux des niveaux inférieurs (cf. décisions
+  // Q2 + Q3). Si l'utilisateur change la catégorie, animalId et cutId
+  // retombent à null sans message ; idem pour cutId quand animalId change.
+  const onCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newId = e.target.value || null;
+    setForm((f) => ({ ...f, categoryId: newId, animalId: null, cutId: null }));
+  };
+  const onAnimalChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newId = e.target.value || null;
+    setForm((f) => ({ ...f, animalId: newId, cutId: null }));
+  };
+  const onCutChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setForm((f) => ({ ...f, cutId: e.target.value || null }));
+  };
+
   const preview = {
-    id: 'preview', name: form.name || 'Nom du produit', category: form.category,
+    id: 'preview', name: form.name || 'Nom du produit',
+    category: selectedCategory?.name,
     price: parseFloat(form.price) || 0, unit: form.unit,
     stockLeft: form.stockUnlimited ? 999 : parseInt(form.stock) || 0, producer: producerName || 'Votre ferme',
     image: previewUrls[0] ?? null,
@@ -121,6 +196,12 @@ export default function ProductNewPage() {
           photos: photoUrls.length ? photoUrls : null,
           conseil_active: form.conseilActive,
           conseil_texte: form.conseilActive ? (form.conseilTexte.trim() || null) : null,
+          // T-220 PR-B : tagging optionnel (FK nullable transitoire pendant
+          // backfill). NULL valides — pas de validation bloquante côté UI
+          // tant que la migration NOT NULL follow-up n'est pas livrée.
+          category_id: form.categoryId,
+          animal_id: form.animalId,
+          cut_id: form.cutId,
         })
         .select('id')
         .single();
@@ -162,9 +243,45 @@ export default function ProductNewPage() {
                 <Input label="Nom du produit *" value={form.name} onChange={up('name')} required placeholder="Ex : Entrecôte maturée 21 jours" />
                 <Textarea label="Description" rows={4} value={form.description} onChange={up('description')}
                   placeholder="Détaillez l'origine, la découpe, les conseils de cuisson…" />
-                <Select label="Catégorie" value={form.category} onChange={up('category')}>
-                  {['Bœuf', 'Veau', 'Porc', 'Agneau', 'Volaille', 'Colis'].map((c) => <option key={c}>{c}</option>)}
-                </Select>
+                {/* T-220 PR-B : cascade catégorie → animal → morceau.
+                    - Catégorie : toujours visible.
+                    - Animal : visible si la catégorie sélectionnée est dans
+                      CATEGORIES_WITH_ANIMAL (viande, charcuterie).
+                    - Morceau : visible une fois l'animal sélectionné.
+                    Reset silencieux des niveaux inférieurs à chaque change.
+                    Selects disabled + hint pendant le fetch initial des
+                    référentiels (cf. décision Q4). */}
+                <Select
+                  label="Catégorie"
+                  value={form.categoryId ?? ''}
+                  onChange={onCategoryChange}
+                  disabled={referencesLoading}
+                  hint={referencesLoading ? 'Chargement…' : undefined}
+                  placeholder="Choisir une catégorie…"
+                  options={categories.map((c) => ({ value: c.id, label: c.name }))}
+                />
+                {hasAnimalSelect && (
+                  <Select
+                    label="Espèce"
+                    value={form.animalId ?? ''}
+                    onChange={onAnimalChange}
+                    disabled={referencesLoading}
+                    hint={referencesLoading ? 'Chargement…' : undefined}
+                    placeholder="Choisir une espèce…"
+                    options={animals.map((a) => ({ value: a.id, label: a.name }))}
+                  />
+                )}
+                {hasCutSelect && (
+                  <Select
+                    label="Morceau"
+                    value={form.cutId ?? ''}
+                    onChange={onCutChange}
+                    disabled={referencesLoading}
+                    hint={referencesLoading ? 'Chargement…' : undefined}
+                    placeholder="Choisir un morceau…"
+                    options={filteredCuts.map((c) => ({ value: c.id, label: c.name }))}
+                  />
+                )}
               </div>
             </section>
 
