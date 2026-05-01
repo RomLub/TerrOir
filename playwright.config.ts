@@ -10,7 +10,7 @@ dotenv.config({ path: path.resolve(__dirname, '.env.local') });
  * Playwright config TerrOir — Phase 1
  *
  * Contraintes :
- * - Tests tournent en LOCAL contre la prod Supabase (pas d''env dev séparé).
+ * - Tests tournent en LOCAL contre la prod Supabase (pas d'env dev séparé).
  * - Chromium uniquement pour limiter le temps de run.
  * - Volumétrie max ~10-20 tests pour respecter quota Resend (3000 mails/mois).
  * - Pas de retry agressif : on veut détecter la flakiness, pas la masquer.
