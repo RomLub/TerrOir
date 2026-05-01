@@ -185,6 +185,20 @@ Chaque chantier non-trivial suit ce cycle, sans sauter d'étape :
 
 Pour les tâches triviales (fix typo, rename évident, etc.) les étapes 1 et 2 peuvent être fusionnées en une inspection-courte + implémentation directe.
 
+### Cleanup body PR
+
+Quand on ouvre une PR via `gh pr create --body-file .pr-body-<ticket>.md`, supprimer le fichier juste après l'ouverture de la PR :
+
+```bash
+gh pr create --body-file .pr-body-t100.md ...
+Remove-Item .pr-body-t100.md   # PowerShell
+# ou rm .pr-body-t100.md       # Unix
+```
+
+Le body est déjà sur GitHub (source de vérité). Garder le fichier local n'apporte rien et pollue le `git status` en untracked (peut masquer des fichiers réellement importants).
+
+Workflow : à chaque PR, le cleanup body est intégré dans la même série de commandes que `gh pr create`, pas une étape séparée à oublier.
+
 ## Commits conventionnels
 
 Format : `type(scope): message`
