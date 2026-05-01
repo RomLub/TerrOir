@@ -115,7 +115,11 @@ export async function syncStripePaymentSucceeded(
 
   if (currentStatus === "pending") {
     // Cas nominal : count public dépend du statut → invalidation cache.
-    await revalidatePublicStats();
+    await revalidatePublicStats({
+      source: "stripe-payment-succeeded",
+      orderId,
+      extra: { step: "nominal" },
+    });
 
     // Audit log forensique : payment réussi sur order pending. Trace
     // utile pour PCI DSS + dispute Stripe + reconstitution chronologie.
@@ -169,7 +173,11 @@ export async function syncStripePaymentSucceeded(
       // Résurrection OK : le stock a été re-décrémenté atomiquement, l'order
       // est maintenant pending. Caller envoie email/SMS producer comme
       // dans le path nominal.
-      await revalidatePublicStats();
+      await revalidatePublicStats({
+        source: "stripe-payment-succeeded",
+        orderId,
+        extra: { step: "revived" },
+      });
       await logPaymentEvent({
         eventType: "order_revival_succeeded",
         userId: consumerId,

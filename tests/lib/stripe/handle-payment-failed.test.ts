@@ -249,7 +249,12 @@ describe("syncStripePaymentFailed — Cas 7 : cancelled (cas nominal pending)", 
     ]);
 
     // Cache public-stats invalidé (count public dépend du statut).
+    // T-100 C2 : signature enrichie {source, orderId} obligatoire.
     expect(vi.mocked(revalidatePublicStats)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(revalidatePublicStats)).toHaveBeenCalledWith({
+      source: "stripe-payment-failed",
+      orderId: "order-42",
+    });
     expect(consoleWarnSpy).not.toHaveBeenCalled();
   });
 });

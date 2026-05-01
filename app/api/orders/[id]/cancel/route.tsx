@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { revalidateTag } from "next/cache";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { userOwnsProducer } from "@/lib/auth/producerOwnership";
+import { revalidatePublicStats } from "@/lib/stats/revalidate";
 import {
   InvalidOrderTransitionError,
   assertTransition,
@@ -145,12 +145,9 @@ export async function POST(request: Request, { params }: RouteContext) {
   // Invalide le cache des stats publiques (ordersCount sur la home) :
   // si l'order quittait le filtre IN ('confirmed','ready','completed'), le
   // count change. Inconditionnel pour simplifier — pending → cancelled n'a
-  // pas d'impact mais coût d'invalidation négligeable.
-  try {
-    revalidateTag("public-stats");
-  } catch (e) {
-    console.warn(`[STATS_REVAL_WARN] order=${order.id} ${(e as Error).message}`);
-  }
+  // pas d'impact mais coût d'invalidation négligeable. Le helper swallow
+  // toute exception (cache flapping ne doit pas faire échouer le 200).
+  await revalidatePublicStats({ source: "order-cancel", orderId: order.id });
 
   // 2. Badge anti-annulation si l'annulation vient du producteur
   if (authorizedByProducer) {

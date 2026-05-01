@@ -196,11 +196,10 @@ function AdminProducteursPageInner() {
       // Toute transition admin peut faire entrer/sortir le producer du filtre
       // statut='public' du cache public-stats (suspend, réactivate, validate
       // si suivi d'une auto-promotion ailleurs). Inconditionnel pour simplifier.
-      try {
-        await revalidatePublicStats();
-      } catch (e) {
-        console.warn(`[STATS_REVAL_WARN] ${(e as Error).message}`);
-      }
+      await revalidatePublicStats({
+        source: 'admin-gestion-producteurs',
+        extra: { producerId: id },
+      });
     }
     setBusy(null);
   };

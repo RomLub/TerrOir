@@ -55,6 +55,23 @@ vi.mock("@/lib/orders/stateMachine", async (importActual) => {
   };
 });
 
+// T-100 C2 : mock delegating de revalidatePublicStats. Permet d'asserter la
+// signature {source, orderId?, extra?} passee par la route, tout en conservant
+// l'execution reelle du helper (qui appelle revalidateTag mocked via next/cache)
+// pour preserver les tests warn template B4.
+const { mockRevalidatePublicStats } = vi.hoisted(() => ({
+  mockRevalidatePublicStats: vi.fn(),
+}));
+
+vi.mock("@/lib/stats/revalidate", async (importActual) => {
+  const actual = await importActual<typeof import("@/lib/stats/revalidate")>();
+  mockRevalidatePublicStats.mockImplementation(actual.revalidatePublicStats);
+  return {
+    ...actual,
+    revalidatePublicStats: mockRevalidatePublicStats,
+  };
+});
+
 import { POST } from "@/app/api/cron/order-timeout/route";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
@@ -211,6 +228,10 @@ beforeEach(() => {
 
   vi.mocked(sendTemplate).mockReset();
   vi.mocked(sendTemplate).mockResolvedValue({ ok: true, id: "email_id" });
+
+  // T-100 C2 : reset call tracking sans toucher a l'impl deleguee (pose une
+  // seule fois dans le factory vi.mock).
+  mockRevalidatePublicStats.mockClear();
 
   vi.mocked(createSupabaseAdminClient).mockReset();
 
@@ -602,6 +623,13 @@ describe("POST /api/cron/order-timeout — revalidateTag", () => {
     // Une seule invalidation atomique pour tout le batch (pas N).
     expect(vi.mocked(revalidateTag)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(revalidateTag)).toHaveBeenCalledWith("public-stats");
+
+    // T-100 C2 : helper invoque avec source explicite, pas d'orderId (batch
+    // multi-orders), pas d'extra.
+    expect(mockRevalidatePublicStats).toHaveBeenCalledTimes(1);
+    expect(mockRevalidatePublicStats).toHaveBeenCalledWith({
+      source: "cron-order-timeout",
+    });
   });
 
   it("B4 revalidateTag throw → 200 conservé + console.warn [STATS_REVAL_WARN]", async () => {
@@ -617,11 +645,14 @@ describe("POST /api/cron/order-timeout — revalidateTag", () => {
     const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
     expect(res.status).toBe(200);
 
+    // T-100 C2 : warn enrichi format `source=<source> orderId=<id|none> <err>`.
+    // Le helper reel (delegating mock) emet le warn — pas de wrapper externe.
     const revalWarnings = consoleWarnSpy.mock.calls
       .map((c: unknown[]) => String(c[0] ?? ""))
       .filter((m: string) => m.includes("[STATS_REVAL_WARN]"));
     expect(revalWarnings).toHaveLength(1);
-    expect(revalWarnings[0]).toContain("cron=order-timeout");
+    expect(revalWarnings[0]).toContain("source=cron-order-timeout");
+    expect(revalWarnings[0]).toContain("orderId=none");
     expect(revalWarnings[0]).toContain("cache down");
   });
 

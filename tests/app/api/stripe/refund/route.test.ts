@@ -11,11 +11,12 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-const { mockRevalidateTag, mockRefundCreate, mockLogPaymentEvent } = vi.hoisted(
+const { mockRevalidateTag, mockRefundCreate, mockLogPaymentEvent, mockRevalidatePublicStats } = vi.hoisted(
   () => ({
     mockRevalidateTag: vi.fn(),
     mockRefundCreate: vi.fn(),
     mockLogPaymentEvent: vi.fn(),
+    mockRevalidatePublicStats: vi.fn(),
   }),
 );
 
@@ -32,6 +33,19 @@ vi.mock("@/lib/stripe/server", () => ({
 vi.mock("@/lib/audit-logs/log-payment-event", () => ({
   logPaymentEvent: mockLogPaymentEvent,
 }));
+
+// T-100 C2 : mock delegating de revalidatePublicStats. Permet d'asserter la
+// signature {source, orderId} passee par la route, tout en preservant
+// l'execution reelle du helper (qui appelle revalidateTag mocked) pour les
+// tests warn template.
+vi.mock("@/lib/stats/revalidate", async (importActual) => {
+  const actual = await importActual<typeof import("@/lib/stats/revalidate")>();
+  mockRevalidatePublicStats.mockImplementation(actual.revalidatePublicStats);
+  return {
+    ...actual,
+    revalidatePublicStats: mockRevalidatePublicStats,
+  };
+});
 
 // --- Auth mocks (closure variable) ---------------------------------------
 type SessionUser = {
@@ -193,6 +207,8 @@ beforeEach(() => {
     .mockReset()
     .mockResolvedValue({ id: "re_test_123" });
   mockRevalidateTag.mockReset();
+  // T-100 C2 : reset call tracking sans toucher a l'impl deleguee.
+  mockRevalidatePublicStats.mockClear();
   mockLogPaymentEvent.mockReset().mockResolvedValue(undefined);
   consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
   savedCronSecret = process.env.CRON_SECRET;
@@ -375,9 +391,15 @@ describe("E. Happy path + side effects", () => {
       new Date(payload.cancelled_at as string).toISOString(),
     ).not.toThrow();
 
-    // 3. revalidateTag('public-stats') appelé une fois.
+    // 3. revalidateTag('public-stats') appelé une fois (via helper).
     expect(mockRevalidateTag).toHaveBeenCalledTimes(1);
     expect(mockRevalidateTag).toHaveBeenCalledWith("public-stats");
+    // T-100 C2 : helper invoque avec signature {source, orderId}.
+    expect(mockRevalidatePublicStats).toHaveBeenCalledTimes(1);
+    expect(mockRevalidatePublicStats).toHaveBeenCalledWith({
+      source: "stripe-refund",
+      orderId: ORDER_ID,
+    });
 
     // 4. Notification consumer insérée avec metadata complète.
     const notif = captured.inserts.find((i) => i.table === "notifications");
@@ -408,8 +430,9 @@ describe("E. Happy path + side effects", () => {
     expect(body.warning).toContain(ORDER_ID);
     expect(body.warning).toContain("re_test_123");
     expect(body.warning).toContain("RLS denied");
-    // revalidateTag NON appelé puisqu'on retourne 500 avant.
+    // revalidateTag + helper NON appelés puisqu'on retourne 500 avant.
     expect(mockRevalidateTag).not.toHaveBeenCalled();
+    expect(mockRevalidatePublicStats).not.toHaveBeenCalled();
   });
 
   it("E3 revalidateTag throw → 200 conservé, console.warn [STATS_REVAL_WARN]", async () => {
@@ -419,9 +442,11 @@ describe("E. Happy path + side effects", () => {
     const res = await POST(makeRequest());
     expect(res.status).toBe(200);
     expect(consoleWarnSpy).toHaveBeenCalledTimes(1);
+    // T-100 C2 : warn enrichi format `source=<source> orderId=<id> <err>`.
     const warned = String(consoleWarnSpy.mock.calls[0]?.[0] ?? "");
     expect(warned).toContain("[STATS_REVAL_WARN]");
-    expect(warned).toContain(ORDER_ID);
+    expect(warned).toContain("source=stripe-refund");
+    expect(warned).toContain(`orderId=${ORDER_ID}`);
     expect(warned).toContain("cache down");
   });
 

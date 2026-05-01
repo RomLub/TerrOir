@@ -27,12 +27,13 @@ vi.hoisted(() => {
 // vi.hoisted permet de partager des vi.fn() entre le module de test et les
 // factories vi.mock (sinon les const seraient `undefined` à l'évaluation
 // hoistée du factory).
-const { mockRevalidateTag, mockRefundCreate, mockSendTemplate, mockAssertTransition } =
+const { mockRevalidateTag, mockRefundCreate, mockSendTemplate, mockAssertTransition, mockRevalidatePublicStats } =
   vi.hoisted(() => ({
     mockRevalidateTag: vi.fn(),
     mockRefundCreate: vi.fn(),
     mockSendTemplate: vi.fn(),
     mockAssertTransition: vi.fn(),
+    mockRevalidatePublicStats: vi.fn(),
   }));
 
 vi.mock("next/cache", () => ({
@@ -59,6 +60,19 @@ vi.mock("@/lib/orders/stateMachine", async (importActual) => {
   return {
     ...actual,
     assertTransition: mockAssertTransition,
+  };
+});
+
+// T-100 C2 : mock delegating de revalidatePublicStats. Permet d'asserter la
+// signature {source, orderId} passee par la route, tout en preservant
+// l'execution reelle du helper (qui appelle revalidateTag mocked) pour les
+// tests warn template G2.
+vi.mock("@/lib/stats/revalidate", async (importActual) => {
+  const actual = await importActual<typeof import("@/lib/stats/revalidate")>();
+  mockRevalidatePublicStats.mockImplementation(actual.revalidatePublicStats);
+  return {
+    ...actual,
+    revalidatePublicStats: mockRevalidatePublicStats,
   };
 });
 
@@ -240,6 +254,8 @@ beforeEach(() => {
   mockRefundCreate.mockReset();
   mockSendTemplate.mockReset().mockResolvedValue({ ok: true, id: "res_1" });
   mockRevalidateTag.mockReset();
+  // T-100 C2 : reset call tracking sans toucher a l'impl deleguee.
+  mockRevalidatePublicStats.mockClear();
   consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
   // CRON_SECRET unset par défaut. Tests qui veulent le bypass cron le set
   // explicitement ; afterEach restaure à la valeur d'origine du process.
@@ -616,6 +632,12 @@ describe("G. revalidateTag", () => {
     await POST(makeRequest(), PARAMS);
     expect(mockRevalidateTag).toHaveBeenCalledTimes(1);
     expect(mockRevalidateTag).toHaveBeenCalledWith("public-stats");
+    // T-100 C2 : helper invoque avec signature {source, orderId}.
+    expect(mockRevalidatePublicStats).toHaveBeenCalledTimes(1);
+    expect(mockRevalidatePublicStats).toHaveBeenCalledWith({
+      source: "order-cancel",
+      orderId: ORDER_ID,
+    });
   });
 
   it("G2 revalidateTag throw → console.warn [STATS_REVAL_WARN] mais 200 renvoyé (pas de 500)", async () => {
@@ -625,9 +647,11 @@ describe("G. revalidateTag", () => {
     const res = await POST(makeRequest(), PARAMS);
     expect(res.status).toBe(200);
     expect(consoleWarnSpy).toHaveBeenCalledTimes(1);
+    // T-100 C2 : warn enrichi format `source=<source> orderId=<id> <err>`.
     const warned = String(consoleWarnSpy.mock.calls[0]?.[0] ?? "");
     expect(warned).toContain("[STATS_REVAL_WARN]");
-    expect(warned).toContain(ORDER_ID);
+    expect(warned).toContain("source=order-cancel");
+    expect(warned).toContain(`orderId=${ORDER_ID}`);
     expect(warned).toContain("cache down");
   });
 });

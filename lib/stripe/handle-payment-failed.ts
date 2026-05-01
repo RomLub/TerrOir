@@ -111,7 +111,7 @@ export async function syncStripePaymentFailed(
     .eq("id", orderId);
 
   // Le count public dépend du statut → invalidation cache.
-  await revalidatePublicStats();
+  await revalidatePublicStats({ source: "stripe-payment-failed", orderId });
 
   // Audit log forensique (Phase 2 audit_logs payment events).
   await logPaymentEvent({

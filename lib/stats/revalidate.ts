@@ -8,11 +8,38 @@ import { revalidateTag } from "next/cache";
 // revalidateTag est server-only. Les call sites RPC ce wrapper après un UPDATE
 // /INSERT réussi qui peut affecter producersCount, ordersCount ou productsCount.
 //
-// Fail-safe : un échec d'invalidation ne doit jamais bloquer l'appelant.
-export async function revalidatePublicStats(): Promise<void> {
+// T-100 C2 : signature enrichie avec contexte structuré pour parsing logs
+// forensique. `source` requis (kebab-case, identifie l'appelant), `orderId`
+// optionnel quand applicable, `extra` optionnel pour sous-classification.
+//
+// Format warn unifié :
+//   [STATS_REVAL_WARN] source=<source> orderId=<id|none> [key1=val1 ...] <err>
+//
+// `orderId=none` est explicite (pas omis) pour parsing prévisible. Les paires
+// `extra` sont sérialisées key=value insérées entre orderId et err.message.
+//
+// Fail-safe : un échec d'invalidation ne doit jamais bloquer l'appelant. Tout
+// est swallowé en interne — les call sites n'ont pas besoin de wrapper try/catch
+// externe (cf C2 Option A : dead code redondant supprimé).
+export async function revalidatePublicStats(opts: {
+  source: string;
+  orderId?: string;
+  extra?: Record<string, string>;
+}): Promise<void> {
   try {
     revalidateTag("public-stats");
   } catch (e) {
-    console.warn(`[STATS_REVAL_WARN] ${(e as Error).message}`);
+    const parts: string[] = [
+      `[STATS_REVAL_WARN]`,
+      `source=${opts.source}`,
+      `orderId=${opts.orderId ?? "none"}`,
+    ];
+    if (opts.extra) {
+      for (const [k, v] of Object.entries(opts.extra)) {
+        parts.push(`${k}=${v}`);
+      }
+    }
+    parts.push((e as Error).message);
+    console.warn(parts.join(" "));
   }
 }

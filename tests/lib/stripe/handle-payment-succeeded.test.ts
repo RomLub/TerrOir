@@ -198,7 +198,13 @@ describe("syncStripePaymentSucceeded — Cas 3 : pending_to_notify (cas nominal)
     expect(captured.from).toEqual(["orders"]); // SELECT only, pas d'UPDATE
     expect(captured.update).toEqual([]);
     expect(captured.rpcCalls).toEqual([]); // pas de résurrection
+    // T-100 C2 : signature enrichie {source, orderId, extra.step='nominal'}.
     expect(vi.mocked(revalidatePublicStats)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(revalidatePublicStats)).toHaveBeenCalledWith({
+      source: "stripe-payment-succeeded",
+      orderId: "order-42",
+      extra: { step: "nominal" },
+    });
 
     expect(vi.mocked(logPaymentEvent)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(logPaymentEvent)).toHaveBeenCalledWith({
@@ -291,7 +297,13 @@ describe("syncStripePaymentSucceeded — Cas 6 : revived_to_notify (RPC=revived)
     expect(captured.update).toEqual([]);
 
     // Cache public-stats invalidé.
+    // T-100 C2 : signature enrichie {source, orderId, extra.step='revived'}.
     expect(vi.mocked(revalidatePublicStats)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(revalidatePublicStats)).toHaveBeenCalledWith({
+      source: "stripe-payment-succeeded",
+      orderId: "order-42",
+      extra: { step: "revived" },
+    });
 
     // Audit log Phase 2.
     expect(vi.mocked(logPaymentEvent)).toHaveBeenCalledWith({

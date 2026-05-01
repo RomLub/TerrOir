@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { revalidateTag } from "next/cache";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
 import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
+import { revalidatePublicStats } from "@/lib/stats/revalidate";
 import {
   InvalidOrderTransitionError,
   assertTransition,
@@ -121,13 +121,9 @@ export async function POST(request: Request) {
   }
 
   // Refunded sort le filtre IN ('confirmed','ready','completed') du cache
-  // public-stats → invalidation requise. Try/catch : un cache flapping ne
-  // doit pas faire échouer le 200 vers l'admin.
-  try {
-    revalidateTag("public-stats");
-  } catch (e) {
-    console.warn(`[STATS_REVAL_WARN] order=${order.id} ${(e as Error).message}`);
-  }
+  // public-stats → invalidation requise. Le helper swallow toute exception
+  // (cache flapping ne doit pas faire échouer le 200 vers l'admin).
+  await revalidatePublicStats({ source: "stripe-refund", orderId: order.id });
 
   if (order.consumer_id) {
     await admin.from("notifications").insert({

@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { revalidateTag } from "next/cache";
 import { assertCronAuth } from "@/lib/cron/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
 import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
+import { revalidatePublicStats } from "@/lib/stats/revalidate";
 import {
   assertTransition,
   InvalidOrderTransitionError,
@@ -217,14 +217,9 @@ export async function POST(request: Request) {
   // silent si toutes les UPDATE échouent (cache stale est préférable à
   // une invalidation à vide). T-100 : `transition_error` (pre-refund OU
   // re-check post-refund) signale aussi un order sans UPDATE DB → exclu.
+  // Pas d'orderId passe au helper : batch potentiellement multi-orders.
   if (results.some((r) => !r.db_error && !r.transition_error)) {
-    try {
-      revalidateTag("public-stats");
-    } catch (e) {
-      console.warn(
-        `[STATS_REVAL_WARN] cron=order-timeout ${(e as Error).message}`,
-      );
-    }
+    await revalidatePublicStats({ source: "cron-order-timeout" });
   }
 
   return NextResponse.json({ processed: results.length, results });
