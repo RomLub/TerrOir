@@ -38,6 +38,23 @@ vi.mock("@/lib/audit-logs/log-payment-event", () => ({
   logPaymentEvent: vi.fn(),
 }));
 
+// T-100 : mock partial de stateMachine pour pouvoir forcer assertTransition
+// a throw dans le test T-100-C (transition refusee). Par defaut delegate a
+// l'implementation reelle pour ne pas casser les tests existants — pattern
+// aligne sur tests/app/api/orders/[id]/cancel/route.test.ts:56-63.
+const { mockAssertTransition } = vi.hoisted(() => ({
+  mockAssertTransition: vi.fn(),
+}));
+
+vi.mock("@/lib/orders/stateMachine", async (importActual) => {
+  const actual = await importActual<typeof import("@/lib/orders/stateMachine")>();
+  mockAssertTransition.mockImplementation(actual.assertTransition);
+  return {
+    ...actual,
+    assertTransition: mockAssertTransition,
+  };
+});
+
 import { POST } from "@/app/api/cron/order-timeout/route";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
@@ -777,5 +794,92 @@ describe("POST /api/cron/order-timeout — T-409 pre-check pi.status", () => {
 
     const json = await res.json();
     expect(json.results[0].refunded).toBe(true);
+  });
+});
+
+// =============================================================================
+// T-100. assertTransition AVANT refund Stripe (filet anti-refund-irrecuperable)
+// =============================================================================
+describe("POST /api/cron/order-timeout — T-100 assertTransition pre-refund", () => {
+  it("T-100-A pending+PI : assertTransition('pending','refunded') AVANT stripe.refunds.create", async () => {
+    const order = makeOrder({ id: "order-T100A", paymentIntent: "pi_t100a" });
+    const { client } = makeSupabase({
+      selectOrders: { data: [order], error: null },
+    });
+    vi.mocked(createSupabaseAdminClient).mockReturnValue(client);
+
+    const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
+    expect(res.status).toBe(200);
+
+    // Cible tentative='refunded' (PI present), passee AVANT toute I/O Stripe.
+    expect(mockAssertTransition).toHaveBeenCalledWith("pending", "refunded");
+
+    // Verifie l'ordre : 1er appel assertTransition AVANT 1er appel
+    // stripe.refunds.create (sinon refund Stripe irrecuperable possible
+    // sur transition KO — pattern aligne cancel/route T-410).
+    const firstAssertOrder = mockAssertTransition.mock.invocationCallOrder[0]!;
+    const firstRefundOrder =
+      vi.mocked(stripe.refunds.create).mock.invocationCallOrder[0]!;
+    expect(firstAssertOrder).toBeLessThan(firstRefundOrder);
+  });
+
+  it("T-100-B pending sans PI : assertTransition('pending','cancelled') sans appel stripe.refunds.create", async () => {
+    const order = makeOrder({ id: "order-T100B", paymentIntent: null });
+    const { client, captured } = makeSupabase({
+      selectOrders: { data: [order], error: null },
+    });
+    vi.mocked(createSupabaseAdminClient).mockReturnValue(client);
+
+    const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
+    expect(res.status).toBe(200);
+
+    // Tentative='cancelled' (pas de PI) → assertTransition appele avant UPDATE.
+    expect(mockAssertTransition).toHaveBeenCalledWith("pending", "cancelled");
+    expect(vi.mocked(stripe.refunds.create)).not.toHaveBeenCalled();
+
+    const orderUpdate = captured.updates.find((u) => u.table === "orders");
+    expect(orderUpdate?.payload.statut).toBe("cancelled");
+  });
+
+  it("T-100-C transition pre-refund refusee → graceful skip, refund Stripe NON emis, transition_error remonte dans results", async () => {
+    const order = makeOrder({ id: "order-T100C", paymentIntent: "pi_t100c" });
+    const { client, captured } = makeSupabase({
+      selectOrders: { data: [order], error: null },
+    });
+    vi.mocked(createSupabaseAdminClient).mockReturnValue(client);
+
+    // Force assertTransition a throw (matrice naturelle interdit ce cas
+    // post-T-151 — mock pour exercer le filet defensif).
+    const { InvalidOrderTransitionError } = await import(
+      "@/lib/orders/stateMachine"
+    );
+    mockAssertTransition.mockImplementationOnce(() => {
+      throw new InvalidOrderTransitionError(
+        "pending" as never,
+        "refunded" as never,
+      );
+    });
+
+    const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
+    expect(res.status).toBe(200);
+
+    // Garde-fou critique T-100 : refund Stripe NON emis sur transition KO.
+    expect(vi.mocked(stripe.refunds.create)).not.toHaveBeenCalled();
+    // Aucun UPDATE orders + revalidateTag pas declenche (gating exclut
+    // transition_error en sortie de boucle).
+    expect(captured.updates.find((u) => u.table === "orders")).toBeUndefined();
+    expect(vi.mocked(revalidateTag)).not.toHaveBeenCalled();
+
+    const body = (await res.json()) as {
+      processed: number;
+      results: Array<Record<string, unknown>>;
+    };
+    expect(body.results[0]).toMatchObject({
+      order_id: "order-T100C",
+      refunded: false,
+    });
+    expect(body.results[0]).toHaveProperty("transition_error");
+    expect(String(body.results[0].transition_error)).toContain("pending");
+    expect(String(body.results[0].transition_error)).toContain("refunded");
   });
 });
