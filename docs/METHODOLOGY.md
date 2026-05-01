@@ -403,6 +403,34 @@ Périmètre typique :
 
 **Règle** : toute modification d'une de ces configs par Romain doit être reportée dans `docs/HANDOFF.md` dans la session où elle a été faite. Sinon un Claude frais (ou Romain dans 3 mois) ne pourra pas reproduire l'environnement.
 
+## Taxonomie closure_reason
+
+Champ DB : `orders.closure_reason` (string nullable). Renseigné lors d'une transition vers un statut terminal (`cancelled` ou `refunded`), ou lors d'un événement post-clôture qui modifie le motif (overwrites). Permet de tracer pourquoi un order a été clôturé sans devoir inférer depuis le contexte.
+
+| Valeur | Type | Émetteur | Path | Sémantique |
+|---|---|---|---|---|
+| `admin_refund` | Pose initiale | Admin via UI | `app/api/stripe/refund/route.ts` | Refund manuel décidé par un admin (motif libre, pas de validation algorithmique). |
+| `timeout` | Pose initiale | Cron (auto) | `app/api/cron/order-timeout/route.tsx` | Auto-annulation d'un order resté pending > 24h. |
+| `consumer_cancel` | Pose initiale | Consumer via UI | `app/api/orders/[id]/cancel/route.tsx` | Consumer annule lui-même son order avant confirmation. |
+| `stock` | Pose initiale | Producer via UI | `app/api/orders/[id]/cancel/route.tsx` | Producer annule pour rupture de stock. |
+| `producer_cancel` | Pose initiale | Producer via UI | `app/api/orders/[id]/cancel/route.tsx` | Producer annule pour autre raison (indisponibilité, etc.). |
+| `other` | Pose initiale | Default fallback | `app/api/orders/[id]/cancel/route.tsx` | Annulation avec motif "autre" (fallback hors taxonomie). |
+| `payment_failed` | Pose initiale | Stripe webhook | `lib/stripe/handle-payment-failed.ts` | Webhook payment_intent.payment_failed — paiement Stripe refusé (3DS, fonds insuffisants, etc.). |
+| `revival_blocked_stock` | Overwrite | Stripe webhook | `lib/stripe/handle-payment-succeeded.ts` | Path revival 3DS-retry : PI succeeded reçu après cancellation, mais stock pris entre-temps (RPC `revive_order_with_stock_check` retourne `blocked_stock`). Refund Stripe émis. |
+| `revival_blocked_slot` | Overwrite | Stripe webhook | `lib/stripe/handle-payment-succeeded.ts` | Path revival 3DS-retry : PI succeeded reçu après cancellation, mais slot pris entre-temps (RPC retourne `blocked_slot`). Refund Stripe émis. |
+
+### Notes
+
+- **Multi-emitter** : `timeout` peut être posée par le cron (path principal) OU par `cancel/route.tsx` via le zod enum `reason` (cas où un acteur passe manuellement `closure_reason=timeout`). Si tu inférais l'émetteur depuis la valeur, tu aurais tort.
+
+- **Overwrites** : `revival_blocked_stock` et `revival_blocked_slot` écrasent un `closure_reason='payment_failed'` posé initialement par le webhook payment_failed. Le `cancelled_at` reste figé, seul le motif change.
+
+### Notes d'extension
+
+- Toute nouvelle valeur DOIT être documentée dans cette table avant merge.
+- Convention snake_case (cohérent DB).
+- Pas de migration DB requise (champ `string` libre côté schéma) — la convention est tenue par le code applicatif uniquement.
+
 ## Principes de code
 
 - TypeScript strict mode obligatoire.
