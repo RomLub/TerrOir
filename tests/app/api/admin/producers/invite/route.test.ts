@@ -71,6 +71,8 @@ type Captured = {
   inserts: Array<{ table: string; payload: unknown }>;
   eqCalls: Array<{ table: string; col: string; val: unknown }>;
   ilikeCalls: Array<{ table: string; col: string; val: unknown }>;
+  isCalls: Array<{ table: string; col: string; val: unknown }>;
+  gtCalls: Array<{ table: string; col: string; val: unknown }>;
 };
 
 let captured: Captured;
@@ -85,9 +87,24 @@ function defaultResp(table: string, op: Op): Resp {
   //   - admin_users SELECT : data=null (pas d'admin matché)
   //   - users SELECT : data=null (pas de user matché → cas 1)
   //   - producers SELECT : non atteint quand users SELECT renvoie null
-  //   - producer_invitations INSERT : succès, RETURNING token+expires_at
+  //   - producer_invitations UPDATE : data=[] (T-109 revoke no-op par défaut,
+  //     aucune invitation active à bumper). Tests T-109 surchargent.
+  //   - producer_invitations INSERT : succès, RETURNING id+token+expires_at
   //   - producer_interests UPDATE : 1 row bumpée (lead 'new' matché)
-  if (op === "update" || op === "insert") {
+  if (op === "update") {
+    if (table === "producer_invitations") {
+      // T-109 : RETURNING id sur le UPDATE revoke. Empty array = no-op,
+      // aucun event invitation_revoked émis (cohérent défaut H1/H3 qui
+      // assertent logAuthEvent.toHaveBeenCalledTimes(1) = invitation_created
+      // seul).
+      return { data: [], error: null };
+    }
+    if (table === "producer_interests") {
+      return { data: [{ id: "lead-1" }], error: null };
+    }
+    return { data: null, error: null };
+  }
+  if (op === "insert") {
     if (table === "producer_invitations") {
       return {
         data: {
@@ -97,9 +114,6 @@ function defaultResp(table: string, op: Op): Resp {
         },
         error: null,
       };
-    }
-    if (table === "producer_interests" && op === "update") {
-      return { data: [{ id: "lead-1" }], error: null };
     }
     return { data: null, error: null };
   }
@@ -143,6 +157,14 @@ vi.mock("@/lib/supabase/admin", () => ({
       };
       builder.ilike = (col: string, val: unknown) => {
         captured.ilikeCalls.push({ table, col, val });
+        return builder;
+      };
+      builder.is = (col: string, val: unknown) => {
+        captured.isCalls.push({ table, col, val });
+        return builder;
+      };
+      builder.gt = (col: string, val: unknown) => {
+        captured.gtCalls.push({ table, col, val });
         return builder;
       };
       builder.maybeSingle = () => Promise.resolve(consume(table, builder._op));
@@ -191,6 +213,8 @@ beforeEach(() => {
     inserts: [],
     eqCalls: [],
     ilikeCalls: [],
+    isCalls: [],
+    gtCalls: [],
   };
   responses = {};
   // Default : admin valide.
@@ -600,5 +624,179 @@ describe("H. T-310 audit log invitation_created", () => {
     const res = await POST(makeRequest(VALID_BODY));
     expect(res.status).toBe(409);
     expect(logAuthEvent).not.toHaveBeenCalled();
+  });
+});
+
+// --- I. T-109 : invalidation auto des invitations actives ----------------
+// Avant l'INSERT du nouveau token, UPDATE producer_invitations SET
+// expires_at=now() WHERE ilike(email, input.email) AND used_at IS NULL AND
+// expires_at > now() RETURNING id. Pour chaque row bumpée, logAuthEvent
+// 'invitation_revoked' (cohérent T-310 forensic, 1 event = 1 entité), avec
+// metadata.replaced_by_invitation_id pour reconstituer la chaîne sur un
+// même email lors d'une analyse forensique.
+//
+// Ordre critique : revoke AVANT INSERT — sinon la WHERE matcherait aussi
+// la nouvelle row qu'on vient de créer. Tests I4/I5 vérifient les filtres
+// de la WHERE clause (used_at null + expires_at > now()).
+
+describe("I. T-109 invalidation auto des invitations actives", () => {
+  it("I1 0 invits actives (data:[]) → UPDATE tenté, aucun event invitation_revoked, invitation_created OK", async () => {
+    pushResp("admin_users", "select", { data: null, error: null });
+    pushResp("users", "select", { data: null, error: null });
+    // Default producer_invitations update = data:[] — no-op revoke.
+    const res = await POST(makeRequest(VALID_BODY));
+    expect(res.status).toBe(200);
+    // Le UPDATE est tenté (Postgres ne sait pas a priori si la WHERE matchera).
+    expect(
+      captured.updates.some((u) => u.table === "producer_invitations"),
+    ).toBe(true);
+    // Aucun event invitation_revoked émis.
+    const revokedCalls = vi
+      .mocked(logAuthEvent)
+      .mock.calls.filter(
+        (c) =>
+          (c[0] as { eventType: string }).eventType === "invitation_revoked",
+      );
+    expect(revokedCalls).toHaveLength(0);
+    // Sanity : invitation_created bien émis (pas de régression H).
+    expect(logAuthEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "invitation_created" }),
+    );
+  });
+
+  it("I2 1 invit active → UPDATE bump expires_at + 1 event invitation_revoked metadata complet", async () => {
+    pushResp("admin_users", "select", { data: null, error: null });
+    pushResp("users", "select", { data: null, error: null });
+    pushResp("producer_invitations", "update", {
+      data: [{ id: "old-inv-1" }],
+      error: null,
+    });
+    const res = await POST(makeRequest(VALID_BODY));
+    expect(res.status).toBe(200);
+    // Le UPDATE porte expires_at=now() au format ISO.
+    const piUpdate = captured.updates.find(
+      (u) => u.table === "producer_invitations",
+    );
+    expect(piUpdate).toBeTruthy();
+    const payload = piUpdate!.payload as { expires_at: string };
+    expect(payload.expires_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    // Event invitation_revoked émis avec metadata complet : revoked_invitation_id
+    // (id de l'ancienne) + replaced_by_invitation_id (id de la nouvelle, "inv-test"
+    // depuis defaultResp INSERT) + email masqué (RGPD).
+    expect(logAuthEvent).toHaveBeenCalledWith({
+      eventType: "invitation_revoked",
+      userId: "admin-1",
+      metadata: {
+        revoked_invitation_id: "old-inv-1",
+        replaced_by_invitation_id: "inv-test",
+        email: expect.stringContaining("***"),
+      },
+    });
+  });
+
+  it("I3 2 invits actives → 2 events invitation_revoked distincts (1 event = 1 entité, pattern T-310)", async () => {
+    pushResp("admin_users", "select", { data: null, error: null });
+    pushResp("users", "select", { data: null, error: null });
+    pushResp("producer_invitations", "update", {
+      data: [{ id: "old-inv-1" }, { id: "old-inv-2" }],
+      error: null,
+    });
+    const res = await POST(makeRequest(VALID_BODY));
+    expect(res.status).toBe(200);
+    const revokedCalls = vi
+      .mocked(logAuthEvent)
+      .mock.calls.filter(
+        (c) =>
+          (c[0] as { eventType: string }).eventType === "invitation_revoked",
+      );
+    expect(revokedCalls).toHaveLength(2);
+    expect(revokedCalls[0]?.[0]).toMatchObject({
+      eventType: "invitation_revoked",
+      metadata: { revoked_invitation_id: "old-inv-1" },
+    });
+    expect(revokedCalls[1]?.[0]).toMatchObject({
+      eventType: "invitation_revoked",
+      metadata: { revoked_invitation_id: "old-inv-2" },
+    });
+  });
+
+  it("I4 chaîne WHERE inclut .is('used_at', null) — exclut invitations consommées (used_at non null)", async () => {
+    pushResp("admin_users", "select", { data: null, error: null });
+    pushResp("users", "select", { data: null, error: null });
+    const res = await POST(makeRequest(VALID_BODY));
+    expect(res.status).toBe(200);
+    // Filtre .is sur producer_invitations.used_at = null. Garantit que le
+    // SQL filtre les invitations déjà consommées (used_at IS NOT NULL).
+    expect(captured.isCalls).toContainEqual({
+      table: "producer_invitations",
+      col: "used_at",
+      val: null,
+    });
+  });
+
+  it("I5 chaîne WHERE inclut .gt('expires_at', now) — exclut invitations déjà expirées", async () => {
+    pushResp("admin_users", "select", { data: null, error: null });
+    pushResp("users", "select", { data: null, error: null });
+    const res = await POST(makeRequest(VALID_BODY));
+    expect(res.status).toBe(200);
+    // Filtre .gt sur producer_invitations.expires_at > maintenant. Garantit
+    // que le SQL ne re-bumpe pas des invitations déjà expirées (les laisse
+    // expirées au lieu de les "revoquer" une 2e fois — sémantique propre).
+    const gtCall = captured.gtCalls.find(
+      (c) => c.table === "producer_invitations" && c.col === "expires_at",
+    );
+    expect(gtCall).toBeTruthy();
+    expect(gtCall!.val).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it("I6 matching .ilike sur producer_invitations.email (case-insensitive Foo@... ↔ foo@...) — cohérent T-110", async () => {
+    pushResp("admin_users", "select", { data: null, error: null });
+    pushResp("users", "select", { data: null, error: null });
+    const res = await POST(makeRequest({ email: "Foo@Example.COM" }));
+    expect(res.status).toBe(200);
+    // .ilike utilisé (et pas .eq) sur producer_invitations.email pour matcher
+    // "Foo@Example.COM" en base avec une row stockée "foo@example.com".
+    expect(captured.ilikeCalls).toContainEqual({
+      table: "producer_invitations",
+      col: "email",
+      val: "Foo@Example.COM",
+    });
+    // Garde-fou : aucun .eq sur producer_invitations.email (sensible casse).
+    expect(
+      captured.eqCalls.find(
+        (c) => c.table === "producer_invitations" && c.col === "email",
+      ),
+    ).toBeUndefined();
+  });
+
+  it("I7 revoke UPDATE échoue (DB error) → console.warn [INVITATION_REVOKE_WARN], INSERT du nouveau token continue (fail-open)", async () => {
+    pushResp("admin_users", "select", { data: null, error: null });
+    pushResp("users", "select", { data: null, error: null });
+    pushResp("producer_invitations", "update", {
+      data: null,
+      error: { message: "RLS policy violation" },
+    });
+    const res = await POST(makeRequest(VALID_BODY));
+    // Pas de 500 : revoke fail-open, on continue avec l'INSERT.
+    expect(res.status).toBe(200);
+    expect(consoleWarnSpy).toHaveBeenCalled();
+    const warned = consoleWarnSpy.mock.calls.find((c: unknown[]) =>
+      String(c[0] ?? "").includes("[INVITATION_REVOKE_WARN]"),
+    );
+    expect(warned).toBeDefined();
+    expect(String(warned?.[0] ?? "")).toContain("RLS policy violation");
+    // Aucun event invitation_revoked (la WHERE est censée renvoyer 0 rows
+    // après une DB error, donc aucun id à logger).
+    const revokedCalls = vi
+      .mocked(logAuthEvent)
+      .mock.calls.filter(
+        (c) =>
+          (c[0] as { eventType: string }).eventType === "invitation_revoked",
+      );
+    expect(revokedCalls).toHaveLength(0);
+    // Mais invitation_created bien émis (l'INSERT a continué).
+    expect(logAuthEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "invitation_created" }),
+    );
   });
 });
