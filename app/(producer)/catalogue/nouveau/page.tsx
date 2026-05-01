@@ -212,11 +212,10 @@ export default function ProductNewPage() {
         // Nouveau produit actif → +1 productsCount (et possiblement +1
         // producersCount via auto-promotion). Si form.active=false, le
         // produit n'entre pas dans le filtre, pas besoin d'invalider.
-        try {
-          await revalidatePublicStats();
-        } catch (e) {
-          console.warn(`[STATS_REVAL_WARN] ${(e as Error).message}`);
-        }
+        await revalidatePublicStats({
+          source: 'producer-catalogue-create',
+          extra: { productId: inserted.id },
+        });
       }
       router.push('/catalogue');
     } catch (err) {

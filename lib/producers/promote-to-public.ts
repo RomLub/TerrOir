@@ -86,6 +86,9 @@ export async function promoteProducerToPublicIfActive(
     return;
   }
   if (Array.isArray(data) && data.length > 0) {
-    await revalidatePublicStats();
+    await revalidatePublicStats({
+      source: 'producer-promote-to-public',
+      extra: { producerId },
+    });
   }
 }

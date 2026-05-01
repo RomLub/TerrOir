@@ -106,12 +106,9 @@ export default function ProducerCataloguePage() {
         await promoteProducerToPublicIfActive(supabase, producerId);
       }
       // Toggle actif change toujours productsCount (et possiblement
-      // producersCount via l'auto-promotion).
-      try {
-        await revalidatePublicStats();
-      } catch (e) {
-        console.warn(`[STATS_REVAL_WARN] ${(e as Error).message}`);
-      }
+      // producersCount via l'auto-promotion). Le helper swallow toute
+      // exception, pas de wrapper externe nécessaire.
+      await revalidatePublicStats({ source: 'producer-catalogue-list' });
     } else {
       setError(upError.message);
     }

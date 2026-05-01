@@ -150,7 +150,12 @@ describe("promoteProducerToPublicIfActive — cas nominal (3 conditions OK)", ()
 
     await promoteProducerToPublicIfActive(client, "producer-42");
 
+    // T-100 C2 : signature enrichie {source, extra.producerId} obligatoire.
     expect(vi.mocked(revalidatePublicStats)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(revalidatePublicStats)).toHaveBeenCalledWith({
+      source: "producer-promote-to-public",
+      extra: { producerId: "producer-42" },
+    });
   });
 
   it("ne log PAS console.warn quand toutes les chaînes réussissent", async () => {

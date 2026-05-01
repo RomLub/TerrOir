@@ -276,11 +276,10 @@ export default function ProductEditPage() {
       // Inconditionnel : on ne tracke pas l'état initial de form.active, donc
       // un éventuel true→false (qui retire le produit du count) doit aussi
       // invalider. Coût négligeable si rien n'a changé.
-      try {
-        await revalidatePublicStats();
-      } catch (e) {
-        console.warn(`[STATS_REVAL_WARN] ${(e as Error).message}`);
-      }
+      await revalidatePublicStats({
+        source: 'producer-catalogue-update',
+        extra: { productId },
+      });
       router.push('/catalogue');
     } catch (err) {
       setError((err as Error).message ?? 'Enregistrement impossible');
