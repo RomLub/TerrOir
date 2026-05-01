@@ -80,8 +80,11 @@ export async function POST(request: Request) {
   //     volontaire : le 1er POST renvoie 409 kind='draft_resend_confirm_required'
   //     pour que le modal affiche un encadré informatif + bouton dédié,
   //     et le 2nd POST avec `confirm_draft_resend=true` autorise la
-  //     génération d'un nouveau token. Les anciens tokens restent en
-  //     base mais deviennent orphelins (le user n'en a plus connaissance).
+  //     génération d'un nouveau token. Les anciens tokens encore actifs
+  //     pour ce même email sont auto-revoqués par le bloc T-109 ci-dessous
+  //     (UPDATE expires_at=now()) avant l'INSERT du nouveau, garantissant
+  //     qu'un seul lien valide existe à un instant donné — pas d'orphelin
+  //     exploitable côté user.
   //   - autres statuts ('pending'|'active'|'public'|'suspended'|'deleted')
   //     : 409 dur, inchangé.
   let isDraftResend = false;
@@ -135,6 +138,41 @@ export async function POST(request: Request) {
       ? "consumer"
       : null;
 
+  // T-109 — Invalidation auto des invitations actives matchant cet email.
+  // Avant d'émettre un nouveau token, on bumpe expires_at=now() sur toutes
+  // les invitations encore valides (used_at IS NULL AND expires_at > now())
+  // pour le même email, en match case-insensitive (ilike, cohérent T-110 et
+  // producer_interests). Évite la pollution de tokens orphelins multiples
+  // côté DB et empêche un user de claim un vieux lien après une relance.
+  //
+  // Gardé fail-open : si le UPDATE échoue, on log warn et on continue
+  // l'INSERT du nouveau token. La data state DB peut alors avoir 2 tokens
+  // valides simultanément — pas de corruption, juste de la dette nettoyable
+  // par le cron de purge ou la consommation `used_at`.
+  //
+  // Race condition acceptée : deux POST concurrents pourraient chacun voir
+  // l'autre comme "actif" et se bumper mutuellement. Pas critique en
+  // pratique (admin humain, le state `submitting` du modal absorbe le
+  // double-clic). Si besoin futur, basculer sur trigger BEFORE INSERT
+  // côté DB pour atomicité.
+  //
+  // Ordre critique : ce bloc DOIT s'exécuter AVANT l'INSERT du nouveau
+  // token, sinon on bumperait aussi le nouveau (ilike + used_at null +
+  // expires_at > now() matcherait la row qu'on vient de créer).
+  const nowIso = new Date().toISOString();
+  const { data: revokedInvitations, error: revokeError } = await admin
+    .from("producer_invitations")
+    .update({ expires_at: nowIso })
+    .ilike("email", input.email)
+    .is("used_at", null)
+    .gt("expires_at", nowIso)
+    .select("id");
+  if (revokeError) {
+    console.warn(
+      `[INVITATION_REVOKE_WARN] Failed to revoke active invitations for ${maskEmail(input.email)}: ${revokeError.message}`,
+    );
+  }
+
   // 2. Préparer TOUS les tokens AVANT le moindre write DB. Si un token
   //    échoue (OPT_OUT_TOKEN_SECRET absent → generateOptOutToken throw),
   //    on 500 proprement sans laisser d'invitation orpheline en base.
@@ -178,6 +216,28 @@ export async function POST(request: Request) {
       token_prefix: token.slice(0, 8),
     },
   });
+
+  // T-109 — audit log forensique pour les invitations revoquées par le bloc
+  // ci-dessus. 1 event par row (cohérent T-310 : 1 event = 1 entité), avec
+  // lien vers le nouveau token (replaced_by_invitation_id) pour reconstituer
+  // la chaîne d'invitations sur un même email lors d'une analyse forensique.
+  // Émis APRÈS invitation_created : on a besoin de invitation.id pour
+  // remplir replaced_by_invitation_id. Si l'INSERT précédent a échoué (500),
+  // ce bloc n'est pas atteint — la data DB a vu son revoke (les anciens
+  // tokens sont morts) sans event audit, console.warn ci-dessus tracé.
+  if (revokedInvitations && revokedInvitations.length > 0) {
+    for (const revoked of revokedInvitations as Array<{ id: string }>) {
+      await logAuthEvent({
+        eventType: "invitation_revoked",
+        userId: session.id,
+        metadata: {
+          revoked_invitation_id: revoked.id,
+          replaced_by_invitation_id: invitation.id,
+          email: maskEmail(input.email),
+        },
+      });
+    }
+  }
 
   const invitationUrl = `${NEXT_PUBLIC_PRODUCER_URL}/invitation?token=${invitation.token}`;
 
