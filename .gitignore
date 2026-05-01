@@ -12,3 +12,12 @@ next-env.d.ts.bak
 .turbo
 *.tsbuildinfo
 .claude/
+
+# Playwright
+/test-results/
+/playwright-report/
+/playwright/.cache/
+/blob-report/
+
+# Audit log E2E (logs des writes prod par les tests)
+/tests/e2e/.audit-log.jsonl
