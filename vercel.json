@@ -32,6 +32,10 @@
     {
       "path": "/api/cron/purge-stock-alerts",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/purge-otp-codes",
+      "schedule": "0 5 * * *"
     }
   ],
   "functions": {
@@ -42,6 +46,7 @@
     "app/api/cron/weekly-badges/route.ts": { "maxDuration": 120 },
     "app/api/cron/weekly-payout/route.tsx": { "maxDuration": 300 },
     "app/api/cron/retry-failed-refunds/route.ts": { "maxDuration": 60 },
-    "app/api/cron/purge-stock-alerts/route.ts": { "maxDuration": 60 }
+    "app/api/cron/purge-stock-alerts/route.ts": { "maxDuration": 60 },
+    "app/api/cron/purge-otp-codes/route.ts": { "maxDuration": 60 }
   }
 }
