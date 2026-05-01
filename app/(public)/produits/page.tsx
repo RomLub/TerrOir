@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ProductCard } from '@/components/ui';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
@@ -21,6 +22,17 @@ import { parseProductsSearchParams } from '@/lib/products/parse-search-params';
 //
 // Slug invalide (regex ou non-existant en DB) → 0 résultats gracieux
 // (pas de 404, cf. décision Q3).
+//
+// SEO : metadata statique. Les filtres querystring n'enrichissent pas
+// le title — décision pragmatique pour MVP (peu d'intérêt SEO sur des
+// pages filtrées combinatoires). À enrichir plus tard via
+// generateMetadata si besoin.
+
+export const metadata: Metadata = {
+  title: 'Tous les produits | TerrOir',
+  description:
+    'Découvrez tous les produits disponibles chez nos éleveurs sarthois. Filtrez par catégorie, animal ou morceau.',
+};
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
