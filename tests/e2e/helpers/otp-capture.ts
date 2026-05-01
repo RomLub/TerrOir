@@ -17,7 +17,7 @@
  * email end-to-end. Hors scope ici.
  */
 
-import { TestContext, safeDelete, safeInsert, getReadOnlyAdminClient, trackId } from './supabase-admin';
+import { TestContext, safeDelete, safeInsert, getReadOnlyAdminClient, trackRowId } from './supabase-admin';
 
 // ============================================================================
 // MIRROR de lib/email-change/hmac.ts (algo HMAC-SHA256)
@@ -133,7 +133,7 @@ export interface SeededOtp {
  *   1. DELETE tous les rows existants pour (user_id, step) — évite l'ambiguïté
  *      ORDER BY created_at DESC du serveur si plusieurs rows actifs cohabitent.
  *   2. INSERT un row avec hash du code clair fourni (ou généré).
- *   3. Track le rowId dans ctx.trackedIds pour cleanup auto.
+ *   3. Track le rowId dans ctx.trackedRowIds pour cleanup auto via cascade FK.
  *
  * Utilisation typique :
  *   const { code } = await seedOtp(ctx, { userId, step: 'current', email: oldEmail });
@@ -183,8 +183,8 @@ export async function seedOtp(ctx: TestContext, opts: SeedOtpOptions): Promise<S
     throw new Error(`seedOtp: row inséré sans id retourné (returning: true mal géré ?)`);
   }
 
-  // 3. Track le rowId pour cleanup auto en afterEach
-  trackId(ctx, rowId);
+  // 3. Track le rowId pour cleanup auto en afterEach (cascade FK depuis l'user parent)
+  trackRowId(ctx, rowId);
 
   return { code, rowId };
 }

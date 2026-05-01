@@ -72,7 +72,8 @@ function makeCtx(overrides: Partial<TestContext> = {}): TestContext {
   return {
     runId: 'r-test-otp',
     testId: 'otp-capture-test',
-    trackedIds: new Set<string>([TEST_USER_ID]),
+    trackedUserIds: new Set<string>([TEST_USER_ID]),
+    trackedRowIds: new Set<string>(),
     trackedEmails: new Set<string>(),
     ...overrides,
   };
@@ -254,8 +255,8 @@ describe('seedOtp', () => {
     expect(lastInsert.attempts).toBe(3);
   });
 
-  it('refuse si userId pas dans trackedIds (via safeDelete validation)', async () => {
-    const ctx = makeCtx({ trackedIds: new Set<string>() });
+  it('refuse si userId pas tracké (via safeDelete validation)', async () => {
+    const ctx = makeCtx({ trackedUserIds: new Set<string>() });
     await expect(
       seedOtp(ctx, {
         userId: TEST_USER_ID,
@@ -265,15 +266,20 @@ describe('seedOtp', () => {
     ).rejects.toThrow(/non tracké/);
   });
 
-  it('track le rowId retourné dans ctx.trackedIds', async () => {
+  it('track le rowId retourné dans ctx.trackedRowIds (pas dans trackedUserIds)', async () => {
     const ctx = makeCtx();
-    const sizeBefore = ctx.trackedIds.size;
+    const userSizeBefore = ctx.trackedUserIds.size;
+    const rowSizeBefore = ctx.trackedRowIds.size;
     const { rowId } = await seedOtp(ctx, {
       userId: TEST_USER_ID,
       step: 'current',
       email: 'playwright-test-1@mailinator.com',
     });
-    expect(ctx.trackedIds.has(rowId)).toBe(true);
-    expect(ctx.trackedIds.size).toBe(sizeBefore + 1);
+    expect(ctx.trackedRowIds.has(rowId)).toBe(true);
+    expect(ctx.trackedRowIds.size).toBe(rowSizeBefore + 1);
+    // Le rowId NE doit PAS contaminer trackedUserIds (sinon cleanupAllTrackedUsers
+    // tenterait auth.admin.deleteUser dessus → warnings "User not found").
+    expect(ctx.trackedUserIds.has(rowId)).toBe(false);
+    expect(ctx.trackedUserIds.size).toBe(userSizeBefore);
   });
 });

@@ -52,7 +52,8 @@ function makeCtx(): TestContext {
   return {
     runId: 'r-test',
     testId: 'lifecycle-test',
-    trackedIds: new Set<string>(),
+    trackedUserIds: new Set<string>(),
+    trackedRowIds: new Set<string>(),
     trackedEmails: new Set<string>(),
   };
 }
@@ -75,7 +76,7 @@ describe('createTestUser', () => {
   it('push id et email dans les Sets trackés', async () => {
     const ctx = makeCtx();
     const user = await createTestUser(ctx);
-    expect(ctx.trackedIds.has(user.id)).toBe(true);
+    expect(ctx.trackedUserIds.has(user.id)).toBe(true);
     expect(ctx.trackedEmails.has(user.email)).toBe(true);
   });
 
@@ -124,10 +125,11 @@ describe('cleanupAllTrackedUsers', () => {
     const ctx = makeCtx();
     await createTestUser(ctx, { suffix: 'a' });
     await createTestUser(ctx, { suffix: 'b' });
-    expect(ctx.trackedIds.size).toBe(2);
+    expect(ctx.trackedUserIds.size).toBe(2);
 
     await cleanupAllTrackedUsers(ctx);
-    expect(ctx.trackedIds.size).toBe(0);
+    expect(ctx.trackedUserIds.size).toBe(0);
+    expect(ctx.trackedRowIds.size).toBe(0);
     expect(ctx.trackedEmails.size).toBe(0);
   });
 });
