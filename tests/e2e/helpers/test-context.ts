@@ -20,7 +20,7 @@ import { TestContext } from './supabase-admin';
 import { cleanupAllTrackedUsers } from './user-lifecycle';
 
 interface CtxFixtures {
-  /** TestContext frais par test (trackedIds/Emails reset à chaque fois). */
+  /** TestContext frais par test (trackedUserIds/trackedRowIds/Emails reset à chaque fois). */
   ctx: TestContext;
 }
 
@@ -45,13 +45,18 @@ export const test = base.extend<CtxFixtures, WorkerFixtures>({
     const ctx: TestContext = {
       runId,
       testId: testInfo.titlePath.join(' > '),
-      trackedIds: new Set<string>(),
+      trackedUserIds: new Set<string>(),
+      trackedRowIds: new Set<string>(),
       trackedEmails: new Set<string>(),
     };
 
     await use(ctx);
 
-    // Cleanup automatique post-test
+    // Cleanup automatique post-test : on ne nettoie QUE les users.
+    // trackedRowIds n'a pas de cleanup dédié car la FK user_id ON DELETE CASCADE
+    // purge automatiquement les rows applicatives (ex: email_change_otp_codes)
+    // quand le user parent est supprimé. Si un cas concret de row sans cascade FK
+    // apparaît, ajouter cleanupAllTrackedRows.
     await cleanupAllTrackedUsers(ctx);
   },
 });

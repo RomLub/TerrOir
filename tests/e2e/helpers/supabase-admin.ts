@@ -4,7 +4,8 @@
  * 4 fonctions whitelist : safeInsert, safeUpdate, safeDelete, safeUpsert.
  * Chaque helper :
  *   - Vérifie email via assertSafeEmail() si payload/filter contient email
- *   - Vérifie id/user_id contre ctx.trackedIds pour update/delete
+ *   - Vérifie id/user_id contre l'union (trackedUserIds ∪ trackedRowIds)
+ *     pour update/delete
  *   - Refuse update/delete avec filter vide
  *   - Log JSONL audit
  *   - Exécute via client raw Supabase service_role
@@ -28,8 +29,10 @@ export interface TestContext {
   runId: string;
   /** Identifiant du test courant (titre Playwright). */
   testId: string;
-  /** Set des UUIDs autorisés à être update/delete dans ce test. */
-  trackedIds: Set<string>;
+  /** UUIDs auth.users + public.users créés par ce test. Cleanup via auth.admin.deleteUser cascade. */
+  trackedUserIds: Set<string>;
+  /** UUIDs de rows applicatives (ex: email_change_otp_codes) créés par ce test. Cleanup via cascade FK depuis l'user parent. */
+  trackedRowIds: Set<string>;
   /** Set des emails créés par ce test (pour cleanup et logs). */
   trackedEmails: Set<string>;
 }
@@ -116,11 +119,14 @@ function validateFilterIdTracking(
 
     const values = Array.isArray(val) ? val : [val];
     for (const v of values) {
-      if (typeof v !== 'string' || !ctx.trackedIds.has(v)) {
+      const isTracked =
+        typeof v === 'string' && (ctx.trackedUserIds.has(v) || ctx.trackedRowIds.has(v));
+      if (!isTracked) {
+        const allTracked = [...ctx.trackedUserIds, ...ctx.trackedRowIds];
         throw new UnsafeWriteError(
           `${op.toUpperCase()} sur ${table} avec ${idCol}=${v} ` +
           `non tracké dans le test "${ctx.testId}". ` +
-          `IDs trackés : [${[...ctx.trackedIds].join(', ') || 'aucun'}]`,
+          `IDs trackés : [${allTracked.join(', ') || 'aucun'}]`,
         );
       }
     }
@@ -280,14 +286,25 @@ export async function safeUpsert<T = unknown>(
 }
 
 // ========================================================================
-// Helpers de tracking (appelés par user-lifecycle.ts au commit 3)
+// Helpers de tracking
 // ========================================================================
 
-export function trackId(ctx: TestContext, id: string): void {
+function assertNonEmptyId(id: string, fnName: string): void {
   if (typeof id !== 'string' || id.length === 0) {
-    throw new Error(`trackId: id invalide (${id})`);
+    throw new Error(`${fnName}: id invalide (${id})`);
   }
-  ctx.trackedIds.add(id);
+}
+
+/** Track un UUID auth.users + public.users. Cleanup via auth.admin.deleteUser cascade. */
+export function trackUserId(ctx: TestContext, id: string): void {
+  assertNonEmptyId(id, 'trackUserId');
+  ctx.trackedUserIds.add(id);
+}
+
+/** Track un UUID de row applicative (ex: email_change_otp_codes). Cleanup via cascade FK depuis l'user parent. */
+export function trackRowId(ctx: TestContext, id: string): void {
+  assertNonEmptyId(id, 'trackRowId');
+  ctx.trackedRowIds.add(id);
 }
 
 export function trackEmail(ctx: TestContext, email: string): void {
@@ -295,6 +312,8 @@ export function trackEmail(ctx: TestContext, email: string): void {
   ctx.trackedEmails.add(email);
 }
 
+/** Retire un UUID des deux sets (no-op si pas de match). */
 export function untrackId(ctx: TestContext, id: string): void {
-  ctx.trackedIds.delete(id);
+  ctx.trackedUserIds.delete(id);
+  ctx.trackedRowIds.delete(id);
 }

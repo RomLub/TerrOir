@@ -17,7 +17,7 @@ import {
   TestContext,
   getRawAdminClient,
   safeDelete,
-  trackId,
+  trackUserId,
   trackEmail,
 } from './supabase-admin';
 import { generateTestEmail } from './guards';
@@ -91,7 +91,7 @@ export async function createTestUser(
 
   // Track AVANT l'INSERT public.users : si l'INSERT fail, l'afterEach
   // cleanupAllTrackedUsers pourra purger l'auth.users orphelin via le id tracké.
-  trackId(ctx, user.id);
+  trackUserId(ctx, user.id);
   trackEmail(ctx, user.email);
 
   // Reproduit le pattern signup prod (actions.ts:102-110). Fail-fast :
@@ -150,7 +150,7 @@ export async function loginAs(page: Page, user: TestUser): Promise<void> {
  * auth.identities. Pas besoin de les delete manuellement.
  */
 export async function cleanupTestUser(ctx: TestContext, userId: string): Promise<void> {
-  if (!ctx.trackedIds.has(userId)) {
+  if (!ctx.trackedUserIds.has(userId)) {
     throw new Error(
       `cleanupTestUser: userId ${userId} non tracké dans le contexte du test "${ctx.testId}". ` +
       `Refus par sécurité.`,
@@ -194,10 +194,14 @@ export async function cleanupTestUser(ctx: TestContext, userId: string): Promise
 }
 
 /**
- * Cleanup TOUS les UUIDs trackés dans le contexte. Appelé en afterEach.
+ * Cleanup TOUS les users trackés dans le contexte. Appelé en afterEach.
+ *
+ * N'itère que sur trackedUserIds : la FK user_id ON DELETE CASCADE purge
+ * automatiquement les rows applicatives (trackedRowIds) quand auth.admin.deleteUser
+ * supprime l'user parent. Le clear final reset les 3 Sets.
  */
 export async function cleanupAllTrackedUsers(ctx: TestContext): Promise<void> {
-  const ids = [...ctx.trackedIds];
+  const ids = [...ctx.trackedUserIds];
   for (const id of ids) {
     try {
       await cleanupTestUser(ctx, id);
@@ -206,6 +210,7 @@ export async function cleanupAllTrackedUsers(ctx: TestContext): Promise<void> {
       // On continue le cleanup des autres users même si un échoue
     }
   }
-  ctx.trackedIds.clear();
+  ctx.trackedUserIds.clear();
+  ctx.trackedRowIds.clear();
   ctx.trackedEmails.clear();
 }
