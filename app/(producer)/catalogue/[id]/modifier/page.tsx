@@ -9,18 +9,29 @@ import { uploadProducerPhoto } from '@/lib/producers/upload';
 import { promoteProducerToPublicIfActive } from '@/lib/producers/promote-to-public';
 import { revalidatePublicStats } from '@/lib/stats/revalidate';
 import { ProducerLayout } from '../../../_components/ProducerLayout';
+import {
+  fetchProductCategories,
+  fetchAnimals,
+  fetchCuts,
+} from '@/lib/products/fetch-references';
+import { CATEGORIES_WITH_ANIMAL } from '@/lib/products/categories-with-animal';
+import type { Animal, Cut, ProductCategory } from '@/lib/products/types';
 
 type Form = {
-  name: string; description: string; category: string; price: string; unit: string;
+  name: string; description: string; price: string; unit: string;
   weightStep: string; estimatedWeight: string; stock: string; stockUnlimited: boolean;
   delai: string; active: boolean;
   conseilActive: boolean; conseilTexte: string;
+  // T-220 PR-B : tagging catégorisation produit (FK nullable transitoire
+  // pendant le backfill — cf. migration PR-A 20260501002856).
+  categoryId: string | null; animalId: string | null; cutId: string | null;
 };
 
 const EMPTY: Form = {
-  name: '', description: '', category: 'Bœuf', price: '', unit: 'kg',
+  name: '', description: '', price: '', unit: 'kg',
   weightStep: '0.25', estimatedWeight: '', stock: '', stockUnlimited: false, delai: '2', active: true,
   conseilActive: false, conseilTexte: '',
+  categoryId: null, animalId: null, cutId: null,
 };
 
 const CONSEIL_MAX = 280;
@@ -47,6 +58,14 @@ export default function ProductEditPage() {
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
 
+  // T-220 PR-B : référentiels catégorisation chargés en parallèle du
+  // produit dans le useEffect ci-dessous. Le `loading` global est utilisé
+  // pour gater l'affichage tant que produit + 3 référentiels ne sont pas
+  // tous résolus (pas de flag séparé referencesLoading ici, vs page nouveau).
+  const [categories, setCategories] = useState<ProductCategory[]>([]);
+  const [animals, setAnimals] = useState<Animal[]>([]);
+  const [cuts, setCuts] = useState<Cut[]>([]);
+
   useEffect(() => {
     let active = true;
     const supabase = createSupabaseBrowserClient();
@@ -67,21 +86,61 @@ export default function ProductEditPage() {
       setProducerSlug(prod.slug);
       setProducerStatut(prod.statut);
 
-      const { data: product, error: fetchError } = await supabase
-        .from('products')
-        .select('id, producer_id, nom, description, prix, unite, poids_estime_kg, stock_disponible, stock_illimite, delai_preparation_jours, active, photos, conseil_active, conseil_texte')
-        .eq('id', productId)
-        .maybeSingle();
+      // Promise.all : produit + 3 référentiels en parallèle. Les références
+      // sont nécessaires pour appliquer l'auto-cleanup Q5 (cf. plus bas)
+      // avant le setForm initial, donc on ne peut pas les fetcher après.
+      const [
+        { data: product, error: fetchError },
+        fetchedCategories,
+        fetchedAnimals,
+        fetchedCuts,
+      ] = await Promise.all([
+        supabase
+          .from('products')
+          .select('id, producer_id, nom, description, prix, unite, poids_estime_kg, stock_disponible, stock_illimite, delai_preparation_jours, active, photos, conseil_active, conseil_texte, category_id, animal_id, cut_id')
+          .eq('id', productId)
+          .maybeSingle(),
+        fetchProductCategories(supabase),
+        fetchAnimals(supabase),
+        fetchCuts(supabase),
+      ]);
 
       if (!active) return;
+
+      setCategories(fetchedCategories);
+      setAnimals(fetchedAnimals);
+      setCuts(fetchedCuts);
 
       if (fetchError) { setError(fetchError.message); setLoading(false); return; }
       if (!product || product.producer_id !== prod.id) { setNotFound(true); setLoading(false); return; }
 
+      // T-220 PR-B — Auto-cleanup Q5 (silencieux, en mémoire uniquement) :
+      // Si la catégorie persistée n'expose pas le select Animal (ex: produit
+      // taggé `legumes` mais avec animal_id != null suite à modif manuelle DB
+      // ou évolution de CATEGORIES_WITH_ANIMAL), on reset animalId/cutId à
+      // null dans le form. La DB n'est pas mise à jour tant que le producteur
+      // ne soumet pas le formulaire — c'est volontaire : on ne corrige pas
+      // l'état persisté à son insu, on le réconcilie juste avec l'UI.
+      const persistedCategoryId = (product.category_id as string | null) ?? null;
+      const persistedAnimalId = (product.animal_id as string | null) ?? null;
+      const persistedCutId = (product.cut_id as string | null) ?? null;
+      let initialAnimalId = persistedAnimalId;
+      let initialCutId = persistedCutId;
+      if (persistedCategoryId) {
+        const cat = fetchedCategories.find((c) => c.id === persistedCategoryId);
+        if (
+          cat &&
+          !CATEGORIES_WITH_ANIMAL.includes(cat.slug) &&
+          (persistedAnimalId !== null || persistedCutId !== null)
+        ) {
+          initialAnimalId = null;
+          initialCutId = null;
+        }
+      }
+
       setForm({
         name: product.nom ?? '',
         description: product.description ?? '',
-        category: 'Bœuf',
         price: product.prix != null ? String(product.prix) : '',
         unit: product.unite ?? 'kg',
         weightStep: '0.25',
@@ -92,6 +151,9 @@ export default function ProductEditPage() {
         active: !!product.active,
         conseilActive: !!product.conseil_active,
         conseilTexte: (product.conseil_texte as string | null) ?? '',
+        categoryId: persistedCategoryId,
+        animalId: initialAnimalId,
+        cutId: initialCutId,
       });
       setExistingPhotos(Array.isArray(product.photos) ? product.photos : []);
       setLoading(false);
@@ -129,10 +191,33 @@ export default function ProductEditPage() {
 
   const allPhotoUrls = [...existingPhotos, ...newPreviews];
 
+  // T-220 PR-B : computed values pour la cascade de selects et le preview.
+  // Identiques à la page nouveau (cf. nouveau/page.tsx pour le commentaire
+  // détaillé). Pas de factorisation dans T-220 (décision PR-B : duplication
+  // assumée, refacto ProductForm dans un ticket séparé plus tard).
+  const selectedCategory = categories.find((c) => c.id === form.categoryId) ?? null;
+  const hasAnimalSelect = !!selectedCategory && CATEGORIES_WITH_ANIMAL.includes(selectedCategory.slug);
+  const hasCutSelect = hasAnimalSelect && form.animalId !== null;
+  const filteredCuts = form.animalId
+    ? cuts.filter((c) => c.animal_id === form.animalId)
+    : [];
+
+  const onCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newId = e.target.value || null;
+    setForm((f) => ({ ...f, categoryId: newId, animalId: null, cutId: null }));
+  };
+  const onAnimalChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newId = e.target.value || null;
+    setForm((f) => ({ ...f, animalId: newId, cutId: null }));
+  };
+  const onCutChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setForm((f) => ({ ...f, cutId: e.target.value || null }));
+  };
+
   const preview = {
     id: productId,
     name: form.name || 'Nom du produit',
-    category: form.category,
+    category: selectedCategory?.name,
     price: parseFloat(form.price) || 0,
     unit: form.unit,
     stockLeft: form.stockUnlimited ? 999 : parseInt(form.stock) || 0,
@@ -174,6 +259,13 @@ export default function ProductEditPage() {
           photos: finalPhotos.length ? finalPhotos : null,
           conseil_active: form.conseilActive,
           conseil_texte: form.conseilActive ? (form.conseilTexte.trim() || null) : null,
+          // T-220 PR-B : tagging optionnel (FK nullable transitoire pendant
+          // backfill). Toujours inclus dans l'UPDATE — c'est le canal qui
+          // persiste l'auto-cleanup Q5 si le producteur sauvegarde un produit
+          // dont l'état initial avait une catégorie incohérente.
+          category_id: form.categoryId,
+          animal_id: form.animalId,
+          cut_id: form.cutId,
         })
         .eq('id', productId);
 
@@ -239,6 +331,23 @@ export default function ProductEditPage() {
           {error && <p className="mt-2 text-[13px] text-terra-700">{error}</p>}
         </header>
 
+        {/* T-220 PR-B — Bandeau warning produit non-catégorisé.
+            Visible quand form.categoryId == null APRÈS le fetch initial
+            (le `loading` gate au-dessus garantit qu'on n'arrive ici qu'une
+            fois le fetch produit terminé, donc pas de flash transitoire).
+            Cible uniquement les produits sans catégorie du tout — un produit
+            avec catégorie mais sans animal/cut (cas légume) ne déclenche pas
+            le bandeau. Pas de composant Alert global dans components/ui/ :
+            div Tailwind inline minimaliste. */}
+        {!form.categoryId && (
+          <div
+            role="alert"
+            className="mb-6 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-[14px] text-amber-900"
+          >
+            ⚠️ Ce produit n&apos;est pas encore catégorisé. Sélectionnez une catégorie pour qu&apos;il soit visible dans les filtres du catalogue.
+          </div>
+        )}
+
         <div className="grid lg:grid-cols-[1fr_380px] gap-10 items-start">
           <form onSubmit={save} className="space-y-8">
             <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
@@ -246,9 +355,36 @@ export default function ProductEditPage() {
               <div className="space-y-4">
                 <Input label="Nom du produit *" value={form.name} onChange={up('name')} required />
                 <Textarea label="Description" rows={4} value={form.description} onChange={up('description')} />
-                <Select label="Catégorie" value={form.category} onChange={up('category')}>
-                  {['Bœuf', 'Veau', 'Porc', 'Agneau', 'Volaille', 'Colis'].map((c) => <option key={c}>{c}</option>)}
-                </Select>
+                {/* T-220 PR-B : cascade catégorie → animal → morceau.
+                    Comportement identique à la page nouveau (cf. nouveau/page.tsx
+                    pour les détails). Pas de hint "Chargement…" : le `loading`
+                    global gate déjà tout le rendu au-dessus, donc à ce stade
+                    les références sont déjà fetchées. */}
+                <Select
+                  label="Catégorie"
+                  value={form.categoryId ?? ''}
+                  onChange={onCategoryChange}
+                  placeholder="Choisir une catégorie…"
+                  options={categories.map((c) => ({ value: c.id, label: c.name }))}
+                />
+                {hasAnimalSelect && (
+                  <Select
+                    label="Espèce"
+                    value={form.animalId ?? ''}
+                    onChange={onAnimalChange}
+                    placeholder="Choisir une espèce…"
+                    options={animals.map((a) => ({ value: a.id, label: a.name }))}
+                  />
+                )}
+                {hasCutSelect && (
+                  <Select
+                    label="Morceau"
+                    value={form.cutId ?? ''}
+                    onChange={onCutChange}
+                    placeholder="Choisir un morceau…"
+                    options={filteredCuts.map((c) => ({ value: c.id, label: c.name }))}
+                  />
+                )}
               </div>
             </section>
 
