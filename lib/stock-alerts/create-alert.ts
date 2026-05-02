@@ -103,7 +103,7 @@ export async function createStockAlert(
     .from("product_stock_alerts")
     .select("id, confirmed_at, unsubscribed_at")
     .eq("product_id", input.product_id)
-    .eq("email", email)
+    .ilike("email", email)
     .maybeSingle();
 
   if (selectError || !existing) {

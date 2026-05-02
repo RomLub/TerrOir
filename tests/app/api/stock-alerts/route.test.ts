@@ -50,6 +50,7 @@ type Captured = {
   fromCalls: string[];
   selects: Array<{ table: string; cols: string }>;
   eqCalls: Array<{ table: string; col: string; val: unknown }>;
+  ilikeCalls: Array<{ table: string; col: string; val: unknown }>;
   gteCalls: Array<{ table: string; col: string; val: unknown }>;
 };
 
@@ -86,6 +87,10 @@ function buildMockClient(): SupabaseClient {
         captured.eqCalls.push({ table, col, val });
         return builder;
       };
+      builder.ilike = (col: string, val: unknown) => {
+        captured.ilikeCalls.push({ table, col, val });
+        return builder;
+      };
       builder.gte = (col: string, val: unknown) => {
         captured.gteCalls.push({ table, col, val });
         return builder;
@@ -107,7 +112,13 @@ let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
-  captured = { fromCalls: [], selects: [], eqCalls: [], gteCalls: [] };
+  captured = {
+    fromCalls: [],
+    selects: [],
+    eqCalls: [],
+    ilikeCalls: [],
+    gteCalls: [],
+  };
   responses = {};
   mockGetSessionUser.mockReset();
   mockCreateStockAlert.mockReset();
@@ -355,6 +366,36 @@ describe("POST /api/stock-alerts — rate limit", () => {
     );
     expect(res.status).toBe(200);
     expect(mockCreateStockAlert).toHaveBeenCalled();
+  });
+
+  it("T-110 : count rate limit matche email via .ilike (case-insensitive)", async () => {
+    // Si un user spamme avec 'X@Y.com' puis 'x@y.com', les rows
+    // historiques en casse différente doivent rentrer dans le compteur.
+    defaultProductIndispoOk();
+    pushResp("product_stock_alerts", "select", {
+      data: new Array(10).fill({ id: "x" }),
+      error: null,
+    });
+    const res = await POST(
+      makeRequest({
+        product_id: PRODUCT_ID,
+        email: "Spammer@Example.COM",
+        consent: true,
+      }),
+    );
+    expect(res.status).toBe(429);
+    // La route applique zod .toLowerCase() avant la query — .ilike garantit
+    // en plus le match contre des rows historiques stockées en casse mixte.
+    expect(captured.ilikeCalls).toContainEqual({
+      table: "product_stock_alerts",
+      col: "email",
+      val: "spammer@example.com",
+    });
+    expect(
+      captured.eqCalls.find(
+        (c) => c.table === "product_stock_alerts" && c.col === "email",
+      ),
+    ).toBeUndefined();
   });
 
   it("erreur count rate limit → continue (best-effort), pas de 429", async () => {
