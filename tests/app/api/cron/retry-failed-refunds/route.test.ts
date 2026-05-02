@@ -1,66 +1,37 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-// Hoisted mocks BEFORE route import — pattern cron tests existants.
+// T-102.2.c — refonte tests cohérent nouvelle source-of-truth refund_incidents.
+// L'ancien fichier testait buildRetryTargets (pure function audit_logs-driven)
+// + intégration cron. Le nouveau cron query refund_incidents directement et
+// délègue à retryIncident → tests unitaires mockés, cohérents avec T-102.2.b.
+
 vi.mock("@/lib/supabase/admin", () => ({
   createSupabaseAdminClient: vi.fn(),
 }));
 
-vi.mock("@/lib/stripe/retry-failed-refund", () => ({
-  retryFailedRefund: vi.fn(),
+vi.mock("@/lib/refund-incidents/retry-incident", () => ({
+  retryIncident: vi.fn(),
 }));
 
 import { POST } from "@/app/api/cron/retry-failed-refunds/route";
-import { buildRetryTargets } from "@/lib/cron/build-retry-targets";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { retryFailedRefund } from "@/lib/stripe/retry-failed-refund";
+import { retryIncident } from "@/lib/refund-incidents/retry-incident";
 
-// =============================================================================
-// Mock Supabase admin — chaque appel `from(table)` retourne un builder neuf.
-// La route fait :
-//   1. from('audit_logs').select(...).in(...).order(...).limit(...)
-//      → thenable resp.
-//   2. from('orders').select(...).in('id', orderIds)
-//      → thenable resp.
-// =============================================================================
+// Mock builder pour la chaîne :
+//   admin.from("refund_incidents").select(...).in(...).order(...).limit(...) → thenable
 type ChainResp = { data?: unknown; error?: unknown };
 
-interface SupabaseControl {
-  auditLogs?: ChainResp;
-  orders?: ChainResp;
-}
-
-function makeSupabase(ctrl: SupabaseControl = {}): {
-  client: SupabaseClient;
-  fromCalls: string[];
-} {
-  const fromCalls: string[] = [];
-
-  const buildBuilder = (table: string) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const b: any = {};
-    b.select = (_cols: string) => b;
-    b.in = (_col: string, _vals: unknown) => b;
-    b.order = (_col: string, _opts: unknown) => b;
-    b.limit = (_n: number) => b;
-    b.then = (onFulfilled: (r: ChainResp) => unknown) => {
-      const resp =
-        table === "audit_logs"
-          ? (ctrl.auditLogs ?? { data: [], error: null })
-          : (ctrl.orders ?? { data: [], error: null });
-      return onFulfilled(resp);
-    };
-    return b;
-  };
-
-  const client = {
-    from: (table: string) => {
-      fromCalls.push(table);
-      return buildBuilder(table);
-    },
+function makeSupabase(resp: ChainResp): SupabaseClient {
+  const builder: Record<string, unknown> = {};
+  builder.select = (_cols: string) => builder;
+  builder.in = (_col: string, _vals: unknown) => builder;
+  builder.order = (_col: string, _opts: unknown) => builder;
+  builder.limit = (_n: number) => builder;
+  builder.then = (onFulfilled: (r: ChainResp) => unknown) => onFulfilled(resp);
+  return {
+    from: (_table: string) => builder,
   } as unknown as SupabaseClient;
-
-  return { client, fromCalls };
 }
 
 function makeRequest(opts: { auth?: string } = {}): Request {
@@ -74,12 +45,14 @@ function makeRequest(opts: { auth?: string } = {}): Request {
 
 const ORIGINAL_CRON_SECRET = process.env.CRON_SECRET;
 let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   process.env.CRON_SECRET = "test-secret";
   vi.mocked(createSupabaseAdminClient).mockReset();
-  vi.mocked(retryFailedRefund).mockReset();
+  vi.mocked(retryIncident).mockReset();
   consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -92,667 +65,141 @@ afterEach(() => {
 });
 
 // =============================================================================
-// buildRetryTargets — pure function tests (pas d'IO, pas de Supabase).
-// =============================================================================
-
-describe("buildRetryTargets — pure function", () => {
-  it("returns empty when no audit log events", () => {
-    const { targets, skipped } = buildRetryTargets([]);
-    expect(targets).toEqual([]);
-    expect(skipped).toEqual([]);
-  });
-
-  it("skips orders that have already retried_succeeded", () => {
-    const events = [
-      {
-        event_type: "order_revival_refund_failed",
-        metadata: {
-          order_id: "order-1",
-          payment_intent_id: "pi_1",
-          blocked_reason: "blocked_stock",
-        },
-        created_at: "2026-04-25T10:00:00.000Z",
-      },
-      {
-        event_type: "order_refund_retried_succeeded",
-        metadata: { order_id: "order-1", attempt: 1 },
-        created_at: "2026-04-26T10:00:00.000Z",
-      },
-    ];
-    const { targets } = buildRetryTargets(events);
-    expect(targets).toEqual([]);
-  });
-
-  it("skips orders that have already retry_exhausted", () => {
-    const events = [
-      {
-        event_type: "order_revival_refund_failed",
-        metadata: {
-          order_id: "order-2",
-          payment_intent_id: "pi_2",
-          blocked_reason: "blocked_slot",
-        },
-        created_at: "2026-04-25T10:00:00.000Z",
-      },
-      {
-        event_type: "order_refund_retry_exhausted",
-        metadata: { order_id: "order-2" },
-        created_at: "2026-04-28T10:00:00.000Z",
-      },
-    ];
-    const { targets } = buildRetryTargets(events);
-    expect(targets).toEqual([]);
-  });
-
-  it("attempt=1 when only the initial webhook failed event exists", () => {
-    const events = [
-      {
-        event_type: "order_revival_refund_failed",
-        metadata: {
-          order_id: "order-3",
-          payment_intent_id: "pi_3",
-          blocked_reason: "blocked_stock",
-        },
-        created_at: "2026-04-27T10:00:00.000Z",
-      },
-    ];
-    const { targets, skipped } = buildRetryTargets(events);
-    expect(skipped).toEqual([]);
-    expect(targets).toEqual([
-      {
-        orderId: "order-3",
-        paymentIntentId: "pi_3",
-        kind: "revival",
-        blockedReason: "blocked_stock",
-        attempt: 1,
-      },
-    ]);
-  });
-
-  it("attempt=2 after one failed retry (2 refund_failed events)", () => {
-    const events = [
-      {
-        event_type: "order_revival_refund_failed",
-        metadata: {
-          order_id: "order-4",
-          payment_intent_id: "pi_4",
-          blocked_reason: "blocked_slot",
-        },
-        created_at: "2026-04-25T10:00:00.000Z",
-      },
-      {
-        event_type: "order_revival_refund_failed",
-        metadata: {
-          order_id: "order-4",
-          payment_intent_id: "pi_4",
-          blocked_reason: "blocked_slot",
-          attempt: 1,
-        },
-        created_at: "2026-04-26T10:00:00.000Z",
-      },
-    ];
-    const { targets } = buildRetryTargets(events);
-    expect(targets).toEqual([
-      {
-        orderId: "order-4",
-        paymentIntentId: "pi_4",
-        kind: "revival",
-        blockedReason: "blocked_slot",
-        attempt: 2,
-      },
-    ]);
-  });
-
-  it("attempt=3 after two failed retries (3 refund_failed events)", () => {
-    const baseMeta = {
-      order_id: "order-5",
-      payment_intent_id: "pi_5",
-      blocked_reason: "blocked_stock",
-    };
-    const events = [
-      {
-        event_type: "order_revival_refund_failed",
-        metadata: baseMeta,
-        created_at: "2026-04-25T10:00:00.000Z",
-      },
-      {
-        event_type: "order_revival_refund_failed",
-        metadata: { ...baseMeta, attempt: 1 },
-        created_at: "2026-04-26T10:00:00.000Z",
-      },
-      {
-        event_type: "order_revival_refund_failed",
-        metadata: { ...baseMeta, attempt: 2 },
-        created_at: "2026-04-27T10:00:00.000Z",
-      },
-    ];
-    const { targets } = buildRetryTargets(events);
-    expect(targets).toEqual([
-      {
-        orderId: "order-5",
-        paymentIntentId: "pi_5",
-        kind: "revival",
-        blockedReason: "blocked_stock",
-        attempt: 3,
-      },
-    ]);
-  });
-
-  it("defensive: skips orders with ≥4 refund_failed events without exhausted (audit incohérent)", () => {
-    const baseMeta = {
-      order_id: "order-incoherent",
-      payment_intent_id: "pi_x",
-      blocked_reason: "blocked_stock",
-    };
-    const events = Array.from({ length: 4 }, (_, i) => ({
-      event_type: "order_revival_refund_failed",
-      metadata: { ...baseMeta, attempt: i },
-      created_at: `2026-04-2${i + 4}T10:00:00.000Z`,
-    }));
-    const { targets, skipped } = buildRetryTargets(events);
-    expect(targets).toEqual([]);
-    expect(skipped).toHaveLength(1);
-    expect(skipped[0]?.result).toBe("skipped_invalid_metadata");
-    expect(skipped[0]?.error).toContain("failed_count=4");
-  });
-
-  it("defensive: skips events with missing payment_intent_id (revival)", () => {
-    const events = [
-      {
-        event_type: "order_revival_refund_failed",
-        metadata: { order_id: "order-bad" }, // missing pi + blocked_reason
-        created_at: "2026-04-25T10:00:00.000Z",
-      },
-    ];
-    const { targets, skipped } = buildRetryTargets(events);
-    expect(targets).toEqual([]);
-    expect(skipped).toHaveLength(1);
-    expect(skipped[0]?.error).toContain("missing payment_intent_id");
-  });
-
-  it("defensive: skips revival events with payment_intent_id but missing blocked_reason", () => {
-    const events = [
-      {
-        event_type: "order_revival_refund_failed",
-        metadata: { order_id: "order-no-blocked", payment_intent_id: "pi_x" },
-        created_at: "2026-04-25T10:00:00.000Z",
-      },
-    ];
-    const { targets, skipped } = buildRetryTargets(events);
-    expect(targets).toEqual([]);
-    expect(skipped).toHaveLength(1);
-    expect(skipped[0]?.error).toContain("missing blocked_reason");
-  });
-
-  it("uses the most recent refund_failed event for payment_intent_id + blocked_reason", () => {
-    // Si entre 2 attempts l'order avait des metadata différentes (cas patho
-    // mais théorique), on prend le dernier event posé (le plus récent).
-    const events = [
-      {
-        event_type: "order_revival_refund_failed",
-        metadata: {
-          order_id: "order-6",
-          payment_intent_id: "pi_old",
-          blocked_reason: "blocked_stock",
-        },
-        created_at: "2026-04-25T10:00:00.000Z",
-      },
-      {
-        event_type: "order_revival_refund_failed",
-        metadata: {
-          order_id: "order-6",
-          payment_intent_id: "pi_new",
-          blocked_reason: "blocked_slot",
-          attempt: 1,
-        },
-        created_at: "2026-04-27T10:00:00.000Z",
-      },
-    ];
-    const { targets } = buildRetryTargets(events);
-    expect(targets).toEqual([
-      {
-        orderId: "order-6",
-        paymentIntentId: "pi_new",
-        kind: "revival",
-        blockedReason: "blocked_slot",
-        attempt: 2,
-      },
-    ]);
-  });
-
-  it("handles multiple distinct orders in a single batch", () => {
-    const events = [
-      {
-        event_type: "order_revival_refund_failed",
-        metadata: {
-          order_id: "order-A",
-          payment_intent_id: "pi_A",
-          blocked_reason: "blocked_stock",
-        },
-        created_at: "2026-04-26T10:00:00.000Z",
-      },
-      {
-        event_type: "order_refund_retried_succeeded",
-        metadata: { order_id: "order-B" },
-        created_at: "2026-04-27T10:00:00.000Z",
-      },
-      {
-        event_type: "order_revival_refund_failed",
-        metadata: {
-          order_id: "order-C",
-          payment_intent_id: "pi_C",
-          blocked_reason: "blocked_slot",
-        },
-        created_at: "2026-04-26T10:00:00.000Z",
-      },
-    ];
-    const { targets } = buildRetryTargets(events);
-    // order-B exclu (retried_succeeded), order-A et order-C eligibles attempt=1.
-    const ids = targets.map((t) => t.orderId).sort();
-    expect(ids).toEqual(["order-A", "order-C"]);
-  });
-
-  // ===========================================================================
-  // T-412 : extension aux 3 paths refund (revival / admin / timeout)
-  // ===========================================================================
-
-  it("T-412 : kind='admin' (path /api/stripe/refund) sans blocked_reason → target valide", () => {
-    const events = [
-      {
-        event_type: "order_admin_refund_failed",
-        metadata: {
-          order_id: "order-admin",
-          payment_intent_id: "pi_admin",
-          // pas de blocked_reason : path admin n'a pas ce concept.
-        },
-        created_at: "2026-04-27T10:00:00.000Z",
-      },
-    ];
-    const { targets, skipped } = buildRetryTargets(events);
-    expect(skipped).toEqual([]);
-    expect(targets).toEqual([
-      {
-        orderId: "order-admin",
-        paymentIntentId: "pi_admin",
-        kind: "admin",
-        blockedReason: undefined,
-        attempt: 1,
-      },
-    ]);
-  });
-
-  it("T-412 : kind='timeout' (path cron order-timeout) sans blocked_reason → target valide", () => {
-    const events = [
-      {
-        event_type: "order_timeout_refund_failed",
-        metadata: {
-          order_id: "order-timeout",
-          payment_intent_id: "pi_timeout",
-        },
-        created_at: "2026-04-27T10:00:00.000Z",
-      },
-    ];
-    const { targets, skipped } = buildRetryTargets(events);
-    expect(skipped).toEqual([]);
-    expect(targets).toEqual([
-      {
-        orderId: "order-timeout",
-        paymentIntentId: "pi_timeout",
-        kind: "timeout",
-        blockedReason: undefined,
-        attempt: 1,
-      },
-    ]);
-  });
-
-  it("T-412 : group key composite (orderId, kind) → 1 order avec 2 kinds = 2 targets distincts", () => {
-    const events = [
-      {
-        event_type: "order_admin_refund_failed",
-        metadata: { order_id: "order-mixed", payment_intent_id: "pi_admin" },
-        created_at: "2026-04-25T10:00:00.000Z",
-      },
-      {
-        event_type: "order_timeout_refund_failed",
-        metadata: { order_id: "order-mixed", payment_intent_id: "pi_timeout" },
-        created_at: "2026-04-26T10:00:00.000Z",
-      },
-    ];
-    const { targets } = buildRetryTargets(events);
-    expect(targets).toHaveLength(2);
-    const kinds = targets.map((t) => t.kind).sort();
-    expect(kinds).toEqual(["admin", "timeout"]);
-  });
-
-  it("T-412 : retried_succeeded sur kind=admin n'exclut PAS le kind=timeout (resolution par kind)", () => {
-    const events = [
-      {
-        event_type: "order_admin_refund_failed",
-        metadata: { order_id: "order-mixed", payment_intent_id: "pi_admin" },
-        created_at: "2026-04-25T10:00:00.000Z",
-      },
-      {
-        event_type: "order_refund_retried_succeeded",
-        metadata: { order_id: "order-mixed", kind: "admin" },
-        created_at: "2026-04-26T10:00:00.000Z",
-      },
-      {
-        event_type: "order_timeout_refund_failed",
-        metadata: { order_id: "order-mixed", payment_intent_id: "pi_timeout" },
-        created_at: "2026-04-27T10:00:00.000Z",
-      },
-    ];
-    const { targets } = buildRetryTargets(events);
-    // kind=admin résolu (succeeded), kind=timeout encore en target.
-    expect(targets).toHaveLength(1);
-    expect(targets[0]?.kind).toBe("timeout");
-  });
-
-  it("T-412 : retro-compat — event order_revival_refund_failed legacy sans metadata.kind → kind='revival' default", () => {
-    const events = [
-      {
-        event_type: "order_revival_refund_failed",
-        // metadata sans .kind (legacy avant T-412)
-        metadata: {
-          order_id: "order-legacy",
-          payment_intent_id: "pi_legacy",
-          blocked_reason: "blocked_stock",
-        },
-        created_at: "2026-04-27T10:00:00.000Z",
-      },
-    ];
-    const { targets } = buildRetryTargets(events);
-    expect(targets).toHaveLength(1);
-    expect(targets[0]?.kind).toBe("revival");
-  });
-});
-
-// =============================================================================
-// POST — auth
+// A. Auth
 // =============================================================================
 
 describe("POST /api/cron/retry-failed-refunds — auth", () => {
-  it("401 when authorization header missing", async () => {
-    const { client } = makeSupabase();
-    vi.mocked(createSupabaseAdminClient).mockReturnValue(client);
-
+  it("401 quand authorization header missing", async () => {
+    vi.mocked(createSupabaseAdminClient).mockReturnValue(
+      makeSupabase({ data: [], error: null }),
+    );
     const res = await POST(makeRequest());
     expect(res.status).toBe(401);
-    expect(vi.mocked(retryFailedRefund)).not.toHaveBeenCalled();
+    expect(retryIncident).not.toHaveBeenCalled();
   });
 
-  it("401 when authorization header does not match Bearer <CRON_SECRET>", async () => {
-    const { client } = makeSupabase();
-    vi.mocked(createSupabaseAdminClient).mockReturnValue(client);
-
+  it("401 quand authorization header ne match pas Bearer <CRON_SECRET>", async () => {
+    vi.mocked(createSupabaseAdminClient).mockReturnValue(
+      makeSupabase({ data: [], error: null }),
+    );
     const res = await POST(makeRequest({ auth: "Bearer wrong-secret" }));
     expect(res.status).toBe(401);
-    expect(vi.mocked(retryFailedRefund)).not.toHaveBeenCalled();
-  });
-
-  it("500 when CRON_SECRET env var not configured", async () => {
-    delete process.env.CRON_SECRET;
-    const { client } = makeSupabase();
-    vi.mocked(createSupabaseAdminClient).mockReturnValue(client);
-
-    const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
-    expect(res.status).toBe(500);
+    expect(retryIncident).not.toHaveBeenCalled();
   });
 });
 
 // =============================================================================
-// POST — integration paths
+// B. Query refund_incidents
 // =============================================================================
 
-describe("POST /api/cron/retry-failed-refunds — integration", () => {
-  it("returns processed=0 when no audit log events match", async () => {
-    const { client, fromCalls } = makeSupabase({
-      auditLogs: { data: [], error: null },
-    });
-    vi.mocked(createSupabaseAdminClient).mockReturnValue(client);
-
+describe("POST /api/cron/retry-failed-refunds — query refund_incidents", () => {
+  it("SELECT retourne 0 incidents → {processed:0, results:[]}", async () => {
+    vi.mocked(createSupabaseAdminClient).mockReturnValue(
+      makeSupabase({ data: [], error: null }),
+    );
     const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body).toEqual({ processed: 0, results: [] });
-
-    // SELECT audit_logs only — pas de SELECT orders ni de retryFailedRefund.
-    expect(fromCalls).toEqual(["audit_logs"]);
-    expect(vi.mocked(retryFailedRefund)).not.toHaveBeenCalled();
+    expect(await res.json()).toEqual({ processed: 0, results: [] });
+    expect(retryIncident).not.toHaveBeenCalled();
   });
 
-  it("returns 500 with PostgREST error message when audit_logs SELECT fails", async () => {
-    const { client } = makeSupabase({
-      auditLogs: { data: null, error: { message: "table down" } },
-    });
-    vi.mocked(createSupabaseAdminClient).mockReturnValue(client);
-
+  it("SELECT retourne PostgREST error → 500 avec message", async () => {
+    vi.mocked(createSupabaseAdminClient).mockReturnValue(
+      makeSupabase({ data: null, error: { message: "table down" } }),
+    );
     const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
     expect(res.status).toBe(500);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toBe("table down");
-    expect(vi.mocked(retryFailedRefund)).not.toHaveBeenCalled();
+    expect(((await res.json()) as { error: string }).error).toBe("table down");
+    expect(retryIncident).not.toHaveBeenCalled();
   });
 
-  it("eligible target attempt=1 → retryFailedRefund called once with correct params + consumer_id from orders", async () => {
-    const { client } = makeSupabase({
-      auditLogs: {
+  it("filtre JS retry_count < max_retries — incident avec retry_count >= max_retries skip", async () => {
+    // Incident A : retry_count=0 < max_retries=3 → eligible
+    // Incident B : retry_count=3 == max_retries=3 → skip (defensive, ne devrait
+    //   pas arriver vu que la RPC pose status='exhausted' à 3, mais filtre
+    //   défensif côté JS).
+    vi.mocked(createSupabaseAdminClient).mockReturnValue(
+      makeSupabase({
         data: [
           {
-            event_type: "order_revival_refund_failed",
-            metadata: {
-              order_id: "order-42",
-              payment_intent_id: "pi_42",
-              blocked_reason: "blocked_stock",
-            },
-            created_at: "2026-04-27T10:00:00.000Z",
+            id: "inc-A",
+            order_id: "order-A",
+            kind: "admin",
+            payment_intent_id: "pi_A",
+            consumer_id: "user-A",
+            blocked_reason: null,
+            retry_count: 0,
+            max_retries: 3,
+          },
+          {
+            id: "inc-B",
+            order_id: "order-B",
+            kind: "admin",
+            payment_intent_id: "pi_B",
+            consumer_id: "user-B",
+            blocked_reason: null,
+            retry_count: 3,
+            max_retries: 3,
           },
         ],
         error: null,
-      },
-      orders: {
-        data: [{ id: "order-42", consumer_id: "user-7" }],
-        error: null,
-      },
-    });
-    vi.mocked(createSupabaseAdminClient).mockReturnValue(client);
-    vi.mocked(retryFailedRefund).mockResolvedValue("succeeded");
-
-    const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      processed: number;
-      results: Array<Record<string, unknown>>;
-    };
-
-    expect(vi.mocked(retryFailedRefund)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(retryFailedRefund)).toHaveBeenCalledWith({
-      orderId: "order-42",
-      paymentIntentId: "pi_42",
-      kind: "revival",
-      attempt: 1,
-      blockedReason: "blocked_stock",
-      consumerId: "user-7",
-      admin: client,
-    });
-
-    expect(body.processed).toBe(1);
-    expect(body.results).toEqual([
-      { order_id: "order-42", attempt: 1, result: "succeeded" },
-    ]);
-  });
-
-  it("order RGPD-deleted → retry called with consumerId=null", async () => {
-    const { client } = makeSupabase({
-      auditLogs: {
-        data: [
-          {
-            event_type: "order_revival_refund_failed",
-            metadata: {
-              order_id: "order-deleted",
-              payment_intent_id: "pi_deleted",
-              blocked_reason: "blocked_slot",
-            },
-            created_at: "2026-04-27T10:00:00.000Z",
-          },
-        ],
-        error: null,
-      },
-      orders: { data: [], error: null }, // order disparue (RGPD)
-    });
-    vi.mocked(createSupabaseAdminClient).mockReturnValue(client);
-    vi.mocked(retryFailedRefund).mockResolvedValue("failed_will_retry");
-
-    await POST(makeRequest({ auth: "Bearer test-secret" }));
-
-    expect(vi.mocked(retryFailedRefund)).toHaveBeenCalledWith(
-      expect.objectContaining({
-        orderId: "order-deleted",
-        consumerId: null,
       }),
     );
-  });
-
-  it("target already retried_succeeded → skipped, no retry call", async () => {
-    const { client } = makeSupabase({
-      auditLogs: {
-        data: [
-          {
-            event_type: "order_revival_refund_failed",
-            metadata: {
-              order_id: "order-done",
-              payment_intent_id: "pi_done",
-              blocked_reason: "blocked_stock",
-            },
-            created_at: "2026-04-25T10:00:00.000Z",
-          },
-          {
-            event_type: "order_refund_retried_succeeded",
-            metadata: { order_id: "order-done" },
-            created_at: "2026-04-26T10:00:00.000Z",
-          },
-        ],
-        error: null,
-      },
-    });
-    vi.mocked(createSupabaseAdminClient).mockReturnValue(client);
+    vi.mocked(retryIncident).mockResolvedValue("succeeded");
 
     const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body).toEqual({ processed: 0, results: [] });
-    expect(vi.mocked(retryFailedRefund)).not.toHaveBeenCalled();
-  });
-
-  it("batch with 3 orders : eligible / done / exhausted → seul l'eligible est retried", async () => {
-    const { client } = makeSupabase({
-      auditLogs: {
-        data: [
-          // order-eligible : 1 fail event seulement → attempt 1
-          {
-            event_type: "order_revival_refund_failed",
-            metadata: {
-              order_id: "order-eligible",
-              payment_intent_id: "pi_eligible",
-              blocked_reason: "blocked_stock",
-            },
-            created_at: "2026-04-27T10:00:00.000Z",
-          },
-          // order-done : refund_failed + retried_succeeded → skip
-          {
-            event_type: "order_revival_refund_failed",
-            metadata: {
-              order_id: "order-done",
-              payment_intent_id: "pi_done",
-              blocked_reason: "blocked_slot",
-            },
-            created_at: "2026-04-25T10:00:00.000Z",
-          },
-          {
-            event_type: "order_refund_retried_succeeded",
-            metadata: { order_id: "order-done" },
-            created_at: "2026-04-26T10:00:00.000Z",
-          },
-          // order-exhausted : 3 fails + exhausted → skip
-          {
-            event_type: "order_revival_refund_failed",
-            metadata: {
-              order_id: "order-exhausted",
-              payment_intent_id: "pi_exhausted",
-              blocked_reason: "blocked_stock",
-            },
-            created_at: "2026-04-25T10:00:00.000Z",
-          },
-          {
-            event_type: "order_refund_retry_exhausted",
-            metadata: { order_id: "order-exhausted" },
-            created_at: "2026-04-28T10:00:00.000Z",
-          },
-        ],
-        error: null,
-      },
-      orders: {
-        data: [{ id: "order-eligible", consumer_id: "user-9" }],
-        error: null,
-      },
-    });
-    vi.mocked(createSupabaseAdminClient).mockReturnValue(client);
-    vi.mocked(retryFailedRefund).mockResolvedValue("succeeded");
-
-    const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
-    expect(res.status).toBe(200);
-
-    expect(vi.mocked(retryFailedRefund)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(retryFailedRefund)).toHaveBeenCalledWith(
-      expect.objectContaining({ orderId: "order-eligible" }),
+    expect(retryIncident).toHaveBeenCalledTimes(1);
+    expect(retryIncident).toHaveBeenCalledWith(
+      expect.objectContaining({ incidentId: "inc-A" }),
     );
   });
+});
 
-  it("multiple eligible targets processed in sequence (3 retries called)", async () => {
-    const { client } = makeSupabase({
-      auditLogs: {
+// =============================================================================
+// C. Boucle séquentielle retry
+// =============================================================================
+
+describe("POST /api/cron/retry-failed-refunds — boucle séquentielle", () => {
+  it("3 incidents éligibles → retryIncident appelé 3× avec params corrects + résultats agrégés", async () => {
+    vi.mocked(createSupabaseAdminClient).mockReturnValue(
+      makeSupabase({
         data: [
           {
-            event_type: "order_revival_refund_failed",
-            metadata: {
-              order_id: "order-A",
-              payment_intent_id: "pi_A",
-              blocked_reason: "blocked_stock",
-            },
-            created_at: "2026-04-27T10:00:00.000Z",
+            id: "inc-1",
+            order_id: "order-1",
+            kind: "admin",
+            payment_intent_id: "pi_1",
+            consumer_id: "user-1",
+            blocked_reason: null,
+            retry_count: 0,
+            max_retries: 3,
           },
           {
-            event_type: "order_revival_refund_failed",
-            metadata: {
-              order_id: "order-B",
-              payment_intent_id: "pi_B",
-              blocked_reason: "blocked_slot",
-            },
-            created_at: "2026-04-27T10:00:00.000Z",
+            id: "inc-2",
+            order_id: "order-2",
+            kind: "revival",
+            payment_intent_id: "pi_2",
+            consumer_id: "user-2",
+            blocked_reason: "blocked_stock",
+            retry_count: 1,
+            max_retries: 3,
           },
           {
-            event_type: "order_revival_refund_failed",
-            metadata: {
-              order_id: "order-C",
-              payment_intent_id: "pi_C",
-              blocked_reason: "blocked_stock",
-            },
-            created_at: "2026-04-27T10:00:00.000Z",
+            id: "inc-3",
+            order_id: "order-3",
+            kind: "timeout",
+            payment_intent_id: "pi_3",
+            consumer_id: null,
+            blocked_reason: null,
+            retry_count: 2,
+            max_retries: 3,
           },
         ],
         error: null,
-      },
-      orders: {
-        data: [
-          { id: "order-A", consumer_id: "user-A" },
-          { id: "order-B", consumer_id: "user-B" },
-          { id: "order-C", consumer_id: null },
-        ],
-        error: null,
-      },
-    });
-    vi.mocked(createSupabaseAdminClient).mockReturnValue(client);
-    vi.mocked(retryFailedRefund)
+      }),
+    );
+    vi.mocked(retryIncident)
       .mockResolvedValueOnce("succeeded")
       .mockResolvedValueOnce("failed_will_retry")
       .mockResolvedValueOnce("failed_exhausted");
@@ -764,21 +211,217 @@ describe("POST /api/cron/retry-failed-refunds — integration", () => {
       results: Array<Record<string, unknown>>;
     };
 
-    expect(vi.mocked(retryFailedRefund)).toHaveBeenCalledTimes(3);
-    expect(body.processed).toBe(3);
-
-    // Chaque résultat capturé avec son order_id + attempt + result.
-    const byOrder = Object.fromEntries(
-      body.results.map((r) => [r.order_id as string, r]),
+    expect(retryIncident).toHaveBeenCalledTimes(3);
+    expect(retryIncident).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        incidentId: "inc-1",
+        kind: "admin",
+        blockedReason: null,
+        retryCount: 0,
+      }),
     );
-    expect(byOrder["order-A"]).toMatchObject({ result: "succeeded", attempt: 1 });
-    expect(byOrder["order-B"]).toMatchObject({
+    expect(retryIncident).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        incidentId: "inc-2",
+        kind: "revival",
+        blockedReason: "blocked_stock",
+        retryCount: 1,
+      }),
+    );
+    expect(retryIncident).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        incidentId: "inc-3",
+        kind: "timeout",
+        consumerId: null,
+        retryCount: 2,
+      }),
+    );
+
+    expect(body.processed).toBe(3);
+    expect(body.results).toEqual([
+      {
+        incident_id: "inc-1",
+        order_id: "order-1",
+        kind: "admin",
+        result: "succeeded",
+      },
+      {
+        incident_id: "inc-2",
+        order_id: "order-2",
+        kind: "revival",
+        result: "failed_will_retry",
+      },
+      {
+        incident_id: "inc-3",
+        order_id: "order-3",
+        kind: "timeout",
+        result: "failed_exhausted",
+      },
+    ]);
+  });
+
+  it("retryIncident throw sur 1 incident → autres traités quand même + log [REFUND_RETRY_HELPER_CRASH]", async () => {
+    vi.mocked(createSupabaseAdminClient).mockReturnValue(
+      makeSupabase({
+        data: [
+          {
+            id: "inc-OK",
+            order_id: "order-OK",
+            kind: "admin",
+            payment_intent_id: "pi_ok",
+            consumer_id: "u1",
+            blocked_reason: null,
+            retry_count: 0,
+            max_retries: 3,
+          },
+          {
+            id: "inc-CRASH",
+            order_id: "order-CRASH",
+            kind: "admin",
+            payment_intent_id: "pi_crash",
+            consumer_id: "u2",
+            blocked_reason: null,
+            retry_count: 0,
+            max_retries: 3,
+          },
+          {
+            id: "inc-AFTER",
+            order_id: "order-AFTER",
+            kind: "timeout",
+            payment_intent_id: "pi_after",
+            consumer_id: "u3",
+            blocked_reason: null,
+            retry_count: 1,
+            max_retries: 3,
+          },
+        ],
+        error: null,
+      }),
+    );
+    vi.mocked(retryIncident)
+      .mockResolvedValueOnce("succeeded")
+      .mockRejectedValueOnce(new Error("unexpected helper crash"))
+      .mockResolvedValueOnce("failed_will_retry");
+
+    const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      processed: number;
+      results: Array<Record<string, unknown>>;
+    };
+
+    expect(retryIncident).toHaveBeenCalledTimes(3);
+    expect(body.processed).toBe(3);
+    // Le crash devient 'failed_will_retry' par fallback défensif.
+    expect(body.results[1]).toEqual({
+      incident_id: "inc-CRASH",
+      order_id: "order-CRASH",
+      kind: "admin",
       result: "failed_will_retry",
-      attempt: 1,
     });
-    expect(byOrder["order-C"]).toMatchObject({
-      result: "failed_exhausted",
-      attempt: 1,
-    });
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+    expect(String(consoleErrorSpy.mock.calls[0]?.[0])).toContain(
+      "[REFUND_RETRY_HELPER_CRASH]",
+    );
+  });
+});
+
+// =============================================================================
+// D. Defensive — kind/blocked_reason invalides
+// =============================================================================
+
+describe("POST /api/cron/retry-failed-refunds — defensive bad data", () => {
+  it("kind invalide (corrupt DB) → skip + warn [REFUND_RETRY_SKIP_BAD_KIND], n'appelle pas retryIncident", async () => {
+    vi.mocked(createSupabaseAdminClient).mockReturnValue(
+      makeSupabase({
+        data: [
+          {
+            id: "inc-bad",
+            order_id: "order-bad",
+            kind: "bogus_kind",
+            payment_intent_id: "pi_bad",
+            consumer_id: "u1",
+            blocked_reason: null,
+            retry_count: 0,
+            max_retries: 3,
+          },
+        ],
+        error: null,
+      }),
+    );
+
+    const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
+    expect(res.status).toBe(200);
+    expect(retryIncident).not.toHaveBeenCalled();
+    expect(consoleWarnSpy).toHaveBeenCalledTimes(1);
+    expect(String(consoleWarnSpy.mock.calls[0]?.[0])).toContain(
+      "[REFUND_RETRY_SKIP_BAD_KIND]",
+    );
+  });
+
+  it("kind='revival' avec blocked_reason null → skip + warn [REFUND_RETRY_SKIP_BAD_BLOCKED]", async () => {
+    vi.mocked(createSupabaseAdminClient).mockReturnValue(
+      makeSupabase({
+        data: [
+          {
+            id: "inc-rev-no-blocked",
+            order_id: "order-x",
+            kind: "revival",
+            payment_intent_id: "pi_x",
+            consumer_id: "u1",
+            blocked_reason: null,
+            retry_count: 0,
+            max_retries: 3,
+          },
+        ],
+        error: null,
+      }),
+    );
+
+    const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
+    expect(res.status).toBe(200);
+    expect(retryIncident).not.toHaveBeenCalled();
+    expect(consoleWarnSpy).toHaveBeenCalledTimes(1);
+    expect(String(consoleWarnSpy.mock.calls[0]?.[0])).toContain(
+      "[REFUND_RETRY_SKIP_BAD_BLOCKED]",
+    );
+  });
+
+  it("kind='admin' avec blocked_reason non-null (cohérent T-102.2.b: null sur admin/timeout) → blockedReason ignoré (null passé au helper)", async () => {
+    // Cohérent avec T-102.2.b qui pose blocked_reason=null pour admin/timeout.
+    // Si une row corrompue avait par hasard une valeur non-null, on la
+    // n'utilise PAS pour kind=admin (qui ne consomme jamais blockedReason
+    // côté retry-incident.ts).
+    vi.mocked(createSupabaseAdminClient).mockReturnValue(
+      makeSupabase({
+        data: [
+          {
+            id: "inc-admin-weird",
+            order_id: "order-x",
+            kind: "admin",
+            payment_intent_id: "pi_x",
+            consumer_id: "u1",
+            blocked_reason: "blocked_stock", // anormal pour admin mais non-bloquant
+            retry_count: 0,
+            max_retries: 3,
+          },
+        ],
+        error: null,
+      }),
+    );
+    vi.mocked(retryIncident).mockResolvedValue("succeeded");
+
+    const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
+    expect(res.status).toBe(200);
+    expect(retryIncident).toHaveBeenCalledTimes(1);
+    expect(retryIncident).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "admin",
+        blockedReason: "blocked_stock",
+      }),
+    );
   });
 });
