@@ -63,7 +63,7 @@ export async function loginAndUpgradeAction(
   const { data: existingUser } = await admin
     .from("users")
     .select("id, roles")
-    .eq("email", invitation.email)
+    .ilike("email", invitation.email)
     .maybeSingle();
 
   if (!existingUser) {

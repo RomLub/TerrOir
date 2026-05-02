@@ -167,6 +167,64 @@ afterEach(() => {
 
 // --- Tests ----------------------------------------------------------------
 
+describe("completeOnboardingAction — T-110 comparaison session.email vs invitation.email", () => {
+  it("session.email vs invitation.email comparés case-insensitively (Bob@... matche bob@...)", async () => {
+    // Cas réel : invitation créée pour 'user@example.com', utilisateur loggé
+    // côté Supabase Auth en 'User@Example.COM'. Le check ne doit PAS bloquer.
+    sessionUser = {
+      id: "user-42",
+      email: "User@Example.COM",
+      roles: ["consumer"],
+      isAdmin: false,
+    };
+    responses.producer_invitations = [
+      {
+        data: {
+          id: "inv-1",
+          email: "user@example.com",
+          expires_at: new Date(Date.now() + 86_400_000).toISOString(),
+          used_at: null,
+        },
+        error: null,
+      },
+    ];
+    responses.producer_interests = [{ data: [{ id: "lead-1" }], error: null }];
+
+    const fd = makeFormData();
+    fd.set("token", "a".repeat(32));
+    const res = await runAction(fd);
+
+    // Le check ne renvoie pas d'erreur "correspond pas" → on passe au flow.
+    expect(res?.error).toBeUndefined();
+  });
+
+  it("session.email réellement différent de invitation.email → toujours bloqué (sécurité préservée)", async () => {
+    sessionUser = {
+      id: "user-x",
+      email: "attacker@example.com",
+      roles: ["consumer"],
+      isAdmin: false,
+    };
+    responses.producer_invitations = [
+      {
+        data: {
+          id: "inv-1",
+          email: "victim@example.com",
+          expires_at: new Date(Date.now() + 86_400_000).toISOString(),
+          used_at: null,
+        },
+        error: null,
+      },
+    ];
+
+    const fd = makeFormData();
+    fd.set("token", "a".repeat(32));
+    const res = await runAction(fd);
+
+    expect(res?.error).toMatch(/correspond pas/i);
+  });
+});
+
 describe("completeOnboardingAction — auto-bump lead 'contacted' → 'onboarded'", () => {
   it("UPDATE producer_interests + log [LEAD_ONBOARDED] quand un lead 'contacted' match l'email session", async () => {
     responses.producer_interests = [{ data: [{ id: "lead-1" }], error: null }];

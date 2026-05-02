@@ -52,14 +52,19 @@ export async function acceptInvitationAction(
   if (new Date(invitation.expires_at) < new Date())
     return { error: "Invitation expirée" };
 
-  if (session.email !== invitation.email) {
+  // T-110 : comparaison case-insensitive — session.email (Supabase Auth) vs
+  // invitation.email (table producer_invitations) peuvent différer en casse.
+  // Aligné avec le lookup .ilike sur users plus bas.
+  const sessionEmail = (session.email ?? "").toLowerCase();
+  const invitationEmail = String(invitation.email ?? "").toLowerCase();
+  if (!sessionEmail || sessionEmail !== invitationEmail) {
     return { error: "Email de session ne correspond pas à l'invitation" };
   }
 
   const { data: existingUser } = await admin
     .from("users")
     .select("id, roles")
-    .eq("email", invitation.email)
+    .ilike("email", invitation.email)
     .maybeSingle();
 
   if (!existingUser) return { error: "Utilisateur introuvable" };

@@ -60,7 +60,13 @@ export async function completeOnboardingAction(
     if (new Date(invitation.expires_at) < new Date())
       return { error: "Invitation expirée" };
 
-    if (session.email !== invitation.email) {
+    // T-110 : comparaison case-insensitive — la session.email vient de
+    // Supabase Auth (potentiellement en casse mixte) et invitation.email
+    // de la table producer_invitations. Aligné avec le lookup .ilike sur
+    // users/admin_users dans le reste du flow invitation.
+    const sessionEmail = (session.email ?? "").toLowerCase();
+    const invitationEmail = String(invitation.email ?? "").toLowerCase();
+    if (!sessionEmail || sessionEmail !== invitationEmail) {
       return { error: "Email de session ne correspond pas à l'invitation" };
     }
     invitationId = invitation.id as string;

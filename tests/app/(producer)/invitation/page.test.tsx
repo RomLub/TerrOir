@@ -296,6 +296,34 @@ describe("InvitationPage — T-303 consumer-loggedin no auto-upgrade pendant le 
     expect(findByName(result, "OnboardingWizard")).toBeNull();
   });
 
+  it("T-110 : session.email vs invitation.email comparés case-insensitively → InvitationConfirmCard rendue malgré casse différente", async () => {
+    // Cas réel : invitation pour 'consumer@example.com', utilisateur loggé
+    // côté Supabase Auth en 'Consumer@Example.COM'. Doit être reconnu comme
+    // invitee (sinon on retomberait sur le wizard caseKind='consumer-login').
+    sessionUser = { id: "user-1", email: "Consumer@Example.COM" };
+    responses.producer_invitations = [validInvitation("consumer@example.com")];
+    responses.admin_users = [{ data: null, error: null }];
+    responses.users = [
+      {
+        data: {
+          id: "user-1",
+          roles: ["consumer"],
+          prenom: "Léa",
+          nom: "Martin",
+          telephone: "0612345678",
+        },
+        error: null,
+      },
+    ];
+    responses.producers = [{ data: null, error: null }];
+
+    const result = await runPage(VALID_TOKEN);
+
+    const card = findByName(result, "InvitationConfirmCard");
+    expect(card).not.toBeNull();
+    expect(card!.props.email).toBe("consumer@example.com");
+  });
+
   it("user loggé comme invitee + producer.draft existant → redirect /onboarding (early return inchangé Phase 4)", async () => {
     sessionUser = { id: "user-1", email: "consumer@example.com" };
     responses.producer_invitations = [validInvitation("consumer@example.com")];
