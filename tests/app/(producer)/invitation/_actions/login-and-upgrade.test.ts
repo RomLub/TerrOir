@@ -14,6 +14,8 @@ let captured: {
   fromCalls: string[];
   inserts: Array<{ table: string; payload: unknown }>;
   updates: Array<{ table: string; payload: unknown }>;
+  ilikeCalls: Array<{ table: string; col: string; val: unknown }>;
+  eqCalls: Array<{ table: string; col: string; val: unknown }>;
 };
 let responses: Record<string, Resp[]>;
 let signInMock: Mock<AnyAsyncFn>;
@@ -25,7 +27,14 @@ vi.mock("@/lib/supabase/admin", () => ({
       const resp = responses[table]?.shift() ?? { data: null, error: null };
       const builder: Record<string, unknown> = {};
       builder.select = () => builder;
-      builder.eq = () => builder;
+      builder.eq = (col: string, val: unknown) => {
+        captured.eqCalls.push({ table, col, val });
+        return builder;
+      };
+      builder.ilike = (col: string, val: unknown) => {
+        captured.ilikeCalls.push({ table, col, val });
+        return builder;
+      };
       builder.update = (payload: unknown) => {
         captured.updates.push({ table, payload });
         return builder;
@@ -110,7 +119,13 @@ function validInvitationResp(email = "user@example.com"): Resp {
 // --- Setup / teardown -----------------------------------------------------
 
 beforeEach(() => {
-  captured = { fromCalls: [], inserts: [], updates: [] };
+  captured = {
+    fromCalls: [],
+    inserts: [],
+    updates: [],
+    ilikeCalls: [],
+    eqCalls: [],
+  };
   responses = {};
   signInMock = vi.fn<AnyAsyncFn>().mockResolvedValue({ data: {}, error: null });
   logAuthEventMock.mockReset();
@@ -218,6 +233,26 @@ describe("loginAndUpgradeAction", () => {
     );
 
     warnSpy.mockRestore();
+  });
+
+  it("T-110 : lookup users via .ilike (case-insensitive) — invitation.email en majuscules matche users.email en minuscules", async () => {
+    responses.producer_invitations = [validInvitationResp("Consumer@Example.COM")];
+    responses.users = [
+      { data: { id: "user-42", roles: ["consumer"] }, error: null },
+    ];
+    responses.producers = [{ data: null, error: null }];
+
+    await loginAndUpgradeAction({}, makeFormData());
+
+    expect(captured.ilikeCalls).toContainEqual({
+      table: "users",
+      col: "email",
+      val: "Consumer@Example.COM",
+    });
+    const eqEmailUsers = captured.eqCalls.find(
+      (e) => e.table === "users" && e.col === "email",
+    );
+    expect(eqEmailUsers).toBeUndefined();
   });
 
   // --- T-305 PR-B — rate-limit applicatif IP (5/60s mutualisé login) -------

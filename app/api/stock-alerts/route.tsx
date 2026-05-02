@@ -97,7 +97,7 @@ export async function POST(request: Request) {
   const { data: recentAlerts, error: countError } = await admin
     .from("product_stock_alerts")
     .select("id")
-    .eq("email", email)
+    .ilike("email", email)
     .gte("created_at", windowStart);
 
   if (countError) {

@@ -94,7 +94,7 @@ export default async function InvitationPage({ searchParams }: PageProps) {
   const { data: adminRow } = await admin
     .from("admin_users")
     .select("id")
-    .eq("email", email)
+    .ilike("email", email)
     .maybeSingle();
   if (adminRow) {
     return (
@@ -110,7 +110,7 @@ export default async function InvitationPage({ searchParams }: PageProps) {
   const { data: existingUser } = await admin
     .from("users")
     .select("id, roles, prenom, nom, telephone")
-    .eq("email", email)
+    .ilike("email", email)
     .maybeSingle();
 
   const existingRoles = Array.isArray(existingUser?.roles)
@@ -152,7 +152,11 @@ export default async function InvitationPage({ searchParams }: PageProps) {
   }
 
   const session = await getSessionUser();
-  const isLoggedInAsInvitee = session?.email === email;
+  // T-110 : comparaison case-insensitive entre session.email (Supabase Auth)
+  // et invitation.email (table producer_invitations).
+  const isLoggedInAsInvitee =
+    session?.email != null &&
+    session.email.toLowerCase() === email.toLowerCase();
 
   // Phase 4 : si l'invitee est déjà loggé, a le rôle producer en DB et
   // un producer en draft, on centralise la reprise dans /onboarding —

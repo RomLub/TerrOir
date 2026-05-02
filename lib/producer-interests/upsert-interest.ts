@@ -109,7 +109,7 @@ export async function upsertProducerInterest(
       commune: input.commune,
       message: input.message,
     })
-    .eq("email", email)
+    .ilike("email", email)
     .select("id")
     .single();
 

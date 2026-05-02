@@ -19,6 +19,7 @@ type Captured = {
   updates: Array<{ table: string; payload: unknown }>;
   inserts: Array<{ table: string; payload: unknown }>;
   eqCalls: Array<{ table: string; col: string; val: unknown }>;
+  ilikeCalls: Array<{ table: string; col: string; val: unknown }>;
 };
 
 let captured: Captured;
@@ -68,6 +69,10 @@ function buildMockClient(): SupabaseClient {
         captured.eqCalls.push({ table, col, val });
         return builder;
       };
+      builder.ilike = (col: string, val: unknown) => {
+        captured.ilikeCalls.push({ table, col, val });
+        return builder;
+      };
       builder.single = () => Promise.resolve(consume(table, builder._op));
       builder.maybeSingle = () =>
         Promise.resolve(consume(table, builder._op));
@@ -92,6 +97,7 @@ beforeEach(() => {
     updates: [],
     inserts: [],
     eqCalls: [],
+    ilikeCalls: [],
   };
   responses = {};
   consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -318,6 +324,44 @@ describe("createStockAlert — conflit UNIQUE (alerte existante)", () => {
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error).toBe("select failed");
     expect(consoleErrorSpy).toHaveBeenCalled();
+  });
+
+  it("T-110 : SELECT après conflit UNIQUE matche email via .ilike (case-insensitive)", async () => {
+    // Si l'INSERT plante en conflit UNIQUE et que la row historique a été
+    // stockée en casse différente ('Consumer@Example.COM' vs 'consumer@...'),
+    // le SELECT doit tomber dessus pour décider already_active vs résurrection.
+    pushResp("product_stock_alerts", "insert", {
+      data: null,
+      error: { message: "duplicate key", code: "23505" },
+    });
+    pushResp("product_stock_alerts", "select", {
+      data: {
+        id: ROW_ID,
+        confirmed_at: "2026-04-20T10:00:00.000Z",
+        unsubscribed_at: null,
+      },
+      error: null,
+    });
+    const client = buildMockClient();
+    await createStockAlert(client, {
+      product_id: PRODUCT_ID,
+      email: "Consumer@Example.COM",
+      consumer_id: CONSUMER_ID,
+    });
+    // .ilike utilisé pour matcher email case-insensitively, .eq pour product_id.
+    // Le helper applique normalizeEmail() (trim+lowercase) avant la query —
+    // .ilike garantit en plus le match contre des rows historiques en
+    // casse mixte (defense-in-depth).
+    expect(captured.ilikeCalls).toContainEqual({
+      table: "product_stock_alerts",
+      col: "email",
+      val: "consumer@example.com",
+    });
+    expect(
+      captured.eqCalls.find(
+        (c) => c.table === "product_stock_alerts" && c.col === "email",
+      ),
+    ).toBeUndefined();
   });
 
   it("conflit UNIQUE + résurrection UPDATE échoue → ok:false + console.error", async () => {

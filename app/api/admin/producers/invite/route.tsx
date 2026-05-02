@@ -52,7 +52,7 @@ export async function POST(request: Request) {
   const { data: existingAdmin, error: adminCheckError } = await admin
     .from("admin_users")
     .select("id")
-    .eq("email", input.email)
+    .ilike("email", input.email)
     .maybeSingle();
   if (adminCheckError) {
     return NextResponse.json({ error: adminCheckError.message }, { status: 500 });
@@ -67,7 +67,7 @@ export async function POST(request: Request) {
   const { data: existingUser, error: userCheckError } = await admin
     .from("users")
     .select("id, roles")
-    .eq("email", input.email)
+    .ilike("email", input.email)
     .maybeSingle();
   if (userCheckError) {
     return NextResponse.json({ error: userCheckError.message }, { status: 500 });

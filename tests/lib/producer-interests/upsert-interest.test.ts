@@ -20,6 +20,7 @@ type Captured = {
   updates: Array<{ table: string; payload: unknown }>;
   inserts: Array<{ table: string; payload: unknown }>;
   eqCalls: Array<{ table: string; col: string; val: unknown }>;
+  ilikeCalls: Array<{ table: string; col: string; val: unknown }>;
 };
 
 let captured: Captured;
@@ -69,6 +70,10 @@ function buildMockClient(): SupabaseClient {
         captured.eqCalls.push({ table, col, val });
         return builder;
       };
+      builder.ilike = (col: string, val: unknown) => {
+        captured.ilikeCalls.push({ table, col, val });
+        return builder;
+      };
       builder.single = () => Promise.resolve(consume(table, builder._op));
       return builder;
     },
@@ -95,6 +100,7 @@ beforeEach(() => {
     updates: [],
     inserts: [],
     eqCalls: [],
+    ilikeCalls: [],
   };
   responses = {};
   consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -202,10 +208,17 @@ describe("upsertProducerInterest — conflit UNIQUE (email déjà présent)", ()
     if (!res.ok) return;
     expect(res.data.id).toBe(ROW_ID);
     expect(res.data.status).toBe("updated");
-    // UPDATE matche bien sur email (normalisé)
-    expect(captured.eqCalls).toEqual([
+    // T-110 : UPDATE matche sur email via .ilike (case-insensitive),
+    // pas .eq. Le helper normalise déjà côté input mais .ilike garantit
+    // que la WHERE matche aussi des rows historiques en casse mixte.
+    expect(captured.ilikeCalls).toEqual([
       { table: "producer_interests", col: "email", val: "jean.dupont@example.com" },
     ]);
+    expect(
+      captured.eqCalls.find(
+        (c) => c.table === "producer_interests" && c.col === "email",
+      ),
+    ).toBeUndefined();
     // Payload UPDATE : champs business présents, champs préservés ABSENTS
     const payload = captured.updates[0].payload as Record<string, unknown>;
     expect(payload.prenom).toBe("Jean");

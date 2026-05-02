@@ -769,6 +769,48 @@ describe("I. T-109 invalidation auto des invitations actives", () => {
     ).toBeUndefined();
   });
 
+  it("I8 T-110 lookup users.email via .ilike (case-insensitive) — input 'Bob@...' matche row stockée 'bob@...'", async () => {
+    // Pré-check users (consumer existant) doit utiliser .ilike pour qu'un
+    // admin saisissant 'Bob@Example.COM' tombe bien sur 'bob@example.com'.
+    pushResp("admin_users", "select", { data: null, error: null });
+    pushResp("users", "select", {
+      data: { id: "user-1", roles: ["consumer"] },
+      error: null,
+    });
+    const res = await POST(makeRequest({ email: "Bob@Example.COM" }));
+    expect(res.status).toBe(200);
+    expect(captured.ilikeCalls).toContainEqual({
+      table: "users",
+      col: "email",
+      val: "Bob@Example.COM",
+    });
+    // Garde-fou : aucun .eq sur users.email (sensible casse).
+    expect(
+      captured.eqCalls.find(
+        (c) => c.table === "users" && c.col === "email",
+      ),
+    ).toBeUndefined();
+  });
+
+  it("I9 T-110 lookup admin_users.email via .ilike (case-insensitive) — input 'ADMIN@...' matche row stockée 'admin@...'", async () => {
+    // Pré-check admin_users doit utiliser .ilike : si admin déjà inscrit
+    // sous 'admin@x.fr' et qu'un opérateur tape 'ADMIN@X.FR', le 409 doit
+    // bien se déclencher (sinon on enverrait une invitation à un admin).
+    pushResp("admin_users", "select", { data: { id: "admin-9" }, error: null });
+    const res = await POST(makeRequest({ email: "ADMIN@Example.COM" }));
+    expect(res.status).toBe(409);
+    expect(captured.ilikeCalls).toContainEqual({
+      table: "admin_users",
+      col: "email",
+      val: "ADMIN@Example.COM",
+    });
+    expect(
+      captured.eqCalls.find(
+        (c) => c.table === "admin_users" && c.col === "email",
+      ),
+    ).toBeUndefined();
+  });
+
   it("I7 revoke UPDATE échoue (DB error) → console.warn [INVITATION_REVOKE_WARN], INSERT du nouveau token continue (fail-open)", async () => {
     pushResp("admin_users", "select", { data: null, error: null });
     pushResp("users", "select", { data: null, error: null });
