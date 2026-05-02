@@ -39,7 +39,7 @@ export async function requestNewOptOutLinkAction(
   const { data: lead } = await admin
     .from('producer_interests')
     .select('email')
-    .eq('email', email)
+    .ilike('email', email)
     .maybeSingle();
 
   if (lead) {

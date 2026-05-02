@@ -23,7 +23,7 @@ export async function unsubscribeAction(formData: FormData): Promise<Result> {
   const { error } = await admin
     .from('producer_interests')
     .delete()
-    .eq('email', email);
+    .ilike('email', email);
 
   if (error) {
     return { success: false, error: 'Erreur technique. Merci de réessayer.' };
