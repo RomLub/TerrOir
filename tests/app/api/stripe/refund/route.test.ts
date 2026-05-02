@@ -11,14 +11,19 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-const { mockRevalidateTag, mockRefundCreate, mockLogPaymentEvent, mockRevalidatePublicStats } = vi.hoisted(
-  () => ({
-    mockRevalidateTag: vi.fn(),
-    mockRefundCreate: vi.fn(),
-    mockLogPaymentEvent: vi.fn(),
-    mockRevalidatePublicStats: vi.fn(),
-  }),
-);
+const {
+  mockRevalidateTag,
+  mockRefundCreate,
+  mockLogPaymentEvent,
+  mockRecordRefundAttempt,
+  mockRevalidatePublicStats,
+} = vi.hoisted(() => ({
+  mockRevalidateTag: vi.fn(),
+  mockRefundCreate: vi.fn(),
+  mockLogPaymentEvent: vi.fn(),
+  mockRecordRefundAttempt: vi.fn(),
+  mockRevalidatePublicStats: vi.fn(),
+}));
 
 vi.mock("next/cache", () => ({
   revalidateTag: mockRevalidateTag,
@@ -32,6 +37,11 @@ vi.mock("@/lib/stripe/server", () => ({
 
 vi.mock("@/lib/audit-logs/log-payment-event", () => ({
   logPaymentEvent: mockLogPaymentEvent,
+}));
+
+// T-102.2.b — mock du helper refund-incidents (réel testé séparément).
+vi.mock("@/lib/refund-incidents/record-refund-attempt", () => ({
+  recordRefundAttempt: mockRecordRefundAttempt,
 }));
 
 // T-100 C2 : mock delegating de revalidatePublicStats. Permet d'asserter la
@@ -210,6 +220,7 @@ beforeEach(() => {
   // T-100 C2 : reset call tracking sans toucher a l'impl deleguee.
   mockRevalidatePublicStats.mockClear();
   mockLogPaymentEvent.mockReset().mockResolvedValue(undefined);
+  mockRecordRefundAttempt.mockReset().mockResolvedValue(null);
   consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
   savedCronSecret = process.env.CRON_SECRET;
   delete process.env.CRON_SECRET;
@@ -482,6 +493,21 @@ describe("F. T-107 Instrumentation order_admin_refund_failed (audit_logs)", () =
       },
     });
 
+    // T-102.2.b — recordRefundAttempt appelée en parallèle (double écriture).
+    expect(mockRecordRefundAttempt).toHaveBeenCalledTimes(1);
+    expect(mockRecordRefundAttempt).toHaveBeenCalledWith({
+      orderId: ORDER_ID,
+      kind: "admin",
+      paymentIntentId: PI_ID,
+      consumerId: CONSUMER_ID,
+      blockedReason: null,
+      outcome: "failed",
+      classified: expect.objectContaining({
+        category: "unknown",
+        message: "card_declined",
+      }),
+    });
+
     // Exception propagée AVANT UPDATE/notification/revalidateTag.
     expect(captured.updates).toEqual([]);
     expect(
@@ -490,13 +516,15 @@ describe("F. T-107 Instrumentation order_admin_refund_failed (audit_logs)", () =
     expect(mockRevalidateTag).not.toHaveBeenCalled();
   });
 
-  it("F2 happy path Stripe OK → logPaymentEvent JAMAIS appelé (pas de pollution audit nominal)", async () => {
+  it("F2 happy path Stripe OK → logPaymentEvent + recordRefundAttempt JAMAIS appelés (pas de pollution audit nominal)", async () => {
     const res = await POST(makeRequest());
     expect(res.status).toBe(200);
     expect(mockLogPaymentEvent).not.toHaveBeenCalled();
+    // T-102.2.b — pas d'incident sur succès (helper appelé que dans le catch).
+    expect(mockRecordRefundAttempt).not.toHaveBeenCalled();
   });
 
-  it("F3 consumer_id null + Stripe throw → logPaymentEvent reçoit userId=null (pas de crash)", async () => {
+  it("F3 consumer_id null + Stripe throw → logPaymentEvent + recordRefundAttempt reçoivent userId/consumerId=null (pas de crash)", async () => {
     setOrderFetch({ consumer_id: null });
     mockRefundCreate.mockReset().mockRejectedValueOnce(new Error("network_error"));
 
@@ -510,6 +538,15 @@ describe("F. T-107 Instrumentation order_admin_refund_failed (audit_logs)", () =
           order_id: ORDER_ID,
           refund_error: "network_error",
         }),
+      }),
+    );
+
+    // T-102.2.b — consumerId=null propagé au helper (RGPD account deleted).
+    expect(mockRecordRefundAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "admin",
+        consumerId: null,
+        outcome: "failed",
       }),
     );
   });

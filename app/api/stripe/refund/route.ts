@@ -4,6 +4,8 @@ import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
 import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
+import { classifyRefundError } from "@/lib/refund-incidents/classify-error";
+import { recordRefundAttempt } from "@/lib/refund-incidents/record-refund-attempt";
 import { revalidatePublicStats } from "@/lib/stats/revalidate";
 import {
   InvalidOrderTransitionError,
@@ -87,6 +89,19 @@ export async function POST(request: Request) {
       { idempotencyKey: `refund_${order.id}_admin` },
     );
   } catch (e) {
+    // T-102.2.b — double écriture refund_incidents + audit_logs (helper
+    // fail-safe : ne throw pas). On enregistre AVANT de propager le throw
+    // pour que l'incident soit tracé même si le caller renvoie un 500.
+    const classified = classifyRefundError(e);
+    await recordRefundAttempt({
+      orderId: order.id,
+      kind: "admin",
+      paymentIntentId: order.stripe_payment_intent_id,
+      consumerId: order.consumer_id,
+      blockedReason: null,
+      outcome: "failed",
+      classified,
+    });
     await logPaymentEvent({
       eventType: "order_admin_refund_failed",
       userId: order.consumer_id,
