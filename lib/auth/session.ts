@@ -79,10 +79,16 @@ export async function getInitialUserPayload(): Promise<InitialUserPayload> {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return { user: null, isAdmin: false, isProducer: false, producerLite: null };
+    return {
+      user: null,
+      isAdmin: false,
+      isProducer: false,
+      producerLite: null,
+      roles: [],
+    };
   }
 
-  const [isAdmin, producerLite] = await Promise.all([
+  const [isAdmin, producerLite, roles] = await Promise.all([
     (async () => {
       try {
         const { data, error } = await supabase
@@ -117,7 +123,38 @@ export async function getInitialUserPayload(): Promise<InitialUserPayload> {
         return null;
       }
     })(),
+    // T-012 : lookup `users.roles` parallèle aux 2 autres branches. Permet
+    // au RoleToggle multi-rôle d'apparaître dès le SSR (sans attendre
+    // loadProfile côté browser, qui introduisait un délai 50-200ms perçu
+    // comme un "pop" du toggle au mount). RLS `users self read` autorise
+    // la lecture via le client server normal (auth.uid() = id).
+    // Fail-safe par lookup (pattern identique aux 2 autres) : un throw
+    // ici n'affecte ni isAdmin ni producerLite ; loadProfile recorrigera
+    // de toute façon au mount (filet de sécurité existant).
+    (async (): Promise<UserRole[]> => {
+      try {
+        const { data, error } = await supabase
+          .from("users")
+          .select("roles")
+          .eq("id", user.id)
+          .maybeSingle();
+        if (error) throw error;
+        return (data?.roles as UserRole[] | undefined) ?? [];
+      } catch (err) {
+        console.error(
+          "[GET_INITIAL_USER_PAYLOAD_WARN] roles lookup failed",
+          err,
+        );
+        return [];
+      }
+    })(),
   ]);
 
-  return { user, isAdmin, isProducer: producerLite !== null, producerLite };
+  return {
+    user,
+    isAdmin,
+    isProducer: producerLite !== null,
+    producerLite,
+    roles,
+  };
 }

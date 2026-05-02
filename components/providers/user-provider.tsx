@@ -38,6 +38,7 @@ const EMPTY_INITIAL: InitialUserPayload = {
   isAdmin: false,
   isProducer: false,
   producerLite: null,
+  roles: [],
 };
 
 export function UserProvider({
@@ -49,7 +50,13 @@ export function UserProvider({
 }) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [user, setUser] = useState<User | null>(initial.user);
-  const [roles, setRoles] = useState<UserRole[]>([]);
+  // T-012 : roles SSR fournis par layout root via getInitialUserPayload() —
+  // élimine le "pop" du RoleToggle multi-rôle au hard refresh (avant T-012,
+  // roles=[] au mount → toggle null → setRoles après loadProfile → toggle
+  // apparaît brutalement après ~50-200ms). loadProfile rafraîchit ensuite
+  // côté browser (filet pour promotion/démotion en cours de session, et
+  // fallback si lookup SSR a échoué).
+  const [roles, setRoles] = useState<UserRole[]>(initial.roles);
   // isAdmin / isProducer / producerLite SSR fournis par layout root via
   // getInitialUserPayload() — élimine le flash badge Admin et le flash
   // placeholder ProducerLayout au hard refresh. loadProfile rafraîchit les
@@ -89,23 +96,26 @@ export function UserProvider({
   // (null → id) et logout (id → null) sans bruit.
   //
   // loading n'est pas re-set ici : le useEffect onAuthStateChange ci-dessous
-  // gère déjà setLoading(false) après loadProfile. Roles n'est pas couvert
-  // par initial (loadProfile only) — limitation pré-existante hors scope.
+  // gère déjà setLoading(false) après loadProfile. T-012 : roles désormais
+  // sync depuis initial (était la limitation pré-existante levée par T-012).
   useEffect(() => {
     setUser(initial.user);
     setIsAdmin(initial.isAdmin);
     setIsProducer(initial.isProducer);
     setProducer(initial.producerLite);
-    // Deps primitives volontaires (id) : `initial` est recréé à chaque
-    // render parent (RSC update). Dépendre des objets entiers ferait
-    // re-tirer à chaque update sans changement d'identité. Comparer les
-    // primitives capture précisément les transitions login/logout.
+    setRoles(initial.roles);
+    // Deps primitives volontaires : `initial` est recréé à chaque render
+    // parent (RSC update). Dépendre des objets entiers ferait re-tirer à
+    // chaque update sans changement d'identité. Comparer les primitives
+    // (id, booleans, roles.join) capture précisément les transitions
+    // login/logout et changement de membership rôles inter-render SSR.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     initial.user?.id,
     initial.isAdmin,
     initial.isProducer,
     initial.producerLite?.id,
+    initial.roles.join(","),
   ]);
 
   useEffect(() => {
