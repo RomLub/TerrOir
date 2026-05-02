@@ -4,6 +4,7 @@ import type Stripe from "stripe";
 import { syncStripePaymentSucceeded } from "@/lib/stripe/handle-payment-succeeded";
 import { revalidatePublicStats } from "@/lib/stats/revalidate";
 import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
+import { recordRefundAttempt } from "@/lib/refund-incidents/record-refund-attempt";
 import { stripe } from "@/lib/stripe/server";
 
 vi.mock("@/lib/stats/revalidate", () => ({
@@ -14,6 +15,12 @@ vi.mock("@/lib/stats/revalidate", () => ({
 // séparément (tests/lib/audit-logs/log-payment-event.test.ts).
 vi.mock("@/lib/audit-logs/log-payment-event", () => ({
   logPaymentEvent: vi.fn(),
+}));
+
+// T-102.2.b — mock du helper refund-incidents (réel testé séparément
+// tests/lib/refund-incidents/record-refund-attempt.test.ts).
+vi.mock("@/lib/refund-incidents/record-refund-attempt", () => ({
+  recordRefundAttempt: vi.fn(),
 }));
 
 // Mock Stripe SDK : seul `stripe.refunds.create` est appelé par la fonction.
@@ -136,6 +143,7 @@ beforeEach(() => {
   consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
   vi.mocked(revalidatePublicStats).mockClear();
   vi.mocked(logPaymentEvent).mockClear();
+  vi.mocked(recordRefundAttempt).mockClear();
   vi.mocked(stripe.refunds.create).mockReset();
 });
 
@@ -463,6 +471,23 @@ describe("syncStripePaymentSucceeded — Cas 9 : revival_refund_failed (stock bl
       },
     });
 
+    // T-102.2.b — recordRefundAttempt appelée en parallèle de logPaymentEvent
+    // (double écriture hybride). Reçoit le ClassifiedRefundError calculé via
+    // classifyRefundError (Error générique → category='unknown').
+    expect(vi.mocked(recordRefundAttempt)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(recordRefundAttempt)).toHaveBeenCalledWith({
+      orderId: "order-42",
+      kind: "revival",
+      paymentIntentId: "pi_refund_fail",
+      consumerId: "user-7",
+      blockedReason: "blocked_stock",
+      outcome: "failed",
+      classified: expect.objectContaining({
+        category: "unknown",
+        message: "Stripe API timeout",
+      }),
+    });
+
     // Log error grep-able [REFUND_FAILED] côté Vercel.
     expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
     expect(String(consoleErrorSpy.mock.calls[0]?.[0])).toContain(
@@ -502,6 +527,18 @@ describe("syncStripePaymentSucceeded — Cas 10 : revival_refund_failed (slot bl
         metadata: expect.objectContaining({
           blocked_reason: "blocked_slot",
           refund_error: "Idempotency key conflict",
+        }),
+      }),
+    );
+
+    // T-102.2.b — double écriture refund_incidents avec blockedReason='blocked_slot'.
+    expect(vi.mocked(recordRefundAttempt)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "revival",
+        blockedReason: "blocked_slot",
+        outcome: "failed",
+        classified: expect.objectContaining({
+          message: "Idempotency key conflict",
         }),
       }),
     );

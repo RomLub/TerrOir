@@ -3,6 +3,8 @@ import type Stripe from "stripe";
 import { revalidatePublicStats } from "@/lib/stats/revalidate";
 import { stripe } from "@/lib/stripe/server";
 import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
+import { classifyRefundError } from "@/lib/refund-incidents/classify-error";
+import { recordRefundAttempt } from "@/lib/refund-incidents/record-refund-attempt";
 
 // Extrait du handler webhook `payment_intent.succeeded` (cf
 // app/api/stripe/webhook/route.tsx). Sortie en module séparé pour pouvoir
@@ -239,12 +241,24 @@ export async function syncStripePaymentSucceeded(
       } catch (refundErr) {
         // Refund Stripe a échoué (réseau, idempotency conflict, account
         // issue). Le client est débité, on log l'incident pour retry
-        // admin manuel (dette ouverte "Cron retry-failed-refunds").
-        // NE PAS UPDATE l'order : reste en cancelled+payment_failed pour
-        // permettre un retry de la résurrection après remédiation Stripe.
+        // admin manuel + cron T-102.2.c. NE PAS UPDATE l'order : reste en
+        // cancelled+payment_failed pour permettre un retry de la résurrection
+        // après remédiation Stripe.
         console.error(
           `[WEBHOOK_SUCCEEDED_REFUND_FAILED] order=${orderId} pi=${paymentIntent.id} blocked=${rpcResult} error=${(refundErr as Error).message}`,
         );
+        // T-102.2.b — double écriture refund_incidents + audit_logs (helper
+        // fail-safe : ne throw pas, retourne null en cas d'échec write).
+        const classified = classifyRefundError(refundErr);
+        await recordRefundAttempt({
+          orderId,
+          kind: "revival",
+          paymentIntentId: paymentIntent.id,
+          consumerId,
+          blockedReason: rpcResult,
+          outcome: "failed",
+          classified,
+        });
         await logPaymentEvent({
           eventType: "order_revival_refund_failed",
           userId: consumerId,

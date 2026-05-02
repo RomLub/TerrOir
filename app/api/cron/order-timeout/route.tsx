@@ -3,6 +3,8 @@ import { assertCronAuth } from "@/lib/cron/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
 import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
+import { classifyRefundError } from "@/lib/refund-incidents/classify-error";
+import { recordRefundAttempt } from "@/lib/refund-incidents/record-refund-attempt";
 import { revalidatePublicStats } from "@/lib/stats/revalidate";
 import {
   assertTransition,
@@ -104,8 +106,20 @@ export async function POST(request: Request) {
           refundEmitted = true;
         } catch (e) {
           refundError = (e as Error).message;
-          // Instrumentation T-107 : audit_log forensique pour permettre la
-          // détection background par le cron retry T-412 (3 paths refund).
+          // T-102.2.b — double écriture refund_incidents + audit_logs (helper
+          // fail-safe : ne throw pas, retourne null en cas d'échec write).
+          const classified = classifyRefundError(e);
+          await recordRefundAttempt({
+            orderId: order.id,
+            kind: "timeout",
+            paymentIntentId: order.stripe_payment_intent_id,
+            consumerId: order.consumer_id,
+            blockedReason: null,
+            outcome: "failed",
+            classified,
+          });
+          // T-107 audit_log forensique conservé en parallèle (décision T-102.1
+          // « hybride » : audit_logs reste source forensique RGPD/PCI).
           await logPaymentEvent({
             eventType: "order_timeout_refund_failed",
             userId: order.consumer_id,

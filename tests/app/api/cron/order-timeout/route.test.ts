@@ -38,6 +38,11 @@ vi.mock("@/lib/audit-logs/log-payment-event", () => ({
   logPaymentEvent: vi.fn(),
 }));
 
+// T-102.2.b — mock du helper refund-incidents (réel testé séparément).
+vi.mock("@/lib/refund-incidents/record-refund-attempt", () => ({
+  recordRefundAttempt: vi.fn(),
+}));
+
 // T-100 : mock partial de stateMachine pour pouvoir forcer assertTransition
 // a throw dans le test T-100-C (transition refusee). Par defaut delegate a
 // l'implementation reelle pour ne pas casser les tests existants — pattern
@@ -78,6 +83,7 @@ import { stripe } from "@/lib/stripe/server";
 import { sendTemplate } from "@/lib/resend/send";
 import { revalidateTag } from "next/cache";
 import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
+import { recordRefundAttempt } from "@/lib/refund-incidents/record-refund-attempt";
 
 // =============================================================================
 // Mock Supabase admin — chaque appel `from(table)` retourne un builder neuf.
@@ -239,6 +245,9 @@ beforeEach(() => {
 
   vi.mocked(logPaymentEvent).mockReset();
   vi.mocked(logPaymentEvent).mockResolvedValue(undefined);
+
+  vi.mocked(recordRefundAttempt).mockReset();
+  vi.mocked(recordRefundAttempt).mockResolvedValue(null);
 
   consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 });
@@ -700,9 +709,24 @@ describe("POST /api/cron/order-timeout — T-107 audit log refund failed", () =>
         refund_error: "card_declined",
       },
     });
+
+    // T-102.2.b — recordRefundAttempt appelée en parallèle (double écriture).
+    expect(vi.mocked(recordRefundAttempt)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(recordRefundAttempt)).toHaveBeenCalledWith({
+      orderId: "order-T1",
+      kind: "timeout",
+      paymentIntentId: "pi_t1",
+      consumerId: "consumer-order-T1",
+      blockedReason: null,
+      outcome: "failed",
+      classified: expect.objectContaining({
+        category: "unknown",
+        message: "card_declined",
+      }),
+    });
   });
 
-  it("T2 Stripe refund OK → logPaymentEvent JAMAIS appelé (pas de log nominal)", async () => {
+  it("T2 Stripe refund OK → logPaymentEvent + recordRefundAttempt JAMAIS appelés (pas de log nominal)", async () => {
     const order = makeOrder({ id: "order-T2", paymentIntent: "pi_t2" });
     const { client } = makeSupabase({
       selectOrders: { data: [order], error: null },
@@ -712,6 +736,8 @@ describe("POST /api/cron/order-timeout — T-107 audit log refund failed", () =>
     await POST(makeRequest({ auth: "Bearer test-secret" }));
 
     expect(vi.mocked(logPaymentEvent)).not.toHaveBeenCalled();
+    // T-102.2.b — pas d'incident sur succès.
+    expect(vi.mocked(recordRefundAttempt)).not.toHaveBeenCalled();
   });
 
   it("T3 order sans payment_intent → logPaymentEvent JAMAIS appelé (pas de refund tenté)", async () => {
@@ -747,6 +773,20 @@ describe("POST /api/cron/order-timeout — T-107 audit log refund failed", () =>
         metadata: expect.objectContaining({
           order_id: "order-ko",
           refund_error: "network_timeout",
+        }),
+      }),
+    );
+
+    // T-102.2.b — recordRefundAttempt appelée 1 fois sur l'order KO uniquement.
+    expect(vi.mocked(recordRefundAttempt)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(recordRefundAttempt)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderId: "order-ko",
+        kind: "timeout",
+        consumerId: "consumer-order-ko",
+        outcome: "failed",
+        classified: expect.objectContaining({
+          message: "network_timeout",
         }),
       }),
     );
