@@ -923,7 +923,10 @@ describe("J. T-081 audit log cluster admin_invite_*", () => {
           "admin_invite_draft_resend",
       );
     expect(draftCall).toBeDefined();
-    expect(draftCall![0]).toMatchObject({
+    // Strict equality (toEqual) sur le payload complet — pas toMatchObject :
+    // si un champ est ajouté/retiré/renommé silencieusement par le helper
+    // logAdminInviteEvent, le test casse au lieu de tolérer la dérive.
+    expect(draftCall![0]).toEqual({
       eventType: "admin_invite_draft_resend",
       userId: "admin-1",
       metadata: {
