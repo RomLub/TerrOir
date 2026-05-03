@@ -195,6 +195,59 @@ describe("DistanceWidget — disclosure 3 états (T-240)", () => {
     expect(container.querySelector("button")).toBeNull();
   });
 
+  it("sessionStorage corrompu : fallback silencieux sur état compact 'Voir la distance'", () => {
+    // Verrou contre la classe d'incidents "donnée tierce malformée écrase
+    // notre clé de session" : un autre script de l'origine, une extension
+    // navigateur, ou simplement un dev qui a édité manuellement le storage
+    // ne doit JAMAIS planter le mount du widget. Pour chacune des entrées
+    // ci-dessous, on attend strictement le même rendu que l'état (a) :
+    // bouton compact "Voir la distance jusqu'à toi", pas de détail, pas
+    // d'erreur affichée. Cf. round 3 comité review (point 7).
+    const corrupted: Array<[string, string]> = [
+      ["JSON invalide", "not-a-json{"],
+      ["lat manquante", JSON.stringify({ lng: 2.35, source: "postal" })],
+      ["lat string", JSON.stringify({ lat: "48.85", lng: 2.35, source: "postal" })],
+      ["lat NaN", JSON.stringify({ lat: Number.NaN, lng: 2.35, source: "postal" })],
+      [
+        "lat hors plage WGS84",
+        JSON.stringify({ lat: 999, lng: 2.35, source: "postal" }),
+      ],
+      [
+        "lng hors plage WGS84",
+        JSON.stringify({ lat: 48.85, lng: 999, source: "postal" }),
+      ],
+      [
+        "source inconnue",
+        JSON.stringify({ lat: 48.85, lng: 2.35, source: "evil" }),
+      ],
+    ];
+    for (const [scenario, payload] of corrupted) {
+      window.sessionStorage.clear();
+      window.sessionStorage.setItem(SESSION_KEY, payload);
+      // Re-monte un container neuf à chaque itération pour isoler les états.
+      act(() => root.unmount());
+      container.remove();
+      container = document.createElement("div");
+      document.body.appendChild(container);
+      root = createRoot(container);
+      render(
+        <DistanceWidget
+          producerLat={PRODUCER_LAT}
+          producerLng={PRODUCER_LNG}
+          producerName="Ferme Test"
+        />,
+      );
+      const buttons = Array.from(container.querySelectorAll("button"));
+      expect(buttons.length, scenario).toBe(1);
+      expect(buttons[0]!.textContent, scenario).toContain(
+        "Voir la distance jusqu'à toi",
+      );
+      // Aucune distance fantôme, aucune alerte parasitée par le payload.
+      expect(container.textContent, scenario).not.toMatch(/km à vol d'oiseau/);
+      expect(container.querySelector('[role="alert"]'), scenario).toBeNull();
+    }
+  });
+
   it("(c) déployé avec session pré-existante : DistanceResult + comparaison circuit long", () => {
     window.sessionStorage.setItem(
       SESSION_KEY,
