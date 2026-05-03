@@ -25,13 +25,19 @@ test("T-200 fiche producteur : bloc démarche présent et widget distance foncti
   );
   await expect(inviteCopy).toBeVisible();
 
-  // Mention RGPD (art. 13 RGPD : finalité + durée + sous-traitant tiers) au
-  // point de collecte — décision comité T-200 rounds 1 + 2 (enrichie r2).
+  // Mention RGPD au point de collecte (art. 13 RGPD) — wording r3 : finalité +
+  // facultatif + durée + sous-traitant tiers + renvoi politique de conf.
   await expect(
     block.getByText(/uniquement pour calculer la distance jusqu'à la ferme/i),
   ).toBeVisible();
   await expect(
-    block.getByText(/session uniquement, non conservée/i),
+    block.getByText(/saisie facultative/i),
+  ).toBeVisible();
+  await expect(
+    block.getByText(/jamais envoyée ni enregistrée sur nos serveurs/i),
+  ).toBeVisible();
+  await expect(
+    block.getByText(/politique de confidentialité/i),
   ).toBeVisible();
 
   const geolocBtn = block.getByRole("button", { name: /utiliser ma position/i });
@@ -46,6 +52,13 @@ test("T-200 fiche producteur : bloc démarche présent et widget distance foncti
     timeout: 10_000,
   });
   await expect(block.getByText(/en moyenne en circuit long/i)).toBeVisible();
+  // Verrou r3 : assertion explicite sur le chiffre comparatif (pas seulement
+  // le label) — sinon le smoke passerait même si la référence affichée
+  // changeait silencieusement. Cf. brief "smoke qui passe parce que rien ne
+  // crashe est un test qui passe pour de mauvaises raisons". Le `~` est dans
+  // un nœud texte séparé en JSX, on cible donc le chiffre + l'unité qui sont
+  // dans le même <span>.
+  await expect(block.getByText(/1500\s*km/i).first()).toBeVisible();
   // Label de référence reformulé en "Estimation indicative" (pas de citation
   // ADEME nominative non sourçable) — décision comité T-200 round 2,
   // sécurisation juridique avant review avocat T-003/T-206.

@@ -238,16 +238,25 @@ function InvitePlaceholder({ producerName }: { producerName: string }) {
 }
 
 function PrivacyNote() {
-  // Information RGPD au point de collecte (art. 13 RGPD) : finalité explicite
-  // (calcul de distance), durée de conservation (session navigateur uniquement,
-  // non persistée côté serveur), et sous-traitant tiers (api-adresse.data.gouv.fr,
-  // service public). Wording enrichi suite au comité review T-200 round 2.
+  // Information RGPD au point de collecte (art. 13 RGPD) — wording r3 :
+  //   (a) finalité explicite : calcul de distance.
+  //   (b) caractère facultatif : la fiche reste accessible sans saisie.
+  //   (c) durée de conservation : session navigateur uniquement, jamais
+  //       persistée ni loggée côté serveur (cf. geocode-postal.ts qui
+  //       attaque api-adresse.data.gouv.fr en direct depuis le navigateur).
+  //   (d) sous-traitant tiers nommé : api-adresse.data.gouv.fr (service public).
+  //   (e) renvoi vers la politique de confidentialité globale (non liée tant
+  //       que T-041 n'est pas livrée — wording sans href mort, à upgrader en
+  //       <Link> au moment du go-live).
   return (
     <p className="mt-4 text-[11px] leading-[1.5] text-terroir-ink/[0.55]">
-      Ta position est utilisée uniquement pour calculer la distance jusqu&apos;à
-      la ferme. Elle reste dans ton navigateur (session uniquement, non
-      conservée), jamais envoyée à nos serveurs. La saisie d&apos;un code postal
-      interroge le service public api-adresse.data.gouv.fr.
+      Saisie facultative — la fiche du producteur reste consultable sans. Ta
+      position est utilisée uniquement pour calculer la distance jusqu&apos;à
+      la ferme : elle reste dans ton navigateur (session uniquement, jamais
+      envoyée ni enregistrée sur nos serveurs). La saisie d&apos;un code postal
+      interroge le service public api-adresse.data.gouv.fr. Pour le détail des
+      traitements, voir notre politique de confidentialité (à venir avant
+      ouverture publique).
     </p>
   );
 }
