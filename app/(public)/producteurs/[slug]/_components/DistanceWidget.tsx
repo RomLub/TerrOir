@@ -2,7 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { haversineKm } from "@/lib/geo/haversine";
-import { GMS_DISTANCE_KM_REFERENCE } from "@/lib/producers/score-carbone-enums";
+import {
+  geocodePostalCode,
+  GEOCODE_POSTAL_ERROR_MESSAGES,
+} from "@/lib/geo/geocode-postal";
+import {
+  GMS_DISTANCE_KM_REFERENCE,
+  GMS_DISTANCE_SOURCE_LABEL,
+} from "@/lib/producers/score-carbone-enums";
 
 // Persistance volontairement réduite à sessionStorage : aucune donnée
 // ne survit à la fermeture de l'onglet (RGPD light, pas de cookie ni DB).
@@ -74,6 +81,8 @@ export function DistanceWidget({
   }, [session, producerLat, producerLng]);
 
   // Producer sans coords : aucune comparaison possible, on n'affiche rien.
+  // ScoreCarbonBlock gère déjà la condition pour ne pas afficher le titre
+  // orphelin "Distance ferme → toi" — defense in depth ici.
   if (producerLat === null || producerLng === null) return null;
 
   // Avant le mount, on rend l'état d'invitation pour éviter un flash si
@@ -119,35 +128,21 @@ export function DistanceWidget({
   const handlePostal = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    const cp = postalInput.trim();
-    if (!/^\d{5}$/.test(cp)) {
-      setError("Code postal invalide (5 chiffres attendus).");
+    setPending(true);
+    const result = await geocodePostalCode(postalInput);
+    setPending(false);
+    if (!result.ok) {
+      setError(GEOCODE_POSTAL_ERROR_MESSAGES[result.code]);
       return;
     }
-    setPending(true);
-    try {
-      const url = `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(cp)}&type=municipality&limit=1`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      const json = (await res.json()) as {
-        features?: Array<{ geometry?: { coordinates?: [number, number] } }>;
-      };
-      const coords = json.features?.[0]?.geometry?.coordinates;
-      if (!coords || coords.length !== 2) {
-        setError("Code postal introuvable.");
-        setPending(false);
-        return;
-      }
-      const [lng, lat] = coords;
-      const next: GeoSession = { lat, lng, source: "postal" };
-      writeSession(next);
-      setSession(next);
-      setPostalInput("");
-    } catch {
-      setError("Impossible de géocoder ce code postal pour le moment.");
-    } finally {
-      setPending(false);
-    }
+    const next: GeoSession = {
+      lat: result.lat,
+      lng: result.lng,
+      source: "postal",
+    };
+    writeSession(next);
+    setSession(next);
+    setPostalInput("");
   };
 
   const handleReset = () => {
@@ -170,7 +165,7 @@ export function DistanceWidget({
     <div className="rounded-xl border border-terroir-border bg-white p-5">
       <p className="text-[14px] leading-[1.55] text-terroir-ink/[0.78]">
         Indique ta position pour voir la distance jusqu&apos;à toi (à vol
-        d&apos;oiseau, aucune donnée stockée).
+        d&apos;oiseau).
       </p>
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -178,7 +173,8 @@ export function DistanceWidget({
           type="button"
           onClick={handleGeoloc}
           disabled={pending}
-          className="inline-flex h-10 items-center gap-2 rounded-lg bg-green-900 px-4 text-[13px] font-semibold text-white hover:bg-green-700 disabled:opacity-60"
+          // h-11 = 44px : tap target a11y (Apple HIG / Android Material).
+          className="inline-flex h-11 items-center gap-2 rounded-lg bg-green-900 px-4 text-[13px] font-semibold text-white hover:bg-green-700 disabled:opacity-60"
         >
           <span aria-hidden>📍</span>
           {pending ? "Recherche…" : "Utiliser ma position"}
@@ -196,12 +192,12 @@ export function DistanceWidget({
             placeholder="Code postal"
             value={postalInput}
             onChange={(e) => setPostalInput(e.target.value)}
-            className="h-10 w-32 rounded-lg border border-terroir-border bg-white px-3 text-[14px] text-terroir-ink placeholder:text-terroir-muted focus:outline-none focus:ring-2 focus:ring-green-700/40"
+            className="h-11 w-32 rounded-lg border border-terroir-border bg-white px-3 text-[14px] text-terroir-ink placeholder:text-terroir-muted focus:outline-none focus:ring-2 focus:ring-green-700/40"
           />
           <button
             type="submit"
             disabled={pending}
-            className="inline-flex h-10 items-center rounded-lg border border-terroir-border bg-white px-3 text-[13px] font-semibold text-green-900 hover:bg-green-100/60 disabled:opacity-60"
+            className="inline-flex h-11 items-center rounded-lg border border-terroir-border bg-white px-3 text-[13px] font-semibold text-green-900 hover:bg-green-100/60 disabled:opacity-60"
           >
             OK
           </button>
@@ -216,6 +212,8 @@ export function DistanceWidget({
           {error}
         </p>
       )}
+
+      <PrivacyNote />
     </div>
   );
 }
@@ -225,9 +223,24 @@ function InvitePlaceholder() {
     <div className="rounded-xl border border-terroir-border bg-white p-5">
       <p className="text-[14px] leading-[1.55] text-terroir-ink/[0.78]">
         Indique ta position pour voir la distance jusqu&apos;à toi (à vol
-        d&apos;oiseau, aucune donnée stockée).
+        d&apos;oiseau).
       </p>
+      <PrivacyNote />
     </div>
+  );
+}
+
+function PrivacyNote() {
+  // Information RGPD au point de collecte (art. 13 RGPD) — la donnée n'est
+  // pas persistée côté serveur, mais l'obligation d'information demeure dès
+  // la collecte. Mentionne aussi le sous-traitant tiers (api-adresse.data.gouv.fr,
+  // service public). Décision comité review T-200 round 1.
+  return (
+    <p className="mt-4 text-[11px] leading-[1.5] text-terroir-ink/[0.55]">
+      Ta position reste dans ton navigateur (session uniquement), jamais
+      envoyée à nos serveurs. La saisie d&apos;un code postal interroge le
+      service public api-adresse.data.gouv.fr.
+    </p>
   );
 }
 
@@ -269,6 +282,9 @@ function DistanceResult({
             en moyenne en circuit long (importation, centrale d&apos;achat,
             entrepôts).
           </p>
+          <p className="mt-1 text-[11px] leading-[1.4] text-terroir-ink/[0.45]">
+            {GMS_DISTANCE_SOURCE_LABEL}
+          </p>
         </div>
       </div>
 
@@ -289,10 +305,14 @@ function DistanceResult({
       <button
         type="button"
         onClick={onReset}
-        className="mt-4 text-[12px] text-terroir-ink/[0.55] underline-offset-2 hover:text-green-900 hover:underline"
+        // h-9 = 36px : action secondaire textuelle, pas de tap target
+        // critique. Le bouton primaire (Utiliser ma position) reste à 44px.
+        className="mt-4 inline-flex h-9 items-center text-[12px] text-terroir-ink/[0.55] underline-offset-2 hover:text-green-900 hover:underline"
       >
         Changer ma position
       </button>
+
+      <PrivacyNote />
     </div>
   );
 }

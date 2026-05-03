@@ -23,6 +23,11 @@ export interface ProducerPublic {
   commune: string | null;
   code_postal: string | null;
   adresse: string | null;
+  // Coordonnées floutées (arrondies à 2 décimales) pour le widget distance
+  // de la fiche publique. Précision ~1 km (suffisant pour un affichage à
+  // vol d'oiseau, masque l'adresse personnelle du producteur — souvent =
+  // domicile en élevage fermier). Les coordonnées brutes ne quittent
+  // jamais le serveur via ce helper. Cf. roundCoord ci-dessous.
   latitude: number | null;
   longitude: number | null;
   photo_principale: string | null;
@@ -46,10 +51,22 @@ export interface ProducerPublic {
 const PUBLIC_COLUMNS =
   "id, slug, nom_exploitation, commune, code_postal, adresse, latitude, longitude, photo_principale, photos, description, histoire, annee_creation, generations, especes, labels, badge_stock_score, badge_confirmation_score, badge_annulation_score, note_moyenne, nb_avis, mode_elevage, alimentation, densite_animale, users:user_id(prenom)";
 
+// Floute les coordonnées producteur avant exposition côté consumer.
+// 2 décimales = ~1.1 km de précision en latitude, ~750 m en longitude à
+// 47° (Sarthe). Compromis entre :
+//   - widget distance utile (erreur d'arrondi << GMS_DISTANCE_KM_REFERENCE),
+//   - non-identification de l'adresse personnelle du producteur (domicile
+//     en élevage fermier dans la majorité des cas) — décision comité T-200.
+function roundCoord(v: number | null): number | null {
+  if (v === null || !Number.isFinite(v)) return null;
+  return Math.round(v * 100) / 100;
+}
+
 // Helper canonical pour fetch un producer visible publiquement par son slug.
 // Garanties :
 //   - statut = 'public' (filter RLS équivalent + defense in depth applicative)
 //   - deleted_at IS NULL (exclusion des producers anonymisés via RGPD)
+//   - latitude/longitude floutées (cf. roundCoord) avant retour
 //
 // Retourne null si le slug ne matche rien OU si le producer existe mais n'est
 // pas public. L'appelant décide ensuite (notFound, redirect, message).
@@ -85,5 +102,10 @@ export async function fetchPublicProducerBySlug(
   const usersField = Array.isArray(raw.users)
     ? (raw.users[0] ?? null)
     : (raw.users ?? null);
-  return { ...raw, users: usersField };
+  return {
+    ...raw,
+    users: usersField,
+    latitude: roundCoord(raw.latitude),
+    longitude: roundCoord(raw.longitude),
+  };
 }
