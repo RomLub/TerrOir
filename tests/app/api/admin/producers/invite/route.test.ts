@@ -569,7 +569,10 @@ describe("H. T-310 audit log invitation_created", () => {
     pushResp("users", "select", { data: null, error: null });
     const res = await POST(makeRequest(VALID_BODY));
     expect(res.status).toBe(200);
-    expect(logAuthEvent).toHaveBeenCalledTimes(1);
+    // T-081 : sur happy path, 2 events au total (invitation_created + admin_invite_sent
+    // post-sendTemplate succès). Assertion ciblée sur le call invitation_created
+    // pour rester compatible avec T-081 sans dupliquer la vérification du sent
+    // (couvert par describe J ci-dessous).
     expect(logAuthEvent).toHaveBeenCalledWith({
       eventType: "invitation_created",
       userId: "admin-1",
@@ -579,6 +582,13 @@ describe("H. T-310 audit log invitation_created", () => {
         token_prefix: expect.stringMatching(/^[a-f0-9]{8}$/),
       },
     });
+    const createdCalls = vi
+      .mocked(logAuthEvent)
+      .mock.calls.filter(
+        (c) =>
+          (c[0] as { eventType: string }).eventType === "invitation_created",
+      );
+    expect(createdCalls).toHaveLength(1);
   });
 
   it("H2 insert producer_invitations échoue → 500 + logAuthEvent JAMAIS appelé", async () => {
@@ -619,11 +629,15 @@ describe("H. T-310 audit log invitation_created", () => {
     expect(logAuthEvent).not.toHaveBeenCalled();
   });
 
-  it("H5 pre-check 409 (admin existant) → logAuthEvent JAMAIS appelé", async () => {
+  it("H5 pre-check 409 (admin existant) → invitation_created JAMAIS appelé (l'admin_invite_blocked_admin émis est testé en J4)", async () => {
     pushResp("admin_users", "select", { data: { id: "admin-9" }, error: null });
     const res = await POST(makeRequest(VALID_BODY));
     expect(res.status).toBe(409);
-    expect(logAuthEvent).not.toHaveBeenCalled();
+    // T-081 : le 409 émet désormais admin_invite_blocked_admin (cf. J4),
+    // mais invitation_created reste exclu (le bail-out 409 sort avant l'INSERT).
+    expect(logAuthEvent).not.toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "invitation_created" }),
+    );
   });
 });
 
