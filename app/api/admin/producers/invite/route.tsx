@@ -58,6 +58,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: adminCheckError.message }, { status: 500 });
   }
   if (existingAdmin) {
+    // T-081 — audit log forensique : un admin a tenté d'inviter un email
+    // qui correspond déjà à un compte administrateur. userId = admin
+    // tentant l'invitation (session.id), invitation_email en clair pour
+    // permettre l'investigation (l'admin a saisi l'email volontairement,
+    // pas une donnée user-side).
+    await logAuthEvent({
+      eventType: "admin_invite_blocked_admin",
+      userId: session.id,
+      metadata: { invitation_email: input.email },
+    });
     return NextResponse.json(
       { error: "Impossible d'inviter un administrateur comme producteur" },
       { status: 409 },
@@ -105,6 +115,22 @@ export async function POST(request: Request) {
       );
     }
     if (existingProducer?.statut !== "draft") {
+      // T-081 — audit log forensique : un admin a tenté d'inviter un email
+      // qui correspond déjà à un producteur inscrit (statut hors 'draft').
+      // Distinct de admin_invite_blocked_admin (cluster admin_users) — celui-ci
+      // cible la table users + producers. metadata.statut permet de distinguer
+      // les variantes (pending/active/public/suspended/deleted) sans nouveau
+      // event_type (sémantique stable côté query, granularité côté metadata).
+      // Le 409 'draft_resend_confirm_required' n'émet PAS d'event : ce n'est
+      // pas un blocage strict, juste une demande de confirmation UX.
+      await logAuthEvent({
+        eventType: "admin_invite_blocked_producer",
+        userId: session.id,
+        metadata: {
+          invitation_email: input.email,
+          statut: existingProducer?.statut ?? null,
+        },
+      });
       return NextResponse.json(
         { error: "Ce producteur est déjà inscrit" },
         { status: 409 },
