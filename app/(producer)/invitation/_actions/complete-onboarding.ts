@@ -8,6 +8,10 @@ import { invitationBusinessInfoSchema } from "@/lib/auth/validators";
 import { maskEmail } from "@/lib/rgpd/mask-email";
 import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 import { logAdminInviteEvent } from "@/lib/audit-logs/log-admin-invite-event";
+import {
+  computeDeclarationVeraciteUpdate,
+  type IndicateursSnapshot,
+} from "@/lib/producers/declaration-veracite";
 
 // errorField : path Zod du premier issue, exposé pour permettre à l'UI
 // d'ancrer le message à côté du champ fautif (cf. T-200 r6 — case
@@ -142,6 +146,32 @@ export async function completeOnboardingAction(
     scoreCarboneFields.densite_animale = parsed.data.densite_animale;
   }
 
+  // T-241 : on lit l'état actuel des 3 enums avant l'UPDATE pour ne ré-écrire
+  // les colonnes declaration_indicateurs_* QUE si au moins un enum change. Une
+  // édition qui ne touche que des champs hors-enum (nom de la ferme, adresse…)
+  // ne doit pas écraser le timestamp d'engagement d'origine.
+  const { data: currentProducer } = await admin
+    .from("producers")
+    .select("mode_elevage, alimentation, densite_animale")
+    .eq("user_id", session.id)
+    .maybeSingle();
+
+  const currentSnapshot: IndicateursSnapshot = {
+    mode_elevage: (currentProducer?.mode_elevage as string | null) ?? null,
+    alimentation: (currentProducer?.alimentation as string | null) ?? null,
+    densite_animale: (currentProducer?.densite_animale as string | null) ?? null,
+  };
+  const nextSnapshot: IndicateursSnapshot = {
+    mode_elevage: parsed.data.mode_elevage ?? null,
+    alimentation: parsed.data.alimentation ?? null,
+    densite_animale: parsed.data.densite_animale ?? null,
+  };
+  const declarationFields = computeDeclarationVeraciteUpdate({
+    current: currentSnapshot,
+    next: nextSnapshot,
+    declarationCochee: parsed.data.declaration_indicateurs_veracite,
+  });
+
   // TODO Phase 3 finale : retirer prenom_affichage de cet UPDATE après le
   // DROP COLUMN producers.prenom_affichage. Source de vérité côté lecture
   // déjà migrée vers users.prenom (cf. getProducerDisplayName).
@@ -161,6 +191,7 @@ export async function completeOnboardingAction(
           ? parsed.data.type_production_precision
           : null,
       ...scoreCarboneFields,
+      ...(declarationFields ?? {}),
       statut: "pending",
     })
     .eq("user_id", session.id);
