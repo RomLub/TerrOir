@@ -59,6 +59,7 @@
     "dotenv": "^17.4.2",
     "eslint": "^8.57.1",
     "eslint-config-next": "14.2.15",
+    "jsdom": "^29.1.1",
     "postcss": "^8.4.47",
     "sharp": "^0.34.5",
     "supabase": "^2.92.1",
