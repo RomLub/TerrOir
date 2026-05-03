@@ -15,6 +15,11 @@ import {
 // ne survit à la fermeture de l'onglet (RGPD light, pas de cookie ni DB).
 const SESSION_KEY = "terroir_geo_session";
 
+// Validation regex code postal côté composant : defense in depth en plus
+// de la validation côté lib (geocodePostalCode). Bloque le clic "OK" tant
+// que le format n'est pas exactement 5 chiffres. Décision comité review T-200 r2.
+const POSTAL_CODE_REGEX = /^\d{5}$/;
+
 type GeoSource = "geoloc" | "postal";
 type GeoSession = { lat: number; lng: number; source: GeoSource };
 
@@ -88,7 +93,7 @@ export function DistanceWidget({
   // Avant le mount, on rend l'état d'invitation pour éviter un flash si
   // sessionStorage contenait une position. C'est cohérent avec un SSR vide.
   if (!mounted) {
-    return <InvitePlaceholder />;
+    return <InvitePlaceholder producerName={producerName} />;
   }
 
   const handleGeoloc = () => {
@@ -161,11 +166,13 @@ export function DistanceWidget({
     );
   }
 
+  const isPostalValid = POSTAL_CODE_REGEX.test(postalInput);
+
   return (
     <div className="rounded-xl border border-terroir-border bg-white p-5">
       <p className="text-[14px] leading-[1.55] text-terroir-ink/[0.78]">
-        Indique ta position pour voir la distance jusqu&apos;à toi (à vol
-        d&apos;oiseau).
+        Indique ta position pour découvrir la distance à vol d&apos;oiseau
+        jusqu&apos;à {producerName}.
       </p>
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -196,7 +203,7 @@ export function DistanceWidget({
           />
           <button
             type="submit"
-            disabled={pending}
+            disabled={pending || !isPostalValid}
             className="inline-flex h-11 items-center rounded-lg border border-terroir-border bg-white px-3 text-[13px] font-semibold text-green-900 hover:bg-green-100/60 disabled:opacity-60"
           >
             OK
@@ -218,12 +225,12 @@ export function DistanceWidget({
   );
 }
 
-function InvitePlaceholder() {
+function InvitePlaceholder({ producerName }: { producerName: string }) {
   return (
     <div className="rounded-xl border border-terroir-border bg-white p-5">
       <p className="text-[14px] leading-[1.55] text-terroir-ink/[0.78]">
-        Indique ta position pour voir la distance jusqu&apos;à toi (à vol
-        d&apos;oiseau).
+        Indique ta position pour découvrir la distance à vol d&apos;oiseau
+        jusqu&apos;à {producerName}.
       </p>
       <PrivacyNote />
     </div>
@@ -231,15 +238,16 @@ function InvitePlaceholder() {
 }
 
 function PrivacyNote() {
-  // Information RGPD au point de collecte (art. 13 RGPD) — la donnée n'est
-  // pas persistée côté serveur, mais l'obligation d'information demeure dès
-  // la collecte. Mentionne aussi le sous-traitant tiers (api-adresse.data.gouv.fr,
-  // service public). Décision comité review T-200 round 1.
+  // Information RGPD au point de collecte (art. 13 RGPD) : finalité explicite
+  // (calcul de distance), durée de conservation (session navigateur uniquement,
+  // non persistée côté serveur), et sous-traitant tiers (api-adresse.data.gouv.fr,
+  // service public). Wording enrichi suite au comité review T-200 round 2.
   return (
     <p className="mt-4 text-[11px] leading-[1.5] text-terroir-ink/[0.55]">
-      Ta position reste dans ton navigateur (session uniquement), jamais
-      envoyée à nos serveurs. La saisie d&apos;un code postal interroge le
-      service public api-adresse.data.gouv.fr.
+      Ta position est utilisée uniquement pour calculer la distance jusqu&apos;à
+      la ferme. Elle reste dans ton navigateur (session uniquement, non
+      conservée), jamais envoyée à nos serveurs. La saisie d&apos;un code postal
+      interroge le service public api-adresse.data.gouv.fr.
     </p>
   );
 }
