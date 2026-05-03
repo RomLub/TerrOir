@@ -4,6 +4,7 @@ import type {
   Alimentation,
   DensiteAnimale,
 } from "@/lib/producers/score-carbone-enums";
+import { roundCoord } from "@/lib/producers/coords";
 
 // Fields publics exposés côté consumer. Exclut les colonnes internes
 // (stripe_account_id, stripe_cleanup_pending, abonnement_*, siret,
@@ -50,17 +51,6 @@ export interface ProducerPublic {
 
 const PUBLIC_COLUMNS =
   "id, slug, nom_exploitation, commune, code_postal, adresse, latitude, longitude, photo_principale, photos, description, histoire, annee_creation, generations, especes, labels, badge_stock_score, badge_confirmation_score, badge_annulation_score, note_moyenne, nb_avis, mode_elevage, alimentation, densite_animale, users:user_id(prenom)";
-
-// Floute les coordonnées producteur avant exposition côté consumer.
-// 2 décimales = ~1.1 km de précision en latitude, ~750 m en longitude à
-// 47° (Sarthe). Compromis entre :
-//   - widget distance utile (erreur d'arrondi << GMS_DISTANCE_KM_REFERENCE),
-//   - non-identification de l'adresse personnelle du producteur (domicile
-//     en élevage fermier dans la majorité des cas) — décision comité T-200.
-function roundCoord(v: number | null): number | null {
-  if (v === null || !Number.isFinite(v)) return null;
-  return Math.round(v * 100) / 100;
-}
 
 // Helper canonical pour fetch un producer visible publiquement par son slug.
 // Garanties :
