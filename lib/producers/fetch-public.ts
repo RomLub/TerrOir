@@ -1,4 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type {
+  ModeElevage,
+  Alimentation,
+  DensiteAnimale,
+} from "@/lib/producers/score-carbone-enums";
 
 // Fields publics exposés côté consumer. Exclut les colonnes internes
 // (stripe_account_id, stripe_cleanup_pending, abonnement_*, siret,
@@ -33,10 +38,13 @@ export interface ProducerPublic {
   badge_annulation_score: number | null;
   note_moyenne: number | null;
   nb_avis: number | null;
+  mode_elevage: ModeElevage | null;
+  alimentation: Alimentation | null;
+  densite_animale: DensiteAnimale | null;
 }
 
 const PUBLIC_COLUMNS =
-  "id, slug, nom_exploitation, commune, code_postal, adresse, latitude, longitude, photo_principale, photos, description, histoire, annee_creation, generations, especes, labels, badge_stock_score, badge_confirmation_score, badge_annulation_score, note_moyenne, nb_avis, users:user_id(prenom)";
+  "id, slug, nom_exploitation, commune, code_postal, adresse, latitude, longitude, photo_principale, photos, description, histoire, annee_creation, generations, especes, labels, badge_stock_score, badge_confirmation_score, badge_annulation_score, note_moyenne, nb_avis, mode_elevage, alimentation, densite_animale, users:user_id(prenom)";
 
 // Helper canonical pour fetch un producer visible publiquement par son slug.
 // Garanties :

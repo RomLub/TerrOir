@@ -83,6 +83,9 @@ function makeProducer(overrides: Partial<ProducerPublic> = {}): ProducerPublic {
     badge_annulation_score: null,
     note_moyenne: null,
     nb_avis: null,
+    mode_elevage: null,
+    alimentation: null,
+    densite_animale: null,
     ...overrides,
   };
 }
@@ -203,6 +206,25 @@ describe("fetchPublicProducerBySlug — défense en profondeur (sécurité)", ()
     expect(cols).toContain("id");
     expect(cols).toContain("slug");
     expect(cols).toContain("nom_exploitation");
+  });
+
+  it("inclut les 3 colonnes score carbone (T-200) dans le SELECT", async () => {
+    // Smoke test : les 3 colonnes catégorielles consommées par
+    // ScoreCarbonBlock sur la fiche producteur publique doivent figurer
+    // dans le SELECT public.
+    const { client, captured } = makeSupabase({
+      data: makeProducer(),
+      error: null,
+    });
+
+    await fetchPublicProducerBySlug(client, "ferme-bio");
+
+    const cols = captured.select[0] ?? "";
+    expect(cols).toContain("mode_elevage");
+    expect(cols).toContain("alimentation");
+    expect(cols).toContain("densite_animale");
+    expect(cols).toContain("latitude");
+    expect(cols).toContain("longitude");
   });
 
   it("joint users.prenom via la FK user_id pour l'affichage public", async () => {
