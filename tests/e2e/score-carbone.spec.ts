@@ -25,8 +25,9 @@ test("T-200 fiche producteur : bloc démarche présent et widget distance foncti
   );
   await expect(inviteCopy).toBeVisible();
 
-  // Mention RGPD au point de collecte (art. 13 RGPD) — wording r3 : finalité +
-  // facultatif + durée + sous-traitant tiers + renvoi politique de conf.
+  // Mention RGPD au point de collecte (art. 13 RGPD) — wording r4 : finalité +
+  // facultatif + durée + sous-traitant tiers nommé. Le renvoi politique de
+  // confidentialité est retiré tant que la page n'existe pas (T-207).
   await expect(
     block.getByText(/uniquement pour calculer la distance jusqu'à la ferme/i),
   ).toBeVisible();
@@ -37,7 +38,7 @@ test("T-200 fiche producteur : bloc démarche présent et widget distance foncti
     block.getByText(/jamais envoyée ni enregistrée sur nos serveurs/i),
   ).toBeVisible();
   await expect(
-    block.getByText(/politique de confidentialité/i),
+    block.getByText(/api-adresse\.data\.gouv\.fr/i),
   ).toBeVisible();
 
   const geolocBtn = block.getByRole("button", { name: /utiliser ma position/i });
