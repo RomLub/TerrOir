@@ -21,6 +21,11 @@ test("T-200 fiche producteur : bloc démarche présent et widget distance foncti
   const inviteCopy = block.getByText(/Indique ta position pour voir la distance/i);
   await expect(inviteCopy).toBeVisible();
 
+  // Mention RGPD (art. 13) au point de collecte — décision comité T-200 round 1.
+  await expect(
+    block.getByText(/Ta position reste dans ton navigateur/i),
+  ).toBeVisible();
+
   const geolocBtn = block.getByRole("button", { name: /utiliser ma position/i });
   await expect(geolocBtn).toBeVisible();
 
@@ -33,6 +38,8 @@ test("T-200 fiche producteur : bloc démarche présent et widget distance foncti
     timeout: 10_000,
   });
   await expect(block.getByText(/en moyenne en circuit long/i)).toBeVisible();
+  // Source ADEME affichée à côté du chiffre 1500 km — décision comité T-200 round 1.
+  await expect(block.getByText(/source\s*:\s*ad[eé]me/i)).toBeVisible();
   await expect(
     block.getByRole("button", { name: /changer ma position/i }),
   ).toBeVisible();
