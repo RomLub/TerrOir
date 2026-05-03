@@ -96,7 +96,7 @@ export function DistanceWidget({
   // Avant le mount, on rend le bouton compact en état "neutre" pour éviter
   // un flash si sessionStorage contenait une distance. Cohérent avec un SSR vide.
   if (!mounted) {
-    return <CollapsedButton label="Voir la distance jusqu’à toi" disabled />;
+    return <CollapsedButton label="Voir la distance jusqu'à toi" disabled />;
   }
 
   const handleGeoloc = () => {
@@ -165,8 +165,8 @@ export function DistanceWidget({
   if (!expanded) {
     const label =
       distance !== null
-        ? `${distance} km à vol d’oiseau`
-        : "Voir la distance jusqu’à toi";
+        ? `${distance} km à vol d'oiseau`
+        : "Voir la distance jusqu'à toi";
     return (
       <CollapsedButton label={label} onClick={() => setExpanded(true)} />
     );
