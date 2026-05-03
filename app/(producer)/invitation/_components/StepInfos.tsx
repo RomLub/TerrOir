@@ -381,23 +381,47 @@ export function StepInfos({
           ))}
         </fieldset>
 
-        <label className="flex cursor-pointer select-none items-start gap-3 rounded-md border border-amber-200 bg-amber-50/50 p-3">
+        <label
+          className={`flex cursor-pointer select-none items-start gap-3 rounded-md border p-3 ${
+            state.errorField === "declaration_indicateurs_veracite"
+              ? "border-red-500 bg-red-50/50"
+              : "border-amber-200 bg-amber-50/50"
+          }`}
+        >
           <input
             type="checkbox"
             name="declaration_indicateurs_veracite"
+            aria-invalid={
+              state.errorField === "declaration_indicateurs_veracite"
+                ? true
+                : undefined
+            }
+            aria-describedby={
+              state.errorField === "declaration_indicateurs_veracite"
+                ? "declaration-indicateurs-error"
+                : undefined
+            }
             className="mt-1 h-4 w-4 accent-terroir-green-700"
           />
           <span className="text-xs text-gray-700">
             Je certifie que les indicateurs déclarés ci-dessus (mode
             d&apos;élevage, alimentation, densité) correspondent à ma pratique
-            réelle. Je m&apos;engage à les mettre à jour en cas de changement.
-            Cette case est requise uniquement si au moins un indicateur est
-            renseigné ; tu peux laisser le bloc vide.
+            réelle, et je m&apos;engage à les mettre à jour si ça change.
           </span>
         </label>
+        {state.errorField === "declaration_indicateurs_veracite" ? (
+          <p
+            id="declaration-indicateurs-error"
+            role="alert"
+            className="text-sm text-red-700"
+          >
+            {state.error}
+          </p>
+        ) : null}
       </div>
 
-      {state.error ? (
+      {state.error &&
+      state.errorField !== "declaration_indicateurs_veracite" ? (
         <p className="text-sm text-red-700" role="alert">
           {state.error}
         </p>

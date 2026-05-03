@@ -98,7 +98,10 @@ vi.mock("@/lib/audit-logs/log-auth-event", () => ({
 // Import APRÈS les mocks (vi.mock est hoisté par vitest, mais on garde
 // l'ordre lisible). Le path alias `@` → repo root est défini dans
 // vitest.config.ts.
-import { completeOnboardingAction } from "@/app/(producer)/invitation/_actions/complete-onboarding";
+import {
+  completeOnboardingAction,
+  type State,
+} from "@/app/(producer)/invitation/_actions/complete-onboarding";
 import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 
 // --- Helpers --------------------------------------------------------------
@@ -124,7 +127,7 @@ function makeFormData(overrides: Record<string, string> = {}): FormData {
   return fd;
 }
 
-async function runAction(formData: FormData): Promise<{ error?: string } | undefined> {
+async function runAction(formData: FormData): Promise<State | undefined> {
   // Le redirect mocké throw __REDIRECT__ en chemin succès. On l'attrape
   // pour laisser les assertions s'exécuter ; toute autre erreur remonte.
   try {
@@ -565,6 +568,10 @@ describe("completeOnboardingAction — T-200 score carbone & bien-être animal",
 
     expect(res?.error).toBeDefined();
     expect(res?.error).toMatch(/certifie/i);
+    // T-200 r6 — errorField pose le path Zod du premier issue pour permettre
+    // à l'UI d'ancrer la bordure rouge + le message à côté de la case
+    // (au lieu d'une erreur orpheline en bas du formulaire).
+    expect(res?.errorField).toBe("declaration_indicateurs_veracite");
     expect(captured.updates).toEqual([]);
   });
 

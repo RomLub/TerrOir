@@ -9,7 +9,11 @@ import { maskEmail } from "@/lib/rgpd/mask-email";
 import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 import { logAdminInviteEvent } from "@/lib/audit-logs/log-admin-invite-event";
 
-export type State = { error?: string };
+// errorField : path Zod du premier issue, exposé pour permettre à l'UI
+// d'ancrer le message à côté du champ fautif (cf. T-200 r6 — case
+// declaration_indicateurs_veracite affichée sous la zone score-carbone, sans
+// quoi le producteur ne voit que l'erreur globale en bas du formulaire).
+export type State = { error?: string; errorField?: string };
 
 export async function completeOnboardingAction(
   _prev: State,
@@ -40,7 +44,11 @@ export async function completeOnboardingAction(
       formData.get("declaration_indicateurs_veracite") ?? undefined,
   });
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Saisie invalide" };
+    const firstIssue = parsed.error.issues[0];
+    return {
+      error: firstIssue?.message ?? "Saisie invalide",
+      errorField: firstIssue?.path[0]?.toString(),
+    };
   }
 
   const admin = createSupabaseAdminClient();
