@@ -133,12 +133,12 @@ function IndicatorCard({
         {eyebrow}
       </div>
       <div className="mt-3">
-        {/* `title` natif = tooltip desktop au survol + tap-and-hold mobile.
-            Évite d'introduire un composant tooltip JS et reste accessible
-            (lecteur d'écran annonce le title). Hint vient du HINT producteur,
-            source unique avec le formulaire onboarding. */}
+        {/* Pas de `title` natif : sur mobile (cible n°1 TerrOir), le tooltip
+            HTML est inconsistant ou ignoré (pas de hover) et dégrade donc en
+            silence. La mini-explication `hint` est déjà rendue en clair sous
+            la pill — on évite la redondance et on garantit le même contenu
+            sur tous les supports. Décision comité review T-200 round 2. */}
         <span
-          title={hint}
           className={`inline-flex items-center rounded-full px-3 py-1 text-[13px] font-medium ${pillClass}`}
         >
           {label}

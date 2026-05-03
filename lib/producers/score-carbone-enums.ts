@@ -11,8 +11,9 @@
 //   - PUBLIC_LABELS = libellé grand public, utilisé sur la fiche consumer
 //     (langage parlé, pas de jargon — décision comité review T-200 round 1).
 //   - HINTS = phrase d'aide affichée sous le radio dans le formulaire
-//     producteur ; sert aussi de tooltip (title) sur la pill consumer pour
-//     expliquer un terme qui ne dirait rien à un consommateur lambda.
+//     producteur ; sur la fiche publique consumer, ce même hint est rendu
+//     en clair sous la pill (pas en tooltip natif `title`, qui se comporte
+//     mal sur mobile — décision comité review T-200 round 2).
 
 export const MODE_ELEVAGE_VALUES = [
   "plein_air",
@@ -105,12 +106,18 @@ export const DENSITE_ANIMALE_HINTS: Record<DensiteAnimale, string> = {
 };
 
 // Référence chiffrée pour le bloc "vs grande distribution" sur la fiche
-// publique. Source : ADEME — données sectorielles sur la distance moyenne
-// parcourue par les produits alimentaires en circuit long (importation,
-// transit centrale d'achat, livraison magasin). Le wording d'affichage
-// doit toujours préciser "en moyenne" et "circuit long" pour rester
-// factuel et non dénigrant. La formulation comparative est sur le même
-// terrain juridique que /notre-demarche : revue avocat T-003 prévue
-// avant ouverture publique.
+// publique. Estimation indicative non sourcée nominativement : ordre de
+// grandeur de la distance moyenne parcourue par les produits alimentaires
+// en circuit long (importation, transit centrale d'achat, livraison
+// magasin). Le wording d'affichage doit toujours préciser "en moyenne"
+// et "circuit long" pour rester factuel et non dénigrant.
+//
+// Décision comité review T-200 round 2 : on ne cite plus « ADEME » en
+// nom propre tant qu'on n'a pas l'intitulé d'étude + année + lien — un
+// nom d'institution nu est juridiquement fragile. À valider avec
+// l'avocat T-003 avant ouverture publique : la review pourra soit
+// substituer une source précise (étude datée, lien officiel), soit
+// reformuler le chiffre lui-même.
 export const GMS_DISTANCE_KM_REFERENCE = 1500;
-export const GMS_DISTANCE_SOURCE_LABEL = "Source : ADEME (estimation)";
+export const GMS_DISTANCE_SOURCE_LABEL =
+  "Estimation indicative — ordres de grandeur du transport en circuit long";
