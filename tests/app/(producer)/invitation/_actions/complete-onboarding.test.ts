@@ -50,7 +50,19 @@ let responses: Record<string, Resp[]>;
 function defaultResp(table: string): Resp {
   // Defaults qui font passer le flow métier sans intervention. Les tests
   // surchargent uniquement `producer_interests` (la table sous test).
-  if (table === "producers") return { data: { statut: "draft" }, error: null };
+  // Pour `producers` : couvre à la fois le SELECT statut (branche reprise) et
+  // le SELECT des 3 enums score-carbone (T-241, pré-UPDATE) — les tests T-241
+  // qui simulent un producer "déjà rempli" surchargent via responses.producers.
+  if (table === "producers")
+    return {
+      data: {
+        statut: "draft",
+        mode_elevage: null,
+        alimentation: null,
+        densite_animale: null,
+      },
+      error: null,
+    };
   return { data: null, error: null };
 }
 
@@ -549,10 +561,11 @@ describe("completeOnboardingAction — T-200 score carbone & bien-être animal",
       alimentation: "pature_dominante",
       densite_animale: "extensive",
     });
-    // T-200 r5 — la déclaration n'est pas écrite en DB : c'est un engagement
-    // déclaratif côté formulaire (option A du comité review), pas une colonne
-    // archivée. Si on veut historiser plus tard (registre déclaratif), c'est
-    // un autre chantier (cf. TODO r5).
+    // T-200 r5 — le NOM de champ form `declaration_indicateurs_veracite`
+    // (booléen "on") n'est jamais écrit tel quel en colonne. Depuis T-241,
+    // l'engagement est archivé dans 3 colonnes dédiées
+    // (declaration_indicateurs_veracite_at + _snapshot + _wording_version) —
+    // assertions dans la suite T-241 dédiée plus bas.
     expect(producerUpdate?.payload).not.toHaveProperty(
       "declaration_indicateurs_veracite",
     );
@@ -610,5 +623,122 @@ describe("completeOnboardingAction — T-200 score carbone & bien-être animal",
     expect(res?.error).toBeDefined();
     // Aucun UPDATE car la validation Zod échoue avant les writes.
     expect(captured.updates).toEqual([]);
+  });
+});
+
+// --- T-241 : persistance déclaration sur l'honneur (DGCCRF) ---------------
+// Avant T-241, la case « Je certifie… » était validée Zod mais non archivée.
+// La server action lit maintenant l'état actuel des 3 enums avant l'UPDATE et
+// persiste 3 colonnes dédiées (declaration_indicateurs_veracite_at,
+// declaration_indicateurs_snapshot, declaration_indicateurs_wording_version)
+// uniquement si au moins un enum a effectivement changé. Une édition qui ne
+// touche que des champs hors-enum ne doit PAS écraser le timestamp d'origine.
+
+describe("completeOnboardingAction — T-241 persistance déclaration sur l'honneur", () => {
+  it("création producteur (enums vierges) + 3 enums + case cochée → payload UPDATE contient les 3 colonnes declaration_indicateurs_*", async () => {
+    // En flux reprise/création initiale, le producer draft n'a aucun enum
+    // (defaultResp producers : NULL/NULL/NULL). Le snapshot soumis diffère
+    // → on persiste les 3 colonnes.
+    const fd = makeFormData({
+      mode_elevage: "plein_air",
+      alimentation: "pature_dominante",
+      densite_animale: "extensive",
+      declaration_indicateurs_veracite: "on",
+    });
+
+    await runAction(fd);
+
+    const producerUpdate = captured.updates.find((u) => u.table === "producers");
+    expect(producerUpdate).toBeDefined();
+    const payload = producerUpdate?.payload as Record<string, unknown>;
+    expect(payload.declaration_indicateurs_veracite_at).toEqual(
+      expect.any(String),
+    );
+    // Snapshot figé = exactement les 3 valeurs déclarées au moment de la coche.
+    expect(payload.declaration_indicateurs_snapshot).toEqual({
+      mode_elevage: "plein_air",
+      alimentation: "pature_dominante",
+      densite_animale: "extensive",
+    });
+    expect(payload.declaration_indicateurs_wording_version).toBe("v1.0");
+  });
+
+  it("édition producteur qui CHANGE un enum + case cochée → payload UPDATE contient les 3 colonnes declaration_indicateurs_* (re-coche datée)", async () => {
+    // Comité T-200 r5 : si un enum change, la déclaration doit être re-datée.
+    // On simule un producer existant avec déjà 3 enums (alimentation =
+    // pature_dominante), puis le user change UN seul des 3 (→ mixte).
+    responses.producers = [
+      // 1er SELECT : check statut (branche reprise, ligne 102-106)
+      { data: { statut: "draft" }, error: null },
+      // 2e SELECT : lecture des 3 enums actuels (T-241, pré-UPDATE)
+      {
+        data: {
+          mode_elevage: "plein_air",
+          alimentation: "pature_dominante",
+          densite_animale: "extensive",
+        },
+        error: null,
+      },
+    ];
+
+    const fd = makeFormData({
+      mode_elevage: "plein_air",
+      alimentation: "mixte", // changé
+      densite_animale: "extensive",
+      declaration_indicateurs_veracite: "on",
+    });
+
+    await runAction(fd);
+
+    const producerUpdate = captured.updates.find((u) => u.table === "producers");
+    expect(producerUpdate).toBeDefined();
+    const payload = producerUpdate?.payload as Record<string, unknown>;
+    expect(payload.declaration_indicateurs_veracite_at).toEqual(
+      expect.any(String),
+    );
+    expect(payload.declaration_indicateurs_snapshot).toEqual({
+      mode_elevage: "plein_air",
+      alimentation: "mixte",
+      densite_animale: "extensive",
+    });
+    expect(payload.declaration_indicateurs_wording_version).toBe("v1.0");
+  });
+
+  it("édition producteur qui ne change PAS les enums (juste nom de la ferme) + case cochée → payload UPDATE n'écrase PAS les 3 colonnes declaration_indicateurs_*", async () => {
+    // Garde-fou : on ne re-touche pas au timestamp d'engagement si les enums
+    // sont identiques. Le user soumet les MÊMES valeurs déjà en base mais
+    // change le nom de la ferme → declaration_* doit rester intacte côté DB
+    // (donc absente du payload UPDATE).
+    responses.producers = [
+      { data: { statut: "draft" }, error: null },
+      {
+        data: {
+          mode_elevage: "plein_air",
+          alimentation: "pature_dominante",
+          densite_animale: "extensive",
+        },
+        error: null,
+      },
+    ];
+
+    const fd = makeFormData({
+      nom_exploitation: "Ferme du Test — renommée",
+      mode_elevage: "plein_air",
+      alimentation: "pature_dominante",
+      densite_animale: "extensive",
+      declaration_indicateurs_veracite: "on",
+    });
+
+    await runAction(fd);
+
+    const producerUpdate = captured.updates.find((u) => u.table === "producers");
+    expect(producerUpdate).toBeDefined();
+    const payload = producerUpdate?.payload as Record<string, unknown>;
+    expect(payload.nom_exploitation).toBe("Ferme du Test — renommée");
+    expect(payload).not.toHaveProperty("declaration_indicateurs_veracite_at");
+    expect(payload).not.toHaveProperty("declaration_indicateurs_snapshot");
+    expect(payload).not.toHaveProperty(
+      "declaration_indicateurs_wording_version",
+    );
   });
 });
