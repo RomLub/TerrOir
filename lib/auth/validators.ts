@@ -142,6 +142,17 @@ export const invitationBusinessInfoSchema = z
     mode_elevage: modeElevageEnum.optional(),
     alimentation: alimentationEnum.optional(),
     densite_animale: densiteAnimaleEnum.optional(),
+    // T-200 r5 — déclaration sur l'honneur conditionnelle. Les libellés
+    // grand public (« Plein air », etc.) recoupent partiellement des
+    // dénominations encadrées par les règlements UE (œufs/volailles/porcs).
+    // On exige l'engagement déclaratif du producteur dès qu'au moins un
+    // des 3 indicateurs est saisi — sinon la case est ignorée. La checkbox
+    // HTML envoie "on" quand cochée, rien sinon : on accepte les deux
+    // formes sérialisées de "vrai".
+    declaration_indicateurs_veracite: z
+      .union([z.literal("on"), z.literal("true"), z.boolean()])
+      .optional()
+      .transform((v) => v === true || v === "on" || v === "true"),
   })
   .refine(
     (d) =>
@@ -150,6 +161,19 @@ export const invitationBusinessInfoSchema = z
     {
       message: "Précisez votre type de production",
       path: ["type_production_precision"],
+    },
+  )
+  .refine(
+    (d) => {
+      const anyEnumSet = Boolean(
+        d.mode_elevage || d.alimentation || d.densite_animale,
+      );
+      return !anyEnumSet || d.declaration_indicateurs_veracite === true;
+    },
+    {
+      message:
+        "Pour publier ces indicateurs, certifie qu'ils correspondent à ta pratique réelle.",
+      path: ["declaration_indicateurs_veracite"],
     },
   );
 

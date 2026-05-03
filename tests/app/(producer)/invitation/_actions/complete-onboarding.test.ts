@@ -529,11 +529,12 @@ describe("completeOnboardingAction — race condition consommation token (T-307)
 // --- T-200 : champs catégoriels score carbone & bien-être animal ----------
 
 describe("completeOnboardingAction — T-200 score carbone & bien-être animal", () => {
-  it("happy path avec les 3 champs renseignés → payload UPDATE producers contient mode_elevage, alimentation, densite_animale", async () => {
+  it("happy path avec les 3 champs renseignés + déclaration cochée → payload UPDATE producers contient mode_elevage, alimentation, densite_animale", async () => {
     const fd = makeFormData({
       mode_elevage: "plein_air",
       alimentation: "pature_dominante",
       densite_animale: "extensive",
+      declaration_indicateurs_veracite: "on",
     });
 
     await runAction(fd);
@@ -545,6 +546,42 @@ describe("completeOnboardingAction — T-200 score carbone & bien-être animal",
       alimentation: "pature_dominante",
       densite_animale: "extensive",
     });
+    // T-200 r5 — la déclaration n'est pas écrite en DB : c'est un engagement
+    // déclaratif côté formulaire (option A du comité review), pas une colonne
+    // archivée. Si on veut historiser plus tard (registre déclaratif), c'est
+    // un autre chantier (cf. TODO r5).
+    expect(producerUpdate?.payload).not.toHaveProperty(
+      "declaration_indicateurs_veracite",
+    );
+  });
+
+  it("T-200 r5 — au moins un enum saisi sans déclaration cochée → erreur Zod, aucune mutation DB", async () => {
+    // Cas typique : producteur coche « Plein air » mais oublie/refuse la
+    // déclaration sur l'honneur. On bloque côté serveur (la garde client
+    // n'est pas suffisante — un POST direct contournerait).
+    const fd = makeFormData({ mode_elevage: "plein_air" });
+
+    const res = await runAction(fd);
+
+    expect(res?.error).toBeDefined();
+    expect(res?.error).toMatch(/certifie/i);
+    expect(captured.updates).toEqual([]);
+  });
+
+  it("T-200 r5 — déclaration cochée mais aucun enum saisi → OK, déclaration ignorée", async () => {
+    // Cas symétrique : producteur a coché la case par curiosité mais n'a
+    // rempli aucun indicateur. Le bloc reste vide, le flow passe.
+    const fd = makeFormData({ declaration_indicateurs_veracite: "on" });
+
+    await runAction(fd);
+
+    const producerUpdate = captured.updates.find((u) => u.table === "producers");
+    expect(producerUpdate).toBeDefined();
+    const payload = producerUpdate?.payload as Record<string, unknown>;
+    expect(payload).not.toHaveProperty("mode_elevage");
+    expect(payload).not.toHaveProperty("alimentation");
+    expect(payload).not.toHaveProperty("densite_animale");
+    expect(payload).not.toHaveProperty("declaration_indicateurs_veracite");
   });
 
   it("happy path sans les 3 champs → payload UPDATE producers ne contient AUCUN des 3 champs (pas d'écrasement)", async () => {

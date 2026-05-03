@@ -380,6 +380,21 @@ export function StepInfos({
             </label>
           ))}
         </fieldset>
+
+        <label className="flex cursor-pointer select-none items-start gap-3 rounded-md border border-amber-200 bg-amber-50/50 p-3">
+          <input
+            type="checkbox"
+            name="declaration_indicateurs_veracite"
+            className="mt-1 h-4 w-4 accent-terroir-green-700"
+          />
+          <span className="text-xs text-gray-700">
+            Je certifie que les indicateurs déclarés ci-dessus (mode
+            d&apos;élevage, alimentation, densité) correspondent à ma pratique
+            réelle. Je m&apos;engage à les mettre à jour en cas de changement.
+            Cette case est requise uniquement si au moins un indicateur est
+            renseigné ; tu peux laisser le bloc vide.
+          </span>
+        </label>
       </div>
 
       {state.error ? (

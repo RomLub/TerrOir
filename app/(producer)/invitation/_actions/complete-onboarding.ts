@@ -36,6 +36,8 @@ export async function completeOnboardingAction(
     mode_elevage: formData.get("mode_elevage") ?? undefined,
     alimentation: formData.get("alimentation") ?? undefined,
     densite_animale: formData.get("densite_animale") ?? undefined,
+    declaration_indicateurs_veracite:
+      formData.get("declaration_indicateurs_veracite") ?? undefined,
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Saisie invalide" };
