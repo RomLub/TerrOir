@@ -6,6 +6,7 @@ import {
   formatLegacyTimeHHMM,
 } from '@/lib/slots/format-slot-time';
 import type { OrderStatus } from '@/components/ui';
+import { roundCoord } from '@/lib/producers/coords';
 import { OrderDetailClient, type OrderDetailData } from './OrderDetailClient';
 
 function formatDateLabel(iso: string): string {
@@ -86,8 +87,13 @@ export default async function OrderDetailPage({ params }: { params: { id: string
       name: producerRow?.nom_exploitation ?? 'Producteur',
       slug: producerRow?.slug ?? '',
       address: address || '—',
-      lat: producerRow?.latitude ?? null,
-      lng: producerRow?.longitude ?? null,
+      // Sécurité (T-200 r3) : floutage ~1 km via roundCoord avant exposition
+      // au client, cohérent avec fetchPublicProducerBySlug + /api/producers/search.
+      // Le consumer a passé commande chez ce producteur, mais la lat/lng brute
+      // = adresse personnelle de l'éleveur (élevage fermier). On ne la donne pas,
+      // même à un consumer connu.
+      lat: roundCoord(producerRow?.latitude ?? null),
+      lng: roundCoord(producerRow?.longitude ?? null),
     },
     slot: {
       dateLabel: order.date_retrait ? formatDateLabel(order.date_retrait) : '—',
