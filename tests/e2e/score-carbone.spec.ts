@@ -30,6 +30,25 @@ test("T-200 fiche producteur : bloc démarche présent et widget distance foncti
 }) => {
   await page.goto(`/producteurs/${PUBLIC_SLUG}`);
 
+  // Verrou r2 T-239 : ordre d'apparition des sections dans le DOM. Le placement
+  // du bloc Démarche en bas de page est l'objectif central de T-239 ; un test
+  // d'ordre prévient une régression silencieuse si quelqu'un remonte la section
+  // sans s'en rendre compte. On compare la position Y absolue de chaque section
+  // pour ne pas dépendre de l'ordre exact des nœuds DOM (qui peut varier avec
+  // un wrapper futur).
+  const sectionOrder = await page.evaluate(() => {
+    const ids = ["histoire", "produits", "avis", "demarche"];
+    return ids.map((id) => {
+      const el = document.getElementById(id);
+      return { id, top: el?.getBoundingClientRect().top ?? null };
+    });
+  });
+  expect(sectionOrder.every((s) => s.top !== null)).toBe(true);
+  const tops = sectionOrder.map((s) => s.top as number);
+  expect(tops[0]).toBeLessThan(tops[1]); // histoire < produits
+  expect(tops[1]).toBeLessThan(tops[2]); // produits < avis
+  expect(tops[2]).toBeLessThan(tops[3]); // avis < demarche
+
   const block = page.locator("section#demarche");
   await expect(block).toBeVisible();
   await expect(block.getByText("Notre démarche")).toBeVisible();
