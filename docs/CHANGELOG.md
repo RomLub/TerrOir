@@ -7,6 +7,28 @@ Pour les priorités forward-looking, voir [`TODO.md`](./TODO.md).
 
 ---
 
+## 2026-05-03 (T-081 Phase 3 finale audit logs cluster `admin_invite_*`)
+
+> Bouclage Phase 3 du chantier audit_logs (T-081) : 5 trous restants comblés sur le flow d'invitation producer. Les 13 events précédents (Phase 1 auth + Phase 2 payment + Phase 2bis retry refund + T-081 PR-A + T-307/T-309/T-310 cluster invitation) restent inchangés. Total post-T-081 : 18 event types Auth (cf. `lib/audit-logs/log-auth-event.ts` const `AUTH_EVENT_TYPES`).
+>
+> 🟢 **5 nouveaux event types** (cluster `admin_invite_*`) :
+> - `admin_invite_sent` — émis sur `/api/admin/producers/invite` après `sendTemplate` succès, envoi initial. metadata `{ invitation_id, invitation_email, resend_id }`. userId = admin créateur.
+> - `admin_invite_draft_resend` — même call site, mais branche `isDraftResend=true` (relance d'un onboarding producer abandonné, `producer.statut='draft'` + flag `confirm_draft_resend=true` UI). Mutuellement exclusif avec `admin_invite_sent` : un POST émet l'un OU l'autre, jamais les deux. Permet aux queries forensiques de distinguer les patterns funnel acquisition initial vs réactivation.
+> - `admin_invite_blocked_admin` — pré-check 409 (email déjà admin). metadata `{ invitation_email }`. Pas de bump invitation_created (sortie avant l'INSERT).
+> - `admin_invite_blocked_producer` — pré-check 409 (email déjà producteur inscrit, statut hors `'draft'`). metadata `{ invitation_email, statut }` (granularité `pending|active|public|suspended|deleted` côté metadata, sémantique stable côté event_type). Le 409 `draft_resend_confirm_required` n'émet PAS d'event (demande de confirmation UX, pas un blocage strict).
+> - `admin_invite_expired` — câblé sur les 4 server actions producer/* (`create-account`, `login-and-upgrade`, `accept-invitation`, `complete-onboarding`) sur le check `expires_at < now()`. metadata `{ invitation_id, token_prefix, surface }` — `surface` discrimine entre les 4 sites sans nouveau event_type. userId nullable (null sur create-account + login-and-upgrade, session.id sur accept-invitation + complete-onboarding).
+>
+> 🟢 **Tests vitest** (1 commit) :
+> - Smoke test type-check étendu aux 5 nouveaux event types (`tests/lib/audit-logs/log-auth-event.test.ts`).
+> - 9 nouveaux tests sur `tests/app/api/admin/producers/invite/route.test.ts` describe "J. T-081" (J1 sent, J2 draft_resend, J3 ni-l'un-ni-l'autre quand email fail, J4 blocked_admin, J5 ×5 statuts blocked_producer, J6 pas-d'event sur draft_resend_confirm_required).
+> - 4 tests sur les server actions producer/* (1 par site pour `admin_invite_expired` avec assertion userId + surface + token_prefix).
+>
+> ⚠️ **Note sur le décompte sites `admin_invite_expired`** : l'inventaire initial mentionnait 3 sites (`create-account`, `accept-invitation`, `complete-onboarding`). Au câblage, le 4e site identique sémantiquement (`login-and-upgrade.ts:60-61`, oublié dans l'inventaire) a été couvert par cohérence forensique — ne pas l'instrumenter aurait laissé un trou évident sans justification. La page GET `/invitation` (point d'entrée du clic email réel) n'a PAS été instrumentée : risque de bruit (link prefetchers email clients potentiels) sans gain forensique majeur (les 4 server actions captureront le user au moindre clic UI subséquent).
+>
+> 🧪 **Tests effectués** : type-check strict zero warning + suite Vitest complète verte (Playwright skippé : pas d'impact UI utilisateur). Pas de migration DB (les events réutilisent la table `audit_logs` existante, schéma `event_type TEXT` côté DB — l'union TypeScript en application sert de contrat doc/dev seul).
+
+---
+
 ## 2026-04-30 (T-013 Secure Email Change refonte)
 
 > Refonte du flow de changement d'email côté `/compte/profil` depuis Supabase Secure Email Change (lien magique asynchrone double confirmation) vers un flow custom 2 OTP successifs in-session (modèle Amazon-like). Architecture en 3 PRs :
