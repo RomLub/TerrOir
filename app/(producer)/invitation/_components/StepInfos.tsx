@@ -6,6 +6,17 @@ import {
   completeOnboardingAction,
   type State,
 } from "../_actions/complete-onboarding";
+import {
+  ALIMENTATION_HINTS,
+  ALIMENTATION_LABELS,
+  ALIMENTATION_VALUES,
+  DENSITE_ANIMALE_HINTS,
+  DENSITE_ANIMALE_LABELS,
+  DENSITE_ANIMALE_VALUES,
+  MODE_ELEVAGE_HINTS,
+  MODE_ELEVAGE_LABELS,
+  MODE_ELEVAGE_VALUES,
+} from "@/lib/producers/score-carbone-enums";
 
 const FORMES = [
   { value: "gaec", label: "GAEC" },
@@ -278,7 +289,139 @@ export function StepInfos({
         </div>
       ) : null}
 
-      {state.error ? (
+      <div className="space-y-4 rounded-md border border-gray-200 bg-gray-50/50 p-4">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-terroir-green-700">
+            Score carbone & bien-être animal
+          </p>
+          <p className="mt-1 text-sm text-gray-700">
+            Facultatif — ces infos enrichissent ta fiche publique et permettent
+            aux clients de mieux comprendre ton mode de production.
+          </p>
+        </div>
+
+        <fieldset className="space-y-2">
+          <legend className="mb-1 block text-sm font-medium text-gray-800">
+            Mode d&apos;élevage
+          </legend>
+          {MODE_ELEVAGE_VALUES.map((v) => (
+            <label
+              key={v}
+              className="flex cursor-pointer select-none items-start gap-3 rounded-md border border-gray-200 bg-white p-3 hover:border-terroir-green-700/40"
+            >
+              <input
+                type="radio"
+                name="mode_elevage"
+                value={v}
+                className="mt-1 h-4 w-4 accent-terroir-green-700"
+              />
+              <span className="flex flex-col">
+                <span className="text-sm font-medium text-gray-900">
+                  {MODE_ELEVAGE_LABELS[v]}
+                </span>
+                <span className="text-xs text-gray-500">
+                  {MODE_ELEVAGE_HINTS[v]}
+                </span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
+
+        <fieldset className="space-y-2">
+          <legend className="mb-1 block text-sm font-medium text-gray-800">
+            Alimentation
+          </legend>
+          {ALIMENTATION_VALUES.map((v) => (
+            <label
+              key={v}
+              className="flex cursor-pointer select-none items-start gap-3 rounded-md border border-gray-200 bg-white p-3 hover:border-terroir-green-700/40"
+            >
+              <input
+                type="radio"
+                name="alimentation"
+                value={v}
+                className="mt-1 h-4 w-4 accent-terroir-green-700"
+              />
+              <span className="flex flex-col">
+                <span className="text-sm font-medium text-gray-900">
+                  {ALIMENTATION_LABELS[v]}
+                </span>
+                <span className="text-xs text-gray-500">
+                  {ALIMENTATION_HINTS[v]}
+                </span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
+
+        <fieldset className="space-y-2">
+          <legend className="mb-1 block text-sm font-medium text-gray-800">
+            Densité animale
+          </legend>
+          {DENSITE_ANIMALE_VALUES.map((v) => (
+            <label
+              key={v}
+              className="flex cursor-pointer select-none items-start gap-3 rounded-md border border-gray-200 bg-white p-3 hover:border-terroir-green-700/40"
+            >
+              <input
+                type="radio"
+                name="densite_animale"
+                value={v}
+                className="mt-1 h-4 w-4 accent-terroir-green-700"
+              />
+              <span className="flex flex-col">
+                <span className="text-sm font-medium text-gray-900">
+                  {DENSITE_ANIMALE_LABELS[v]}
+                </span>
+                <span className="text-xs text-gray-500">
+                  {DENSITE_ANIMALE_HINTS[v]}
+                </span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
+
+        <label
+          className={`flex cursor-pointer select-none items-start gap-3 rounded-md border p-3 ${
+            state.errorField === "declaration_indicateurs_veracite"
+              ? "border-red-500 bg-red-50/50"
+              : "border-amber-200 bg-amber-50/50"
+          }`}
+        >
+          <input
+            type="checkbox"
+            name="declaration_indicateurs_veracite"
+            aria-invalid={
+              state.errorField === "declaration_indicateurs_veracite"
+                ? true
+                : undefined
+            }
+            aria-describedby={
+              state.errorField === "declaration_indicateurs_veracite"
+                ? "declaration-indicateurs-error"
+                : undefined
+            }
+            className="mt-1 h-4 w-4 accent-terroir-green-700"
+          />
+          <span className="text-xs text-gray-700">
+            Je certifie que les indicateurs déclarés ci-dessus (mode
+            d&apos;élevage, alimentation, densité) correspondent à ma pratique
+            réelle, et je m&apos;engage à les mettre à jour si ça change.
+          </span>
+        </label>
+        {state.errorField === "declaration_indicateurs_veracite" ? (
+          <p
+            id="declaration-indicateurs-error"
+            role="alert"
+            className="text-sm text-red-700"
+          >
+            {state.error}
+          </p>
+        ) : null}
+      </div>
+
+      {state.error &&
+      state.errorField !== "declaration_indicateurs_veracite" ? (
         <p className="text-sm text-red-700" role="alert">
           {state.error}
         </p>

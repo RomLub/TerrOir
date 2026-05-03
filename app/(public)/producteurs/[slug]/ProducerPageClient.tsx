@@ -10,6 +10,12 @@ import {
   ProductCard,
   StarRating,
 } from '@/components/ui';
+import type {
+  Alimentation,
+  DensiteAnimale,
+  ModeElevage,
+} from '@/lib/producers/score-carbone-enums';
+import { ScoreCarbonBlock } from './_components/ScoreCarbonBlock';
 
 // Visuels Unsplash de secours tant que le producteur n'a pas uploadé ses propres photos.
 const DEFAULT_HERO_PHOTO =
@@ -41,6 +47,11 @@ export type ProducerData = {
   rating: number;
   reviewCount: number;
   story: string[];
+  modeElevage: ModeElevage | null;
+  alimentation: Alimentation | null;
+  densiteAnimale: DensiteAnimale | null;
+  latitude: number | null;
+  longitude: number | null;
 };
 
 export type ProductData = {
@@ -192,6 +203,15 @@ export function ProducerPageClient({
           </div>
         )}
       </section>
+
+      <ScoreCarbonBlock
+        modeElevage={producer.modeElevage}
+        alimentation={producer.alimentation}
+        densiteAnimale={producer.densiteAnimale}
+        producerLat={producer.latitude}
+        producerLng={producer.longitude}
+        producerName={producer.name}
+      />
 
       <section id="produits" className="bg-green-100/40 border-y border-dark/[0.04] scroll-mt-32">
         <div className="max-w-7xl mx-auto px-6 py-16 md:py-24">

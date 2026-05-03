@@ -98,7 +98,10 @@ vi.mock("@/lib/audit-logs/log-auth-event", () => ({
 // Import APRÈS les mocks (vi.mock est hoisté par vitest, mais on garde
 // l'ordre lisible). Le path alias `@` → repo root est défini dans
 // vitest.config.ts.
-import { completeOnboardingAction } from "@/app/(producer)/invitation/_actions/complete-onboarding";
+import {
+  completeOnboardingAction,
+  type State,
+} from "@/app/(producer)/invitation/_actions/complete-onboarding";
 import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 
 // --- Helpers --------------------------------------------------------------
@@ -124,7 +127,7 @@ function makeFormData(overrides: Record<string, string> = {}): FormData {
   return fd;
 }
 
-async function runAction(formData: FormData): Promise<{ error?: string } | undefined> {
+async function runAction(formData: FormData): Promise<State | undefined> {
   // Le redirect mocké throw __REDIRECT__ en chemin succès. On l'attrape
   // pour laisser les assertions s'exécuter ; toute autre erreur remonte.
   try {
@@ -523,5 +526,89 @@ describe("completeOnboardingAction — race condition consommation token (T-307)
     expect(logAuthEvent).not.toHaveBeenCalledWith(
       expect.objectContaining({ eventType: "invitation_consumed_success" }),
     );
+  });
+});
+
+// --- T-200 : champs catégoriels score carbone & bien-être animal ----------
+
+describe("completeOnboardingAction — T-200 score carbone & bien-être animal", () => {
+  it("happy path avec les 3 champs renseignés + déclaration cochée → payload UPDATE producers contient mode_elevage, alimentation, densite_animale", async () => {
+    const fd = makeFormData({
+      mode_elevage: "plein_air",
+      alimentation: "pature_dominante",
+      densite_animale: "extensive",
+      declaration_indicateurs_veracite: "on",
+    });
+
+    await runAction(fd);
+
+    const producerUpdate = captured.updates.find((u) => u.table === "producers");
+    expect(producerUpdate).toBeDefined();
+    expect(producerUpdate?.payload).toMatchObject({
+      mode_elevage: "plein_air",
+      alimentation: "pature_dominante",
+      densite_animale: "extensive",
+    });
+    // T-200 r5 — la déclaration n'est pas écrite en DB : c'est un engagement
+    // déclaratif côté formulaire (option A du comité review), pas une colonne
+    // archivée. Si on veut historiser plus tard (registre déclaratif), c'est
+    // un autre chantier (cf. TODO r5).
+    expect(producerUpdate?.payload).not.toHaveProperty(
+      "declaration_indicateurs_veracite",
+    );
+  });
+
+  it("T-200 r5 — au moins un enum saisi sans déclaration cochée → erreur Zod, aucune mutation DB", async () => {
+    // Cas typique : producteur coche « Plein air » mais oublie/refuse la
+    // déclaration sur l'honneur. On bloque côté serveur (la garde client
+    // n'est pas suffisante — un POST direct contournerait).
+    const fd = makeFormData({ mode_elevage: "plein_air" });
+
+    const res = await runAction(fd);
+
+    expect(res?.error).toBeDefined();
+    expect(res?.error).toMatch(/certifie/i);
+    // T-200 r6 — errorField pose le path Zod du premier issue pour permettre
+    // à l'UI d'ancrer la bordure rouge + le message à côté de la case
+    // (au lieu d'une erreur orpheline en bas du formulaire).
+    expect(res?.errorField).toBe("declaration_indicateurs_veracite");
+    expect(captured.updates).toEqual([]);
+  });
+
+  it("T-200 r5 — déclaration cochée mais aucun enum saisi → OK, déclaration ignorée", async () => {
+    // Cas symétrique : producteur a coché la case par curiosité mais n'a
+    // rempli aucun indicateur. Le bloc reste vide, le flow passe.
+    const fd = makeFormData({ declaration_indicateurs_veracite: "on" });
+
+    await runAction(fd);
+
+    const producerUpdate = captured.updates.find((u) => u.table === "producers");
+    expect(producerUpdate).toBeDefined();
+    const payload = producerUpdate?.payload as Record<string, unknown>;
+    expect(payload).not.toHaveProperty("mode_elevage");
+    expect(payload).not.toHaveProperty("alimentation");
+    expect(payload).not.toHaveProperty("densite_animale");
+    expect(payload).not.toHaveProperty("declaration_indicateurs_veracite");
+  });
+
+  it("happy path sans les 3 champs → payload UPDATE producers ne contient AUCUN des 3 champs (pas d'écrasement)", async () => {
+    await runAction(makeFormData());
+
+    const producerUpdate = captured.updates.find((u) => u.table === "producers");
+    expect(producerUpdate).toBeDefined();
+    const payload = producerUpdate?.payload as Record<string, unknown>;
+    expect(payload).not.toHaveProperty("mode_elevage");
+    expect(payload).not.toHaveProperty("alimentation");
+    expect(payload).not.toHaveProperty("densite_animale");
+  });
+
+  it("valeur invalide pour mode_elevage → Zod rejette, error 'Saisie invalide', aucune mutation DB", async () => {
+    const fd = makeFormData({ mode_elevage: "valeur_qui_nexiste_pas" });
+
+    const res = await runAction(fd);
+
+    expect(res?.error).toBeDefined();
+    // Aucun UPDATE car la validation Zod échoue avant les writes.
+    expect(captured.updates).toEqual([]);
   });
 });

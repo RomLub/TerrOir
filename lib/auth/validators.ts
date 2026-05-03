@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  ALIMENTATION_VALUES,
+  DENSITE_ANIMALE_VALUES,
+  MODE_ELEVAGE_VALUES,
+} from "@/lib/producers/score-carbone-enums";
 
 // Mot de passe création/changement : 8+ chars + minuscule + majuscule + chiffre.
 // Aligné avec les règles Auth Dashboard Supabase (paramétrage 29/04/2026).
@@ -79,6 +84,30 @@ export const typeProductionEnum = z.enum([
   "autre",
 ]);
 
+// Cast en tuple mutable pour préserver le typage strict des littéraux côté
+// z.infer (le `as const` de score-carbone-enums.ts produit un readonly tuple
+// que z.enum n'accepte pas directement).
+export const modeElevageEnum = z.enum(
+  MODE_ELEVAGE_VALUES as unknown as [
+    (typeof MODE_ELEVAGE_VALUES)[number],
+    ...(typeof MODE_ELEVAGE_VALUES)[number][],
+  ],
+);
+
+export const alimentationEnum = z.enum(
+  ALIMENTATION_VALUES as unknown as [
+    (typeof ALIMENTATION_VALUES)[number],
+    ...(typeof ALIMENTATION_VALUES)[number][],
+  ],
+);
+
+export const densiteAnimaleEnum = z.enum(
+  DENSITE_ANIMALE_VALUES as unknown as [
+    (typeof DENSITE_ANIMALE_VALUES)[number],
+    ...(typeof DENSITE_ANIMALE_VALUES)[number][],
+  ],
+);
+
 export const invitationBusinessInfoSchema = z
   .object({
     // Token optionnel : absent en mode reprise d'onboarding (Phase 4) où la
@@ -110,6 +139,20 @@ export const invitationBusinessInfoSchema = z
       .trim()
       .optional()
       .transform((v) => (v === "" ? undefined : v)),
+    mode_elevage: modeElevageEnum.optional(),
+    alimentation: alimentationEnum.optional(),
+    densite_animale: densiteAnimaleEnum.optional(),
+    // T-200 r5 — déclaration sur l'honneur conditionnelle. Les libellés
+    // grand public (« Plein air », etc.) recoupent partiellement des
+    // dénominations encadrées par les règlements UE (œufs/volailles/porcs).
+    // On exige l'engagement déclaratif du producteur dès qu'au moins un
+    // des 3 indicateurs est saisi — sinon la case est ignorée. La checkbox
+    // HTML envoie "on" quand cochée, rien sinon : on accepte les deux
+    // formes sérialisées de "vrai".
+    declaration_indicateurs_veracite: z
+      .union([z.literal("on"), z.literal("true"), z.boolean()])
+      .optional()
+      .transform((v) => v === true || v === "on" || v === "true"),
   })
   .refine(
     (d) =>
@@ -119,9 +162,25 @@ export const invitationBusinessInfoSchema = z
       message: "Précisez votre type de production",
       path: ["type_production_precision"],
     },
+  )
+  .refine(
+    (d) => {
+      const anyEnumSet = Boolean(
+        d.mode_elevage || d.alimentation || d.densite_animale,
+      );
+      return !anyEnumSet || d.declaration_indicateurs_veracite === true;
+    },
+    {
+      message:
+        "Pour publier ces indicateurs, certifie qu'ils correspondent à ta pratique réelle.",
+      path: ["declaration_indicateurs_veracite"],
+    },
   );
 
 export type SignupInput = z.infer<typeof signupSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type FormeJuridique = z.infer<typeof formeJuridiqueEnum>;
 export type TypeProduction = z.infer<typeof typeProductionEnum>;
+export type ModeElevageInput = z.infer<typeof modeElevageEnum>;
+export type AlimentationInput = z.infer<typeof alimentationEnum>;
+export type DensiteAnimaleInput = z.infer<typeof densiteAnimaleEnum>;

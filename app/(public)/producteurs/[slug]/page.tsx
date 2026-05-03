@@ -84,6 +84,11 @@ export default async function ProducteurPage({ params }: { params: { slug: strin
     rating: Number(producer.note_moyenne ?? 0),
     reviewCount: producer.nb_avis ?? 0,
     story: storyParts,
+    modeElevage: producer.mode_elevage,
+    alimentation: producer.alimentation,
+    densiteAnimale: producer.densite_animale,
+    latitude: producer.latitude,
+    longitude: producer.longitude,
   };
 
   const productName = producer.nom_exploitation;

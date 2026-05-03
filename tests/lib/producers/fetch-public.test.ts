@@ -83,6 +83,9 @@ function makeProducer(overrides: Partial<ProducerPublic> = {}): ProducerPublic {
     badge_annulation_score: null,
     note_moyenne: null,
     nb_avis: null,
+    mode_elevage: null,
+    alimentation: null,
+    densite_animale: null,
     ...overrides,
   };
 }
@@ -99,6 +102,8 @@ afterEach(() => {
 
 describe("fetchPublicProducerBySlug — cas nominal", () => {
   it("retourne le ProducerPublic quand data est présent", async () => {
+    // makeProducer() utilise des coords déjà arrondies (45.75 / 4.85) pour
+    // que le test d'égalité directe passe sans appliquer roundCoord.
     const producer = makeProducer({ slug: "ferme-bio" });
     const { client } = makeSupabase({ data: producer, error: null });
 
@@ -205,6 +210,25 @@ describe("fetchPublicProducerBySlug — défense en profondeur (sécurité)", ()
     expect(cols).toContain("nom_exploitation");
   });
 
+  it("inclut les 3 colonnes score carbone (T-200) dans le SELECT", async () => {
+    // Smoke test : les 3 colonnes catégorielles consommées par
+    // ScoreCarbonBlock sur la fiche producteur publique doivent figurer
+    // dans le SELECT public.
+    const { client, captured } = makeSupabase({
+      data: makeProducer(),
+      error: null,
+    });
+
+    await fetchPublicProducerBySlug(client, "ferme-bio");
+
+    const cols = captured.select[0] ?? "";
+    expect(cols).toContain("mode_elevage");
+    expect(cols).toContain("alimentation");
+    expect(cols).toContain("densite_animale");
+    expect(cols).toContain("latitude");
+    expect(cols).toContain("longitude");
+  });
+
   it("joint users.prenom via la FK user_id pour l'affichage public", async () => {
     // Source unique du prénom d'affichage côté lecture publique depuis le
     // chantier de centralisation sur users.prenom (cf. getProducerDisplayName).
@@ -266,5 +290,99 @@ describe("fetchPublicProducerBySlug — cas erreur DB", () => {
     expect(logged).toContain("FETCH_PUBLIC_PRODUCER_ERROR");
     expect(logged).toContain("slug=ferme-bio");
     expect(logged).toContain("network unreachable");
+  });
+});
+
+describe("fetchPublicProducerBySlug — T-200 sécurité : floutage coords producteur", () => {
+  // Le widget distance côté consumer doit pouvoir calculer un Haversine,
+  // mais l'adresse personnelle du producteur (= souvent son domicile) ne
+  // doit JAMAIS quitter le serveur en clair. roundCoord arrondit à
+  // 2 décimales (~1 km de précision en Sarthe), suffisant pour
+  // l'affichage "à vol d'oiseau" et masque l'adresse précise.
+  // Décision comité review T-200 round 1 (sécurité).
+
+  it("arrondit la latitude à 2 décimales", async () => {
+    const producer = makeProducer({
+      latitude: 47.123456789,
+      longitude: 0.5,
+    });
+    const { client } = makeSupabase({ data: producer, error: null });
+
+    const res = await fetchPublicProducerBySlug(client, "ferme-bio");
+
+    expect(res?.latitude).toBe(47.12);
+  });
+
+  it("arrondit la longitude à 2 décimales", async () => {
+    const producer = makeProducer({
+      latitude: 47.0,
+      longitude: 0.987654321,
+    });
+    const { client } = makeSupabase({ data: producer, error: null });
+
+    const res = await fetchPublicProducerBySlug(client, "ferme-bio");
+
+    expect(res?.longitude).toBe(0.99);
+  });
+
+  it("préserve null pour les producteurs sans coordonnées (5/10 prod aujourd'hui)", async () => {
+    // Cas réel : la moitié des producteurs en prod n'ont pas encore de
+    // lat/lng saisie. Le widget distance ne doit pas s'afficher dans ce
+    // cas (cf. ScoreCarbonBlock + DistanceWidget early-return), pas un
+    // crash silencieux ni un NaN km.
+    const producer = makeProducer({ latitude: null, longitude: null });
+    const { client } = makeSupabase({ data: producer, error: null });
+
+    const res = await fetchPublicProducerBySlug(client, "ferme-bio");
+
+    expect(res?.latitude).toBeNull();
+    expect(res?.longitude).toBeNull();
+  });
+
+  it("normalise les coordonnées non finies (NaN, Infinity) en null", async () => {
+    // Defense-in-depth : si une donnée DB corrompue arrive avec NaN, on
+    // ne propage pas un NaN km côté UI — on préfère masquer le widget.
+    const producer = makeProducer({
+      latitude: NaN,
+      longitude: Number.POSITIVE_INFINITY,
+    });
+    const { client } = makeSupabase({ data: producer, error: null });
+
+    const res = await fetchPublicProducerBySlug(client, "ferme-bio");
+
+    expect(res?.latitude).toBeNull();
+    expect(res?.longitude).toBeNull();
+  });
+});
+
+describe("fetchPublicProducerBySlug — T-200 robustesse champs catégoriels", () => {
+  it("retourne null sur les 3 enums quand le producteur ne les a pas saisis", async () => {
+    const producer = makeProducer({
+      mode_elevage: null,
+      alimentation: null,
+      densite_animale: null,
+    });
+    const { client } = makeSupabase({ data: producer, error: null });
+
+    const res = await fetchPublicProducerBySlug(client, "ferme-bio");
+
+    expect(res?.mode_elevage).toBeNull();
+    expect(res?.alimentation).toBeNull();
+    expect(res?.densite_animale).toBeNull();
+  });
+
+  it("propage les 3 enums tels quels quand renseignés", async () => {
+    const producer = makeProducer({
+      mode_elevage: "plein_air",
+      alimentation: "pature_dominante",
+      densite_animale: "extensive",
+    });
+    const { client } = makeSupabase({ data: producer, error: null });
+
+    const res = await fetchPublicProducerBySlug(client, "ferme-bio");
+
+    expect(res?.mode_elevage).toBe("plein_air");
+    expect(res?.alimentation).toBe("pature_dominante");
+    expect(res?.densite_animale).toBe("extensive");
   });
 });

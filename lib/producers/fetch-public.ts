@@ -1,4 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type {
+  ModeElevage,
+  Alimentation,
+  DensiteAnimale,
+} from "@/lib/producers/score-carbone-enums";
+import { roundCoord } from "@/lib/producers/coords";
 
 // Fields publics exposés côté consumer. Exclut les colonnes internes
 // (stripe_account_id, stripe_cleanup_pending, abonnement_*, siret,
@@ -18,6 +24,11 @@ export interface ProducerPublic {
   commune: string | null;
   code_postal: string | null;
   adresse: string | null;
+  // Coordonnées floutées (arrondies à 2 décimales) pour le widget distance
+  // de la fiche publique. Précision ~1 km (suffisant pour un affichage à
+  // vol d'oiseau, masque l'adresse personnelle du producteur — souvent =
+  // domicile en élevage fermier). Les coordonnées brutes ne quittent
+  // jamais le serveur via ce helper. Cf. roundCoord ci-dessous.
   latitude: number | null;
   longitude: number | null;
   photo_principale: string | null;
@@ -33,15 +44,19 @@ export interface ProducerPublic {
   badge_annulation_score: number | null;
   note_moyenne: number | null;
   nb_avis: number | null;
+  mode_elevage: ModeElevage | null;
+  alimentation: Alimentation | null;
+  densite_animale: DensiteAnimale | null;
 }
 
 const PUBLIC_COLUMNS =
-  "id, slug, nom_exploitation, commune, code_postal, adresse, latitude, longitude, photo_principale, photos, description, histoire, annee_creation, generations, especes, labels, badge_stock_score, badge_confirmation_score, badge_annulation_score, note_moyenne, nb_avis, users:user_id(prenom)";
+  "id, slug, nom_exploitation, commune, code_postal, adresse, latitude, longitude, photo_principale, photos, description, histoire, annee_creation, generations, especes, labels, badge_stock_score, badge_confirmation_score, badge_annulation_score, note_moyenne, nb_avis, mode_elevage, alimentation, densite_animale, users:user_id(prenom)";
 
 // Helper canonical pour fetch un producer visible publiquement par son slug.
 // Garanties :
 //   - statut = 'public' (filter RLS équivalent + defense in depth applicative)
 //   - deleted_at IS NULL (exclusion des producers anonymisés via RGPD)
+//   - latitude/longitude floutées (cf. roundCoord) avant retour
 //
 // Retourne null si le slug ne matche rien OU si le producer existe mais n'est
 // pas public. L'appelant décide ensuite (notFound, redirect, message).
@@ -77,5 +92,10 @@ export async function fetchPublicProducerBySlug(
   const usersField = Array.isArray(raw.users)
     ? (raw.users[0] ?? null)
     : (raw.users ?? null);
-  return { ...raw, users: usersField };
+  return {
+    ...raw,
+    users: usersField,
+    latitude: roundCoord(raw.latitude),
+    longitude: roundCoord(raw.longitude),
+  };
 }

@@ -9,7 +9,11 @@ import { maskEmail } from "@/lib/rgpd/mask-email";
 import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 import { logAdminInviteEvent } from "@/lib/audit-logs/log-admin-invite-event";
 
-export type State = { error?: string };
+// errorField : path Zod du premier issue, exposé pour permettre à l'UI
+// d'ancrer le message à côté du champ fautif (cf. T-200 r6 — case
+// declaration_indicateurs_veracite affichée sous la zone score-carbone, sans
+// quoi le producteur ne voit que l'erreur globale en bas du formulaire).
+export type State = { error?: string; errorField?: string };
 
 export async function completeOnboardingAction(
   _prev: State,
@@ -33,9 +37,18 @@ export async function completeOnboardingAction(
     type_production: formData.get("type_production"),
     type_production_precision:
       formData.get("type_production_precision") ?? undefined,
+    mode_elevage: formData.get("mode_elevage") ?? undefined,
+    alimentation: formData.get("alimentation") ?? undefined,
+    densite_animale: formData.get("densite_animale") ?? undefined,
+    declaration_indicateurs_veracite:
+      formData.get("declaration_indicateurs_veracite") ?? undefined,
   });
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Saisie invalide" };
+    const firstIssue = parsed.error.issues[0];
+    return {
+      error: firstIssue?.message ?? "Saisie invalide",
+      errorField: firstIssue?.path[0]?.toString(),
+    };
   }
 
   const admin = createSupabaseAdminClient();
@@ -115,6 +128,20 @@ export async function completeOnboardingAction(
     return { error: `Mise à jour des infos personnelles échouée : ${userError.message}` };
   }
 
+  // T-200 : 3 champs catégoriels facultatifs (score carbone & bien-être animal).
+  // On n'écrit la colonne QUE si l'utilisateur a coché une valeur — sinon on
+  // laisse la colonne intacte côté DB (pas d'écrasement par null).
+  const scoreCarboneFields: Record<string, string> = {};
+  if (parsed.data.mode_elevage) {
+    scoreCarboneFields.mode_elevage = parsed.data.mode_elevage;
+  }
+  if (parsed.data.alimentation) {
+    scoreCarboneFields.alimentation = parsed.data.alimentation;
+  }
+  if (parsed.data.densite_animale) {
+    scoreCarboneFields.densite_animale = parsed.data.densite_animale;
+  }
+
   // TODO Phase 3 finale : retirer prenom_affichage de cet UPDATE après le
   // DROP COLUMN producers.prenom_affichage. Source de vérité côté lecture
   // déjà migrée vers users.prenom (cf. getProducerDisplayName).
@@ -133,6 +160,7 @@ export async function completeOnboardingAction(
         parsed.data.type_production === "autre"
           ? parsed.data.type_production_precision
           : null,
+      ...scoreCarboneFields,
       statut: "pending",
     })
     .eq("user_id", session.id);
