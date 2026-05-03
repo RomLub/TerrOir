@@ -49,8 +49,21 @@ export async function acceptInvitationAction(
 
   if (!invitation) return { error: "Invitation introuvable" };
   if (invitation.used_at) return { error: "Invitation déjà utilisée" };
-  if (new Date(invitation.expires_at) < new Date())
+  if (new Date(invitation.expires_at) < new Date()) {
+    // T-081 — audit log forensique : claim ratée pour cause d'expiration.
+    // Surface "accept_invitation" = bouton "Devenir producteur" sur la page
+    // /invitation après login (consumer existant qui accepte un upgrade).
+    await logAuthEvent({
+      eventType: "admin_invite_expired",
+      userId: session.id,
+      metadata: {
+        invitation_id: invitation.id,
+        token_prefix: parsed.data.token.substring(0, 8),
+        surface: "accept_invitation",
+      },
+    });
     return { error: "Invitation expirée" };
+  }
 
   // T-110 : comparaison case-insensitive — session.email (Supabase Auth) vs
   // invitation.email (table producer_invitations) peuvent différer en casse.
