@@ -8,6 +8,23 @@ import { test, expect } from "@playwright/test";
 
 const PUBLIC_SLUG = "alpes-mancelles";
 
+// Verrou r1 T-239+T-240 : on injecte un clear sessionStorage avant tout
+// script de la page (init script Playwright = exécuté avant chaque
+// document de la session). Sans ça, si le test était relancé dans un
+// contexte avec une session pré-existante, le label compact deviendrait
+// « 12 km à vol d'oiseau » au lieu de « Voir la distance jusqu'à toi »
+// et le test passerait pour les mauvaises raisons (assertion sur le mauvais
+// état initial).
+test.beforeEach(async ({ context }) => {
+  await context.addInitScript(() => {
+    try {
+      window.sessionStorage.clear();
+    } catch {
+      // mode privé / quotas : on ignore, le test démarre sans session de toute façon.
+    }
+  });
+});
+
 test("T-200 fiche producteur : bloc démarche présent et widget distance fonctionnel", async ({
   page,
 }) => {
