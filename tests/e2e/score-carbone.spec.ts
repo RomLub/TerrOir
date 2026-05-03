@@ -18,6 +18,15 @@ test("T-200 fiche producteur : bloc démarche présent et widget distance foncti
   await expect(block.getByText("Notre démarche")).toBeVisible();
   await expect(block.getByRole("heading", { name: /au plus près/i })).toBeVisible();
 
+  // T-240 : le widget distance est replié par défaut. État initial = un
+  // bouton compact, le contenu détaillé (invite, géoloc, CP, RGPD) n'est
+  // monté qu'après clic sur ce bouton.
+  const expandBtn = block.getByRole("button", {
+    name: /voir la distance jusqu'à toi/i,
+  });
+  await expect(expandBtn).toBeVisible();
+  await expandBtn.click();
+
   // Amorce engageante personnalisée avec le nom du producteur — décision
   // comité T-200 round 2 (amorce non-générique).
   const inviteCopy = block.getByText(
