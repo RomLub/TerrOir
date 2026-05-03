@@ -296,6 +296,29 @@ export async function POST(request: Request) {
     emailResult = { ok: false, error: message };
   }
 
+  // T-081 — audit log forensique "transport email". Émis APRÈS sendTemplate
+  // succès (gating emailResult.ok). Distinct de invitation_created (déjà
+  // émis L210, marque l'INSERT DB) : invitation_created peut être émis sans
+  // que l'email soit parti (cf. test H3) — ce bloc est l'event "email
+  // effectivement envoyé".
+  //
+  // Mutuellement exclusifs : admin_invite_draft_resend si isDraftResend
+  // (relance d'un onboarding producer abandonné, statut='draft'), sinon
+  // admin_invite_sent (envoi initial — lead direct, consumer existant ou
+  // prospect). Permet aux queries forensiques de distinguer les 2 patterns
+  // de funnel acquisition (initial vs reactivation).
+  if (emailResult.ok) {
+    await logAuthEvent({
+      eventType: isDraftResend ? "admin_invite_draft_resend" : "admin_invite_sent",
+      userId: session.id,
+      metadata: {
+        invitation_id: invitation.id,
+        invitation_email: input.email,
+        resend_id: emailResult.id,
+      },
+    });
+  }
+
   // 5. Bump du lead matching : producer_interests.statut 'new' → 'contacted'.
   //    Gaté sur emailResult.ok : si l'email n'est pas parti, le prospect n'a
   //    pas vraiment été "contacté", on laisse le lead en 'new' pour relance.
