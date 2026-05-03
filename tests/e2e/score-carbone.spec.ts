@@ -18,12 +18,20 @@ test("T-200 fiche producteur : bloc démarche présent et widget distance foncti
   await expect(block.getByText("Notre démarche")).toBeVisible();
   await expect(block.getByRole("heading", { name: /au plus près/i })).toBeVisible();
 
-  const inviteCopy = block.getByText(/Indique ta position pour voir la distance/i);
+  // Amorce engageante personnalisée avec le nom du producteur — décision
+  // comité T-200 round 2 (amorce non-générique).
+  const inviteCopy = block.getByText(
+    /Indique ta position pour découvrir la distance à vol d'oiseau/i,
+  );
   await expect(inviteCopy).toBeVisible();
 
-  // Mention RGPD (art. 13) au point de collecte — décision comité T-200 round 1.
+  // Mention RGPD (art. 13 RGPD : finalité + durée + sous-traitant tiers) au
+  // point de collecte — décision comité T-200 rounds 1 + 2 (enrichie r2).
   await expect(
-    block.getByText(/Ta position reste dans ton navigateur/i),
+    block.getByText(/uniquement pour calculer la distance jusqu'à la ferme/i),
+  ).toBeVisible();
+  await expect(
+    block.getByText(/session uniquement, non conservée/i),
   ).toBeVisible();
 
   const geolocBtn = block.getByRole("button", { name: /utiliser ma position/i });
@@ -38,8 +46,10 @@ test("T-200 fiche producteur : bloc démarche présent et widget distance foncti
     timeout: 10_000,
   });
   await expect(block.getByText(/en moyenne en circuit long/i)).toBeVisible();
-  // Source ADEME affichée à côté du chiffre 1500 km — décision comité T-200 round 1.
-  await expect(block.getByText(/source\s*:\s*ad[eé]me/i)).toBeVisible();
+  // Label de référence reformulé en "Estimation indicative" (pas de citation
+  // ADEME nominative non sourçable) — décision comité T-200 round 2,
+  // sécurisation juridique avant review avocat T-003/T-206.
+  await expect(block.getByText(/estimation indicative/i)).toBeVisible();
   await expect(
     block.getByRole("button", { name: /changer ma position/i }),
   ).toBeVisible();
