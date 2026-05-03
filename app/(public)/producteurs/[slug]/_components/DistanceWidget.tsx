@@ -35,9 +35,23 @@ function readSession(): GeoSession | null {
     const raw = window.sessionStorage.getItem(SESSION_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<GeoSession>;
+    // Validation défensive (T-239+T-240 r3) : sessionStorage est partagé
+    // avec n'importe quel script de l'origine, on ne fait confiance ni au
+    // type, ni aux plages, ni au champ source. Toute incohérence → fallback
+    // silencieux sur l'état compact "Voir la distance" (le widget reste
+    // utilisable, l'utilisateur peut re-saisir).
+    // - typeof === "number" exclut string/null/undefined (mais pas NaN).
+    // - Number.isFinite exclut NaN et ±Infinity.
+    // - Plages WGS84 standard : lat ∈ [-90, 90], lng ∈ [-180, 180].
     if (
       typeof parsed.lat !== "number" ||
       typeof parsed.lng !== "number" ||
+      !Number.isFinite(parsed.lat) ||
+      !Number.isFinite(parsed.lng) ||
+      parsed.lat < -90 ||
+      parsed.lat > 90 ||
+      parsed.lng < -180 ||
+      parsed.lng > 180 ||
       (parsed.source !== "geoloc" && parsed.source !== "postal")
     ) {
       return null;
@@ -78,6 +92,19 @@ export function DistanceWidget({
   // l'utilisateur ne demande pas explicitement à voir la distance.
   const [expanded, setExpanded] = useState(false);
 
+  // Lecture sessionStorage côté client uniquement (post-mount), pour 2 raisons :
+  //   1. SSR : sessionStorage n'existe pas côté serveur. Lire au premier render
+  //      provoquerait un mismatch d'hydratation (le serveur sortirait l'état
+  //      neutre, le client un autre HTML). On rend toujours le bouton compact
+  //      "Voir la distance jusqu'à toi" en SSR + premier render client (cf.
+  //      `if (!mounted)` plus bas), puis on synchronise.
+  //   2. Choix produit (T-240 r1, décision Romain) : si une session existe
+  //      déjà (l'utilisateur a saisi sa position sur la fiche d'un autre
+  //      producteur dans le même onglet), on RESTE replié mais le bouton
+  //      compact affiche directement la distance recalculée pour CE producteur
+  //      ("📍 12 km à vol d'oiseau"). Pas d'auto-expand : on ne réimpose pas
+  //      le bloc déployé à chaque visite, l'utilisateur déplie s'il veut voir
+  //      le détail (comparaison circuit long, RGPD, "Changer ma position").
   useEffect(() => {
     setMounted(true);
     setSession(readSession());
