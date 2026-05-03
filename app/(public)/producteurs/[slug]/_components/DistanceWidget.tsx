@@ -222,14 +222,16 @@ export function DistanceWidget({
             placeholder="Code postal"
             value={postalInput}
             onChange={(e) => setPostalInput(e.target.value)}
-            className="h-11 w-32 rounded-lg border border-terroir-border bg-white px-3 text-[14px] text-terroir-ink placeholder:text-terroir-muted focus:outline-none focus:ring-2 focus:ring-green-700/40"
+            disabled={pending}
+            className="h-11 w-32 rounded-lg border border-terroir-border bg-white px-3 text-[14px] text-terroir-ink placeholder:text-terroir-muted focus:outline-none focus:ring-2 focus:ring-green-700/40 disabled:opacity-60"
           />
           <button
             type="submit"
             disabled={pending || !isPostalValid}
+            aria-busy={pending}
             className="inline-flex h-11 items-center rounded-lg border border-terroir-border bg-white px-3 text-[13px] font-semibold text-green-900 hover:bg-green-100/60 disabled:opacity-60"
           >
-            OK
+            {pending ? "Calcul…" : "OK"}
           </button>
         </form>
       </div>
