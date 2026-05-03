@@ -204,15 +204,6 @@ export function ProducerPageClient({
         )}
       </section>
 
-      <ScoreCarbonBlock
-        modeElevage={producer.modeElevage}
-        alimentation={producer.alimentation}
-        densiteAnimale={producer.densiteAnimale}
-        producerLat={producer.latitude}
-        producerLng={producer.longitude}
-        producerName={producer.name}
-      />
-
       <section id="produits" className="bg-green-100/40 border-y border-dark/[0.04] scroll-mt-32">
         <div className="max-w-7xl mx-auto px-6 py-16 md:py-24">
           <div className="flex items-end justify-between flex-wrap gap-4 mb-10">
@@ -277,6 +268,15 @@ export function ProducerPageClient({
           </div>
         </div>
       </section>
+
+      <ScoreCarbonBlock
+        modeElevage={producer.modeElevage}
+        alimentation={producer.alimentation}
+        densiteAnimale={producer.densiteAnimale}
+        producerLat={producer.latitude}
+        producerLng={producer.longitude}
+        producerName={producer.name}
+      />
 
       <div className="fixed bottom-0 inset-x-0 z-40 lg:hidden bg-white border-t border-dark/[0.08] shadow-[0_-4px_16px_rgba(27,67,50,0.08)] p-3">
         <Button size="lg" className="w-full" onClick={scrollToProducts}>

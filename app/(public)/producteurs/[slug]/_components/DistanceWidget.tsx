@@ -35,9 +35,23 @@ function readSession(): GeoSession | null {
     const raw = window.sessionStorage.getItem(SESSION_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<GeoSession>;
+    // Validation défensive (T-239+T-240 r3) : sessionStorage est partagé
+    // avec n'importe quel script de l'origine, on ne fait confiance ni au
+    // type, ni aux plages, ni au champ source. Toute incohérence → fallback
+    // silencieux sur l'état compact "Voir la distance" (le widget reste
+    // utilisable, l'utilisateur peut re-saisir).
+    // - typeof === "number" exclut string/null/undefined (mais pas NaN).
+    // - Number.isFinite exclut NaN et ±Infinity.
+    // - Plages WGS84 standard : lat ∈ [-90, 90], lng ∈ [-180, 180].
     if (
       typeof parsed.lat !== "number" ||
       typeof parsed.lng !== "number" ||
+      !Number.isFinite(parsed.lat) ||
+      !Number.isFinite(parsed.lng) ||
+      parsed.lat < -90 ||
+      parsed.lat > 90 ||
+      parsed.lng < -180 ||
+      parsed.lng > 180 ||
       (parsed.source !== "geoloc" && parsed.source !== "postal")
     ) {
       return null;
@@ -74,7 +88,23 @@ export function DistanceWidget({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  // Replié par défaut (T-240) : le widget occupe une seule ligne tant que
+  // l'utilisateur ne demande pas explicitement à voir la distance.
+  const [expanded, setExpanded] = useState(false);
 
+  // Lecture sessionStorage côté client uniquement (post-mount), pour 2 raisons :
+  //   1. SSR : sessionStorage n'existe pas côté serveur. Lire au premier render
+  //      provoquerait un mismatch d'hydratation (le serveur sortirait l'état
+  //      neutre, le client un autre HTML). On rend toujours le bouton compact
+  //      "Voir la distance jusqu'à toi" en SSR + premier render client (cf.
+  //      `if (!mounted)` plus bas), puis on synchronise.
+  //   2. Choix produit (T-240 r1, décision Romain) : si une session existe
+  //      déjà (l'utilisateur a saisi sa position sur la fiche d'un autre
+  //      producteur dans le même onglet), on RESTE replié mais le bouton
+  //      compact affiche directement la distance recalculée pour CE producteur
+  //      ("📍 12 km à vol d'oiseau"). Pas d'auto-expand : on ne réimpose pas
+  //      le bloc déployé à chaque visite, l'utilisateur déplie s'il veut voir
+  //      le détail (comparaison circuit long, RGPD, "Changer ma position").
   useEffect(() => {
     setMounted(true);
     setSession(readSession());
@@ -90,10 +120,10 @@ export function DistanceWidget({
   // orphelin "Distance ferme → toi" — defense in depth ici.
   if (producerLat === null || producerLng === null) return null;
 
-  // Avant le mount, on rend l'état d'invitation pour éviter un flash si
-  // sessionStorage contenait une position. C'est cohérent avec un SSR vide.
+  // Avant le mount, on rend le bouton compact en état "neutre" pour éviter
+  // un flash si sessionStorage contenait une distance. Cohérent avec un SSR vide.
   if (!mounted) {
-    return <InvitePlaceholder producerName={producerName} />;
+    return <CollapsedButton label="Voir la distance jusqu'à toi" disabled />;
   }
 
   const handleGeoloc = () => {
@@ -156,24 +186,44 @@ export function DistanceWidget({
     setError(null);
   };
 
+  // État replié : bouton compact 1 ligne. Le label porte la distance si on
+  // a déjà une session valide, l'invite générique sinon. Le clic bascule
+  // vers l'état déployé.
+  if (!expanded) {
+    const label =
+      distance !== null
+        ? `${distance} km à vol d'oiseau`
+        : "Voir la distance jusqu'à toi";
+    return (
+      <CollapsedButton label={label} onClick={() => setExpanded(true)} />
+    );
+  }
+
+  // État déployé avec session valide : on affiche le résultat complet
+  // (comparaison circuit long + barre + RGPD + bouton "Changer ma position").
   if (session && distance !== null) {
     return (
       <DistanceResult
         distance={distance}
         producerName={producerName}
         onReset={handleReset}
+        onCollapse={() => setExpanded(false)}
       />
     );
   }
 
+  // État déployé sans session : invite + bouton géoloc + code postal + RGPD.
   const isPostalValid = POSTAL_CODE_REGEX.test(postalInput);
 
   return (
     <div className="rounded-xl border border-terroir-border bg-white p-5">
-      <p className="text-[14px] leading-[1.55] text-terroir-ink/[0.78]">
-        Indique ta position pour découvrir la distance à vol d&apos;oiseau
-        jusqu&apos;à {producerName}.
-      </p>
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-[14px] leading-[1.55] text-terroir-ink/[0.78]">
+          Indique ta position pour découvrir la distance à vol d&apos;oiseau
+          jusqu&apos;à {producerName}.
+        </p>
+        <CollapseLink onClick={() => setExpanded(false)} />
+      </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <button
@@ -199,14 +249,16 @@ export function DistanceWidget({
             placeholder="Code postal"
             value={postalInput}
             onChange={(e) => setPostalInput(e.target.value)}
-            className="h-11 w-32 rounded-lg border border-terroir-border bg-white px-3 text-[14px] text-terroir-ink placeholder:text-terroir-muted focus:outline-none focus:ring-2 focus:ring-green-700/40"
+            disabled={pending}
+            className="h-11 w-32 rounded-lg border border-terroir-border bg-white px-3 text-[14px] text-terroir-ink placeholder:text-terroir-muted focus:outline-none focus:ring-2 focus:ring-green-700/40 disabled:opacity-60"
           />
           <button
             type="submit"
             disabled={pending || !isPostalValid}
+            aria-busy={pending}
             className="inline-flex h-11 items-center rounded-lg border border-terroir-border bg-white px-3 text-[13px] font-semibold text-green-900 hover:bg-green-100/60 disabled:opacity-60"
           >
-            OK
+            {pending ? "Calcul…" : "OK"}
           </button>
         </form>
       </div>
@@ -225,15 +277,39 @@ export function DistanceWidget({
   );
 }
 
-function InvitePlaceholder({ producerName }: { producerName: string }) {
+function CollapsedButton({
+  label,
+  onClick,
+  disabled = false,
+}: {
+  label: string;
+  onClick?: () => void;
+  disabled?: boolean;
+}) {
   return (
-    <div className="rounded-xl border border-terroir-border bg-white p-5">
-      <p className="text-[14px] leading-[1.55] text-terroir-ink/[0.78]">
-        Indique ta position pour découvrir la distance à vol d&apos;oiseau
-        jusqu&apos;à {producerName}.
-      </p>
-      <PrivacyNote />
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      // h-11 = 44px tap target. Volontairement sobre (variant secondaire
+      // outline) pour ne pas concurrencer le CTA primaire de la fiche.
+      className="inline-flex h-11 items-center gap-2 rounded-lg border border-terroir-border bg-white px-4 text-[13px] font-semibold text-green-900 hover:bg-green-100/60 disabled:opacity-60"
+    >
+      <span aria-hidden>📍</span>
+      {label}
+    </button>
+  );
+}
+
+function CollapseLink({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="shrink-0 text-[12px] text-terroir-ink/[0.55] underline-offset-2 hover:text-green-900 hover:underline"
+    >
+      Masquer
+    </button>
   );
 }
 
@@ -263,10 +339,12 @@ function DistanceResult({
   distance,
   producerName,
   onReset,
+  onCollapse,
 }: {
   distance: number;
   producerName: string;
   onReset: () => void;
+  onCollapse: () => void;
 }) {
   const ref = GMS_DISTANCE_KM_REFERENCE;
   // Ratio visuel borné [0,1] : la barre du producteur est proportionnelle à
@@ -276,8 +354,13 @@ function DistanceResult({
     <div className="rounded-xl border border-terroir-border bg-white p-5">
       <div className="grid gap-5 md:grid-cols-2">
         <div>
-          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-terra-700">
-            Jusqu&apos;à toi
+          <div className="flex items-start justify-between gap-3">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-terra-700">
+              Jusqu&apos;à toi
+            </div>
+            <div className="md:hidden">
+              <CollapseLink onClick={onCollapse} />
+            </div>
           </div>
           <div className="mt-1 font-serif text-[44px] leading-none text-green-900 md:text-[52px]">
             {distance} <span className="text-[22px] md:text-[26px]">km</span>
@@ -287,8 +370,13 @@ function DistanceResult({
           </p>
         </div>
         <div className="md:border-l md:border-terroir-border md:pl-5">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-terroir-muted">
-            En circuit long
+          <div className="flex items-start justify-between gap-3">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-terroir-muted">
+              En circuit long
+            </div>
+            <div className="hidden md:block">
+              <CollapseLink onClick={onCollapse} />
+            </div>
           </div>
           <div className="mt-1 font-serif text-[28px] leading-none text-terroir-ink/[0.55] md:text-[32px]">
             ~{ref} km
