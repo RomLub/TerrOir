@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  ALIMENTATION_VALUES,
+  DENSITE_ANIMALE_VALUES,
+  MODE_ELEVAGE_VALUES,
+} from "@/lib/producers/score-carbone-enums";
 
 // Mot de passe création/changement : 8+ chars + minuscule + majuscule + chiffre.
 // Aligné avec les règles Auth Dashboard Supabase (paramétrage 29/04/2026).
@@ -79,6 +84,30 @@ export const typeProductionEnum = z.enum([
   "autre",
 ]);
 
+// Cast en tuple mutable pour préserver le typage strict des littéraux côté
+// z.infer (le `as const` de score-carbone-enums.ts produit un readonly tuple
+// que z.enum n'accepte pas directement).
+export const modeElevageEnum = z.enum(
+  MODE_ELEVAGE_VALUES as unknown as [
+    (typeof MODE_ELEVAGE_VALUES)[number],
+    ...(typeof MODE_ELEVAGE_VALUES)[number][],
+  ],
+);
+
+export const alimentationEnum = z.enum(
+  ALIMENTATION_VALUES as unknown as [
+    (typeof ALIMENTATION_VALUES)[number],
+    ...(typeof ALIMENTATION_VALUES)[number][],
+  ],
+);
+
+export const densiteAnimaleEnum = z.enum(
+  DENSITE_ANIMALE_VALUES as unknown as [
+    (typeof DENSITE_ANIMALE_VALUES)[number],
+    ...(typeof DENSITE_ANIMALE_VALUES)[number][],
+  ],
+);
+
 export const invitationBusinessInfoSchema = z
   .object({
     // Token optionnel : absent en mode reprise d'onboarding (Phase 4) où la
@@ -110,6 +139,9 @@ export const invitationBusinessInfoSchema = z
       .trim()
       .optional()
       .transform((v) => (v === "" ? undefined : v)),
+    mode_elevage: modeElevageEnum.optional(),
+    alimentation: alimentationEnum.optional(),
+    densite_animale: densiteAnimaleEnum.optional(),
   })
   .refine(
     (d) =>
@@ -125,3 +157,6 @@ export type SignupInput = z.infer<typeof signupSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type FormeJuridique = z.infer<typeof formeJuridiqueEnum>;
 export type TypeProduction = z.infer<typeof typeProductionEnum>;
+export type ModeElevageInput = z.infer<typeof modeElevageEnum>;
+export type AlimentationInput = z.infer<typeof alimentationEnum>;
+export type DensiteAnimaleInput = z.infer<typeof densiteAnimaleEnum>;

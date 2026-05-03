@@ -525,3 +525,46 @@ describe("completeOnboardingAction — race condition consommation token (T-307)
     );
   });
 });
+
+// --- T-200 : champs catégoriels score carbone & bien-être animal ----------
+
+describe("completeOnboardingAction — T-200 score carbone & bien-être animal", () => {
+  it("happy path avec les 3 champs renseignés → payload UPDATE producers contient mode_elevage, alimentation, densite_animale", async () => {
+    const fd = makeFormData({
+      mode_elevage: "plein_air",
+      alimentation: "pature_dominante",
+      densite_animale: "extensive",
+    });
+
+    await runAction(fd);
+
+    const producerUpdate = captured.updates.find((u) => u.table === "producers");
+    expect(producerUpdate).toBeDefined();
+    expect(producerUpdate?.payload).toMatchObject({
+      mode_elevage: "plein_air",
+      alimentation: "pature_dominante",
+      densite_animale: "extensive",
+    });
+  });
+
+  it("happy path sans les 3 champs → payload UPDATE producers ne contient AUCUN des 3 champs (pas d'écrasement)", async () => {
+    await runAction(makeFormData());
+
+    const producerUpdate = captured.updates.find((u) => u.table === "producers");
+    expect(producerUpdate).toBeDefined();
+    const payload = producerUpdate?.payload as Record<string, unknown>;
+    expect(payload).not.toHaveProperty("mode_elevage");
+    expect(payload).not.toHaveProperty("alimentation");
+    expect(payload).not.toHaveProperty("densite_animale");
+  });
+
+  it("valeur invalide pour mode_elevage → Zod rejette, error 'Saisie invalide', aucune mutation DB", async () => {
+    const fd = makeFormData({ mode_elevage: "valeur_qui_nexiste_pas" });
+
+    const res = await runAction(fd);
+
+    expect(res?.error).toBeDefined();
+    // Aucun UPDATE car la validation Zod échoue avant les writes.
+    expect(captured.updates).toEqual([]);
+  });
+});
