@@ -167,7 +167,7 @@ describe("createAccountAction", () => {
     expect(createUserMock).not.toHaveBeenCalled();
   });
 
-  it("invitation expirée → error", async () => {
+  it("invitation expirée → error + audit log admin_invite_expired (userId=null, surface=create_account)", async () => {
     responses.producer_invitations = [
       {
         data: {
@@ -184,6 +184,20 @@ describe("createAccountAction", () => {
 
     expect(res).toEqual({ error: "Invitation expirée" });
     expect(createUserMock).not.toHaveBeenCalled();
+    // T-081 — audit log admin_invite_expired. userId=null car aucune session
+    // établie sur ce surface (le user n'a pas encore de compte). token_prefix
+    // = 8 premiers chars du token soumis (pas l'email en clair). surface
+    // permet de discriminer entre les 4 server actions de claim sans nouveau
+    // event_type.
+    expect(logAuthEventMock).toHaveBeenCalledWith({
+      eventType: "admin_invite_expired",
+      userId: null,
+      metadata: {
+        invitation_id: "inv-1",
+        token_prefix: VALID_TOKEN.substring(0, 8),
+        surface: "create_account",
+      },
+    });
   });
 
   it("createUser fail → error remonté tel quel", async () => {

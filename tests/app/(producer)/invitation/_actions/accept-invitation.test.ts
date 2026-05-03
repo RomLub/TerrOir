@@ -187,7 +187,7 @@ describe("acceptInvitationAction (T-303 — bascule POST avec confirmation expli
     expect(captured.inserts).toEqual([]);
   });
 
-  it("invitation expirée → error sans mutation", async () => {
+  it("invitation expirée → error sans mutation + audit log admin_invite_expired (surface=accept_invitation)", async () => {
     sessionUser = { id: "user-1", email: "user@example.com" };
     responses.producer_invitations = [
       {
@@ -206,6 +206,18 @@ describe("acceptInvitationAction (T-303 — bascule POST avec confirmation expli
     expect(res).toEqual({ error: "Invitation expirée" });
     expect(captured.updates).toEqual([]);
     expect(captured.inserts).toEqual([]);
+    // T-081 — audit log admin_invite_expired. userId = session.id (user
+    // déjà loggé sur ce surface, c'est juste le token d'invitation qui a
+    // expiré entre-temps).
+    expect(logAuthEventMock).toHaveBeenCalledWith({
+      eventType: "admin_invite_expired",
+      userId: "user-1",
+      metadata: {
+        invitation_id: "inv-1",
+        token_prefix: VALID_TOKEN.substring(0, 8),
+        surface: "accept_invitation",
+      },
+    });
   });
 
   it("happy path : roles+producer absents → UPDATE roles + INSERT producer + audit role_changed + redirect /onboarding", async () => {

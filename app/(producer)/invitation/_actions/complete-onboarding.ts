@@ -7,6 +7,7 @@ import { getSessionUser } from "@/lib/auth/session";
 import { invitationBusinessInfoSchema } from "@/lib/auth/validators";
 import { maskEmail } from "@/lib/rgpd/mask-email";
 import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
+import { logAdminInviteEvent } from "@/lib/audit-logs/log-admin-invite-event";
 
 export type State = { error?: string };
 
@@ -57,8 +58,21 @@ export async function completeOnboardingAction(
 
     if (!invitation) return { error: "Invitation introuvable" };
     if (invitation.used_at) return { error: "Invitation déjà utilisée" };
-    if (new Date(invitation.expires_at) < new Date())
+    if (new Date(invitation.expires_at) < new Date()) {
+      // T-081 — audit log forensique : claim ratée pour cause d'expiration.
+      // userId = session.id (user loggé qui tente de finaliser un wizard
+      // entamé avec un lien désormais expiré — ex: laissé ouvert plusieurs
+      // jours dans un onglet). token_prefix only (pas l'email en clair).
+      // Set cohérent T-081 — 4 sites alignés (cf. note dans
+      // lib/audit-logs/log-admin-invite-event.ts AdminInviteExpiredSurface).
+      await logAdminInviteEvent(session.id, {
+        type: "admin_invite_expired",
+        invitation_id: invitation.id,
+        token_prefix: token.substring(0, 8),
+        surface: "complete_onboarding",
+      });
       return { error: "Invitation expirée" };
+    }
 
     // T-110 : comparaison case-insensitive — la session.email vient de
     // Supabase Auth (potentiellement en casse mixte) et invitation.email

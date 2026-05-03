@@ -86,6 +86,30 @@ export const AUTH_EVENT_TYPES = [
   "account_otp_expired",
   "account_otp_attempts_exceeded",
   "account_email_change_completed",
+  // T-081 Phase 3 finale — cluster admin_invite_*. Granularité forensique
+  // sur le flow `/api/admin/producers/invite` (création + relance + 409
+  // pré-checks) et sur les 4 server actions producer/* qui claim un token
+  // (détection user-side d'un lien expiré). Cohabitation sémantique avec
+  // `invitation_created` (déjà émis ligne 61) qui marque l'INSERT DB :
+  // - invitation_created = INSERT producer_invitations OK (event "DB").
+  // - admin_invite_sent / admin_invite_draft_resend = email Resend OK
+  //   (event "transport"). Émis APRÈS sendTemplate succès. Mutuellement
+  //   exclusifs : un POST /invite émet l'un OU l'autre, jamais les deux,
+  //   selon le flag isDraftResend (relance d'un onboarding abandonné).
+  // - admin_invite_blocked_admin = 409 pré-check email = admin existant.
+  // - admin_invite_blocked_producer = 409 pré-check email = producteur
+  //   déjà inscrit (statut != 'draft'). Le 409 'draft_resend_confirm_required'
+  //   N'est PAS un blocage (juste une demande de confirmation UX) — pas d'event.
+  // - admin_invite_expired = check `expires_at < now()` sur les 4 server
+  //   actions producer/* (create-account, login-and-upgrade, accept-invitation,
+  //   complete-onboarding). 1 event = 1 tentative de claim ratée pour cause
+  //   d'expiration. userId nullable : sur create-account l'user n'a pas
+  //   encore de session.
+  "admin_invite_sent",
+  "admin_invite_draft_resend",
+  "admin_invite_blocked_admin",
+  "admin_invite_blocked_producer",
+  "admin_invite_expired",
 ] as const;
 
 export type AuthEventType = (typeof AUTH_EVENT_TYPES)[number];

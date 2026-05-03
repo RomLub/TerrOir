@@ -60,7 +60,7 @@ Priorités forward-looking uniquement. Pour l'historique complet des commits / c
 ### Audit logs
 
 - **T-080 UI admin pour `audit_logs`** — créer une page back-office `/admin/audit-logs` avec filtres par `event_type`, `user_id`, date range, pagination. La table est alimentée par 13 event types (5 auth Phase 1 + 6 payment Phase 2 + 2 retry refund Phase 2bis 28/04) — voir `CHANGELOG.md`.
-- **T-081 Events audit Phase 3 — incluant `[ADMIN_INVITE_*]` structuré** — instrumenter : `account_signup`, `email_change`, `account_deletion` (RGPD), `admin_login` (event distinct du password login pour traçabilité forensique admin spéciale), `role_change` (promotion consumer→producer, suspend/reactivate, etc.), Stripe events spécifiques (charge, dispute, payout completed/failed), **`[ADMIN_INVITE_*]`** (R4 inspection TB invite 28/04 — `admin_invite_sent`, `admin_invite_draft_resend`, `admin_invite_blocked_admin`, `admin_invite_blocked_producer`). Phases 1 (auth, 5 events), 2 (payment, 6 events) et 2bis (retry refund, 2 events) déjà livrées — voir `CHANGELOG.md`.
+- **T-081 Events audit Phase 3 — `[ADMIN_INVITE_*]` structuré** ✅ **LIVRÉE 2026-05-03** — Phase 3 finale câble les 5 events restants : cluster `admin_invite_*` (`admin_invite_sent`, `admin_invite_draft_resend`, `admin_invite_blocked_admin`, `admin_invite_blocked_producer`, `admin_invite_expired` sur 4 server actions de claim). Voir `CHANGELOG.md`. Phases 1 (auth, 5 events), 2 (payment, 6 events), 2bis (retry refund, 2 events) et 3 PR-A (T-081 PR-A + T-307/T-309/T-310, 6 events) déjà livrées antérieurement.
 
 ### Chantiers code futurs
 

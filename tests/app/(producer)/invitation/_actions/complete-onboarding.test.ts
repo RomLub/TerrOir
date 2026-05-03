@@ -223,6 +223,42 @@ describe("completeOnboardingAction — T-110 comparaison session.email vs invita
 
     expect(res?.error).toMatch(/correspond pas/i);
   });
+
+  it("invitation expirée → error + audit log admin_invite_expired (userId=session.id, surface=complete_onboarding)", async () => {
+    const token = "b".repeat(32);
+    responses.producer_invitations = [
+      {
+        data: {
+          id: "inv-1",
+          email: "user@example.com",
+          expires_at: new Date(Date.now() - 1000).toISOString(),
+          used_at: null,
+        },
+        error: null,
+      },
+    ];
+
+    const fd = makeFormData();
+    fd.set("token", token);
+    const res = await runAction(fd);
+
+    expect(res?.error).toBe("Invitation expirée");
+    // Pas d'UPDATE users / producers / producer_invitations (sortie avant
+    // toute mutation).
+    expect(captured.updates).toEqual([]);
+    // T-081 — audit log admin_invite_expired. userId = session.id (le user
+    // est loggé sur le wizard, c'est le token qui a expiré entre l'arrivée
+    // sur la page et la soumission du formulaire).
+    expect(logAuthEvent).toHaveBeenCalledWith({
+      eventType: "admin_invite_expired",
+      userId: "user-42",
+      metadata: {
+        invitation_id: "inv-1",
+        token_prefix: token.substring(0, 8),
+        surface: "complete_onboarding",
+      },
+    });
+  });
 });
 
 describe("completeOnboardingAction — auto-bump lead 'contacted' → 'onboarded'", () => {

@@ -7,6 +7,7 @@ import { sendTemplate } from "@/lib/resend/send";
 import { generateOptOutToken } from "@/lib/rgpd/opt-out-token";
 import { maskEmail } from "@/lib/rgpd/mask-email";
 import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
+import { logAdminInviteEvent } from "@/lib/audit-logs/log-admin-invite-event";
 import ProducerInvitation, {
   subject as invitationSubject,
 } from "@/lib/resend/templates/producer-invitation";
@@ -58,6 +59,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: adminCheckError.message }, { status: 500 });
   }
   if (existingAdmin) {
+    // T-081 — audit log forensique : un admin a tenté d'inviter un email
+    // qui correspond déjà à un compte administrateur. userId = admin
+    // tentant l'invitation (session.id), invitation_email en clair pour
+    // permettre l'investigation (l'admin a saisi l'email volontairement,
+    // pas une donnée user-side).
+    await logAdminInviteEvent(session.id, {
+      type: "admin_invite_blocked_admin",
+      invitation_email: input.email,
+    });
     return NextResponse.json(
       { error: "Impossible d'inviter un administrateur comme producteur" },
       { status: 409 },
@@ -105,6 +115,19 @@ export async function POST(request: Request) {
       );
     }
     if (existingProducer?.statut !== "draft") {
+      // T-081 — audit log forensique : un admin a tenté d'inviter un email
+      // qui correspond déjà à un producteur inscrit (statut hors 'draft').
+      // Distinct de admin_invite_blocked_admin (cluster admin_users) — celui-ci
+      // cible la table users + producers. metadata.statut permet de distinguer
+      // les variantes (pending/active/public/suspended/deleted) sans nouveau
+      // event_type (sémantique stable côté query, granularité côté metadata).
+      // Le 409 'draft_resend_confirm_required' n'émet PAS d'event : ce n'est
+      // pas un blocage strict, juste une demande de confirmation UX.
+      await logAdminInviteEvent(session.id, {
+        type: "admin_invite_blocked_producer",
+        invitation_email: input.email,
+        statut: existingProducer?.statut ?? null,
+      });
       return NextResponse.json(
         { error: "Ce producteur est déjà inscrit" },
         { status: 409 },
@@ -268,6 +291,26 @@ export async function POST(request: Request) {
       `[EMAIL_SEND_FAIL] template=producer_invitation to=${maskEmail(input.email)} error_name=unexpected_throw error_message=${message}`,
     );
     emailResult = { ok: false, error: message };
+  }
+
+  // T-081 — audit log forensique "transport email". Émis APRÈS sendTemplate
+  // succès (gating emailResult.ok). Distinct de invitation_created (déjà
+  // émis L210, marque l'INSERT DB) : invitation_created peut être émis sans
+  // que l'email soit parti (cf. test H3) — ce bloc est l'event "email
+  // effectivement envoyé".
+  //
+  // Mutuellement exclusifs : admin_invite_draft_resend si isDraftResend
+  // (relance d'un onboarding producer abandonné, statut='draft'), sinon
+  // admin_invite_sent (envoi initial — lead direct, consumer existant ou
+  // prospect). Permet aux queries forensiques de distinguer les 2 patterns
+  // de funnel acquisition (initial vs reactivation).
+  if (emailResult.ok) {
+    await logAdminInviteEvent(session.id, {
+      type: isDraftResend ? "admin_invite_draft_resend" : "admin_invite_sent",
+      invitation_id: invitation.id,
+      invitation_email: input.email,
+      resend_id: emailResult.id,
+    });
   }
 
   // 5. Bump du lead matching : producer_interests.statut 'new' → 'contacted'.

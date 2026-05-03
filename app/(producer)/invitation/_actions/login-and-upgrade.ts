@@ -8,6 +8,7 @@ import {
   extractRequestContext,
   logAuthEvent,
 } from "@/lib/audit-logs/log-auth-event";
+import { logAdminInviteEvent } from "@/lib/audit-logs/log-admin-invite-event";
 import { slugFromEmail } from "@/lib/producers/slug-from-email";
 import { clearRoleSnapshotOnStore } from "@/lib/auth/role-snapshot-cookie";
 import { consumeRateLimit, getLoginRateLimit } from "@/lib/rate-limit";
@@ -57,8 +58,21 @@ export async function loginAndUpgradeAction(
 
   if (!invitation) return { error: "Invitation introuvable" };
   if (invitation.used_at) return { error: "Invitation déjà utilisée" };
-  if (new Date(invitation.expires_at) < new Date())
+  if (new Date(invitation.expires_at) < new Date()) {
+    // T-081 — audit log forensique : claim ratée pour cause d'expiration.
+    // userId = null (le signInWithPassword n'a pas encore eu lieu, on n'a
+    // pas de session établie). Surface "login_and_upgrade" = formulaire
+    // "Me connecter pour accepter" pour un email déjà consumer.
+    // Set cohérent T-081 — 4 sites alignés (cf. note dans
+    // lib/audit-logs/log-admin-invite-event.ts AdminInviteExpiredSurface).
+    await logAdminInviteEvent(null, {
+      type: "admin_invite_expired",
+      invitation_id: invitation.id,
+      token_prefix: parsed.data.token.substring(0, 8),
+      surface: "login_and_upgrade",
+    });
     return { error: "Invitation expirée" };
+  }
 
   const { data: existingUser } = await admin
     .from("users")

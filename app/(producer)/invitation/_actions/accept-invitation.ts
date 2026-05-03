@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth/session";
 import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
+import { logAdminInviteEvent } from "@/lib/audit-logs/log-admin-invite-event";
 import { slugFromEmail } from "@/lib/producers/slug-from-email";
 import { clearRoleSnapshotOnStore } from "@/lib/auth/role-snapshot-cookie";
 
@@ -49,8 +50,23 @@ export async function acceptInvitationAction(
 
   if (!invitation) return { error: "Invitation introuvable" };
   if (invitation.used_at) return { error: "Invitation déjà utilisée" };
-  if (new Date(invitation.expires_at) < new Date())
+  if (new Date(invitation.expires_at) < new Date()) {
+    // T-081 — audit log forensique : claim ratée pour cause d'expiration.
+    // Surface "accept_invitation" = bouton "Devenir producteur" sur la page
+    // /invitation après login (consumer existant qui accepte un upgrade).
+    // Set cohérent T-081 — 4 sites alignés (create-account, login-and-upgrade,
+    // accept-invitation, complete-onboarding). Si un futur 5e chemin de claim
+    // est ajouté, ÉTENDRE AdminInviteExpiredSurface dans
+    // lib/audit-logs/log-admin-invite-event.ts plutôt que dupliquer
+    // l'instrumentation : le compilateur refuse une surface inconnue.
+    await logAdminInviteEvent(session.id, {
+      type: "admin_invite_expired",
+      invitation_id: invitation.id,
+      token_prefix: parsed.data.token.substring(0, 8),
+      surface: "accept_invitation",
+    });
     return { error: "Invitation expirée" };
+  }
 
   // T-110 : comparaison case-insensitive — session.email (Supabase Auth) vs
   // invitation.email (table producer_invitations) peuvent différer en casse.
