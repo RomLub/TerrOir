@@ -10,6 +10,7 @@ import {
   extractRequestContext,
   logAuthEvent,
 } from "@/lib/audit-logs/log-auth-event";
+import { logAdminInviteEvent } from "@/lib/audit-logs/log-admin-invite-event";
 
 export type State = { error?: string; success?: boolean };
 
@@ -62,14 +63,13 @@ export async function createAccountAction(
     // userId = null (l'user n'a pas encore de compte créé, il essaie d'en
     // créer un via le lien expiré). Surface "create_account" = formulaire
     // "Créer mon compte producteur" pour un email pas encore connu.
-    await logAuthEvent({
-      eventType: "admin_invite_expired",
-      userId: null,
-      metadata: {
-        invitation_id: invitation.id,
-        token_prefix: parsed.data.token.substring(0, 8),
-        surface: "create_account",
-      },
+    // Set cohérent T-081 — 4 sites alignés (cf. note dans
+    // lib/audit-logs/log-admin-invite-event.ts AdminInviteExpiredSurface).
+    await logAdminInviteEvent(null, {
+      type: "admin_invite_expired",
+      invitation_id: invitation.id,
+      token_prefix: parsed.data.token.substring(0, 8),
+      surface: "create_account",
     });
     return { error: "Invitation expirée" };
   }
