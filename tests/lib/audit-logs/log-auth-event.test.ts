@@ -176,6 +176,12 @@ describe("logAuthEvent", () => {
     "admin_login",
     "role_changed",
     "invitation_consumed_race_lost",
+    // T-081 Phase 3 finale — cluster admin_invite_*.
+    "admin_invite_sent",
+    "admin_invite_draft_resend",
+    "admin_invite_blocked_admin",
+    "admin_invite_blocked_producer",
+    "admin_invite_expired",
   ] as const)("Phase 3 event %s : insert event_type tel quel", async (eventType) => {
     await logAuthEvent({ eventType, userId: "user-1" });
 

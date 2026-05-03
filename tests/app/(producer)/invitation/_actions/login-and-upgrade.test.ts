@@ -178,6 +178,39 @@ describe("loginAndUpgradeAction", () => {
     });
   });
 
+  it("invitation expirée → error + audit log admin_invite_expired (userId=null, surface=login_and_upgrade)", async () => {
+    responses.producer_invitations = [
+      {
+        data: {
+          id: "inv-1",
+          email: "user@example.com",
+          expires_at: new Date(Date.now() - 1000).toISOString(),
+          used_at: null,
+        },
+        error: null,
+      },
+    ];
+
+    const res = await loginAndUpgradeAction({}, makeFormData());
+
+    expect(res).toEqual({ error: "Invitation expirée" });
+    expect(signInMock).not.toHaveBeenCalled();
+    expect(captured.updates).toEqual([]);
+    expect(captured.inserts).toEqual([]);
+    // T-081 — audit log admin_invite_expired. userId=null car le
+    // signInWithPassword n'a pas encore eu lieu sur ce surface (l'user n'a
+    // pas de session établie au moment du check).
+    expect(logAuthEventMock).toHaveBeenCalledWith({
+      eventType: "admin_invite_expired",
+      userId: null,
+      metadata: {
+        invitation_id: "inv-1",
+        token_prefix: VALID_TOKEN.substring(0, 8),
+        surface: "login_and_upgrade",
+      },
+    });
+  });
+
   it("schema invalide (password vide) → error sans toucher signIn", async () => {
     const res = await loginAndUpgradeAction({}, makeFormData({ password: "" }));
 

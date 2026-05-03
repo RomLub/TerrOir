@@ -842,3 +842,172 @@ describe("I. T-109 invalidation auto des invitations actives", () => {
     );
   });
 });
+
+// --- J. T-081 audit log cluster admin_invite_* ---------------------------
+// Quatre events posés par cette route :
+//   - admin_invite_sent           : transport email OK (envoi initial).
+//   - admin_invite_draft_resend   : transport email OK (relance d'un
+//                                    onboarding producer abandonné).
+//                                    Mutuellement exclusif avec sent.
+//   - admin_invite_blocked_admin  : 409 pré-check email = admin existant.
+//   - admin_invite_blocked_producer : 409 pré-check email = producteur
+//                                     déjà inscrit (statut hors 'draft').
+// Le 409 'draft_resend_confirm_required' n'émet PAS d'event (J6 ci-dessous).
+// L'event admin_invite_expired est posé côté server actions producer/* —
+// tests dédiés dans tests/app/(producer)/invitation/_actions/.
+
+describe("J. T-081 audit log cluster admin_invite_*", () => {
+  it("J1 happy path (prospect direct, email OK) → logAuthEvent('admin_invite_sent') avec invitation_id + invitation_email + resend_id", async () => {
+    pushResp("admin_users", "select", { data: null, error: null });
+    pushResp("users", "select", { data: null, error: null });
+    const res = await POST(makeRequest(VALID_BODY));
+    expect(res.status).toBe(200);
+    const sentCall = vi
+      .mocked(logAuthEvent)
+      .mock.calls.find(
+        (c) =>
+          (c[0] as { eventType: string }).eventType === "admin_invite_sent",
+      );
+    expect(sentCall).toBeDefined();
+    expect(sentCall![0]).toEqual({
+      eventType: "admin_invite_sent",
+      userId: "admin-1",
+      metadata: {
+        invitation_id: "inv-test",
+        invitation_email: "prospect@example.com",
+        resend_id: "res_1",
+      },
+    });
+    // Garde-fou : pas de admin_invite_draft_resend en parallèle (mutuellement
+    // exclusifs — ce flow n'est pas un draft resend).
+    const draftCalls = vi
+      .mocked(logAuthEvent)
+      .mock.calls.filter(
+        (c) =>
+          (c[0] as { eventType: string }).eventType ===
+          "admin_invite_draft_resend",
+      );
+    expect(draftCalls).toHaveLength(0);
+  });
+
+  it("J2 draft_resend (producer.statut='draft' + confirm) → logAuthEvent('admin_invite_draft_resend'), PAS admin_invite_sent", async () => {
+    pushResp("admin_users", "select", { data: null, error: null });
+    pushResp("users", "select", {
+      data: { id: "user-1", roles: ["consumer", "producer"] },
+      error: null,
+    });
+    pushResp("producers", "select", { data: { statut: "draft" }, error: null });
+    const res = await POST(
+      makeRequest({ ...VALID_BODY, confirm_draft_resend: true }),
+    );
+    expect(res.status).toBe(200);
+    const draftCall = vi
+      .mocked(logAuthEvent)
+      .mock.calls.find(
+        (c) =>
+          (c[0] as { eventType: string }).eventType ===
+          "admin_invite_draft_resend",
+      );
+    expect(draftCall).toBeDefined();
+    expect(draftCall![0]).toMatchObject({
+      eventType: "admin_invite_draft_resend",
+      userId: "admin-1",
+      metadata: {
+        invitation_id: "inv-test",
+        invitation_email: "prospect@example.com",
+        resend_id: "res_1",
+      },
+    });
+    const sentCalls = vi
+      .mocked(logAuthEvent)
+      .mock.calls.filter(
+        (c) =>
+          (c[0] as { eventType: string }).eventType === "admin_invite_sent",
+      );
+    expect(sentCalls).toHaveLength(0);
+  });
+
+  it("J3 sendTemplate échoue (ok:false) → ni admin_invite_sent ni admin_invite_draft_resend (gating emailResult.ok)", async () => {
+    pushResp("admin_users", "select", { data: null, error: null });
+    pushResp("users", "select", { data: null, error: null });
+    mockSendTemplate.mockResolvedValue({ ok: false, error: "smtp down" });
+    const res = await POST(makeRequest(VALID_BODY));
+    expect(res.status).toBe(200);
+    const transportCalls = vi
+      .mocked(logAuthEvent)
+      .mock.calls.filter((c) =>
+        ["admin_invite_sent", "admin_invite_draft_resend"].includes(
+          (c[0] as { eventType: string }).eventType,
+        ),
+      );
+    expect(transportCalls).toHaveLength(0);
+    // Sanity : invitation_created bien émis (l'INSERT DB a réussi, l'event
+    // "DB" est indépendant de l'event "transport").
+    expect(logAuthEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "invitation_created" }),
+    );
+  });
+
+  it("J4 409 admin existant → logAuthEvent('admin_invite_blocked_admin') avec invitation_email", async () => {
+    pushResp("admin_users", "select", { data: { id: "admin-9" }, error: null });
+    const res = await POST(makeRequest(VALID_BODY));
+    expect(res.status).toBe(409);
+    expect(logAuthEvent).toHaveBeenCalledTimes(1);
+    expect(logAuthEvent).toHaveBeenCalledWith({
+      eventType: "admin_invite_blocked_admin",
+      userId: "admin-1",
+      metadata: { invitation_email: "prospect@example.com" },
+    });
+    // invitation_created JAMAIS émis (le 409 sort avant l'INSERT).
+    expect(logAuthEvent).not.toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "invitation_created" }),
+    );
+  });
+
+  it.each([["pending"], ["active"], ["public"], ["suspended"], ["deleted"]])(
+    "J5 409 producer.statut=%s → logAuthEvent('admin_invite_blocked_producer') avec statut",
+    async (statut) => {
+      pushResp("admin_users", "select", { data: null, error: null });
+      pushResp("users", "select", {
+        data: { id: "user-1", roles: ["consumer", "producer"] },
+        error: null,
+      });
+      pushResp("producers", "select", { data: { statut }, error: null });
+      const res = await POST(makeRequest(VALID_BODY));
+      expect(res.status).toBe(409);
+      expect(logAuthEvent).toHaveBeenCalledTimes(1);
+      expect(logAuthEvent).toHaveBeenCalledWith({
+        eventType: "admin_invite_blocked_producer",
+        userId: "admin-1",
+        metadata: {
+          invitation_email: "prospect@example.com",
+          statut,
+        },
+      });
+      expect(logAuthEvent).not.toHaveBeenCalledWith(
+        expect.objectContaining({ eventType: "invitation_created" }),
+      );
+    },
+  );
+
+  it("J6 409 draft_resend_confirm_required (sans confirm) → AUCUN event admin_invite_* (pas un blocage strict)", async () => {
+    pushResp("admin_users", "select", { data: null, error: null });
+    pushResp("users", "select", {
+      data: { id: "user-1", roles: ["consumer", "producer"] },
+      error: null,
+    });
+    pushResp("producers", "select", { data: { statut: "draft" }, error: null });
+    const res = await POST(makeRequest(VALID_BODY));
+    expect(res.status).toBe(409);
+    expect((await res.json()).kind).toBe("draft_resend_confirm_required");
+    // Pas d'event admin_invite_blocked_* : c'est une demande de confirmation
+    // UX, pas un blocage forensiquement notable. Le 2e POST (avec confirm)
+    // émettra alors admin_invite_draft_resend (cf. J2).
+    const adminInviteCalls = vi
+      .mocked(logAuthEvent)
+      .mock.calls.filter((c) =>
+        (c[0] as { eventType: string }).eventType.startsWith("admin_invite_"),
+      );
+    expect(adminInviteCalls).toHaveLength(0);
+  });
+});
