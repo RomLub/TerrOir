@@ -48,11 +48,40 @@ describe("DECLARATION_VERACITE_WORDINGS — registre versionné", () => {
     );
   });
 
-  it("la version courante reste v1.0 malgré la présence de v1.1 dans la map (BL-2 prépare le terrain, ne bump pas)", () => {
-    // Verrou anti-bump accidentel : BL-2 a archivé v1.1 dans la map mais ne
-    // doit PAS basculer la version courante. Le bump effectif relèvera d'un
-    // chantier dédié (cf. T-278, T-282, T-288, T-293) — runbook explicite.
-    expect(DECLARATION_VERACITE_WORDING_VERSION).toBe("v1.0");
+  it("verrou anti-bump : VERSION_COURANTE reste v1.0 ET pointe vers une entrée valide de la map (cf. runbook T-293)", () => {
+    // Verrou anti-bump accidentel — si ce test casse au moment d'un bump
+    // effectif, NE PAS le supprimer ni le passer à "v1.1" en premier réflexe.
+    // Suivre le runbook T-293 dans l'ordre : (a) archiver la nouvelle entrée
+    // dans la map [déjà fait pour v1.1 par BL-2], (b) bumper VERSION_COURANTE,
+    // (c) aligner StepInfos.tsx (utilise désormais le helper, donc no-op),
+    // (d) appliquer la politique re-coche T-288. Une fois le bump validé,
+    // mettre à jour la valeur attendue ci-dessous (et seulement ici).
+    expect(
+      DECLARATION_VERACITE_WORDING_VERSION,
+      "Si ce test casse, suivre le runbook T-293 étapes (a)→(d) avant de déverrouiller la valeur attendue.",
+    ).toBe("v1.0");
+    // Cohérence multi-référentiel : la version courante doit toujours pointer
+    // vers une entrée présente dans la map des wordings archivés. Sans ce
+    // garde-fou, un bump vers une clé inexistante ferait crasher l'UI au
+    // runtime (helper retourne null) sans qu'aucun test ne s'en aperçoive.
+    expect(
+      Object.keys(DECLARATION_VERACITE_WORDINGS),
+      "VERSION_COURANTE doit toujours pointer vers une clé existante de DECLARATION_VERACITE_WORDINGS.",
+    ).toContain(DECLARATION_VERACITE_WORDING_VERSION);
+  });
+
+  it("getDeclarationVeraciteText() sans argument retourne le texte de la version courante (contrat no-op runtime BL-2)", () => {
+    // Promesse principale du chantier BL-2 : ajouter v1.1 dans la map ne
+    // change RIEN à ce que voit le producteur. Le helper appelé sans argument
+    // sert de point d'entrée unique pour l'UI (StepInfos.tsx) — il retourne
+    // toujours le wording de VERSION_COURANTE, donc tant que cette dernière
+    // reste à "v1.0", aucun changement visible côté producteur.
+    expect(getDeclarationVeraciteText()).toBe(
+      DECLARATION_VERACITE_WORDINGS["v1.0"],
+    );
+    expect(getDeclarationVeraciteText()).toBe(
+      DECLARATION_VERACITE_WORDINGS[DECLARATION_VERACITE_WORDING_VERSION],
+    );
   });
 
   it("getDeclarationVeraciteText(version connue) → texte exact ; version inconnue → null", () => {
