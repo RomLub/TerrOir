@@ -42,27 +42,22 @@ type Captured = {
   eqCalls: Array<{ table: string; col: string; val: unknown }>;
   ilikeCalls: Array<{ table: string; col: string; val: unknown }>;
   isCalls: Array<{ table: string; col: string; val: unknown }>;
+  rpcCalls: Array<{ name: string; params: Record<string, unknown> }>;
 };
 
 let captured: Captured;
 let responses: Record<string, Resp[]>;
+let rpcResponses: Record<string, Resp[]>;
 
 function defaultResp(table: string): Resp {
   // Defaults qui font passer le flow métier sans intervention. Les tests
   // surchargent uniquement `producer_interests` (la table sous test).
-  // Pour `producers` : couvre à la fois le SELECT statut (branche reprise) et
-  // le SELECT des 3 enums score-carbone (T-241, pré-UPDATE) — les tests T-241
-  // qui simulent un producer "déjà rempli" surchargent via responses.producers.
+  // Pour `producers` : couvre le SELECT statut (branche reprise). Depuis
+  // T-241 round 2, plus de SELECT JS des 3 enums : la RPC
+  // update_producer_onboarding lit + décide + UPDATE en une seule
+  // transaction atomique côté SQL.
   if (table === "producers")
-    return {
-      data: {
-        statut: "draft",
-        mode_elevage: null,
-        alimentation: null,
-        densite_animale: null,
-      },
-      error: null,
-    };
+    return { data: { statut: "draft" }, error: null };
   return { data: null, error: null };
 }
 
@@ -96,6 +91,15 @@ vi.mock("@/lib/supabase/admin", () => ({
       builder.maybeSingle = () => Promise.resolve(resp);
       builder.then = (onFulfilled: (r: Resp) => unknown) => onFulfilled(resp);
       return builder;
+    },
+    // T-241 round 2 — la server action passe l'UPDATE producers via RPC
+    // atomique. Le mock capture nom + params pour assertions, et renvoie
+    // par défaut { data: null, error: null } (succès silencieux). Les tests
+    // qui simulent une erreur RPC surchargent rpcResponses[name].
+    rpc: (name: string, params: Record<string, unknown>) => {
+      captured.rpcCalls.push({ name, params });
+      const resp = rpcResponses[name]?.shift() ?? { data: null, error: null };
+      return Promise.resolve(resp);
     },
   }),
 }));
@@ -163,8 +167,10 @@ beforeEach(() => {
     eqCalls: [],
     ilikeCalls: [],
     isCalls: [],
+    rpcCalls: [],
   };
   responses = {};
+  rpcResponses = {};
   sessionUser = {
     id: "user-42",
     email: "user@example.com",
@@ -258,9 +264,10 @@ describe("completeOnboardingAction — T-110 comparaison session.email vs invita
     const res = await runAction(fd);
 
     expect(res?.error).toBe("Invitation expirée");
-    // Pas d'UPDATE users / producers / producer_invitations (sortie avant
-    // toute mutation).
+    // Pas d'UPDATE users / RPC producers / UPDATE producer_invitations
+    // (sortie avant toute mutation).
     expect(captured.updates).toEqual([]);
+    expect(captured.rpcCalls).toEqual([]);
     // T-081 — audit log admin_invite_expired. userId = session.id (le user
     // est loggé sur le wizard, c'est le token qui a expiré entre l'arrivée
     // sur la page et la soumission du formulaire).
@@ -544,7 +551,7 @@ describe("completeOnboardingAction — race condition consommation token (T-307)
 // --- T-200 : champs catégoriels score carbone & bien-être animal ----------
 
 describe("completeOnboardingAction — T-200 score carbone & bien-être animal", () => {
-  it("happy path avec les 3 champs renseignés + déclaration cochée → payload UPDATE producers contient mode_elevage, alimentation, densite_animale", async () => {
+  it("happy path avec les 3 champs renseignés + déclaration cochée → params RPC update_producer_onboarding contiennent les 3 enums + p_declaration_cochee=true", async () => {
     const fd = makeFormData({
       mode_elevage: "plein_air",
       alimentation: "pature_dominante",
@@ -554,24 +561,24 @@ describe("completeOnboardingAction — T-200 score carbone & bien-être animal",
 
     await runAction(fd);
 
-    const producerUpdate = captured.updates.find((u) => u.table === "producers");
-    expect(producerUpdate).toBeDefined();
-    expect(producerUpdate?.payload).toMatchObject({
-      mode_elevage: "plein_air",
-      alimentation: "pature_dominante",
-      densite_animale: "extensive",
-    });
-    // T-200 r5 — le NOM de champ form `declaration_indicateurs_veracite`
-    // (booléen "on") n'est jamais écrit tel quel en colonne. Depuis T-241,
-    // l'engagement est archivé dans 3 colonnes dédiées
-    // (declaration_indicateurs_veracite_at + _snapshot + _wording_version) —
-    // assertions dans la suite T-241 dédiée plus bas.
-    expect(producerUpdate?.payload).not.toHaveProperty(
-      "declaration_indicateurs_veracite",
+    // T-241 round 2 — l'UPDATE producers est désormais encapsulé dans la RPC
+    // atomique update_producer_onboarding (lecture + décision + UPDATE en
+    // une seule transaction PostgreSQL avec SELECT FOR UPDATE).
+    const rpc = captured.rpcCalls.find(
+      (c) => c.name === "update_producer_onboarding",
     );
+    expect(rpc).toBeDefined();
+    expect(rpc?.params).toMatchObject({
+      p_user_id: "user-42",
+      p_mode_elevage: "plein_air",
+      p_alimentation: "pature_dominante",
+      p_densite_animale: "extensive",
+      p_declaration_cochee: true,
+      p_wording_version: "v1.0",
+    });
   });
 
-  it("T-200 r5 — au moins un enum saisi sans déclaration cochée → erreur Zod, aucune mutation DB", async () => {
+  it("T-200 r5 — au moins un enum saisi sans déclaration cochée → erreur Zod, aucune mutation DB ni RPC", async () => {
     // Cas typique : producteur coche « Plein air » mais oublie/refuse la
     // déclaration sur l'honneur. On bloque côté serveur (la garde client
     // n'est pas suffisante — un POST direct contournerait).
@@ -586,59 +593,76 @@ describe("completeOnboardingAction — T-200 score carbone & bien-être animal",
     // (au lieu d'une erreur orpheline en bas du formulaire).
     expect(res?.errorField).toBe("declaration_indicateurs_veracite");
     expect(captured.updates).toEqual([]);
+    expect(captured.rpcCalls).toEqual([]);
   });
 
-  it("T-200 r5 — déclaration cochée mais aucun enum saisi → OK, déclaration ignorée", async () => {
+  it("T-200 r5 — déclaration cochée mais aucun enum saisi → OK, params RPC ont p_X=null pour les 3 enums (la RPC SQL ne re-persistera pas via le check any_set)", async () => {
     // Cas symétrique : producteur a coché la case par curiosité mais n'a
-    // rempli aucun indicateur. Le bloc reste vide, le flow passe.
+    // rempli aucun indicateur. Côté JS on transmet null aux 3 paramètres ;
+    // la décision finale (ne pas re-persister) est prise atomiquement
+    // côté SQL via le check any_set dans la RPC update_producer_onboarding
+    // (cf. tests/lib/producers/declaration-veracite.test.ts pour la spec).
     const fd = makeFormData({ declaration_indicateurs_veracite: "on" });
 
     await runAction(fd);
 
-    const producerUpdate = captured.updates.find((u) => u.table === "producers");
-    expect(producerUpdate).toBeDefined();
-    const payload = producerUpdate?.payload as Record<string, unknown>;
-    expect(payload).not.toHaveProperty("mode_elevage");
-    expect(payload).not.toHaveProperty("alimentation");
-    expect(payload).not.toHaveProperty("densite_animale");
-    expect(payload).not.toHaveProperty("declaration_indicateurs_veracite");
+    const rpc = captured.rpcCalls.find(
+      (c) => c.name === "update_producer_onboarding",
+    );
+    expect(rpc).toBeDefined();
+    expect(rpc?.params).toMatchObject({
+      p_mode_elevage: null,
+      p_alimentation: null,
+      p_densite_animale: null,
+      p_declaration_cochee: true,
+    });
   });
 
-  it("happy path sans les 3 champs → payload UPDATE producers ne contient AUCUN des 3 champs (pas d'écrasement)", async () => {
+  it("happy path sans les 3 champs → params RPC ont p_X=null pour les 3 enums + p_declaration_cochee=false", async () => {
     await runAction(makeFormData());
 
-    const producerUpdate = captured.updates.find((u) => u.table === "producers");
-    expect(producerUpdate).toBeDefined();
-    const payload = producerUpdate?.payload as Record<string, unknown>;
-    expect(payload).not.toHaveProperty("mode_elevage");
-    expect(payload).not.toHaveProperty("alimentation");
-    expect(payload).not.toHaveProperty("densite_animale");
+    const rpc = captured.rpcCalls.find(
+      (c) => c.name === "update_producer_onboarding",
+    );
+    expect(rpc).toBeDefined();
+    expect(rpc?.params).toMatchObject({
+      p_mode_elevage: null,
+      p_alimentation: null,
+      p_densite_animale: null,
+      p_declaration_cochee: false,
+    });
   });
 
-  it("valeur invalide pour mode_elevage → Zod rejette, error 'Saisie invalide', aucune mutation DB", async () => {
+  it("valeur invalide pour mode_elevage → Zod rejette, error 'Saisie invalide', aucune mutation DB ni RPC", async () => {
     const fd = makeFormData({ mode_elevage: "valeur_qui_nexiste_pas" });
 
     const res = await runAction(fd);
 
     expect(res?.error).toBeDefined();
-    // Aucun UPDATE car la validation Zod échoue avant les writes.
     expect(captured.updates).toEqual([]);
+    expect(captured.rpcCalls).toEqual([]);
   });
 });
 
 // --- T-241 : persistance déclaration sur l'honneur (DGCCRF) ---------------
 // Avant T-241, la case « Je certifie… » était validée Zod mais non archivée.
-// La server action lit maintenant l'état actuel des 3 enums avant l'UPDATE et
-// persiste 3 colonnes dédiées (declaration_indicateurs_veracite_at,
-// declaration_indicateurs_snapshot, declaration_indicateurs_wording_version)
-// uniquement si au moins un enum a effectivement changé. Une édition qui ne
-// touche que des champs hors-enum ne doit PAS écraser le timestamp d'origine.
+// Round 1 : ajout de 3 colonnes (veracite_at, snapshot, wording_version) +
+// helper JS de décision + double-call SELECT/UPDATE Supabase.
+// Round 2 (suite revue conformité+technique) : la décision est désormais
+// faite ATOMIQUEMENT côté SQL par la RPC update_producer_onboarding, qui
+// encapsule lecture (SELECT FOR UPDATE), décision (CASE WHEN) et écriture
+// dans une seule transaction PostgreSQL — élimine la fenêtre lecture-
+// modification non atomique sur double-clic / retry concurrent.
+//
+// Les 3 tests ci-dessous documentent le CONTRAT côté server action :
+// quels paramètres doivent être transmis à la RPC dans chacun des 3
+// scénarios métier (création, édition changeante, édition inerte). La
+// SÉMANTIQUE de la décision elle-même (re-persister ou pas) est testée
+// unitairement dans tests/lib/producers/declaration-veracite.test.ts via
+// shouldPersistDeclarationVeracite, miroir lisible du CASE WHEN SQL.
 
-describe("completeOnboardingAction — T-241 persistance déclaration sur l'honneur", () => {
-  it("création producteur (enums vierges) + 3 enums + case cochée → payload UPDATE contient les 3 colonnes declaration_indicateurs_*", async () => {
-    // En flux reprise/création initiale, le producer draft n'a aucun enum
-    // (defaultResp producers : NULL/NULL/NULL). Le snapshot soumis diffère
-    // → on persiste les 3 colonnes.
+describe("completeOnboardingAction — T-241 persistance déclaration sur l'honneur (RPC atomique)", () => {
+  it("création producteur (enums vierges) + 3 enums + case cochée → RPC update_producer_onboarding appelée avec p_user_id + 3 enums + p_declaration_cochee=true + p_wording_version=v1.0", async () => {
     const fd = makeFormData({
       mode_elevage: "plein_air",
       alimentation: "pature_dominante",
@@ -648,39 +672,33 @@ describe("completeOnboardingAction — T-241 persistance déclaration sur l'honn
 
     await runAction(fd);
 
-    const producerUpdate = captured.updates.find((u) => u.table === "producers");
-    expect(producerUpdate).toBeDefined();
-    const payload = producerUpdate?.payload as Record<string, unknown>;
-    expect(payload.declaration_indicateurs_veracite_at).toEqual(
-      expect.any(String),
+    // Une seule RPC update_producer_onboarding doit être appelée — c'est
+    // le seul write path autorisé sur les colonnes declaration_indicateurs_*.
+    const rpcs = captured.rpcCalls.filter(
+      (c) => c.name === "update_producer_onboarding",
     );
-    // Snapshot figé = exactement les 3 valeurs déclarées au moment de la coche.
-    expect(payload.declaration_indicateurs_snapshot).toEqual({
-      mode_elevage: "plein_air",
-      alimentation: "pature_dominante",
-      densite_animale: "extensive",
+    expect(rpcs).toHaveLength(1);
+    expect(rpcs[0]?.params).toMatchObject({
+      p_user_id: "user-42",
+      p_mode_elevage: "plein_air",
+      p_alimentation: "pature_dominante",
+      p_densite_animale: "extensive",
+      p_declaration_cochee: true,
+      p_wording_version: "v1.0",
     });
-    expect(payload.declaration_indicateurs_wording_version).toBe("v1.0");
+    // Aucun UPDATE direct sur la table producers — toute la sémantique
+    // declaration_indicateurs_* doit obligatoirement passer par la RPC pour
+    // garantir l'atomicité et la traçabilité (single write path).
+    expect(captured.updates.find((u) => u.table === "producers")).toBeUndefined();
   });
 
-  it("édition producteur qui CHANGE un enum + case cochée → payload UPDATE contient les 3 colonnes declaration_indicateurs_* (re-coche datée)", async () => {
-    // Comité T-200 r5 : si un enum change, la déclaration doit être re-datée.
-    // On simule un producer existant avec déjà 3 enums (alimentation =
-    // pature_dominante), puis le user change UN seul des 3 (→ mixte).
-    responses.producers = [
-      // 1er SELECT : check statut (branche reprise, ligne 102-106)
-      { data: { statut: "draft" }, error: null },
-      // 2e SELECT : lecture des 3 enums actuels (T-241, pré-UPDATE)
-      {
-        data: {
-          mode_elevage: "plein_air",
-          alimentation: "pature_dominante",
-          densite_animale: "extensive",
-        },
-        error: null,
-      },
-    ];
-
+  it("édition producteur qui CHANGE un enum + case cochée → RPC appelée avec les nouveaux enums, c'est la RPC SQL qui datera la re-coche atomiquement", async () => {
+    // Cas business : producteur draft avec déjà 3 enums déclarés revient et
+    // change `alimentation` (pature_dominante → mixte). Côté JS on transmet
+    // les valeurs soumises par le user ; la RPC SQL fait son SELECT FOR
+    // UPDATE des valeurs en base, compare au snapshot précédent et décide
+    // de re-persister declaration_indicateurs_* avec NOW(). La décision
+    // SQL est testée via le helper shouldPersistDeclarationVeracite.
     const fd = makeFormData({
       mode_elevage: "plein_air",
       alimentation: "mixte", // changé
@@ -690,37 +708,34 @@ describe("completeOnboardingAction — T-241 persistance déclaration sur l'honn
 
     await runAction(fd);
 
-    const producerUpdate = captured.updates.find((u) => u.table === "producers");
-    expect(producerUpdate).toBeDefined();
-    const payload = producerUpdate?.payload as Record<string, unknown>;
-    expect(payload.declaration_indicateurs_veracite_at).toEqual(
-      expect.any(String),
+    const rpc = captured.rpcCalls.find(
+      (c) => c.name === "update_producer_onboarding",
     );
-    expect(payload.declaration_indicateurs_snapshot).toEqual({
-      mode_elevage: "plein_air",
-      alimentation: "mixte",
-      densite_animale: "extensive",
+    expect(rpc).toBeDefined();
+    expect(rpc?.params).toMatchObject({
+      p_user_id: "user-42",
+      p_mode_elevage: "plein_air",
+      p_alimentation: "mixte",
+      p_densite_animale: "extensive",
+      p_declaration_cochee: true,
+      p_wording_version: "v1.0",
     });
-    expect(payload.declaration_indicateurs_wording_version).toBe("v1.0");
   });
 
-  it("édition producteur qui ne change PAS les enums (juste nom de la ferme) + case cochée → payload UPDATE n'écrase PAS les 3 colonnes declaration_indicateurs_*", async () => {
-    // Garde-fou : on ne re-touche pas au timestamp d'engagement si les enums
-    // sont identiques. Le user soumet les MÊMES valeurs déjà en base mais
-    // change le nom de la ferme → declaration_* doit rester intacte côté DB
-    // (donc absente du payload UPDATE).
-    responses.producers = [
-      { data: { statut: "draft" }, error: null },
-      {
-        data: {
-          mode_elevage: "plein_air",
-          alimentation: "pature_dominante",
-          densite_animale: "extensive",
-        },
-        error: null,
-      },
-    ];
-
+  it("édition INERTE — user soumet les MÊMES enums que ceux en base + change juste le nom de la ferme + case cochée → RPC appelée avec les enums identiques, c'est la RPC SQL qui PRÉSERVE les colonnes declaration_* atomiquement", async () => {
+    // Cas garde-fou comité T-241 round 2 : on doit s'assurer que le path
+    // de la RPC est BIEN traversé même quand les enums sont identiques —
+    // sinon le test passerait pour de mauvaises raisons (assertion
+    // triviale sur un chemin où la logique n'est jamais traversée).
+    //
+    // Avec l'architecture round 2, le seul moyen d'avoir cette garantie
+    // côté JS est de vérifier (a) qu'une RPC update_producer_onboarding
+    // est bien appelée — donc la server action a traversé le code path —
+    // et (b) que les params transmis incluent bien la case cochée et les
+    // 3 enums identiques à ceux soumis. La décision finale de
+    // PRÉSERVATION (ne pas écraser veracite_at + snapshot) est faite
+    // atomiquement côté SQL et testée unitairement via le helper
+    // shouldPersistDeclarationVeracite (cas « édition inerte → false »).
     const fd = makeFormData({
       nom_exploitation: "Ferme du Test — renommée",
       mode_elevage: "plein_air",
@@ -731,14 +746,43 @@ describe("completeOnboardingAction — T-241 persistance déclaration sur l'honn
 
     await runAction(fd);
 
-    const producerUpdate = captured.updates.find((u) => u.table === "producers");
-    expect(producerUpdate).toBeDefined();
-    const payload = producerUpdate?.payload as Record<string, unknown>;
-    expect(payload.nom_exploitation).toBe("Ferme du Test — renommée");
-    expect(payload).not.toHaveProperty("declaration_indicateurs_veracite_at");
-    expect(payload).not.toHaveProperty("declaration_indicateurs_snapshot");
-    expect(payload).not.toHaveProperty(
-      "declaration_indicateurs_wording_version",
+    const rpc = captured.rpcCalls.find(
+      (c) => c.name === "update_producer_onboarding",
     );
+    expect(rpc).toBeDefined();
+    // Le nouveau nom_exploitation transite bien (sera écrit sans condition
+    // par la RPC).
+    expect(rpc?.params).toMatchObject({
+      p_user_id: "user-42",
+      p_nom_exploitation: "Ferme du Test — renommée",
+      p_mode_elevage: "plein_air",
+      p_alimentation: "pature_dominante",
+      p_densite_animale: "extensive",
+      p_declaration_cochee: true,
+      p_wording_version: "v1.0",
+    });
+  });
+
+  it("erreur RPC (RLS / contrainte) → la server action remonte l'erreur sans claim invitation ni bump lead", async () => {
+    // Cas défensif : si la RPC SQL échoue (constraint violation, RLS
+    // policy, producer non trouvé), la server action doit retourner une
+    // erreur user-friendly et NE PAS continuer le claim invitation +
+    // bump lead — sinon état incohérent (invitation marked used_at sans
+    // producer.statut='pending').
+    rpcResponses.update_producer_onboarding = [
+      { data: null, error: { message: "Producer non trouvé" } },
+    ];
+
+    const res = await runAction(makeFormData());
+
+    expect(res?.error).toMatch(/Finalisation échouée/i);
+    expect(res?.error).toContain("Producer non trouvé");
+    // Aucun UPDATE producer_invitations / producer_interests post-erreur.
+    expect(
+      captured.updates.find((u) => u.table === "producer_invitations"),
+    ).toBeUndefined();
+    expect(
+      captured.updates.find((u) => u.table === "producer_interests"),
+    ).toBeUndefined();
   });
 });
