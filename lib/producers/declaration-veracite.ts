@@ -50,6 +50,17 @@ export const DECLARATION_VERACITE_WORDING_VERSION = "v1.0";
 export const DECLARATION_VERACITE_WORDINGS: Readonly<Record<string, string>> = {
   "v1.0":
     "Je certifie que les indicateurs déclarés ci-dessus (mode d'élevage, alimentation, densité) correspondent à ma pratique réelle, et je m'engage à les mettre à jour si ça change.",
+  // v1.1 — préparation du futur bump (BL-2). Pas encore affichée :
+  // DECLARATION_VERACITE_WORDING_VERSION reste "v1.0" tant que le passage
+  // n'est pas décidé (cf. T-282 gouvernance, T-288 UX re-coche, T-293 runbook).
+  // Évolutions par rapport à v1.0 :
+  //   - précision « densité animale » (alignement nomenclature enum
+  //     `densite_animale` vs ancien raccourci « densité ») ;
+  //   - ajout d'une phrase d'information loyale RGPD : le producteur sait
+  //     explicitement, au moment de cocher, que sa déclaration est
+  //     horodatée et conservée à des fins probatoires (cf. T-286).
+  "v1.1":
+    "Je certifie que les indicateurs déclarés ci-dessus (mode d'élevage, alimentation, densité animale) correspondent à ma pratique réelle, et je m'engage à les mettre à jour si ça change. Je comprends que cette déclaration est horodatée et conservée à des fins probatoires.",
 };
 
 export function getDeclarationVeraciteText(version: string): string | null {

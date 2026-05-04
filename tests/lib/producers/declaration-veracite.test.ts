@@ -33,9 +33,34 @@ describe("DECLARATION_VERACITE_WORDINGS — registre versionné", () => {
     );
   });
 
+  it("v1.1 contient le texte exact préparé pour le futur bump (BL-2)", () => {
+    // v1.1 est archivée à l'avance pour anticiper le passage : ajustement
+    // « densité » → « densité animale » (alignement nomenclature enum) et
+    // information loyale RGPD que la coche est horodatée (cf. T-286).
+    // Tant que DECLARATION_VERACITE_WORDING_VERSION reste à "v1.0", aucun
+    // producteur ne voit ce texte ; il sert seulement de preuve probatoire
+    // figée pour le jour où la version courante basculera. Si ce test casse
+    // après un raffinement du wording v1.1 (avant son passage en courante),
+    // mettre à jour le texte ici ET dans la map ; après son passage en
+    // courante, NE JAMAIS toucher v1.1 et créer une v1.2.
+    expect(DECLARATION_VERACITE_WORDINGS["v1.1"]).toBe(
+      "Je certifie que les indicateurs déclarés ci-dessus (mode d'élevage, alimentation, densité animale) correspondent à ma pratique réelle, et je m'engage à les mettre à jour si ça change. Je comprends que cette déclaration est horodatée et conservée à des fins probatoires.",
+    );
+  });
+
+  it("la version courante reste v1.0 malgré la présence de v1.1 dans la map (BL-2 prépare le terrain, ne bump pas)", () => {
+    // Verrou anti-bump accidentel : BL-2 a archivé v1.1 dans la map mais ne
+    // doit PAS basculer la version courante. Le bump effectif relèvera d'un
+    // chantier dédié (cf. T-278, T-282, T-288, T-293) — runbook explicite.
+    expect(DECLARATION_VERACITE_WORDING_VERSION).toBe("v1.0");
+  });
+
   it("getDeclarationVeraciteText(version connue) → texte exact ; version inconnue → null", () => {
     expect(getDeclarationVeraciteText("v1.0")).toBe(
       DECLARATION_VERACITE_WORDINGS["v1.0"],
+    );
+    expect(getDeclarationVeraciteText("v1.1")).toBe(
+      DECLARATION_VERACITE_WORDINGS["v1.1"],
     );
     expect(getDeclarationVeraciteText("v9.99")).toBeNull();
     // Ne pas accepter une chaîne vide comme version valide.
