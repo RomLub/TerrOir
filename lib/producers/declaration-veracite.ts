@@ -62,12 +62,17 @@ export type IndicateursSnapshot = {
   densite_animale: string | null;
 };
 
-// Spec exécutable de la décision de (re)persistance — miroir lisible de la
-// logique CASE WHEN portée par la RPC SQL update_producer_onboarding. La
-// SOURCE DE VÉRITÉ runtime est le SQL (atomique, immune aux races) ; cette
-// fonction sert UNIQUEMENT à documenter la sémantique pour les tests
-// unitaires Vitest et la lecture humaine. Toute modification ici DOIT être
-// répliquée dans la migration T-241, et inversement.
+// =============================================================================
+// MIROIR SQL — toute modif ici exige une modif identique dans
+//   supabase/migrations/20260504100000_t241_declaration_veracite_persistance.sql
+//   (bloc « v_persist := … » de la fonction update_producer_onboarding).
+// La SOURCE DE VÉRITÉ runtime reste le SQL (atomique, immune aux races) :
+// cette fonction sert UNIQUEMENT à (a) documenter la sémantique pour la
+// lecture humaine et (b) couvrir la décision en tests unitaires Vitest, en
+// l'absence d'infra de test d'intégration SQL dans le projet (cf. TODO T-296).
+// Si tu modifies l'un des deux sans toucher l'autre, les tests JS resteront
+// verts mais la prod ne reflètera plus ce qui est testé.
+// =============================================================================
 //
 // Cas couverts :
 //   - case non cochée → false (defensive, Zod aurait déjà rejeté).
