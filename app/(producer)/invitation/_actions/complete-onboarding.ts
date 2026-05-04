@@ -8,10 +8,7 @@ import { invitationBusinessInfoSchema } from "@/lib/auth/validators";
 import { maskEmail } from "@/lib/rgpd/mask-email";
 import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 import { logAdminInviteEvent } from "@/lib/audit-logs/log-admin-invite-event";
-import {
-  computeDeclarationVeraciteUpdate,
-  type IndicateursSnapshot,
-} from "@/lib/producers/declaration-veracite";
+import { DECLARATION_VERACITE_WORDING_VERSION } from "@/lib/producers/declaration-veracite";
 
 // errorField : path Zod du premier issue, exposé pour permettre à l'UI
 // d'ancrer le message à côté du champ fautif (cf. T-200 r6 — case
@@ -132,69 +129,39 @@ export async function completeOnboardingAction(
     return { error: `Mise à jour des infos personnelles échouée : ${userError.message}` };
   }
 
-  // T-200 : 3 champs catégoriels facultatifs (score carbone & bien-être animal).
-  // On n'écrit la colonne QUE si l'utilisateur a coché une valeur — sinon on
-  // laisse la colonne intacte côté DB (pas d'écrasement par null).
-  const scoreCarboneFields: Record<string, string> = {};
-  if (parsed.data.mode_elevage) {
-    scoreCarboneFields.mode_elevage = parsed.data.mode_elevage;
-  }
-  if (parsed.data.alimentation) {
-    scoreCarboneFields.alimentation = parsed.data.alimentation;
-  }
-  if (parsed.data.densite_animale) {
-    scoreCarboneFields.densite_animale = parsed.data.densite_animale;
-  }
-
-  // T-241 : on lit l'état actuel des 3 enums avant l'UPDATE pour ne ré-écrire
-  // les colonnes declaration_indicateurs_* QUE si au moins un enum change. Une
-  // édition qui ne touche que des champs hors-enum (nom de la ferme, adresse…)
-  // ne doit pas écraser le timestamp d'engagement d'origine.
-  const { data: currentProducer } = await admin
-    .from("producers")
-    .select("mode_elevage, alimentation, densite_animale")
-    .eq("user_id", session.id)
-    .maybeSingle();
-
-  const currentSnapshot: IndicateursSnapshot = {
-    mode_elevage: (currentProducer?.mode_elevage as string | null) ?? null,
-    alimentation: (currentProducer?.alimentation as string | null) ?? null,
-    densite_animale: (currentProducer?.densite_animale as string | null) ?? null,
-  };
-  const nextSnapshot: IndicateursSnapshot = {
-    mode_elevage: parsed.data.mode_elevage ?? null,
-    alimentation: parsed.data.alimentation ?? null,
-    densite_animale: parsed.data.densite_animale ?? null,
-  };
-  const declarationFields = computeDeclarationVeraciteUpdate({
-    current: currentSnapshot,
-    next: nextSnapshot,
-    declarationCochee: parsed.data.declaration_indicateurs_veracite,
+  // T-241 — UPDATE atomique via RPC. La RPC update_producer_onboarding
+  // encapsule en un seul UPDATE :
+  //   - écriture des champs business + 3 enums score-carbone (T-200) avec
+  //     COALESCE — un enum NULL côté formulaire ne doit PAS écraser la
+  //     colonne (cas user qui n'a pas touché aux indicateurs) ;
+  //   - décision conditionnelle de re-persister les 3 colonnes
+  //     declaration_indicateurs_* via CASE WHEN, basée sur la comparaison
+  //     atomique du snapshot précédemment archivé aux enums effectifs.
+  // Pas de SELECT JS pré-UPDATE : la lecture des valeurs courantes + la
+  // décision + l'UPDATE se font dans la même transaction PostgreSQL avec
+  // SELECT FOR UPDATE — élimine la fenêtre lecture-modification non
+  // atomique sur double-clic / retry concurrent (cf. CLAUDE.md projet
+  // « soigner l'atomicité des RPC »).
+  const { error: producerError } = await admin.rpc("update_producer_onboarding", {
+    p_user_id: session.id,
+    p_prenom_affichage: parsed.data.prenom_affichage,
+    p_nom_exploitation: parsed.data.nom_exploitation,
+    p_forme_juridique: parsed.data.forme_juridique,
+    p_siret: parsed.data.siret,
+    p_adresse: parsed.data.adresse,
+    p_code_postal: parsed.data.code_postal,
+    p_commune: parsed.data.commune,
+    p_type_production: parsed.data.type_production,
+    p_type_production_precision:
+      parsed.data.type_production === "autre"
+        ? (parsed.data.type_production_precision ?? null)
+        : null,
+    p_mode_elevage: parsed.data.mode_elevage ?? null,
+    p_alimentation: parsed.data.alimentation ?? null,
+    p_densite_animale: parsed.data.densite_animale ?? null,
+    p_declaration_cochee: parsed.data.declaration_indicateurs_veracite,
+    p_wording_version: DECLARATION_VERACITE_WORDING_VERSION,
   });
-
-  // TODO Phase 3 finale : retirer prenom_affichage de cet UPDATE après le
-  // DROP COLUMN producers.prenom_affichage. Source de vérité côté lecture
-  // déjà migrée vers users.prenom (cf. getProducerDisplayName).
-  const { error: producerError } = await admin
-    .from("producers")
-    .update({
-      prenom_affichage: parsed.data.prenom_affichage,
-      nom_exploitation: parsed.data.nom_exploitation,
-      forme_juridique: parsed.data.forme_juridique,
-      siret: parsed.data.siret,
-      adresse: parsed.data.adresse,
-      code_postal: parsed.data.code_postal,
-      commune: parsed.data.commune,
-      type_production: parsed.data.type_production,
-      type_production_precision:
-        parsed.data.type_production === "autre"
-          ? parsed.data.type_production_precision
-          : null,
-      ...scoreCarboneFields,
-      ...(declarationFields ?? {}),
-      statut: "pending",
-    })
-    .eq("user_id", session.id);
 
   if (producerError) {
     return { error: `Finalisation échouée : ${producerError.message}` };
