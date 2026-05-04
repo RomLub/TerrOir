@@ -33,16 +33,26 @@ describe("DECLARATION_VERACITE_WORDINGS — registre versionné", () => {
     );
   });
 
+  // SNAPSHOT VOLONTAIRE — le wording v1.1 est figé exactement par cette
+  // assertion (toBe sur la chaîne entière, pas un regex). Justification : un
+  // libellé à valeur juridique n'a de sens probatoire que si chaque caractère
+  // est verrouillé — ponctuation, accord de genre, parenthèses, casse. Une
+  // assertion regex sur les éléments de fond (« densité animale »,
+  // « horodatée », « probatoires ») laisserait passer une dérive silencieuse
+  // sur le reste du texte et fragiliserait la trace côté DGCCRF. Politique :
+  // tant que VERSION_COURANTE n'est pas passée à "v1.1", ce snapshot est
+  // libre de bouger en parallèle d'un raffinement du wording (cf.
+  // commentaire « modifications libres » au-dessus de l'entrée v1.1 dans le
+  // helper). Une fois VERSION_COURANTE basculée à "v1.1", ce snapshot
+  // devient immutable au même titre que celui de v1.0 et toute évolution
+  // doit passer par un bump v1.2 (NE PAS éditer ce test, créer un nouveau).
   it("v1.1 contient le texte exact préparé pour le futur bump (BL-2)", () => {
     // v1.1 est archivée à l'avance pour anticiper le passage : ajustement
     // « densité » → « densité animale » (alignement nomenclature enum) et
     // information loyale RGPD que la coche est horodatée (cf. T-286).
     // Tant que DECLARATION_VERACITE_WORDING_VERSION reste à "v1.0", aucun
     // producteur ne voit ce texte ; il sert seulement de preuve probatoire
-    // figée pour le jour où la version courante basculera. Si ce test casse
-    // après un raffinement du wording v1.1 (avant son passage en courante),
-    // mettre à jour le texte ici ET dans la map ; après son passage en
-    // courante, NE JAMAIS toucher v1.1 et créer une v1.2.
+    // figée pour le jour où la version courante basculera.
     expect(DECLARATION_VERACITE_WORDINGS["v1.1"]).toBe(
       "Je certifie que les indicateurs déclarés ci-dessus (mode d'élevage, alimentation, densité animale) correspondent à ma pratique réelle, et je m'engage à les mettre à jour si ça change. Je comprends que cette déclaration est horodatée et conservée à des fins probatoires.",
     );
