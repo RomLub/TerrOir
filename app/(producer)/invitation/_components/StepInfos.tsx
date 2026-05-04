@@ -17,6 +17,7 @@ import {
   MODE_ELEVAGE_LABELS,
   MODE_ELEVAGE_VALUES,
 } from "@/lib/producers/score-carbone-enums";
+import { getDeclarationVeraciteText } from "@/lib/producers/declaration-veracite";
 
 const FORMES = [
   { value: "gaec", label: "GAEC" },
@@ -404,9 +405,11 @@ export function StepInfos({
             className="mt-1 h-4 w-4 accent-terroir-green-700"
           />
           <span className="text-xs text-gray-700">
-            Je certifie que les indicateurs déclarés ci-dessus (mode
-            d&apos;élevage, alimentation, densité) correspondent à ma pratique
-            réelle, et je m&apos;engage à les mettre à jour si ça change.
+            {/* Source unique du wording certifié : helper versionné — évite */}
+            {/* la dérive entre l'UI et la trace probatoire archivée en base */}
+            {/* (declaration_indicateurs_wording_version). Bumper la version */}
+            {/* dans le helper suffit à propager le nouveau texte ici. */}
+            {getDeclarationVeraciteText()}
           </span>
         </label>
         {state.errorField === "declaration_indicateurs_veracite" ? (

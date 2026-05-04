@@ -50,9 +50,32 @@ export const DECLARATION_VERACITE_WORDING_VERSION = "v1.0";
 export const DECLARATION_VERACITE_WORDINGS: Readonly<Record<string, string>> = {
   "v1.0":
     "Je certifie que les indicateurs déclarés ci-dessus (mode d'élevage, alimentation, densité) correspondent à ma pratique réelle, et je m'engage à les mettre à jour si ça change.",
+  // PLACEHOLDER — wording non validé juridiquement, à raffiner avant bump
+  // effectif (cf. T-282 gouvernance wording, T-293 runbook bump v1.1).
+  // Tant que DECLARATION_VERACITE_WORDING_VERSION reste "v1.0", aucun
+  // producteur ne voit ce texte ; il est archivé à l'avance pour figer la
+  // trace probatoire dès le jour du bump (étape (a) du runbook T-293).
+  // Évolutions envisagées par rapport à v1.0 :
+  //   - précision « densité animale » (alignement nomenclature enum
+  //     `densite_animale` vs ancien raccourci « densité ») ;
+  //   - ajout d'une phrase d'information loyale RGPD : le producteur sait
+  //     explicitement, au moment de cocher, que sa déclaration est
+  //     horodatée et conservée à des fins probatoires (cf. T-286).
+  // Modifications libres ici tant que VERSION_COURANTE n'a pas basculé sur
+  // "v1.1" — après le bump, la règle « ne jamais toucher une entrée
+  // existante » s'appliquera et toute évolution passera par v1.2.
+  "v1.1":
+    "Je certifie que les indicateurs déclarés ci-dessus (mode d'élevage, alimentation, densité animale) correspondent à ma pratique réelle, et je m'engage à les mettre à jour si ça change. Je comprends que cette déclaration est horodatée et conservée à des fins probatoires.",
 };
 
-export function getDeclarationVeraciteText(version: string): string | null {
+// Appelée sans argument, retourne le texte de la version courante — c'est le
+// contrat « no-op runtime » de BL-2 : tant que VERSION_COURANTE = "v1.0",
+// l'UI affiche toujours v1.0 sans avoir à hardcoder la version au call site.
+// Avec un argument explicite, sert à reconstituer un texte historique à
+// partir d'une version archivée en base (declaration_indicateurs_wording_version).
+export function getDeclarationVeraciteText(
+  version: string = DECLARATION_VERACITE_WORDING_VERSION,
+): string | null {
   return DECLARATION_VERACITE_WORDINGS[version] ?? null;
 }
 

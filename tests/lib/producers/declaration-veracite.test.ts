@@ -33,9 +33,73 @@ describe("DECLARATION_VERACITE_WORDINGS — registre versionné", () => {
     );
   });
 
+  // SNAPSHOT VOLONTAIRE — le wording v1.1 est figé exactement par cette
+  // assertion (toBe sur la chaîne entière, pas un regex). Justification : un
+  // libellé à valeur juridique n'a de sens probatoire que si chaque caractère
+  // est verrouillé — ponctuation, accord de genre, parenthèses, casse. Une
+  // assertion regex sur les éléments de fond (« densité animale »,
+  // « horodatée », « probatoires ») laisserait passer une dérive silencieuse
+  // sur le reste du texte et fragiliserait la trace côté DGCCRF. Politique :
+  // tant que VERSION_COURANTE n'est pas passée à "v1.1", ce snapshot est
+  // libre de bouger en parallèle d'un raffinement du wording (cf.
+  // commentaire « modifications libres » au-dessus de l'entrée v1.1 dans le
+  // helper). Une fois VERSION_COURANTE basculée à "v1.1", ce snapshot
+  // devient immutable au même titre que celui de v1.0 et toute évolution
+  // doit passer par un bump v1.2 (NE PAS éditer ce test, créer un nouveau).
+  it("v1.1 contient le texte exact préparé pour le futur bump (BL-2)", () => {
+    // v1.1 est archivée à l'avance pour anticiper le passage : ajustement
+    // « densité » → « densité animale » (alignement nomenclature enum) et
+    // information loyale RGPD que la coche est horodatée (cf. T-286).
+    // Tant que DECLARATION_VERACITE_WORDING_VERSION reste à "v1.0", aucun
+    // producteur ne voit ce texte ; il sert seulement de preuve probatoire
+    // figée pour le jour où la version courante basculera.
+    expect(DECLARATION_VERACITE_WORDINGS["v1.1"]).toBe(
+      "Je certifie que les indicateurs déclarés ci-dessus (mode d'élevage, alimentation, densité animale) correspondent à ma pratique réelle, et je m'engage à les mettre à jour si ça change. Je comprends que cette déclaration est horodatée et conservée à des fins probatoires.",
+    );
+  });
+
+  it("verrou anti-bump : VERSION_COURANTE reste v1.0 ET pointe vers une entrée valide de la map (cf. runbook T-293)", () => {
+    // Verrou anti-bump accidentel — si ce test casse au moment d'un bump
+    // effectif, NE PAS le supprimer ni le passer à "v1.1" en premier réflexe.
+    // Suivre le runbook T-293 dans l'ordre : (a) archiver la nouvelle entrée
+    // dans la map [déjà fait pour v1.1 par BL-2], (b) bumper VERSION_COURANTE,
+    // (c) aligner StepInfos.tsx (utilise désormais le helper, donc no-op),
+    // (d) appliquer la politique re-coche T-288. Une fois le bump validé,
+    // mettre à jour la valeur attendue ci-dessous (et seulement ici).
+    expect(
+      DECLARATION_VERACITE_WORDING_VERSION,
+      "Si ce test casse, suivre le runbook T-293 étapes (a)→(d) avant de déverrouiller la valeur attendue.",
+    ).toBe("v1.0");
+    // Cohérence multi-référentiel : la version courante doit toujours pointer
+    // vers une entrée présente dans la map des wordings archivés. Sans ce
+    // garde-fou, un bump vers une clé inexistante ferait crasher l'UI au
+    // runtime (helper retourne null) sans qu'aucun test ne s'en aperçoive.
+    expect(
+      Object.keys(DECLARATION_VERACITE_WORDINGS),
+      "VERSION_COURANTE doit toujours pointer vers une clé existante de DECLARATION_VERACITE_WORDINGS.",
+    ).toContain(DECLARATION_VERACITE_WORDING_VERSION);
+  });
+
+  it("getDeclarationVeraciteText() sans argument retourne le texte de la version courante (contrat no-op runtime BL-2)", () => {
+    // Promesse principale du chantier BL-2 : ajouter v1.1 dans la map ne
+    // change RIEN à ce que voit le producteur. Le helper appelé sans argument
+    // sert de point d'entrée unique pour l'UI (StepInfos.tsx) — il retourne
+    // toujours le wording de VERSION_COURANTE, donc tant que cette dernière
+    // reste à "v1.0", aucun changement visible côté producteur.
+    expect(getDeclarationVeraciteText()).toBe(
+      DECLARATION_VERACITE_WORDINGS["v1.0"],
+    );
+    expect(getDeclarationVeraciteText()).toBe(
+      DECLARATION_VERACITE_WORDINGS[DECLARATION_VERACITE_WORDING_VERSION],
+    );
+  });
+
   it("getDeclarationVeraciteText(version connue) → texte exact ; version inconnue → null", () => {
     expect(getDeclarationVeraciteText("v1.0")).toBe(
       DECLARATION_VERACITE_WORDINGS["v1.0"],
+    );
+    expect(getDeclarationVeraciteText("v1.1")).toBe(
+      DECLARATION_VERACITE_WORDINGS["v1.1"],
     );
     expect(getDeclarationVeraciteText("v9.99")).toBeNull();
     // Ne pas accepter une chaîne vide comme version valide.
