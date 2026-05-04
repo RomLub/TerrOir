@@ -6,20 +6,55 @@
 // densite_animale) est rempli. Avant T-241, cette case était validée Zod
 // mais non archivée — pas de trace datée en cas de contrôle DGCCRF.
 //
-// Ce helper produit le payload des 3 colonnes à écrire sur `producers` :
-//   - declaration_indicateurs_veracite_at  (timestamp now())
+// 3 colonnes archivent l'engagement sur la table `producers` :
+//   - declaration_indicateurs_veracite_at  (timestamp de la coche/re-coche)
 //   - declaration_indicateurs_snapshot     (JSON des 3 valeurs déclarées)
 //   - declaration_indicateurs_wording_version  (version du libellé certifié)
 //
-// On ne (re)persiste QUE si :
-//   1. Au moins un enum est rempli dans le payload soumis (sinon pas de
-//      déclaration à archiver, cohérent avec le refine Zod).
-//   2. La case a été cochée (defensive — Zod aurait déjà rejeté sinon).
-//   3. Au moins un des 3 enums a effectivement changé par rapport à l'état
-//      actuel en base. Une édition qui ne touche QUE des champs hors-enum
-//      (nom de la ferme, adresse…) n'écrase pas le timestamp d'origine.
+// La décision de (re)persister est faite ATOMIQUEMENT côté SQL par la RPC
+// `update_producer_onboarding` (cf. migration T-241), jamais en JS — ce qui
+// élimine la fenêtre lecture/modification non atomique entre un SELECT JS et
+// l'UPDATE final (double-clic, retry concurrent). La RPC compare le snapshot
+// précédemment archivé aux 3 enums effectivement écrits dans la même
+// transaction et ne touche les 3 colonnes que si :
+//   1. la case est cochée (defensive — Zod aurait déjà rejeté sinon) ;
+//   2. au moins un enum est non NULL après UPDATE ;
+//   3. les enums effectifs diffèrent du snapshot précédent (ou pas de
+//      snapshot précédent — première coche).
+//
+// Sémantique « le producteur vide ses 3 enums » (tous NULL après UPDATE) :
+// décision figée → on PRÉSERVE le timestamp et le snapshot historiques.
+// Justification probatoire : la case avait bien été cochée à T0 sur des
+// valeurs réelles, l'absence de re-déclaration aujourd'hui n'invalide pas
+// rétroactivement cet engagement passé. La RPC respecte cette règle via la
+// condition (mode_elevage IS NOT NULL OR alimentation IS NOT NULL OR
+// densite_animale IS NOT NULL) — sans elle, pas de re-écriture, donc pas
+// d'écrasement non plus.
+//
+// Pour la valeur probatoire de la trace, le numéro de version stocké en base
+// (ex. "v1.0") n'a de sens que si le TEXTE EXACT correspondant reste
+// retrouvable des années après le bump v1.1, v1.2, etc. La map
+// `DECLARATION_VERACITE_WORDINGS` ci-dessous archive donc l'historique des
+// libellés en code source, indéfiniment — même quand la version courante
+// évoluera, les anciennes entrées de la map restent en place pour permettre
+// de reconstituer le texte que le producteur a effectivement vu et certifié.
 
 export const DECLARATION_VERACITE_WORDING_VERSION = "v1.0";
+
+// Historique des libellés certifiés. NE JAMAIS modifier ni supprimer une
+// entrée existante : c'est la source de vérité du texte exact qu'un
+// producteur a vu et coché à un moment donné. Pour faire évoluer le wording,
+// AJOUTER une nouvelle entrée (ex. "v1.1": "...") et bumper
+// `DECLARATION_VERACITE_WORDING_VERSION`. Les producteurs en v1.0 conservent
+// leur trace probatoire intacte.
+export const DECLARATION_VERACITE_WORDINGS: Readonly<Record<string, string>> = {
+  "v1.0":
+    "Je certifie que les indicateurs déclarés ci-dessus (mode d'élevage, alimentation, densité) correspondent à ma pratique réelle, et je m'engage à les mettre à jour si ça change.",
+};
+
+export function getDeclarationVeraciteText(version: string): string | null {
+  return DECLARATION_VERACITE_WORDINGS[version] ?? null;
+}
 
 export type IndicateursSnapshot = {
   mode_elevage: string | null;
@@ -27,36 +62,41 @@ export type IndicateursSnapshot = {
   densite_animale: string | null;
 };
 
-export type DeclarationVeraciteUpdate = {
-  declaration_indicateurs_veracite_at: string;
-  declaration_indicateurs_snapshot: IndicateursSnapshot;
-  declaration_indicateurs_wording_version: string;
-};
-
-export function computeDeclarationVeraciteUpdate(args: {
-  current: IndicateursSnapshot;
-  next: IndicateursSnapshot;
+// Spec exécutable de la décision de (re)persistance — miroir lisible de la
+// logique CASE WHEN portée par la RPC SQL update_producer_onboarding. La
+// SOURCE DE VÉRITÉ runtime est le SQL (atomique, immune aux races) ; cette
+// fonction sert UNIQUEMENT à documenter la sémantique pour les tests
+// unitaires Vitest et la lecture humaine. Toute modification ici DOIT être
+// répliquée dans la migration T-241, et inversement.
+//
+// Cas couverts :
+//   - case non cochée → false (defensive, Zod aurait déjà rejeté).
+//   - tous les enums effectifs NULL → false (le producteur a vidé ses
+//     déclarations ; on conserve les colonnes historiques telles quelles).
+//   - pas de snapshot précédent (première coche) → true.
+//   - snapshot précédent identique aux enums effectifs → false (édition qui
+//     ne touche pas aux indicateurs : nom de la ferme, adresse, etc.).
+//   - au moins un enum effectif diffère du snapshot précédent → true
+//     (re-coche datée à chaque changement réel d'indicateur).
+export function shouldPersistDeclarationVeracite(args: {
+  currentSnapshot: IndicateursSnapshot | null;
+  effectiveSnapshot: IndicateursSnapshot;
   declarationCochee: boolean;
-}): DeclarationVeraciteUpdate | null {
-  const { current, next, declarationCochee } = args;
+}): boolean {
+  const { currentSnapshot, effectiveSnapshot, declarationCochee } = args;
+  if (!declarationCochee) return false;
 
-  const anyNextSet = Boolean(
-    next.mode_elevage || next.alimentation || next.densite_animale,
+  const anyEffectiveSet = Boolean(
+    effectiveSnapshot.mode_elevage ||
+      effectiveSnapshot.alimentation ||
+      effectiveSnapshot.densite_animale,
   );
-  if (!anyNextSet) return null;
+  if (!anyEffectiveSet) return false;
 
-  if (!declarationCochee) return null;
-
-  const changed =
-    current.mode_elevage !== next.mode_elevage ||
-    current.alimentation !== next.alimentation ||
-    current.densite_animale !== next.densite_animale;
-  if (!changed) return null;
-
-  return {
-    declaration_indicateurs_veracite_at: new Date().toISOString(),
-    declaration_indicateurs_snapshot: next,
-    declaration_indicateurs_wording_version:
-      DECLARATION_VERACITE_WORDING_VERSION,
-  };
+  if (currentSnapshot === null) return true;
+  return (
+    currentSnapshot.mode_elevage !== effectiveSnapshot.mode_elevage ||
+    currentSnapshot.alimentation !== effectiveSnapshot.alimentation ||
+    currentSnapshot.densite_animale !== effectiveSnapshot.densite_animale
+  );
 }
