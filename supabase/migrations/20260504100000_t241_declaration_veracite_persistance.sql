@@ -35,6 +35,34 @@ alter table public.producers
 -- =============================================================================
 -- RPC update_producer_onboarding — UPDATE atomique de la fiche producteur
 -- =============================================================================
+-- SCOPE ARCHITECTURAL (à lire avant tout) :
+-- Cette RPC gère désormais TOUT l'UPDATE onboarding producteur (les 12 champs
+-- business + les 3 enums score-carbone + les 3 colonnes declaration_indicateurs_*),
+-- pas uniquement les 3 colonnes T-241. Elle devient le PASSAGE OBLIGÉ pour
+-- toute écriture de la fiche producteur depuis la server action
+-- complete-onboarding.ts. Conséquence pour les chantiers futurs : un nouveau
+-- champ onboarding (ajout d'une colonne business sur producers) → AJOUT d'un
+-- paramètre p_xxx + AJOUT dans le UPDATE final ci-dessous, pas un nouvel
+-- UPDATE séparé côté JS. Toute dérogation à cette règle ré-ouvre la fenêtre
+-- de race fermée par T-241.
+--
+-- Si une page d'édition producteur arrive plus tard (cf. TODO T-289 / T-294),
+-- elle doit appeler cette RPC, pas reconstruire un UPDATE JS — sinon la
+-- garantie d'atomicité saute pour l'édition.
+--
+-- COUVERTURE DE TEST :
+-- Le projet n'a pas (encore) d'infra de test d'intégration SQL contre une
+-- vraie instance Supabase (uniquement Vitest unit + Playwright E2E qui ne
+-- couvre pas les RPC d'écriture). Conséquence : le bloc CASE WHEN ci-dessous
+-- est couvert INDIRECTEMENT via le helper miroir
+-- lib/producers/declaration-veracite.ts → shouldPersistDeclarationVeracite,
+-- exercé par tests/lib/producers/declaration-veracite.test.ts. Risque connu :
+-- divergence silencieuse entre le SQL et son miroir JS (jsonb ->> 'k' qui
+-- renvoie text vs JSON null, IS DISTINCT FROM sur SQL NULL vs strict
+-- inequality sur JS null/undefined). À mitiger par : (a) le commentaire
+-- MIROIR au-dessus de chaque côté qui force la modif jumelle ; (b) la mise
+-- en place d'un test d'intégration SQL réel — tracé en TODO T-296.
+--
 -- Utilisée par la server action complete-onboarding (création initiale ET
 -- reprise Phase 4 de l'onboarding producteur). Encapsule en UN SEUL UPDATE :
 --
@@ -69,7 +97,8 @@ alter table public.producers
 -- (postgres) — elle est appelée par la server action via le client admin
 -- service_role uniquement. Une éventuelle policy RLS future devra écraser
 -- les UPDATE directs sur les 3 colonnes declaration_indicateurs_* (cf. point
--- TODO sécurité comité T-241) ; cette RPC reste le seul write path légitime.
+-- TODO sécurité comité T-241 — T-287 / T-295) ; cette RPC reste le seul
+-- write path légitime.
 -- =============================================================================
 
 create or replace function public.update_producer_onboarding(
@@ -125,7 +154,16 @@ begin
   v_effective_alim := coalesce(p_alimentation, v_current_alim);
   v_effective_dens := coalesce(p_densite_animale, v_current_dens);
 
-  -- Décision atomique : (re)persister declaration_indicateurs_* ?
+  -- ===========================================================================
+  -- MIROIR JS — toute modif ici exige une modif identique dans
+  --   lib/producers/declaration-veracite.ts → shouldPersistDeclarationVeracite.
+  -- C'est CE bloc-ci qui s'exécute en prod (SOURCE DE VÉRITÉ runtime). Le
+  -- helper JS sert uniquement de spec exécutable testée par Vitest, à défaut
+  -- d'infra de test d'intégration SQL (cf. TODO T-296). Garder les deux
+  -- alignés à la lettre : ordre des conditions, opérateurs IS DISTINCT FROM
+  -- (qui traite NULL ≠ valeur, contrairement à `<>`), extraction `->>` qui
+  -- renvoie text (et NULL si la clé est absente du JSONB).
+  -- ===========================================================================
   v_persist := p_declaration_cochee
     and (v_effective_mode is not null
       or v_effective_alim is not null
