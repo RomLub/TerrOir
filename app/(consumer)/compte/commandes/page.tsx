@@ -1,9 +1,16 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { OrderStatusBadge, type OrderStatus } from '@/components/ui';
+import { ListingHeader } from '@/components/listings/ListingHeader';
+import {
+  applyCursor,
+  buildCursorUrl,
+  parseCursor,
+} from '@/lib/pagination/cursor';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
 type OrderRow = {
@@ -63,8 +70,28 @@ function formatDateFr(iso: string): string {
 }
 
 export default function CommandesPage() {
+  // Suspense requis par Next.js 14 autour de useSearchParams (lecture
+  // du cursor pagination ?before=...&before_id=...). Audit
+  // perf-postgres-2026-05-05 M-2 + NEW-1.
+  return (
+    <Suspense fallback={null}>
+      <CommandesPageInner />
+    </Suspense>
+  );
+}
+
+function CommandesPageInner() {
+  const searchParams = useSearchParams();
+  // Sert de dep stable au useEffect : re-fetch sur changement d'URL
+  // (clic "Charger les 100 plus anciennes").
+  const cursorKey = searchParams?.toString() ?? '';
+
   const [filter, setFilter] = useState<Filter>('all');
   const [orders, setOrders] = useState<OrderRow[]>([]);
+  const [total, setTotal] = useState(0);
+  // Cursor pour la page suivante : (created_at, id) du dernier item
+  // fetched (data[99]) si la limite a été atteinte. null sinon.
+  const [nextCursor, setNextCursor] = useState<{ created_at: string; id: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -80,28 +107,41 @@ export default function CommandesPage() {
         return;
       }
 
-      const { data, error: fetchError } = await supabase
-        .from('orders')
-        .select(`
-          id, code_commande, created_at, statut, closure_reason, montant_total, producer_id,
-          producers:producer_id ( nom_exploitation, slug ),
-          order_items ( id )
-        `)
-        .eq('consumer_id', user.id)
+      const cursor = parseCursor(searchParams ?? new URLSearchParams());
+
+      // Audit perf-postgres-2026-05-05 M-2 + NEW-1 : pagination cursor
+      // (created_at DESC + id DESC tie-breaker), .limit(100), couplée à
+      // un count(*) exact parallélisé pour le banner ListingHeader.
+      const itemsQuery = applyCursor(
+        supabase
+          .from('orders')
+          .select(`
+            id, code_commande, created_at, statut, closure_reason, montant_total, producer_id,
+            producers:producer_id ( nom_exploitation, slug ),
+            order_items ( id )
+          `)
+          .eq('consumer_id', user.id),
+        cursor,
+      )
         .order('created_at', { ascending: false })
-        // Audit perf-postgres-2026-05-05 M-2 : protection minimale en attendant
-        // une cursor pagination complète (à intégrer avant V1.0 publique).
+        .order('id', { ascending: false })
         .limit(100);
+
+      const countQuery = supabase
+        .from('orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('consumer_id', user.id);
+
+      const [itemsRes, countRes] = await Promise.all([itemsQuery, countQuery]);
 
       if (!active) return;
 
-      if (fetchError) {
-        setError(fetchError.message);
-        setLoading(false);
-        return;
-      }
+      if (itemsRes.error) { setError(itemsRes.error.message); setLoading(false); return; }
+      if (countRes.error) { setError(countRes.error.message); setLoading(false); return; }
 
-      const rows: OrderRow[] = (data ?? [])
+      const data = itemsRes.data ?? [];
+
+      const rows: OrderRow[] = data
         .map((o) => {
           const prod = Array.isArray(o.producers) ? o.producers[0] : o.producers;
           const itemsArr = Array.isArray(o.order_items) ? o.order_items : [];
@@ -120,7 +160,17 @@ export default function CommandesPage() {
         })
         .filter((r) => !isVoidOrderRow(r));
 
+      // Cursor basé sur le 100ème row brut (avant filter void), pour
+      // ne pas sauter de rows lors de la page suivante.
+      const last = data.length === 100 ? data[99] : null;
+
       setOrders(rows);
+      setTotal(countRes.count ?? 0);
+      setNextCursor(
+        last
+          ? { created_at: last.created_at as string, id: last.id as string }
+          : null,
+      );
       setLoading(false);
 
       channel = supabase
@@ -160,7 +210,12 @@ export default function CommandesPage() {
         supabase.removeChannel(channel);
       }
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cursorKey]);
+
+  // Cursor actif = on est en page 2+ → libellé banner adapté.
+  const isPaginated =
+    parseCursor(searchParams ?? new URLSearchParams()).before !== null;
 
   const filtered = useMemo(() => orders.filter((o) => {
     if (filter === 'all') return true;
@@ -173,9 +228,13 @@ export default function CommandesPage() {
   return (
     <section>
       <h1 className="font-serif text-[40px] md:text-[52px] text-green-900 leading-tight">Mes commandes</h1>
-        <p className="text-[14px] text-dark/60 mt-1">
-          {loading ? 'Chargement…' : `${orders.length} commande${orders.length > 1 ? 's' : ''} au total`}
-        </p>
+        <div className="mt-1">
+          {loading ? (
+            <p className="text-[14px] text-dark/60">Chargement…</p>
+          ) : (
+            <ListingHeader displayed={orders.length} total={total} label="commandes" isPaginated={isPaginated} />
+          )}
+        </div>
         {error && <p className="mt-2 text-[13px] text-terra-700">{error}</p>}
 
         <div className="mt-8 flex gap-1.5 flex-wrap border-b border-dark/[0.08]">
@@ -227,6 +286,16 @@ export default function CommandesPage() {
             </Link>
           ))}
         </div>
+        {!loading && nextCursor && (
+          <div className="mt-6 flex justify-center">
+            <Link
+              href={buildCursorUrl('/compte/commandes', nextCursor)}
+              className="text-[14px] font-medium text-green-900 underline hover:text-green-700"
+            >
+              Charger les 100 plus anciennes
+            </Link>
+          </div>
+        )}
     </section>
   );
 }

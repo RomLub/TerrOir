@@ -4,6 +4,12 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { AdminModal, AdminPageHeader, Button, FilterTabs, ProducerStatusBadge, TableActionButton, TableStatus, type ProducerStatus } from '@/components/ui';
+import { ListingHeader } from '@/components/listings/ListingHeader';
+import {
+  applyCursor,
+  buildCursorUrl,
+  parseCursor,
+} from '@/lib/pagination/cursor';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { revalidatePublicStats } from '@/lib/stats/revalidate';
 import { formatDateFr } from '@/lib/format/date';
@@ -71,9 +77,12 @@ export default function AdminProducteursPage() {
 
 function AdminProducteursPageInner() {
   const searchParams = useSearchParams();
+  const cursorKey = searchParams?.toString() ?? '';
   const [filter, setFilter] = useState<Filter>('all');
   const [showAll, setShowAll] = useState(false);
   const [producers, setProducers] = useState<Producer[]>([]);
+  const [total, setTotal] = useState(0);
+  const [nextCursor, setNextCursor] = useState<{ created_at: string; id: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -112,20 +121,38 @@ function AdminProducteursPageInner() {
 
   const refresh = async () => {
     const supabase = createSupabaseBrowserClient();
-    let query = supabase
+
+    // Audit perf-postgres-2026-05-05 M-2 + NEW-1 : pagination cursor
+    // (created_at DESC + id DESC tie-breaker), .limit(100), couplée à
+    // un count(*) exact parallélisé pour le banner ListingHeader. Le
+    // count suit les mêmes filtres SQL que la query items (showAll
+    // toggle inclus) pour cohérence displayed/total.
+    const cursor = parseCursor(searchParams ?? new URLSearchParams());
+
+    let itemsQuery = supabase
       .from('producers')
       .select('id, slug, nom_exploitation, commune, code_postal, statut, abonnement_niveau, created_at, user_id, user:user_id ( email )');
+    let countQuery = supabase
+      .from('producers')
+      .select('id', { count: 'exact', head: true });
     if (!showAll) {
-      query = query.neq('statut', 'draft').neq('statut', 'deleted');
+      itemsQuery = itemsQuery.neq('statut', 'draft').neq('statut', 'deleted');
+      countQuery = countQuery.neq('statut', 'draft').neq('statut', 'deleted');
     }
-    const { data, error: fetchError } = await query
-      .order('created_at', { ascending: false })
-      // Audit perf-postgres-2026-05-05 M-2 : protection minimale en attendant
-      // une cursor pagination complète (à intégrer avant V1.0 publique).
-      .limit(100);
-    if (fetchError) { setError(fetchError.message); setLoading(false); return; }
 
-    const rows: Producer[] = ((data ?? []) as unknown as Array<{
+    const finalItemsQuery = applyCursor(itemsQuery, cursor)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(100);
+
+    const [itemsRes, countRes] = await Promise.all([finalItemsQuery, countQuery]);
+
+    if (itemsRes.error) { setError(itemsRes.error.message); setLoading(false); return; }
+    if (countRes.error) { setError(countRes.error.message); setLoading(false); return; }
+
+    const data = itemsRes.data ?? [];
+
+    const rows: Producer[] = (data as unknown as Array<{
       id: string;
       slug: string;
       nom_exploitation: string;
@@ -152,7 +179,15 @@ function AdminProducteursPageInner() {
       };
     });
 
+    const last = data.length === 100 ? (data[99] as { id: string; created_at: string }) : null;
+
     setProducers(rows);
+    setTotal(countRes.count ?? 0);
+    setNextCursor(
+      last
+        ? { created_at: last.created_at, id: last.id }
+        : null,
+    );
     setLoading(false);
   };
 
@@ -164,7 +199,7 @@ function AdminProducteursPageInner() {
     })();
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showAll]);
+  }, [showAll, cursorKey]);
 
   // Pré-filtre `?user_id=<uuid>` (deep-link depuis /audit-logs T-080).
   // Lu directement depuis l'URL pour rester réactif à un Link → /gestion-producteurs
@@ -173,6 +208,10 @@ function AdminProducteursPageInner() {
   const prefillUserIdRaw = searchParams?.get('user_id') ?? null;
   const prefillUserId =
     prefillUserIdRaw && UUID_REGEX.test(prefillUserIdRaw) ? prefillUserIdRaw : null;
+
+  // Cursor actif = on est en page 2+ → libellé banner adapté.
+  const isPaginated =
+    parseCursor(searchParams ?? new URLSearchParams()).before !== null;
 
   const counts = useMemo(() => ({
     all: producers.length,
@@ -217,6 +256,12 @@ function AdminProducteursPageInner() {
           error={error}
           right={<Button variant="accent" size="lg" onClick={() => setInviting(true)}>+ Inviter un producteur</Button>}
         />
+
+        {!loading && (
+          <div className="mb-4">
+            <ListingHeader displayed={producers.length} total={total} label="producteurs" isPaginated={isPaginated} />
+          </div>
+        )}
 
         {prefillUserId && (
           <div
@@ -312,6 +357,17 @@ function AdminProducteursPageInner() {
             </table>
           </div>
         </div>
+
+        {!loading && nextCursor && (
+          <div className="mt-6 flex justify-center">
+            <Link
+              href={buildCursorUrl('/gestion-producteurs', nextCursor)}
+              className="text-[14px] font-medium text-terroir-green-700 underline hover:text-terroir-green-700/80"
+            >
+              Charger les 100 plus anciens
+            </Link>
+          </div>
+        )}
       </div>
 
       {inviting && (

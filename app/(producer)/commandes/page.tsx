@@ -1,8 +1,15 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { Button, OrderStatusBadge, type OrderStatus } from '@/components/ui';
+import { ListingHeader } from '@/components/listings/ListingHeader';
+import {
+  applyCursor,
+  buildCursorUrl,
+  parseCursor,
+} from '@/lib/pagination/cursor';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import {
   formatSlotRange,
@@ -45,8 +52,24 @@ function formatReceived(iso: string): string {
 }
 
 export default function ProducerCommandesPage() {
+  // Suspense requis par Next.js 14 autour de useSearchParams (lecture
+  // du cursor pagination ?before=...&before_id=...). Audit
+  // perf-postgres-2026-05-05 M-2 + NEW-1.
+  return (
+    <Suspense fallback={null}>
+      <ProducerCommandesPageInner />
+    </Suspense>
+  );
+}
+
+function ProducerCommandesPageInner() {
+  const searchParams = useSearchParams();
+  const cursorKey = searchParams?.toString() ?? '';
+
   const [tab, setTab] = useState<Tab>('pending');
   const [orders, setOrders] = useState<OrderRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [nextCursor, setNextCursor] = useState<{ created_at: string; id: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [working, setWorking] = useState<string | null>(null);
@@ -72,30 +95,43 @@ export default function ProducerCommandesPage() {
         return;
       }
 
-      const { data, error: fetchError } = await supabase
-        .from('orders')
-        .select(`
-          id, code_commande, created_at, statut, montant_total,
-          date_retrait, heure_retrait,
-          consumer:consumer_id ( prenom, nom ),
-          slots:slot_id ( starts_at, ends_at ),
-          order_items ( quantite, products:product_id ( nom, unite ) )
-        `)
-        .eq('producer_id', prod.id)
+      const cursor = parseCursor(searchParams ?? new URLSearchParams());
+
+      // Audit perf-postgres-2026-05-05 M-2 + NEW-1 : pagination cursor
+      // (created_at DESC + id DESC tie-breaker), .limit(100), couplée à
+      // un count(*) exact parallélisé pour le banner ListingHeader.
+      const itemsQuery = applyCursor(
+        supabase
+          .from('orders')
+          .select(`
+            id, code_commande, created_at, statut, montant_total,
+            date_retrait, heure_retrait,
+            consumer:consumer_id ( prenom, nom ),
+            slots:slot_id ( starts_at, ends_at ),
+            order_items ( quantite, products:product_id ( nom, unite ) )
+          `)
+          .eq('producer_id', prod.id),
+        cursor,
+      )
         .order('created_at', { ascending: false })
-        // Audit perf-postgres-2026-05-05 M-2 : protection minimale en attendant
-        // une cursor pagination complète (à intégrer avant V1.0 publique).
+        .order('id', { ascending: false })
         .limit(100);
+
+      const countQuery = supabase
+        .from('orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('producer_id', prod.id);
+
+      const [itemsRes, countRes] = await Promise.all([itemsQuery, countQuery]);
 
       if (!active) return;
 
-      if (fetchError) {
-        setError(fetchError.message);
-        setLoading(false);
-        return;
-      }
+      if (itemsRes.error) { setError(itemsRes.error.message); setLoading(false); return; }
+      if (countRes.error) { setError(countRes.error.message); setLoading(false); return; }
 
-      const rows: OrderRow[] = ((data ?? []) as unknown as Array<{
+      const data = itemsRes.data ?? [];
+
+      const rows: OrderRow[] = (data as unknown as Array<{
         id: string;
         code_commande: string | null;
         created_at: string;
@@ -133,12 +169,25 @@ export default function ProducerCommandesPage() {
         };
       });
 
+      const last = data.length === 100 ? (data[99] as { id: string; created_at: string }) : null;
+
       setOrders(rows);
+      setTotal(countRes.count ?? 0);
+      setNextCursor(
+        last
+          ? { created_at: last.created_at, id: last.id }
+          : null,
+      );
       setLoading(false);
     })();
 
     return () => { active = false; };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cursorKey]);
+
+  // Cursor actif = on est en page 2+ → libellé banner adapté.
+  const isPaginated =
+    parseCursor(searchParams ?? new URLSearchParams()).before !== null;
 
   const counts = useMemo(() => {
     const counts: Record<Tab, number> = { pending: 0, confirmed: 0, completed: 0, cancelled: 0 };
@@ -177,6 +226,11 @@ export default function ProducerCommandesPage() {
         <header className="mb-8">
           <div className="text-[11px] uppercase tracking-[0.18em] text-terra-700 font-semibold">Commandes</div>
           <h1 className="mt-1 font-serif text-[40px] text-green-900 leading-tight">Vos commandes</h1>
+          {!loading && (
+            <div className="mt-1">
+              <ListingHeader displayed={orders.length} total={total} label="commandes" isPaginated={isPaginated} />
+            </div>
+          )}
           {error && <p className="mt-2 text-[13px] text-terra-700">{error}</p>}
         </header>
 
@@ -245,6 +299,16 @@ export default function ProducerCommandesPage() {
             </article>
           ))}
         </div>
+        {!loading && nextCursor && (
+          <div className="mt-6 flex justify-center">
+            <Link
+              href={buildCursorUrl('/commandes', nextCursor)}
+              className="text-[14px] font-medium text-green-900 underline hover:text-green-700"
+            >
+              Charger les 100 plus anciennes
+            </Link>
+          </div>
+        )}
       </div>
     </ProducerLayout>
   );

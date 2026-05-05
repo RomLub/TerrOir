@@ -29,7 +29,7 @@ Avant de toucher aux RLS, vérification systématique sur les findings touchant 
 | 6 | **H-2** — 2 indexes composites sur `orders` | DDL CREATE INDEX CONCURRENTLY | ✅ Fixé | `20260505300200_perf_composite_indexes_orders.sql` |
 | 7 | **M-1** — FK `product_stock_alerts.consumer_id` non indexée | DDL CREATE INDEX CONCURRENTLY | ✅ Fixé | `20260505300300_perf_fk_index_stock_alerts.sql` |
 | 8 | **C-4** — search_producers haversine ×2 | DDL CREATE FUNCTION + REVOKE FROM PUBLIC | ✅ Fixé (étape 1/3) | `20260505300400…600_*.sql` (3 migrations) |
-| 9 | **M-2** — listings sans pagination | TS `.limit(100)` minimal | ✅ Mitigation min | `app/(consumer)/compte/commandes/page.tsx`, `app/(producer)/commandes/page.tsx`, `app/(admin)/gestion-producteurs/page.tsx` |
+| 9 | **M-2** + **NEW-1** — listings sans pagination + UX troncature silencieuse | TS cursor pagination + banner | ✅ Fixé | `app/(consumer)/compte/commandes/page.tsx`, `app/(producer)/commandes/page.tsx`, `app/(admin)/gestion-producteurs/page.tsx`, `components/listings/ListingHeader.tsx`, `lib/pagination/cursor.ts`, `tests/lib/pagination/cursor.test.ts` |
 | — | **C-1** — `auth.uid()` non-wrappé | RLS | ✅ Déjà fermé | (pré-audit) |
 | — | **H-3** — sub-EXISTS RLS | RLS | ✅ Déjà fermé | (pré-audit) |
 | — | **M-4** — indexes inutilisés | (à surveiller) | ⏸ Backlog | (justifications métier valides — cf. doc audit) |
@@ -63,11 +63,50 @@ Toutes les migrations DDL ont été appliquées en prod. Les version_ids MCP (pr
 - **Étape 2 backlog** : remplacer le sub-SELECT `count(*)` corrélé par un `LEFT JOIN LATERAL ... GROUP BY`. À reconsidérer ≥ 100 producteurs publics.
 - **Étape 3 backlog** : installer l'extension `cube` + `earthdistance` + index GIST `ll_to_earth(lat, lng)`. À reconsidérer ≥ 5 K producteurs (quand le seq scan domine la latence).
 
-### M-2 listings — `.limit(100)` au lieu de cursor pagination complète
-À 17 orders en prod, la pagination cursor n'est pas urgente. `.limit(100)` posé maintenant comme **garde-fou minimal** sur les 3 listings (consumer commandes, producer commandes, admin producers). **À remplacer par cursor pagination avant le passage en V1.0 publique** — sinon un consumer power-user (5 K orders en 5 ans) verra la page se figer côté mobile.
-
 ### M-4 indexes inutilisés — non droppés
 Les 8 indexes avec `idx_scan = 0` ont tous une justification métier valide (features récentes T-241/T-413, tables opérationnelles vides type `disputes`/`payouts`). À reconsidérer **après 6 mois en V1.0 live** seulement.
+
+---
+
+## M-2 + NEW-1 traités après audit régression
+
+L'audit régression `audit-perf-postgres-regression-2026-05-05.md` a flagué que le `.limit(100)` minimal posé en LOT 9 introduisait un effet de bord UX (NEW-1) : les listings tronqués silencieusement sans signal côté UI. M-2 et NEW-1 ont été packagés ensemble dans un fix complémentaire (LOT 9 bis).
+
+### Pattern cursor pagination + banner
+
+**Helper réutilisable** — `lib/pagination/cursor.ts` :
+- `parseCursor(searchParams)` : lit `?before=<created_at>&before_id=<uuid>` depuis un `URLSearchParams` ou un `ReadonlyURLSearchParams` (Next.js `useSearchParams`). Cursor partiel (un seul des deux params) = ignoré.
+- `buildCursorUrl(basePath, lastItem)` : construit `${basePath}?before=...&before_id=...` (URL-encodé).
+- `applyCursor(query, cursor)` : ajoute `(created_at < before) OR (created_at = before AND id < beforeId)` à la query Supabase via `.or(...)`. Le tie-breaker sur `id` gère les égalités de timestamp (créations en batch dans la même milliseconde).
+
+**Composant partagé** — `components/listings/ListingHeader.tsx` :
+- Props `{ displayed, total, label }`.
+- Affiche `<total> <label>` si tout est visible, ou `<displayed> <label> sur <total> (les plus récents)` si la pagination cursor masque une partie.
+- `role="status"` pour l'a11y.
+
+**Intégration sur les 3 listings** :
+- `app/(consumer)/compte/commandes/page.tsx`, `app/(producer)/commandes/page.tsx`, `app/(admin)/gestion-producteurs/page.tsx`.
+- Wrapper `Suspense` autour de `useSearchParams` (Next.js 14 requirement) — déjà présent côté admin, ajouté côté consumer/producer.
+- `Promise.all([itemsQuery, countQuery])` : items avec cursor + count(*) exact filtré par les mêmes prédicats SQL (sans cursor, sans limit). Garde-fou perf.
+- `ORDER BY created_at DESC, id DESC` aligné avec le tie-breaker du cursor.
+- Bouton/lien "Charger les 100 plus anciennes" (Next.js `<Link>`) construit via `buildCursorUrl`, visible uniquement quand la limite a été atteinte (`data.length === 100`).
+- Le cursor pour la page suivante est calculé sur le **100ème row brut** (avant filter UI/void côté consumer), pour ne pas sauter de rows.
+
+### Trade-offs assumés (post-régression)
+
+- **Filtres UI orthogonaux à la cursor** : les tabs (`all/active/done/cancelled` côté consumer, `pending/confirmed/...` côté producer) restent un filtre client sur les rows déjà fetched. La pagination cursor s'applique au fetch global. Le banner affiche `displayed/total` au niveau global pre-filter UI.
+- **`isVoidOrderRow` côté consumer** : reste un filter client après fetch. Le `total` SQL inclut les void orders → léger surcomptage (max ~3 rows à 17 orders en prod, négligeable). Refactor SQL non priorisé pour respecter "modifications minimales".
+- **Page navigation (replace), pas load-more (append)** : clic sur "Charger les 100 plus anciennes" navigue vers `?before=...&before_id=...` qui re-fetch. Le banner reste libellé "(les plus récents)" même en page 2-3 — légèrement misleading mais aligné sur le brief littéral. À reconsidérer si feedback user pendant V1.0.
+- **Page size 100 conservée** : valeur héritée du LOT 9 initial, validée comme bon compromis JSON/perf à scale projeté.
+
+### Cohérence count vs items
+
+Pour chaque listing, la query count(*) **suit les mêmes filtres SQL** que la query items (sauf cursor + limit) :
+- Consumer : `eq('consumer_id', user.id)`.
+- Producer : `eq('producer_id', prod.id)`.
+- Admin : `neq('statut', 'draft').neq('statut', 'deleted')` quand `showAll=false`, sans filtre quand `showAll=true`. Le toggle change donc à la fois items et count.
+
+Les 3 deps `useEffect` incluent `cursorKey` (= `searchParams.toString()`) pour re-fetch sur navigation, plus `showAll` côté admin.
 
 ---
 
@@ -95,7 +134,7 @@ Les 8 indexes avec `idx_scan = 0` ont tous une justification métier valide (fea
 | 6 (H-2) | `DROP INDEX CONCURRENTLY orders_producer_statut_date_idx; DROP INDEX CONCURRENTLY orders_slot_statut_idx;`. Aucun risque sur les reads (le planner retombera sur les index existants). |
 | 7 (M-1) | `DROP INDEX CONCURRENTLY product_stock_alerts_consumer_id_idx;`. |
 | 8 (C-4) | Recréer l'ancienne fonction depuis `supabase/migrations/20260422000000_producer_public_filtering.sql` (lignes 228-300) — c'est la **vraie** dernière source pré-fix (la migration `20260421000000` est une stale repo). |
-| 9 (M-2) | `git revert` (retire les 3 `.limit(100)`). |
+| 9 (M-2 + NEW-1) | `git revert` (retire la cursor pagination + banner). Les 3 listings retomberont sur `.limit(100)` n'est **pas** une option de rollback partielle : le revert restaure simplement le `.limit(100)` minimal du chantier initial. |
 
 ---
 
