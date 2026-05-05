@@ -41,7 +41,7 @@ export default function AdminDisputeDeadlineWarning(props: Props) {
       </h1>
 
       <p>
-        Une dispute Stripe ouverte sur TerrOir n'a toujours pas reçu d'evidence.
+        Une dispute Stripe ouverte sur TerrOir n&rsquo;a toujours pas reçu d&rsquo;evidence.
         Sans soumission avant la deadline, Stripe perd automatiquement le
         litige et retire les fonds + commission Stripe.
       </p>

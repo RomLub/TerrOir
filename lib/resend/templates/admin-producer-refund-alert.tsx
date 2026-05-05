@@ -30,8 +30,8 @@ export default function AdminProducerRefundAlert(props: Props) {
 
       <p>
         Un producer a émis un refund total sur une de ses commandes pour un
-        montant supérieur au seuil de visibilité. Pas d'action requise — c'est
-        un signal forensique pour détecter d'éventuels abus.
+        montant supérieur au seuil de visibilité. Pas d&rsquo;action requise — c&rsquo;est
+        un signal forensique pour détecter d&rsquo;éventuels abus.
       </p>
 
       <p style={{ margin: "8px 0" }}>

@@ -233,6 +233,14 @@ Ne **pas** se contenter de `npx tsc --noEmit` quand un refactor supprime, dépla
 
 Si erreur → fix puis re-run, OU rapport à Romain/Claude si blocage de conception.
 
+### Piège ESLint `react/no-unescaped-entities` (JSX français)
+
+Le check `react/no-unescaped-entities` (actif via `next/core-web-vitals`) **bloque `next build` sur Vercel** dès qu'une apostrophe droite `'` apparaît dans du texte JSX, mais **ne pète ni en `vitest` ni en `tsc --noEmit`** — donc l'erreur passe la barrière locale et casse la CI Vercel (vu le 05/05/2026 sur les templates Phase 1).
+
+**Règle** : tout texte JSX en français doit utiliser `&rsquo;` (apostrophe typographique) au lieu de `'`. Exemple : `n&rsquo;a pas reçu d&rsquo;evidence` et non `n'a pas reçu d'evidence`. Idem pour les guillemets : `&laquo;` / `&raquo;`. Cette règle ne s'applique qu'au texte JSX (entre balises) — les chaînes JS (props, ternaires retournant des strings, commentaires) acceptent `'` sans souci.
+
+Si `npm run build` n'est pas lancé en local avant un push qui touche du JSX français, lancer au minimum `npx next lint --file <fichier.tsx>` sur les fichiers modifiés.
+
 ## Tests prod
 
 - **Un test à la fois**, pas tous d'un coup.
