@@ -122,7 +122,7 @@ npx @next/bundle-analyzer  # nécessite ajout devDep
 
 ---
 
-### C-4. Pages publiques critiques en `'use client'` top-level avec data-fetch client
+### C-4. Pages publiques critiques en `'use client'` top-level avec data-fetch client — FIXED (2026-05-06, Phase 3 SSR + couverture RLS isolation E2E)
 **Règles violées :** `server-parallel-fetching`, `async-parallel`, `bundle-defer-third-party` (Vercel HIGH)
 
 **Pages identifiées :**
@@ -152,6 +152,8 @@ export default async function ProducerCommandesPage() {
 `app/(producer)/dashboard/page.tsx` (lines 73-166) est l'exemple à suivre : 11 queries en `Promise.all()` côté serveur, puis `<DashboardClient data={...}>` pour la partie interactive (realtime).
 
 **Effort :** 6-8 h pour migrer les 7 pages.
+
+**Post-fix — couverture RLS isolation (2026-05-06)** : le refacto Phase 3 (commit `58c7436`) remplace le pattern `createSupabaseBrowserClient()` (RLS naturelle via `auth.uid()`) par `createSupabaseAdminClient()` + filter explicite `.eq('producer_id', producer.id)` ou `.eq('consumer_id', session.id)`. Risque #1 : un bug silencieux (mauvais id, filter oublié, `fetchProducerForUser` retournant le mauvais producer) leakerait les données entre tenants. Couvert par `tests/e2e/producer-rls-isolation.spec.ts` (3 tests : Producer A/B sur `/commandes`, Producer A/B sur `/catalogue`, Consumer C/D sur `/compte/commandes`). 3/3 PASS au 2026-05-06.
 
 ---
 
