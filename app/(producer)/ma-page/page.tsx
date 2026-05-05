@@ -250,6 +250,10 @@ export default function MaPagePage() {
   return (
     <ProducerLayout>
       <div className="max-w-6xl mx-auto px-8 py-10">
+        {/* Suspense requis par useSearchParams. Fallback null intentionnel
+            ici (pas un L-1 finding) : OnboardedBanner retourne null tant que
+            ?onboarded=1 n'est pas présent — un skeleton banner-shape
+            flasherait pour 99% des utilisateurs sans onboarded query param. */}
         <Suspense fallback={null}>
           <OnboardedBanner />
         </Suspense>

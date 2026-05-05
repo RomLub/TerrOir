@@ -64,12 +64,41 @@ const PLAN_LABEL: Record<string, string> = {
   premium: 'Premium',
 };
 
+function AdminProducteursFallback() {
+  return (
+    <div className="space-y-6" aria-busy="true">
+      <div className="space-y-2">
+        <div className="h-8 w-1/2 max-w-sm animate-pulse rounded bg-dark/10" />
+        <div className="h-4 w-1/3 max-w-xs animate-pulse rounded bg-dark/10" />
+      </div>
+      <div className="flex gap-2">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="h-8 w-24 animate-pulse rounded-full bg-dark/10" />
+        ))}
+      </div>
+      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div className="divide-y divide-gray-100">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-4 p-4">
+              <div className="flex-1 space-y-2">
+                <div className="h-4 w-2/3 animate-pulse rounded bg-dark/10" />
+                <div className="h-3 w-1/3 animate-pulse rounded bg-dark/10" />
+              </div>
+              <div className="h-6 w-20 animate-pulse rounded-full bg-dark/10" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminProducteursPage() {
   // Suspense requis par Next.js 14 autour de useSearchParams (lecture
-  // de ?invite=<email> depuis /producer-interests). Le fallback est null
-  // car la page rend déjà un état "Chargement…" à l'intérieur.
+  // de ?invite=<email> depuis /producer-interests). Skeleton aligné table
+  // admin — audit Vercel L-1 (2026-05-05).
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<AdminProducteursFallback />}>
       <AdminProducteursPageInner />
     </Suspense>
   );

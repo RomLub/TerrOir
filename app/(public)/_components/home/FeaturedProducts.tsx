@@ -1,21 +1,27 @@
 import Link from "next/link";
 import { ProductCard } from "@/components/ui/product-card";
-import { FEATURED_PRODUCTS } from "@/lib/mocks/featured-products";
+import { getFeaturedProducts } from "@/lib/products/fetch-featured";
 
 // Section "Les produits du moment" (homepage.html .products).
 //
-// Phase 1 : 4 produits issus de lib/mocks/featured-products. Phase 2 :
-// remplacer par getFeaturedProducts({ limit: 4 }) Supabase.
+// Audit Vercel H-6 (2026-05-05) : Server Component branché Supabase via
+// getFeaturedProducts() — unstable_cache 10 min + tag 'featured-products'.
+// Avant : import FEATURED_PRODUCTS depuis lib/mocks/featured-products
+// (mocks en prod, audit C). Le composant est désormais async.
 //
-// CTA "Voir les 320 produits" pointe vers /producteurs en Phase 1 (la
-// route /produits n'existe pas encore — sera Phase 2). Le compte "320"
-// est cohérent avec la stat du screen, statique acceptable Phase 1.
+// Si fetch fail-open → tableau vide → la section affiche le header sans
+// cards (cohérent avec getPublicStats).
+//
+// CTA "Voir les 320 produits" pointe vers /producteurs (Phase 1). Le
+// compte "320" reste statique acceptable MVP.
 
 export type FeaturedProductsProps = { className?: string };
 
-export function FeaturedProducts({
+export async function FeaturedProducts({
   className = "",
 }: FeaturedProductsProps) {
+  const products = await getFeaturedProducts();
+
   return (
     <section
       id="produits"
@@ -40,11 +46,13 @@ export function FeaturedProducts({
             Voir les 320 produits&nbsp;→
           </Link>
         </div>
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {FEATURED_PRODUCTS.map((product) => (
-            <ProductCard key={product.id} product={product} />
-          ))}
-        </div>
+        {products.length > 0 ? (
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            {products.map((product) => (
+              <ProductCard key={product.id} product={product} />
+            ))}
+          </div>
+        ) : null}
       </div>
     </section>
   );

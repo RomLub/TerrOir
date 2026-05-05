@@ -1,41 +1,35 @@
-'use client';
-
-import { Suspense, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
-import { Button, OrderStatusBadge, type OrderStatus } from '@/components/ui';
-import { ListingHeader } from '@/components/listings/ListingHeader';
-import {
-  applyCursor,
-  buildCursorUrl,
-  parseCursor,
-} from '@/lib/pagination/cursor';
-import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { redirect } from 'next/navigation';
+import { getSessionUser } from '@/lib/auth/session';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import { fetchProducerForUser } from '@/lib/producers/context';
+import { applyCursor, parseCursor } from '@/lib/pagination/cursor';
 import {
   formatSlotRange,
   formatLegacyTimeHHMM,
 } from '@/lib/slots/format-slot-time';
-import { ProducerLayout } from '../_components/ProducerLayout';
+import type { OrderStatus } from '@/components/ui';
+import {
+  ProducerCommandesClient,
+  type ProducerOrderRow,
+} from './ProducerCommandesClient';
 
-type OrderRow = {
-  id: string;
-  code_commande: string | null;
-  created_at: string;
-  status: OrderStatus;
-  client_name: string;
-  total: number;
-  items: { name: string; qty: string }[];
-  slotDate: string;
-  slotTime: string;
-};
+// Server Component — audit Vercel C-4 + H-5 (2026-05-05).
+// Avant : 'use client' + auth.getUser() + producers lookup + orders fetch
+// au mount. Maintenant : pattern coquille SSR (cf. dashboard/page.tsx) avec
+// admin client + filter explicite par producer_id (cohérence brief Phase 3).
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
-type Tab = 'pending' | 'confirmed' | 'completed' | 'cancelled';
-const TABS: { value: Tab; label: string; statuses: OrderStatus[] }[] = [
-  { value: 'pending', label: 'À confirmer', statuses: ['pending'] },
-  { value: 'confirmed', label: 'Confirmées', statuses: ['confirmed', 'ready'] },
-  { value: 'completed', label: 'Terminées', statuses: ['completed'] },
-  { value: 'cancelled', label: 'Annulées', statuses: ['cancelled', 'refunded'] },
-];
+type SearchParams = Record<string, string | string[] | undefined>;
+
+function searchParamsToUrlSearchParams(sp: SearchParams): URLSearchParams {
+  const out = new URLSearchParams();
+  for (const [k, v] of Object.entries(sp)) {
+    if (typeof v === 'string') out.set(k, v);
+  }
+  return out;
+}
 
 function formatDateShort(iso: string | null): string {
   if (!iso) return '—';
@@ -44,272 +38,106 @@ function formatDateShort(iso: string | null): string {
   return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
 }
 
-function formatReceived(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) +
-    ' ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-}
+export default async function ProducerCommandesPage({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
+  const session = await getSessionUser();
+  if (!session) redirect('/connexion');
 
-export default function ProducerCommandesPage() {
-  // Suspense requis par Next.js 14 autour de useSearchParams (lecture
-  // du cursor pagination ?before=...&before_id=...). Audit
-  // perf-postgres-2026-05-05 M-2 + NEW-1.
-  return (
-    <Suspense fallback={null}>
-      <ProducerCommandesPageInner />
-    </Suspense>
-  );
-}
+  // (producer)/layout.tsx vérifie déjà session + host. Le lookup producer
+  // utilise le client serveur (RLS owner read autorise auth.uid() = user_id).
+  const supabase = createSupabaseServerClient();
+  const producer = await fetchProducerForUser(supabase, session.id);
+  if (!producer) redirect('/invitation');
 
-function ProducerCommandesPageInner() {
-  const searchParams = useSearchParams();
-  const cursorKey = searchParams?.toString() ?? '';
+  const admin = createSupabaseAdminClient();
+  const cursor = parseCursor(searchParamsToUrlSearchParams(searchParams));
 
-  const [tab, setTab] = useState<Tab>('pending');
-  const [orders, setOrders] = useState<OrderRow[]>([]);
-  const [total, setTotal] = useState(0);
-  const [nextCursor, setNextCursor] = useState<{ created_at: string; id: string } | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [working, setWorking] = useState<string | null>(null);
+  // Audit perf-postgres-2026-05-05 M-2 + NEW-1 : pagination cursor
+  // (created_at DESC + id DESC tie-breaker), .limit(100), couplée à un
+  // count(*) exact parallélisé pour le banner ListingHeader.
+  const itemsQuery = applyCursor(
+    admin
+      .from('orders')
+      .select(`
+        id, code_commande, created_at, statut, montant_total,
+        date_retrait, heure_retrait,
+        consumer:consumer_id ( prenom, nom ),
+        slots:slot_id ( starts_at, ends_at ),
+        order_items ( quantite, products:product_id ( nom, unite ) )
+      `)
+      .eq('producer_id', producer.id),
+    cursor,
+  )
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
+    .limit(100);
 
-  useEffect(() => {
-    let active = true;
-    const supabase = createSupabaseBrowserClient();
+  const countQuery = admin
+    .from('orders')
+    .select('id', { count: 'exact', head: true })
+    .eq('producer_id', producer.id);
 
-    (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        if (active) { setError('Vous devez être connecté.'); setLoading(false); }
-        return;
-      }
+  const [itemsRes, countRes] = await Promise.all([itemsQuery, countQuery]);
 
-      const { data: prod } = await supabase
-        .from('producers')
-        .select('id')
-        .eq('user_id', user.id)
-        .maybeSingle();
-      if (!prod) {
-        if (active) { setError('Profil producteur introuvable.'); setLoading(false); }
-        return;
-      }
+  if (itemsRes.error) throw itemsRes.error;
+  if (countRes.error) throw countRes.error;
 
-      const cursor = parseCursor(searchParams ?? new URLSearchParams());
+  const data = itemsRes.data ?? [];
 
-      // Audit perf-postgres-2026-05-05 M-2 + NEW-1 : pagination cursor
-      // (created_at DESC + id DESC tie-breaker), .limit(100), couplée à
-      // un count(*) exact parallélisé pour le banner ListingHeader.
-      const itemsQuery = applyCursor(
-        supabase
-          .from('orders')
-          .select(`
-            id, code_commande, created_at, statut, montant_total,
-            date_retrait, heure_retrait,
-            consumer:consumer_id ( prenom, nom ),
-            slots:slot_id ( starts_at, ends_at ),
-            order_items ( quantite, products:product_id ( nom, unite ) )
-          `)
-          .eq('producer_id', prod.id),
-        cursor,
-      )
-        .order('created_at', { ascending: false })
-        .order('id', { ascending: false })
-        .limit(100);
-
-      const countQuery = supabase
-        .from('orders')
-        .select('id', { count: 'exact', head: true })
-        .eq('producer_id', prod.id);
-
-      const [itemsRes, countRes] = await Promise.all([itemsQuery, countQuery]);
-
-      if (!active) return;
-
-      if (itemsRes.error) { setError(itemsRes.error.message); setLoading(false); return; }
-      if (countRes.error) { setError(countRes.error.message); setLoading(false); return; }
-
-      const data = itemsRes.data ?? [];
-
-      const rows: OrderRow[] = (data as unknown as Array<{
-        id: string;
-        code_commande: string | null;
-        created_at: string;
-        statut: OrderStatus;
-        montant_total: number | null;
-        date_retrait: string | null;
-        heure_retrait: string | null;
-        consumer: { prenom: string | null; nom: string | null } | Array<{ prenom: string | null; nom: string | null }> | null;
-        slots: { starts_at: string | null; ends_at: string | null } | Array<{ starts_at: string | null; ends_at: string | null }> | null;
-        order_items: Array<{ quantite: number; products: { nom: string; unite: string } | Array<{ nom: string; unite: string }> | null }>;
-      }>).map((o) => {
-        const consumer = Array.isArray(o.consumer) ? o.consumer[0] : o.consumer;
-        const slot = Array.isArray(o.slots) ? o.slots[0] : o.slots;
-        const clientName = consumer?.prenom?.trim() || consumer?.nom?.trim() || 'Client';
-        const items = (o.order_items ?? []).map((it) => {
-          const p = Array.isArray(it.products) ? it.products[0] : it.products;
-          const q = Number(it.quantite).toFixed(2).replace('.', ',');
-          return {
-            name: p?.nom ?? 'Produit',
-            qty: `${q} ${p?.unite ?? ''}`.trim(),
-          };
-        });
-        return {
-          id: o.id,
-          code_commande: o.code_commande,
-          created_at: o.created_at,
-          status: o.statut,
-          client_name: clientName,
-          total: Number(o.montant_total ?? 0),
-          items,
-          slotDate: formatDateShort(o.date_retrait),
-          slotTime: slot?.starts_at && slot?.ends_at
-            ? formatSlotRange(slot.starts_at, slot.ends_at)
-            : formatLegacyTimeHHMM(o.heure_retrait),
-        };
-      });
-
-      const last = data.length === 100 ? (data[99] as { id: string; created_at: string }) : null;
-
-      setOrders(rows);
-      setTotal(countRes.count ?? 0);
-      setNextCursor(
-        last
-          ? { created_at: last.created_at, id: last.id }
-          : null,
-      );
-      setLoading(false);
-    })();
-
-    return () => { active = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cursorKey]);
-
-  // Cursor actif = on est en page 2+ → libellé banner adapté.
-  const isPaginated =
-    parseCursor(searchParams ?? new URLSearchParams()).before !== null;
-
-  const counts = useMemo(() => {
-    const counts: Record<Tab, number> = { pending: 0, confirmed: 0, completed: 0, cancelled: 0 };
-    orders.forEach((o) => {
-      TABS.forEach((t) => { if (t.statuses.includes(o.status)) counts[t.value]++; });
+  const rows: ProducerOrderRow[] = (data as unknown as Array<{
+    id: string;
+    code_commande: string | null;
+    created_at: string;
+    statut: OrderStatus;
+    montant_total: number | null;
+    date_retrait: string | null;
+    heure_retrait: string | null;
+    consumer: { prenom: string | null; nom: string | null } | Array<{ prenom: string | null; nom: string | null }> | null;
+    slots: { starts_at: string | null; ends_at: string | null } | Array<{ starts_at: string | null; ends_at: string | null }> | null;
+    order_items: Array<{ quantite: number; products: { nom: string; unite: string } | Array<{ nom: string; unite: string }> | null }>;
+  }>).map((o) => {
+    const consumer = Array.isArray(o.consumer) ? o.consumer[0] : o.consumer;
+    const slot = Array.isArray(o.slots) ? o.slots[0] : o.slots;
+    const clientName = consumer?.prenom?.trim() || consumer?.nom?.trim() || 'Client';
+    const items = (o.order_items ?? []).map((it) => {
+      const p = Array.isArray(it.products) ? it.products[0] : it.products;
+      const q = Number(it.quantite).toFixed(2).replace('.', ',');
+      return {
+        name: p?.nom ?? 'Produit',
+        qty: `${q} ${p?.unite ?? ''}`.trim(),
+      };
     });
-    return counts;
-  }, [orders]);
+    return {
+      id: o.id,
+      code_commande: o.code_commande,
+      created_at: o.created_at,
+      status: o.statut,
+      client_name: clientName,
+      total: Number(o.montant_total ?? 0),
+      items,
+      slotDate: formatDateShort(o.date_retrait),
+      slotTime: slot?.starts_at && slot?.ends_at
+        ? formatSlotRange(slot.starts_at, slot.ends_at)
+        : formatLegacyTimeHHMM(o.heure_retrait),
+    };
+  });
 
-  const activeStatuses = TABS.find((t) => t.value === tab)!.statuses;
-  const filtered = orders.filter((o) => activeStatuses.includes(o.status));
+  const last = data.length === 100 ? (data[99] as { id: string; created_at: string }) : null;
+  const nextCursor = last
+    ? { created_at: last.created_at, id: last.id }
+    : null;
 
-  const actOnOrder = async (id: string, action: 'confirm' | 'cancel') => {
-    setWorking(id);
-    try {
-      const res = await fetch(`/api/orders/${id}/${action}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: action === 'cancel' ? JSON.stringify({ reason: 'producer_cancel' }) : undefined,
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        setError(body.error ?? `Action ${action} échouée`);
-        return;
-      }
-      const newStatus: OrderStatus = action === 'confirm' ? 'confirmed' : 'cancelled';
-      setOrders((arr) => arr.map((o) => o.id === id ? { ...o, status: newStatus } : o));
-    } finally {
-      setWorking(null);
-    }
-  };
+  const isPaginated = cursor.before !== null;
 
   return (
-    <ProducerLayout>
-      <div className="max-w-6xl mx-auto px-8 py-10">
-        <header className="mb-8">
-          <div className="text-[11px] uppercase tracking-[0.18em] text-terra-700 font-semibold">Commandes</div>
-          <h1 className="mt-1 font-serif text-[40px] text-green-900 leading-tight">Vos commandes</h1>
-          {!loading && (
-            <div className="mt-1">
-              <ListingHeader displayed={orders.length} total={total} label="commandes" isPaginated={isPaginated} />
-            </div>
-          )}
-          {error && <p className="mt-2 text-[13px] text-terra-700">{error}</p>}
-        </header>
-
-        <div className="flex gap-1.5 flex-wrap border-b border-dark/[0.08]">
-          {TABS.map((t) => {
-            const active = tab === t.value;
-            return (
-              <button key={t.value} onClick={() => setTab(t.value)}
-                className={`px-4 py-3 text-[14px] font-medium transition-colors border-b-2 -mb-px flex items-center gap-2 ${
-                  active ? 'border-green-700 text-green-900' : 'border-transparent text-dark/60 hover:text-green-900'
-                }`}>
-                {t.label}
-                <span className={`text-[11px] mono px-1.5 rounded ${active ? 'bg-green-100 text-green-900' : 'bg-dark/5 text-dark/55'}`}>{counts[t.value]}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="mt-6 space-y-3">
-          {loading ? (
-            <div className="bg-white rounded-2xl border border-dark/[0.06] p-10 text-center text-dark/60">Chargement…</div>
-          ) : filtered.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-dark/[0.06] p-10 text-center">
-              <h3 className="font-serif text-[22px] text-green-900">Aucune commande</h3>
-            </div>
-          ) : filtered.map((o) => (
-            <article key={o.id} className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-5">
-              <div className="flex items-start justify-between gap-4 flex-wrap">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 text-[12px] mono text-dark/50">
-                    {o.code_commande && <><span>{o.code_commande}</span><span>·</span></>}
-                    <span>Reçu {formatReceived(o.created_at)}</span>
-                  </div>
-                  <div className="mt-1 flex items-baseline gap-3 flex-wrap">
-                    <span className="font-serif text-[22px] text-green-900">{o.client_name}</span>
-                    <span className="text-[13px] text-dark/70">Retrait le {o.slotDate} · {o.slotTime}</span>
-                  </div>
-                  <ul className="mt-2 text-[13px] text-dark/70 space-y-0.5">
-                    {o.items.map((it, i) => <li key={i}>• {it.name} — <span className="mono">{it.qty}</span></li>)}
-                  </ul>
-                </div>
-                <div className="flex items-center gap-4">
-                  <OrderStatusBadge status={o.status} />
-                  <div className="font-serif text-[22px] text-green-900 tabular-nums">{o.total.toFixed(2).replace('.', ',')} €</div>
-                </div>
-              </div>
-
-              <div className="mt-4 pt-4 border-t border-dark/[0.06] flex gap-2 flex-wrap justify-end">
-                {o.status === 'pending' && (
-                  <>
-                    <Button variant="ghost" size="sm" disabled={working === o.id} onClick={() => actOnOrder(o.id, 'cancel')}>
-                      Annuler
-                    </Button>
-                    <Button variant="success" size="sm" disabled={working === o.id} onClick={() => actOnOrder(o.id, 'confirm')}>
-                      {working === o.id ? '…' : 'Confirmer la commande'}
-                    </Button>
-                  </>
-                )}
-                {(o.status === 'confirmed' || o.status === 'ready') && (
-                  <Link href={`/commandes/${o.id}`}><Button variant="accent" size="sm">Voir le détail</Button></Link>
-                )}
-                {(o.status === 'completed' || o.status === 'cancelled' || o.status === 'refunded') && (
-                  <Link href={`/commandes/${o.id}`}><Button variant="ghost" size="sm">Voir le détail</Button></Link>
-                )}
-              </div>
-            </article>
-          ))}
-        </div>
-        {!loading && nextCursor && (
-          <div className="mt-6 flex justify-center">
-            <Link
-              href={buildCursorUrl('/commandes', nextCursor)}
-              className="text-[14px] font-medium text-green-900 underline hover:text-green-700"
-            >
-              Charger les 100 plus anciennes
-            </Link>
-          </div>
-        )}
-      </div>
-    </ProducerLayout>
+    <ProducerCommandesClient
+      initialOrders={rows}
+      initialTotal={countRes.count ?? 0}
+      initialNextCursor={nextCursor}
+      isPaginated={isPaginated}
+    />
   );
 }

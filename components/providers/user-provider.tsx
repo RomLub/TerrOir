@@ -181,9 +181,18 @@ export function UserProvider({
       });
     });
 
-    // onAuthStateChange émet INITIAL_SESSION dès l'abonnement → couvre la
-    // résolution initiale, plus tous les login/logout ultérieurs (multi-tab,
-    // expiration token). Pas besoin d'appel getSession() séparé.
+    // onAuthStateChange émet INITIAL_SESSION dès l'abonnement, plus tous
+    // les login/logout ultérieurs (multi-tab, expiration token).
+    //
+    // Audit Vercel H-4 (2026-05-05) : INITIAL_SESSION absorbé par le payload
+    // SSR (initial.user / .roles / .isAdmin / .producerLite via
+    // getInitialUserPayload). Skip le re-fetch loadProfile au mount —
+    // économise 3 queries Supabase × N pages × M utilisateurs / jour. Le
+    // filet promotion/démotion reste assuré par les transitions SIGNED_IN /
+    // USER_UPDATED / TOKEN_REFRESHED qui suivent (re-fetch loadProfile
+    // déclenché alors). Trade-off : si getInitialUserPayload a partiellement
+    // échoué côté serveur (fail-safe per-branch), l'état restera dégradé
+    // jusqu'au prochain event auth — accepté contre le gain perf.
     //
     // Broadcast filtré aux events identité (SIGNED_IN/SIGNED_OUT/
     // USER_UPDATED/PASSWORD_RECOVERY) — on exclut TOKEN_REFRESHED (spam
@@ -197,6 +206,13 @@ export function UserProvider({
     ]);
     const { data: listener } = supabase.auth.onAuthStateChange(
       (event, session) => {
+        if (event === "INITIAL_SESSION") {
+          // SSR a déjà fourni l'état complet via initial. On flagge juste
+          // loading=false pour relâcher l'UI (loading initialisé à
+          // initial.user !== null).
+          if (!cancelled) setLoading(false);
+          return;
+        }
         const current = session?.user ?? null;
         applySession(current);
         if (IDENTITY_EVENTS.has(event)) broadcaster.broadcast();
