@@ -1,11 +1,15 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { useState } from 'react';
 import { Button, Badge } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { promoteProducerToPublicIfActive } from '@/lib/producers/promote-to-public';
-import { revalidatePublicStats } from '@/lib/stats/revalidate';
+import {
+  revalidatePublicStats,
+  revalidatePublicProducts,
+} from '@/lib/stats/revalidate';
 import { ProducerLayout } from '../_components/ProducerLayout';
 
 export type CatalogueProduct = {
@@ -67,6 +71,13 @@ export function CatalogueClient({
       // producersCount via l'auto-promotion). Le helper swallow toute
       // exception, pas de wrapper externe nécessaire.
       await revalidatePublicStats({ source: 'producer-catalogue-list' });
+      // Audit Vercel C-5 (2026-05-05) : invalide aussi le cache 'public-products'
+      // (route /produits cachée 60s + tag) — toggle actif modifie la grille
+      // catalogue immédiatement.
+      await revalidatePublicProducts({
+        source: 'producer-catalogue-toggle',
+        productId: id,
+      });
     } else {
       setError(upError.message);
     }
@@ -169,8 +180,13 @@ export function CatalogueClient({
                   <div className="aspect-[4/3] relative flex items-center justify-center text-green-900/30 font-mono text-[10px] uppercase overflow-hidden"
                        style={!p.image ? { backgroundImage: 'repeating-linear-gradient(45deg, #D8F3DC 0 12px, #C9EAD0 12px 24px)' } : undefined}>
                     {p.image ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={p.image} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                      <Image
+                        src={p.image}
+                        alt=""
+                        fill
+                        sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+                        className="object-cover"
+                      />
                     ) : (
                       'Photo produit'
                     )}

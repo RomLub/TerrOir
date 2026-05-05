@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import AddCardModal from "./AddCardModal";
+import AddCardModal from "./AddCardModalLazy";
 import {
   detachPaymentMethodAction,
   setDefaultPaymentMethodAction,

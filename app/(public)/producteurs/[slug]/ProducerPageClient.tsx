@@ -190,10 +190,15 @@ export function ProducerPageClient({
             <div className="text-[11px] uppercase tracking-[0.18em] text-terra-700 font-semibold mb-4">La ferme en images</div>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               {producer.gallery.map((photo, i) => (
-                <div key={i} className={`rounded-xl overflow-hidden ${i === 0 ? 'md:row-span-2 md:col-span-2 aspect-[4/3]' : 'aspect-[4/3]'}`}>
+                <div key={i} className={`relative rounded-xl overflow-hidden ${i === 0 ? 'md:row-span-2 md:col-span-2 aspect-[4/3]' : 'aspect-[4/3]'}`}>
                   {photo ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={photo} alt="" className="w-full h-full object-cover" />
+                    <Image
+                      src={photo}
+                      alt=""
+                      fill
+                      sizes={i === 0 ? '(min-width: 768px) 66vw, 100vw' : '(min-width: 768px) 33vw, 50vw'}
+                      className="object-cover"
+                    />
                   ) : (
                     <PhotoPlaceholder label={`Photo ${i + 1}`} className="w-full h-full" />
                   )}

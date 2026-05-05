@@ -6,6 +6,7 @@ import { Button, Badge, Input, Textarea, ProducerCard } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { uploadProducerPhoto } from '@/lib/producers/upload';
 import { labelEspece, labelLabel } from '@/lib/producers/labels';
+import { revalidateProducerCard } from '@/lib/stats/revalidate';
 import { ProducerLayout } from '../_components/ProducerLayout';
 
 function OnboardedBanner() {
@@ -77,6 +78,9 @@ const EMPTY: Form = {
 export default function MaPagePage() {
   const [tab, setTab] = useState<Tab>('preview');
   const [producerId, setProducerId] = useState<string | null>(null);
+  // slug nécessaire pour invalider le cache 'producer:<slug>' (audit Vercel
+  // C-5 — bloc producer cached 60s sur fiche publique).
+  const [producerSlug, setProducerSlug] = useState<string | null>(null);
   const [form, setForm] = useState<Form>(EMPTY);
   const [heroPhoto, setHeroPhoto] = useState<string | null>(null);
   const [gallery, setGallery] = useState<string[]>([]);
@@ -102,7 +106,7 @@ export default function MaPagePage() {
 
       const { data: prod, error: fetchError } = await supabase
         .from('producers')
-        .select('id, nom_exploitation, description, histoire, generations, annee_creation, especes, labels, commune, code_postal, photo_principale, photos, note_moyenne, nb_avis, badge_stock_score, badge_confirmation_score, badge_annulation_score')
+        .select('id, slug, nom_exploitation, description, histoire, generations, annee_creation, especes, labels, commune, code_postal, photo_principale, photos, note_moyenne, nb_avis, badge_stock_score, badge_confirmation_score, badge_annulation_score')
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -111,6 +115,7 @@ export default function MaPagePage() {
       if (!prod) { setError('Profil producteur introuvable.'); setLoading(false); return; }
 
       setProducerId(prod.id);
+      setProducerSlug(prod.slug ?? null);
       setForm({
         nom_exploitation: prod.nom_exploitation ?? '',
         description: prod.description ?? '',
@@ -231,6 +236,15 @@ export default function MaPagePage() {
       setNewGalleryFiles([]);
       setNewGalleryPreviews([]);
       setSaved(true);
+      // Audit Vercel C-5 (2026-05-05) : invalide le bloc producer cached
+      // 60s sur la fiche publique /producteurs/<slug>. Sans ça, l'utilisateur
+      // verrait l'ancienne bio/photo pendant max 60s après save.
+      if (producerSlug) {
+        await revalidateProducerCard({
+          slug: producerSlug,
+          source: 'producer-ma-page-save',
+        });
+      }
       setTimeout(() => setSaved(false), 2500);
     } catch (err) {
       setError((err as Error).message ?? 'Enregistrement impossible');

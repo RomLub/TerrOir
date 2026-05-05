@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -219,11 +220,16 @@ function PanierClientInner() {
                   const s = step(it.unite);
                   return (
                     <li key={`${it.productId}-${it.creneauId}-${it.dateRetrait}`} className="p-5 flex items-start gap-4">
-                      <div className="w-20 h-20 rounded-xl flex-shrink-0 overflow-hidden"
+                      <div className="relative w-20 h-20 rounded-xl flex-shrink-0 overflow-hidden"
                            style={!it.image ? { backgroundImage: 'repeating-linear-gradient(45deg, #D8F3DC 0 10px, #C9EAD0 10px 20px)' } : undefined}>
                         {it.image && (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={it.image} alt="" className="w-full h-full object-cover" />
+                          <Image
+                            src={it.image}
+                            alt=""
+                            fill
+                            sizes="80px"
+                            className="object-cover"
+                          />
                         )}
                       </div>
                       <div className="flex-1 min-w-0">

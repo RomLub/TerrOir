@@ -15,9 +15,12 @@ import { CutsMap } from './_components/CutsMap';
 // - fetchCutsWithStock() : Set des slugs ayant ≥1 produit actif chez
 //   un producer public (filtre RLS-bypass appliqué côté query)
 //
-// `dynamic = 'force-dynamic'` : le statut "stock disponible" évolue en
-// temps réel, on n'accepte pas de cache statique. Cohérent avec
-// /produits et /producteurs/[slug].
+// Audit Vercel C-5 (2026-05-05) : passé de force-dynamic à revalidate=300.
+// La taxonomie cuts est statique (pas de mutation runtime), seul
+// `cutsWithStock` évolue avec le stock réel. Tolérance 5 min raisonnable
+// pour une page éducative (l'utilisateur ne fait pas une décision d'achat
+// stricte ici — il découvre la nomenclature). En cas de besoin de fraîcheur
+// immédiate, étendre revalidatePublicProducts pour tagger aussi cette page.
 //
 // Le SVG fonctionnel viendra plus tard (Claude Design ou graphiste
 // freelance). Il réutilisera les data-cut-slug du placeholder pour
@@ -29,8 +32,7 @@ export const metadata: Metadata = {
     'Découvrez les différents morceaux de bœuf et trouvez ceux disponibles chez nos éleveurs sarthois. Carte interactive éducative.',
 };
 
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+export const revalidate = 300;
 
 export default async function MorceauxBoeufPage() {
   const admin = createSupabaseAdminClient();

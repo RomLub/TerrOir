@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { Button, Badge, ProductCard } from '@/components/ui';
 import { useCartStore } from '@/lib/store/cart';
@@ -185,8 +186,14 @@ export function ProductPageClient({
           <div>
             <div className="aspect-[4/3] rounded-2xl overflow-hidden relative">
               {photos[activePhoto] ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={photos[activePhoto] as string} alt={product.name} className="w-full h-full object-cover" />
+                <Image
+                  src={photos[activePhoto] as string}
+                  alt={product.name}
+                  fill
+                  sizes="(min-width: 1024px) 55vw, 100vw"
+                  priority
+                  className="object-cover"
+                />
               ) : (
                 <PhotoPlaceholder label={`Photo ${activePhoto + 1} — ${product.name}`} className="w-full h-full" />
               )}
@@ -202,13 +209,18 @@ export function ProductPageClient({
                   key={i}
                   type="button"
                   onClick={() => setActivePhoto(i)}
-                  className={`aspect-square rounded-xl overflow-hidden transition-all ${
+                  className={`relative aspect-square rounded-xl overflow-hidden transition-all ${
                     i === activePhoto ? 'ring-2 ring-green-700 ring-offset-2 ring-offset-bg' : 'opacity-70 hover:opacity-100'
                   }`}
                 >
                   {url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={url} alt="" className="w-full h-full object-cover" />
+                    <Image
+                      src={url}
+                      alt=""
+                      fill
+                      sizes="120px"
+                      className="object-cover"
+                    />
                   ) : (
                     <PhotoPlaceholder label={`${i + 1}`} className="w-full h-full" />
                   )}

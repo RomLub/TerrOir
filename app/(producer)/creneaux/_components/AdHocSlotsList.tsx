@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui";
 import { formatSlotDateTime, formatSlotTime } from "@/lib/slots/format-slot-time";
 import { deleteAdHocSlotAction } from "../actions";
-import AdHocSlotModal from "./AdHocSlotModal";
+import AdHocSlotModal from "./AdHocSlotModalLazy";
 
 export interface AdHocSlot {
   id: string;

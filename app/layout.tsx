@@ -12,18 +12,29 @@ const inter = Inter({
   display: "swap",
 });
 
+// Audit Vercel M-3 (2026-05-05) : Cormorant 4 poids → 2 poids. Grep
+// font-serif révèle uniquement weight 400 (default font-serif) et 500
+// (font-serif font-medium) utilisés. Aucune occurrence de
+// font-serif font-semibold/bold/black dans la codebase. Économie woff2
+// ~60 KB sur la home (4×30 KB → 2×30 KB).
 const cormorant = Cormorant_Garamond({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["400", "500"],
   variable: "--font-cormorant",
   display: "swap",
 });
 
+// Audit Vercel M-3 (2026-05-05) : preload: false — Caveat n'est utilisé
+// que sur la classe `font-hand` consommée uniquement par
+// components/ui/post-it.tsx (composant rare, hors home critique). Le
+// preload sur toutes les pages était dispendieux (~40 KB woff2 chargés
+// inutilement sur 95% des routes).
 const caveat = Caveat({
   subsets: ["latin"],
   weight: ["500", "600"],
   variable: "--font-caveat",
   display: "swap",
+  preload: false,
 });
 
 // Assets brand externes : Next 14 détecte automatiquement app/icon.png,

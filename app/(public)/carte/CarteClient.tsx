@@ -102,6 +102,20 @@ export function CarteClient() {
   );
 }
 
+// Audit Vercel M-1 (2026-05-05) : helper pur — calcule l'URL cible depuis
+// le triplet (especes, labels, radius). Appelé directement dans les
+// onClick des Chip (pas dans un useEffect séparé) pour économiser un
+// re-render par toggle filter (avant : setState → render → useEffect →
+// router.replace → re-render searchParams).
+function buildFiltersUrl(especes: string[], labels: string[], radius: number): string {
+  const params = new URLSearchParams();
+  if (especes.length) params.set('especes', especes.join(','));
+  if (labels.length) params.set('labels', labels.join(','));
+  if (radius !== 50) params.set('rayon', String(radius));
+  const q = params.toString();
+  return q ? `/carte?${q}` : '/carte';
+}
+
 function CarteClientContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -142,15 +156,6 @@ function CarteClientContent() {
       { timeout: 8000 },
     );
   }, []);
-
-  useEffect(() => {
-    const params = new URLSearchParams();
-    if (especes.length) params.set('especes', especes.join(','));
-    if (labels.length) params.set('labels', labels.join(','));
-    if (radius !== 50) params.set('rayon', String(radius));
-    const q = params.toString();
-    router.replace(q ? `/carte?${q}` : '/carte', { scroll: false });
-  }, [especes, labels, radius, router]);
 
   const abortRef = useRef<AbortController | null>(null);
   useEffect(() => {
@@ -384,9 +389,28 @@ function CarteClientContent() {
     lastHoverRef.current = hoveredId;
   }, [hoveredId, mapReady]);
 
-  const toggle = <T extends string>(arr: T[], v: T, setter: (a: T[]) => void) =>
-    setter(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
-  const clearAll = () => { setEspeces([]); setLabels([]); setRadius(50); };
+  // Audit Vercel M-1 (2026-05-05) : router.replace appelé dans les
+  // handlers (pas dans un useEffect dépendant de [especes,labels,radius]).
+  // Économise un re-render par toggle. Les setters wrappent l'update +
+  // l'URL sync atomiquement.
+  const toggleEspece = (v: string) => {
+    const next = especes.includes(v) ? especes.filter((x) => x !== v) : [...especes, v];
+    setEspeces(next);
+    router.replace(buildFiltersUrl(next, labels, radius), { scroll: false });
+  };
+  const toggleLabel = (v: string) => {
+    const next = labels.includes(v) ? labels.filter((x) => x !== v) : [...labels, v];
+    setLabels(next);
+    router.replace(buildFiltersUrl(especes, next, radius), { scroll: false });
+  };
+  const setRadiusAndSync = (r: number) => {
+    setRadius(r);
+    router.replace(buildFiltersUrl(especes, labels, r), { scroll: false });
+  };
+  const clearAll = () => {
+    setEspeces([]); setLabels([]); setRadius(50);
+    router.replace(buildFiltersUrl([], [], 50), { scroll: false });
+  };
 
   const activeFilters = especes.length + labels.length + (radius !== 50 ? 1 : 0);
 
@@ -441,7 +465,7 @@ function CarteClientContent() {
             <FilterGroup label="Espèces">
               <div className="flex flex-wrap gap-1.5">
                 {ESPECE_OPTIONS.map((o) => (
-                  <Chip key={o.value} active={especes.includes(o.value)} onClick={() => toggle(especes, o.value, setEspeces)}>
+                  <Chip key={o.value} active={especes.includes(o.value)} onClick={() => toggleEspece(o.value)}>
                     {o.label}
                   </Chip>
                 ))}
@@ -451,7 +475,7 @@ function CarteClientContent() {
             <FilterGroup label="Labels & certifications">
               <div className="flex flex-wrap gap-1.5">
                 {LABEL_OPTIONS.map((o) => (
-                  <Chip key={o.value} active={labels.includes(o.value)} onClick={() => toggle(labels, o.value, setLabels)} variant="terra">
+                  <Chip key={o.value} active={labels.includes(o.value)} onClick={() => toggleLabel(o.value)} variant="terra">
                     {o.label}
                   </Chip>
                 ))}
@@ -461,7 +485,7 @@ function CarteClientContent() {
             <FilterGroup label={`Rayon · ${radius} km`}>
               <div className="flex gap-1.5">
                 {RADIUS_OPTIONS.map((r) => (
-                  <Chip key={r} active={radius === r} onClick={() => setRadius(r)}>
+                  <Chip key={r} active={radius === r} onClick={() => setRadiusAndSync(r)}>
                     {r} km
                   </Chip>
                 ))}

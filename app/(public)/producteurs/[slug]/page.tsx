@@ -1,7 +1,11 @@
 import { notFound } from 'next/navigation';
+import { unstable_cache } from 'next/cache';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { labelEspece, labelLabel } from '@/lib/producers/labels';
-import { fetchPublicProducerBySlug } from '@/lib/producers/fetch-public';
+import {
+  fetchPublicProducerBySlug,
+  type ProducerPublic,
+} from '@/lib/producers/fetch-public';
 import {
   ProducerPageClient,
   type ProducerData,
@@ -9,12 +13,33 @@ import {
   type ReviewData,
 } from './ProducerPageClient';
 
-// Rendu dynamique à chaque requête : la fiche producer fetch des données
-// qui évoluent (produits publiés, avis modérés, badges). Sans ça, un
-// nouveau produit mis en ligne ou un nouvel avis publié n'apparaît pas
-// avant un redeploy Vercel.
+// Audit Vercel C-5 (2026-05-05) : conserve force-dynamic au niveau page
+// (produits + reviews évoluent en temps réel), MAIS partial-cache le bloc
+// producer (header, photos, bio, score carbone, badges) via unstable_cache
+// avec un tag par slug. Le bloc producer change rarement (édition manuelle
+// depuis ma-page) ; pas la peine de re-fetch à chaque visite. Invalidation
+// explicite via revalidateProducerCard({slug}) côté ma-page après save.
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+const PRODUCER_BLOCK_REVALIDATE_S = 60;
+
+// Wrapping unstable_cache + tag par slug. Clé inclut le slug pour isoler
+// les entrées par producer. Invalidation : revalidateTag(`producer:${slug}`)
+// (helper revalidateProducerCard dans lib/stats/revalidate).
+async function fetchCachedProducerBlock(slug: string): Promise<ProducerPublic | null> {
+  return unstable_cache(
+    async () => {
+      const admin = createSupabaseAdminClient();
+      return fetchPublicProducerBySlug(admin, slug);
+    },
+    ['producer-block', slug],
+    {
+      revalidate: PRODUCER_BLOCK_REVALIDATE_S,
+      tags: [`producer:${slug}`],
+    },
+  )();
+}
 
 const REVIEWS_FETCH_LIMIT = 50;
 
@@ -36,14 +61,15 @@ function firstNameFrom(user: { prenom: string | null; nom: string | null } | nul
 }
 
 export default async function ProducteurPage({ params }: { params: { slug: string } }) {
-  const admin = createSupabaseAdminClient();
-
-  const producer = await fetchPublicProducerBySlug(admin, params.slug);
+  // Bloc producer cached (60s + tag par slug). Produits/reviews fetch
+  // direct via admin client en parallèle (force-dynamic pour ces deux).
+  const producer = await fetchCachedProducerBlock(params.slug);
 
   if (!producer) {
     notFound();
   }
 
+  const admin = createSupabaseAdminClient();
   const [{ data: productsRaw }, { data: reviewsRaw }] = await Promise.all([
     admin
       .from('products')

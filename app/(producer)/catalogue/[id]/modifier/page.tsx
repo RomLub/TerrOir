@@ -1,13 +1,17 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { Button, Badge, Input, Select, Textarea, ProductCard } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { uploadProducerPhoto } from '@/lib/producers/upload';
 import { promoteProducerToPublicIfActive } from '@/lib/producers/promote-to-public';
-import { revalidatePublicStats } from '@/lib/stats/revalidate';
+import {
+  revalidatePublicStats,
+  revalidatePublicProducts,
+} from '@/lib/stats/revalidate';
 import { ProducerLayout } from '../../../_components/ProducerLayout';
 import {
   fetchProductCategories,
@@ -280,6 +284,13 @@ export default function ProductEditPage() {
         source: 'producer-catalogue-update',
         extra: { productId },
       });
+      // Audit Vercel C-5 (2026-05-05) : invalide aussi le cache
+      // 'public-products' pour propager les changements (nom, prix, photos,
+      // active flip) sur /produits immédiatement.
+      await revalidatePublicProducts({
+        source: 'producer-catalogue-update',
+        productId,
+      });
       router.push('/catalogue');
     } catch (err) {
       setError((err as Error).message ?? 'Enregistrement impossible');
@@ -461,8 +472,13 @@ export default function ProductEditPage() {
                 <div className="mt-4 grid grid-cols-5 gap-2">
                   {existingPhotos.map((url, i) => (
                     <div key={`e-${i}`} className="relative aspect-square rounded-lg overflow-hidden group">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={url} alt="" className="w-full h-full object-cover" />
+                      <Image
+                        src={url}
+                        alt=""
+                        fill
+                        sizes="120px"
+                        className="object-cover"
+                      />
                       {i === 0 && <div className="absolute bottom-1 left-1"><Badge variant="terra">Principale</Badge></div>}
                       <button type="button" onClick={() => removeExisting(i)}
                         className="absolute top-1 right-1 w-6 h-6 rounded-full bg-dark/70 text-white text-xs hover:bg-terra-700">×</button>

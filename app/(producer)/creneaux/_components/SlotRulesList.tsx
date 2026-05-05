@@ -9,7 +9,7 @@ import {
   deleteSlotRuleAction,
   toggleSlotRuleActiveAction,
 } from "../actions";
-import SlotRuleModal from "./SlotRuleModal";
+import SlotRuleModal from "./SlotRuleModalLazy";
 
 const DAY_LABELS_SHORT: Record<number, string> = {
   1: "Lun",

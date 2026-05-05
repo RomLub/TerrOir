@@ -11,9 +11,9 @@ import {
 } from "@/components/ui";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { GmsPriceFiliere } from "@/lib/gms-prices/fetch-active";
-import { CreateGmsPriceModal } from "./_components/CreateGmsPriceModal";
-import { EditGmsPriceModal } from "./_components/EditGmsPriceModal";
-import { MonthlyUpdateModal } from "./_components/MonthlyUpdateModal";
+import { CreateGmsPriceModalLazy as CreateGmsPriceModal } from "./_components/CreateGmsPriceModalLazy";
+import { EditGmsPriceModalLazy as EditGmsPriceModal } from "./_components/EditGmsPriceModalLazy";
+import { MonthlyUpdateModalLazy as MonthlyUpdateModal } from "./_components/MonthlyUpdateModalLazy";
 
 // Page d'admin /admin/gms-prices — Phase B (chantier "Notre démarche").
 // Pattern aligné app/(admin)/gestion-producteurs/page.tsx :

@@ -1,19 +1,20 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ProductCard } from '@/components/ui';
-import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import {
-  fetchPublicProducts,
   type PublicProductRow,
   type ResolvedFilters,
 } from '@/lib/products/fetch-products-public';
+import { getPublicProducts } from '@/lib/products/fetch-products-public-cached';
 import { parseProductsSearchParams } from '@/lib/products/parse-search-params';
 
 // Page catalogue produits public (T-220 PR-C).
 //
-// Server Component, fetch SSR direct via admin client.
-// `dynamic = 'force-dynamic'` : stock évolue en temps réel, on n'accepte
-// pas de cache statique (cohérent avec /producteurs/[slug] qui fait pareil).
+// Server Component, fetch SSR via getPublicProducts (unstable_cache + tag
+// 'public-products', revalidate 60s — audit Vercel C-5 2026-05-05). Avant :
+// force-dynamic + revalidate 0 → page reconstruite à chaque requête. Après :
+// cache 60s côté Vercel + invalidation immédiate via revalidatePublicProducts
+// déclenchée par les mutations catalogue (create/update/toggle).
 //
 // Filtres querystring (combinables) :
 //   ?category=<slug>  → filtre par product_categories.slug
@@ -34,8 +35,7 @@ export const metadata: Metadata = {
     'Découvrez tous les produits disponibles chez nos éleveurs sarthois. Filtrez par catégorie, animal ou morceau.',
 };
 
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+export const revalidate = 60;
 
 type SearchParams = Record<string, string | string[] | undefined>;
 type ActivePill = { label: string; resetHref: string };
@@ -86,8 +86,7 @@ export default async function ProduitsPage({
   searchParams: SearchParams;
 }) {
   const filters = parseProductsSearchParams(searchParams);
-  const admin = createSupabaseAdminClient();
-  const { products, resolved } = await fetchPublicProducts(admin, filters);
+  const { products, resolved } = await getPublicProducts(filters);
   const pills = buildPills(resolved, searchParams);
 
   return (

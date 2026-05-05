@@ -7,7 +7,10 @@ import { Button, Badge, Input, Select, Textarea, ProductCard } from '@/component
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { uploadProducerPhoto } from '@/lib/producers/upload';
 import { promoteProducerToPublicIfActive } from '@/lib/producers/promote-to-public';
-import { revalidatePublicStats } from '@/lib/stats/revalidate';
+import {
+  revalidatePublicStats,
+  revalidatePublicProducts,
+} from '@/lib/stats/revalidate';
 import { ProducerLayout } from '../../_components/ProducerLayout';
 import {
   fetchProductCategories,
@@ -215,6 +218,13 @@ export default function ProductNewPage() {
         await revalidatePublicStats({
           source: 'producer-catalogue-create',
           extra: { productId: inserted.id },
+        });
+        // Audit Vercel C-5 (2026-05-05) : invalide aussi le cache
+        // 'public-products' pour faire apparaître le nouveau produit sur
+        // /produits sans attendre les 60s de revalidate.
+        await revalidatePublicProducts({
+          source: 'producer-catalogue-create',
+          productId: inserted.id,
         });
       }
       router.push('/catalogue');

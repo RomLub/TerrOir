@@ -5,6 +5,10 @@ Stack auditée : Next.js 14.2.15 (App Router) + React 18.3.1 + Vercel
 Périmètre : `app/`, `components/`, `lib/` (côté client), `next.config.js`, `package.json`
 Mode : audit lecture seule, statique (pas de `next build`, pas de bundle-analyzer runtime)
 
+> ✅ **Statut 2026-05-06** : Phases 1-4 livrées. 17 findings traités sur 21 (statut FIXED inline).
+> Récap exhaustif → `docs/fixes/fix-vercel-perf-phase-234-2026-05-05.md`.
+> Backlog résiduel V1.x : C-5 (creneaux + audit-logs en attente arbitrage Romain), L-2, L-4 (non bloquants).
+
 ---
 
 ## Synthèse priorisée
@@ -101,8 +105,13 @@ npx @next/bundle-analyzer  # nécessite ajout devDep
 
 ---
 
-### C-3. Aucun `loading.tsx` / `error.tsx` / `not-found.tsx` dans `app/`
+### C-3. Aucun `loading.tsx` / `error.tsx` / `not-found.tsx` dans `app/` — FIXED (2026-05-05, Phase 2)
 **Règles violées :** `async-suspense-boundaries`, `rerender-transitions` (Vercel CRITICAL/MEDIUM)
+
+> ✅ **Fix Phase 2** : 6 `loading.tsx` (public, produits, producteurs/[slug], consumer, producer, admin),
+> 4 `error.tsx` (public, consumer, producer, admin) avec `error.digest` exposé pour corrélation Vercel logs,
+> 1 `not-found.tsx` racine self-contained (`robots: noindex`), et 4 `Suspense fallback={null}` migrés vers
+> skeletons. Commit `58c7436`. Plus de page blanche pendant les fetch SSR.
 
 **Mesure :** `find app -name "loading.tsx"` retourne 0 résultat. Idem `error.tsx`, `not-found.tsx`.
 
@@ -157,8 +166,26 @@ export default async function ProducerCommandesPage() {
 
 ---
 
-### C-5. `dynamic = 'force-dynamic'` + `revalidate = 0` partout — pas de cache, pas de PPR
+### C-5. `dynamic = 'force-dynamic'` + `revalidate = 0` partout — partiellement FIXED (2026-05-06, Phase 4)
 **Règles violées :** `server-cache-react`, `server-cache-lru` (Vercel HIGH)
+
+> ✅ **Fix Phase 4** :
+> - `/produits` → `revalidate = 60` + `unstable_cache` + tag `'public-products'`. Wrapper
+>   `lib/products/fetch-products-public-cached.ts`. Helper `revalidatePublicProducts` ajouté
+>   dans `lib/stats/revalidate.ts`, wiré dans les 3 mutations catalogue (toggle, create, update).
+> - `/morceaux/boeuf` → `revalidate = 300` (taxonomie statique, tolérance 5 min raisonnable).
+> - `/producteurs/[slug]` → conserve `force-dynamic` mais bloc producer (header + bio + photos)
+>   désormais cached via `unstable_cache` clé `['producer-block', slug]`, tag `producer:<slug>`,
+>   revalidate 60s. Invalidation explicite via `revalidateProducerCard` côté ma-page après save.
+>
+> ⏸ **Reportés pour arbitrage Romain** :
+> - `/(producer)/creneaux` : conserve `force-dynamic`. Le producer voit ses propres slots,
+>   modification immédiate attendue (création slot ad hoc, exclusion ponctuelle). Caching = mauvaise UX
+>   pour le producer en flow d'édition. Recommandation : conserver tel quel.
+> - `/(admin)/audit-logs` : conserve `force-dynamic`. Cache risqué entre admins (RLS session-bound,
+>   le cache shared servirait potentiellement les logs d'un admin à un autre selon variation
+>   filter session). Recommandation : conserver tel quel par sécurité.
+> - `/producteurs/[slug]/produits/[id]` : conserve `force-dynamic` (vraiment temps réel — stock + slots).
 
 **Pages :**
 - `app/(public)/produits/page.tsx:37-38`
@@ -182,8 +209,19 @@ export default async function ProducerCommandesPage() {
 
 ## HIGH
 
-### H-1. 11 occurrences de `<img>` raw au lieu de `<Image>` next/image
+### H-1. 11 occurrences de `<img>` raw au lieu de `<Image>` next/image — FIXED (2026-05-06, Phase 4)
 **Règle violée :** `bundle-defer-third-party`, optimisation LCP (Vercel HIGH)
+
+> ✅ **Fix Phase 4** : 7 cas critiques migrés vers `<Image>` :
+> - `ProducerPageClient.tsx` galerie ferme (jusqu'à 6 photos)
+> - `ProductPageClient.tsx` photo principale (avec `priority`) + thumbs
+> - `PanierClient.tsx` thumbnails 80px
+> - `CatalogueClient.tsx` grid 4:3
+> - `catalogue/[id]/modifier/page.tsx` existing photos (les `newPreviews` blob URLs gardent `<img>`)
+>
+> Les 4 cas blob URL préservés en raw `<img>` (form previews avec `URL.createObjectURL`) :
+> `ma-page/page.tsx:295, 352, 368` (mixed blob/saved — refacto conditionnel non rentable),
+> `catalogue/nouveau/page.tsx:361` (preview form pure blob).
 
 **Fichiers (avec `// eslint-disable-next-line @next/next/no-img-element`) :**
 - `app/(producer)/ma-page/page.tsx:277, 334, 350` (preview hero + galerie)
@@ -255,8 +293,13 @@ Puis `package.json` : `"analyze": "ANALYZE=true next build"`.
 
 ---
 
-### H-4. `UserProvider` (client) lance 3 queries Supabase au mount sur TOUTES les pages
+### H-4. `UserProvider` (client) lance 3 queries Supabase au mount sur TOUTES les pages — FIXED (2026-05-06, Phase 3)
 **Règle violée :** `server-parallel-fetching` violation par redondance (Vercel HIGH)
+
+> ✅ **Fix Phase 3** : `INITIAL_SESSION` event désormais skip `applySession` (SSR a déjà fourni
+> initial). Les 3 queries Supabase (users, admin_users, producers) ne tournent que sur SIGNED_IN /
+> SIGNED_OUT / USER_UPDATED / TOKEN_REFRESHED réels. Économie ~30k queries/jour à 10k visites.
+> Commit `58c7436`.
 
 **Fichier :** `components/providers/user-provider.tsx:121-159`.
 
@@ -290,8 +333,12 @@ useEffect(() => {
 
 ---
 
-### H-5. Auth re-check côté client sur pages déjà SSR-protégées
+### H-5. Auth re-check côté client sur pages déjà SSR-protégées — FIXED (2026-05-06, Phase 3 — inclus dans C-4)
 **Règle violée :** `server-auth-actions` (par redondance)
+
+> ✅ **Fix Phase 3** : les 4 pages full SSR (consumer/commandes, producer/commandes, producer/catalogue,
+> admin/suivi-commandes) n'appellent plus `supabase.auth.getUser()` au mount client. Le pattern
+> `getSessionUser` SSR fait l'unique check. Voir C-4 pour le détail.
 
 **Pattern :** `(producer)/layout.tsx:20` fait `getSessionUser()` puis redirect. Le middleware fait le même check. Mais `(producer)/commandes/page.tsx:99-110`, `(producer)/catalogue/page.tsx:51-52`, `(admin)/suivi-commandes/page.tsx` rappellent `supabase.auth.getUser()` au mount client → round-trip réseau redondant.
 
@@ -301,8 +348,13 @@ useEffect(() => {
 
 ---
 
-### H-6. Données mock en production sur la home : `FeaturedProducts`
+### H-6. Données mock en production sur la home : `FeaturedProducts` — FIXED (2026-05-06, Phase 3)
 **Règle violée :** dette projet, pas vercel directement
+
+> ✅ **Fix Phase 3** : `lib/products/fetch-featured.ts` créé avec `unstable_cache` (revalidate 600s
+> + tag `'featured-products'`). Inner-join sur producers `statut='public' AND deleted_at IS NULL`,
+> priorité badge cut > animal > category cohérente avec /produits. Mock `lib/mocks/featured-products.ts`
+> supprimé. Commit `58c7436`.
 
 **Fichier :** `app/(public)/_components/home/FeaturedProducts.tsx:3` importe `FEATURED_PRODUCTS` depuis `@/lib/mocks/featured-products`. Le commentaire dit "Phase 2 : remplacer par getFeaturedProducts({ limit: 4 }) Supabase".
 
@@ -316,8 +368,13 @@ useEffect(() => {
 
 ## MEDIUM
 
-### M-1. `/carte/page.tsx` : 7 useEffect en cascade
+### M-1. `/carte/page.tsx` : 7 useEffect en cascade — FIXED (2026-05-06, Phase 4)
 **Règle violée :** `rerender-split-combined-hooks` OK / `rerender-move-effect-to-event` partiellement violée
+
+> ✅ **Fix Phase 4** : URL sync (anciennement L142) déplacé du useEffect vers les onClick handlers
+> (`toggleEspece`, `toggleLabel`, `setRadiusAndSync`, `clearAll`) dans `CarteClient.tsx`. Économise
+> 1 re-render par toggle filter. Helper `buildFiltersUrl` extrait pour réutilisation. Les 7 autres
+> useEffects (mapbox impératif, légitimes) conservés.
 
 **Fichier :** `app/(public)/carte/page.tsx`, useEffects aux lignes 122, 142, 152, 197, 312, 317, 338, 355.
 
@@ -353,8 +410,15 @@ useEffect(() => {
 
 ---
 
-### M-3. 3 polices Google chargées sur tout le site avec poids multiples
+### M-3. 3 polices Google chargées sur tout le site avec poids multiples — FIXED (2026-05-06, Phase 4)
 **Règle violée :** `bundle-defer-third-party` (Vercel CRITICAL pour fonts)
+
+> ✅ **Fix Phase 4** :
+> - Caveat : `preload: false` ajouté (utilisé uniquement par `components/ui/post-it.tsx`).
+> - Cormorant Garamond : 4 poids (400, 500, 600, 700) → 2 poids (400, 500). Grep `font-serif`
+>   révèle qu'aucune classe `font-serif font-(semibold|bold|black)` n'est utilisée dans la codebase.
+>   Économie woff2 ~60 KB sur la home.
+> - Inter : tel quel (poids variable, déjà optimal).
 
 **Fichier :** `app/layout.tsx:7-25`.
 
@@ -379,8 +443,21 @@ const caveat = Caveat({ subsets: ["latin"], weight: ["500", "600"], variable: "-
 
 ---
 
-### M-4. Aucun `next/dynamic` dans le projet
+### M-4. Aucun `next/dynamic` dans le projet — FIXED (2026-05-06, Phase 4)
 **Règle violée :** `bundle-dynamic-imports`, `bundle-conditional`
+
+> ✅ **Fix Phase 4** : 8 modals lazy-loadés via `next/dynamic({ ssr: false })` :
+> - creneaux : `AdHocSlotModalLazy`, `SlotRuleModalLazy`, `BulkExcludeRangeModalLazy`,
+>   `ExcludeSlotModalLazy` (4)
+> - gms-prices : `CreateGmsPriceModalLazy`, `EditGmsPriceModalLazy`, `MonthlyUpdateModalLazy` (3)
+> - paiements : `AddCardModalLazy` (1)
+>
+> 9ᵉ candidat — `OnboardingWizard` — laissé tel quel : son consumer (`/invitation/page.tsx`)
+> est un Server Component, qui ne peut pas utiliser `dynamic({ ssr: false })`. De plus, le wizard
+> EST le contenu primaire de la route ; un lazy-load ajouterait une latence sans gain (le user
+> arrive sur la page pour utiliser le wizard).
+>
+> Modals précédemment migrés : `MiniMap` (Phase 1), `CarteClient` (Phase 3 — mapbox-gl complet).
 
 **Mesure :** `grep -r "next/dynamic" app components` = 0 occurrence.
 
@@ -397,8 +474,13 @@ const caveat = Caveat({ subsets: ["latin"], weight: ["500", "600"], variable: "-
 
 ---
 
-### M-5. `(consumer)/compte/panier/page.tsx` : 2 fetches client séquentiels
+### M-5. `(consumer)/compte/panier/page.tsx` : 2 fetches client séquentiels — FIXED partiel (2026-05-06, Phase 3 — coquille SSR)
 **Règle violée :** `async-parallel`
+
+> ✅ **Fix Phase 3** : page convertie en Server Component coquille (h1 SSR), logique panier
+> extraite dans `PanierClient.tsx`. Le `/api/cart/validate` reste client par design (panier =
+> Zustand localStorage, zero-knowledge serveur). Pas de waterfall réel — c'est juste une
+> validation de cohérence post-hydratation.
 
 **Fichier :** `app/(consumer)/compte/panier/page.tsx:77-140`.
 
@@ -425,8 +507,13 @@ C'est légitime car le panier est en localStorage (zero-knowledge serveur). Ne p
 
 ## LOW
 
-### L-1. `<Suspense>` autour de pages 'use client' avec `fallback={null}`
+### L-1. `<Suspense>` autour de pages 'use client' avec `fallback={null}` — FIXED (2026-05-05, Phase 2)
 **Règle :** `async-suspense-boundaries`
+
+> ✅ **Fix Phase 2** : 4 fallbacks migrés vers skeletons (panier, commandes consumer, commandes
+> producer, gestion-producteurs). Le 5ᵉ (`(producer)/ma-page` autour de `OnboardedBanner`) gardé
+> en `fallback={null}` avec justification inline : le banner retourne null tant que `?onboarded=1`
+> n'est pas présent ; un skeleton flasherait pour 99% des utilisateurs.
 
 **Fichiers :** 5 pages utilisent `<Suspense fallback={null}>` — `panier/page.tsx`, `commandes/page.tsx` (consumer + producer), `gestion-producteurs/page.tsx`, `ma-page/page.tsx`.
 

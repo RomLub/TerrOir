@@ -8,10 +8,9 @@ import {
   formatSlotRange,
 } from "@/lib/slots/format-slot-time";
 import { unexcludeSlotAction } from "../actions";
-import ExcludeSlotModal, {
-  type FutureActiveSlot,
-} from "./ExcludeSlotModal";
-import BulkExcludeRangeModal from "./BulkExcludeRangeModal";
+import ExcludeSlotModal from "./ExcludeSlotModalLazy";
+import { type FutureActiveSlot } from "./ExcludeSlotModal";
+import BulkExcludeRangeModal from "./BulkExcludeRangeModalLazy";
 
 export interface ExcludedSlot {
   id: string;
