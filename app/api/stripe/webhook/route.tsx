@@ -10,6 +10,9 @@ import { syncStripePayoutPaid } from "@/lib/stripe/handle-payout-paid";
 import { syncStripeDisputeCreated } from "@/lib/stripe/handle-dispute-created";
 import { syncStripeDisputeUpdated } from "@/lib/stripe/handle-dispute-updated";
 import { syncStripeDisputeClosed } from "@/lib/stripe/handle-dispute-closed";
+import { syncStripeEarlyFraudWarning } from "@/lib/stripe/handle-early-fraud-warning";
+import { syncStripeChargeRefunded } from "@/lib/stripe/handle-charge-refunded";
+import { syncStripeAccountDeauthorized } from "@/lib/stripe/handle-account-deauthorized";
 import { checkOrMarkProcessed } from "@/lib/webhook-events/check-or-mark-processed";
 import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -78,6 +81,13 @@ export async function POST(request: Request) {
     "payout.failed",
     "charge.dispute.updated",
     "charge.dispute.closed",
+    // Audit Stripe phase 2 M-3 (2026-05-05) — 3 nouveaux events utiles, tous
+    // avec effets de bord persistés (refund Stripe + UPDATE order pour EFW,
+    // audit log seul pour charge.refunded settlement, UPDATE producer flags
+    // + email URGENT admin pour account.application.deauthorized).
+    "radar.early_fraud_warning.created",
+    "charge.refunded",
+    "account.application.deauthorized",
   ]);
 
   if (DEDUP_TARGETS.has(event.type)) {
@@ -454,6 +464,46 @@ export async function POST(request: Request) {
         // question D vs brief TD initial).
         await syncStripePayoutFailed(
           event.data.object as Stripe.Payout,
+          event.account ?? null,
+          admin,
+        );
+        break;
+      }
+
+      case "radar.early_fraud_warning.created": {
+        // Audit Stripe phase 2 M-3 — Visa/MC signalent une fraude AVANT
+        // dispute. Refund pré-emptif évite chargeback fee + perte commerce.
+        // Cf lib/stripe/handle-early-fraud-warning.tsx pour la doc.
+        await syncStripeEarlyFraudWarning(
+          event.data.object as Stripe.Radar.EarlyFraudWarning,
+          admin,
+        );
+        break;
+      }
+
+      case "charge.refunded": {
+        // Audit Stripe phase 2 M-3 — settlement réel du refund (vs émission
+        // refund.created). Audit log forensique pour reconstitution chronologie
+        // comptable. Pas de UPDATE table refunds (n'existe pas en V1, audit_logs
+        // suffit). Cf lib/stripe/handle-charge-refunded.ts pour la doc.
+        await syncStripeChargeRefunded(
+          event.data.object as Stripe.Charge,
+          admin,
+        );
+        break;
+      }
+
+      case "account.application.deauthorized": {
+        // Audit Stripe phase 2 M-3 — producer disconnecte son Connect account
+        // depuis Dashboard Stripe. Sans handler, producer.stripe_account_id
+        // reste figé en DB et le prochain transfer va échouer en
+        // account_invalid. Reset flags + statut='suspended' + email URGENT
+        // admin. Cf lib/stripe/handle-account-deauthorized.tsx pour la doc.
+        // IMPORTANT : event.data.object = Stripe.Application (pas Account).
+        // Le Connect account déauthorisé vient via event.account.
+        const application = event.data.object as { id: string; object: string };
+        await syncStripeAccountDeauthorized(
+          application,
           event.account ?? null,
           admin,
         );

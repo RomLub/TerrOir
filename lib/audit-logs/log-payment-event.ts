@@ -140,6 +140,23 @@ export const PAYMENT_EVENT_TYPES = [
   // Pas émis sur path F3 (detach seul sans changement de default) ni
   // E1 (no-op default déjà set).
   "stripe_default_payment_method_set",
+  // Audit Stripe phase 2 M-3 (2026-05-05) — webhook events utiles non
+  // abonnés.
+  //   - stripe_early_fraud_warning_received : Visa/MC notifient une potentielle
+  //     fraude AVANT le dispute. Handler refund pré-emptif (idempotency-key
+  //     `refund_${orderId}_efw`) + audit log + email admin. Metadata :
+  //     efw_id, charge_id, payment_intent_id, order_id, fraud_type, actionable,
+  //     order_match, refund_action ('succeeded'|'failed'|'skipped_*').
+  //   - stripe_charge_refunded_settled : Stripe confirme settlement réel d'un
+  //     refund (vs émission via refund.created). Metadata : charge_id, order_id,
+  //     amount_refunded, refunded (bool), order_match.
+  //   - stripe_account_deauthorized : producer disconnecte son Connect account
+  //     depuis Dashboard Stripe. Reset flags producer + statut='suspended' +
+  //     email URGENT admin. Metadata : stripe_account_id, producer_id,
+  //     producer_match (bool).
+  "stripe_early_fraud_warning_received",
+  "stripe_charge_refunded_settled",
+  "stripe_account_deauthorized",
 ] as const;
 
 export type PaymentEventType = (typeof PAYMENT_EVENT_TYPES)[number];

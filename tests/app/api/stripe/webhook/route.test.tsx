@@ -383,9 +383,15 @@ describe("POST /api/stripe/webhook — event rejoué (dédup hit)", () => {
 // =============================================================================
 
 describe("POST /api/stripe/webhook — event hors targets", () => {
-  it("charge.refunded (hors DEDUP_TARGETS) → checkOrMarkProcessed NON appelé, default case → no-op 200", async () => {
+  it("customer.created (hors DEDUP_TARGETS) → checkOrMarkProcessed NON appelé, default case → no-op 200", async () => {
+    // Choix customer.created : TerrOir crée tous ses customers explicitement
+    // côté getOrCreateStripeCustomer, l'event webhook customer.created est
+    // donc redondant (cf audit-stripe Annexe A). Phase 2 M-3 ajoute
+    // charge.refunded / radar.early_fraud_warning.created /
+    // account.application.deauthorized aux DEDUP_TARGETS, donc ce test
+    // utilise un event resté volontairement hors switch.
     mockConstructEvent.mockReturnValue(
-      makeStripeEvent("charge.refunded", "evt_off_target"),
+      makeStripeEvent("customer.created", "evt_off_target"),
     );
 
     const res = await POST(makeRequest());
@@ -396,7 +402,7 @@ describe("POST /api/stripe/webhook — event hors targets", () => {
     expect(body.deduped).toBeUndefined();
     // KEY assertion : aucun INSERT dans webhook_events_processed pour les
     // events non handled (évite la pollution de la table par tous les
-    // events Stripe que Stripe pourrait envoyer en plus des 4 ciblés).
+    // events Stripe que Stripe pourrait envoyer en plus des targets ciblés).
     expect(mockCheckOrMarkProcessed).not.toHaveBeenCalled();
     expect(mockSyncSucceeded).not.toHaveBeenCalled();
     expect(mockSyncFailed).not.toHaveBeenCalled();

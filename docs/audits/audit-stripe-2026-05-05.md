@@ -235,7 +235,14 @@ await stripe.refunds.create(
 
 Cohérent avec le contrat documenté dans audit RPC §L-2 (idempotency-key conventions).
 
-## M-3 — Webhook events utiles non abonnés : `radar.early_fraud_warning.created`, `charge.refunded`, `account.application.deauthorized`
+## M-3 — Webhook events utiles non abonnés : `radar.early_fraud_warning.created`, `charge.refunded`, `account.application.deauthorized` ✅ FIXED (Phase 2)
+
+> **Statut 2026-05-05** : FIXED côté code TerrOir. 3 handlers + 3 audit logs +
+> 2 templates email + 11 nouveaux tests vitest + 1 spec Playwright (2 actifs).
+> Cf. [`docs/fixes/fix-stripe-phase-2-m3-webhook-events-2026-05-05.md`](../fixes/fix-stripe-phase-2-m3-webhook-events-2026-05-05.md).
+> **Action restante côté Dashboard Stripe** : cocher les 3 events dans
+> l'endpoint webhook test ET live (impossible automatiquement via MCP, le
+> tooling Stripe MCP n'expose pas `webhook_endpoints`).
 
 **File** : `app/api/stripe/webhook/route.tsx:104-465` (switch sur `event.type`).
 
