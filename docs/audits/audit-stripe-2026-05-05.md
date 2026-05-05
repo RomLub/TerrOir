@@ -353,7 +353,18 @@ Schéma cible un seul Stripe environnement à la fois. **Au moment du go-live**,
 
 # LOW
 
-## L-1 — Pas d'IP allowlist sur le webhook Stripe
+## L-1 — Pas d'IP allowlist sur le webhook Stripe ✅ FIXED (Phase B pré-launch)
+
+> **Statut 2026-05-05** : FIXED via `lib/stripe/ip-allowlist.ts` + check à
+> l'entrée du handler `app/api/stripe/webhook/route.tsx` AVANT la vérif
+> signature. 15 IPs Stripe officielles whitelistées en production, bypass
+> implicite en preview/dev/CI (`VERCEL_ENV !== 'production'`). 12 tests
+> vitest sur le module + 5 tests vitest sur la route en mode prod simulé.
+> Cf [`docs/fixes/fix-stripe-phase-b-prelaunch-2026-05-05.md`](../fixes/fix-stripe-phase-b-prelaunch-2026-05-05.md)
+> et doc convention [`docs/conventions/stripe-webhook.md`](../conventions/stripe-webhook.md)
+> pour la procédure de re-sync trimestrielle.
+> **0 action manuelle Romain** (la liste IP est versionnée, refresh manuel
+> au constat d'un drift Stripe).
 
 **File** : `app/api/stripe/webhook/route.tsx`.
 
@@ -607,9 +618,15 @@ PI créé sur compte plateforme TerrOir
 7. **M-3 : Subscribe `radar.early_fraud_warning.created` + `charge.refunded`** — 2 handlers + 2 audit logs. **Estimé 2h.**
 8. **M-4 : Cron monitoring deadline disputes** — daily check J-3 + J-1. **Estimé 1-2h.**
 
+## Phase B pré-launch (traités 2026-05-05) ✅
+
+- **L-1 IP allowlist** — FIXED via `lib/stripe/ip-allowlist.ts`.
+- **PCI DSS SAQ-A audit léger** — AUDITED (10 OK / 2 WARN / 0 FAIL → SAQ-A éligible). Cf. [`docs/audits/audit-stripe-pci-saq-a-2026-05-05.md`](./audit-stripe-pci-saq-a-2026-05-05.md). Les 2 WARN (headers de sécurité, rate-limit endpoints Stripe) sont du durcissement V1.1, pas des bloqueurs SAQ-A.
+- **3DS matrice exhaustive** — TESTED (4 tests E2E + 1 skip documenté). Cf. [`tests/e2e/stripe-3ds-matrix.spec.ts`](../../tests/e2e/stripe-3ds-matrix.spec.ts). Cas decline post-challenge skip avec doc (drive UI iframe Stripe hors scope E2E stable).
+
 ## Post-launch (LOW priority — peuvent attendre V1.1)
 
-9. **L-1 IP allowlist Stripe webhook** — defense-in-depth via Vercel Edge Middleware ou Cloudflare WAF.
+9. ~~**L-1 IP allowlist Stripe webhook**~~ — ✅ FIXED phase B (defense-in-depth via lib applicative).
 10. **L-2 `business_type` prompt onboarding producer** — UX form + transmission au accounts.create.
 11. **L-3 Apple Pay domain verification** — couplé M-1.
 12. **L-4 Cron `order-timeout` schedule alignement** — 1-line fix commentaire OU bumper hourly.

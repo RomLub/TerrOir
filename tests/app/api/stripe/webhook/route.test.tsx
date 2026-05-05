@@ -642,3 +642,139 @@ describe("POST /api/stripe/webhook — Bundle 3 (T-403 extended dispute.updated 
     expect(mockSyncDisputeUpdated).not.toHaveBeenCalled();
   });
 });
+
+// =============================================================================
+// Audit Stripe phase B L-1 — IP allowlist webhook
+// =============================================================================
+//
+// Rappel : isStripeWebhookIp bypass quand VERCEL_ENV !== 'production'. Les
+// tests existants ci-dessus tournent sans VERCEL_ENV (= bypass implicite),
+// donc ne sont pas affectés. Cette suite force VERCEL_ENV='production' et
+// vérifie que :
+//  - IP Stripe valide → handler exécuté normalement
+//  - IP non-Stripe → 403 + log [STRIPE_WEBHOOK_IP_REJECTED] + NI signature ni
+//    DB ni handler de domaine appelés
+//  - x-real-ip seul → fallback OK
+//  - missing IP header → 403
+
+describe("POST /api/stripe/webhook — IP allowlist (audit phase B L-1)", () => {
+  let originalVercelEnv: string | undefined;
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    originalVercelEnv = process.env.VERCEL_ENV;
+    process.env.VERCEL_ENV = "production";
+    consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    if (originalVercelEnv === undefined) delete process.env.VERCEL_ENV;
+    else process.env.VERCEL_ENV = originalVercelEnv;
+    consoleWarnSpy.mockRestore();
+  });
+
+  function makeRequestWithHeaders(headers: Record<string, string>): Request {
+    return new Request("http://localhost/api/stripe/webhook", {
+      method: "POST",
+      headers: {
+        "stripe-signature": "t=123,v1=abc",
+        ...headers,
+      },
+      body: '{"id":"evt_ip_test","type":"payment_intent.succeeded"}',
+    });
+  }
+
+  it("IP Stripe officielle (3.18.12.63) → constructEvent + handler exécutés normalement", async () => {
+    mockConstructEvent.mockReturnValue(
+      makeStripeEvent("payment_intent.succeeded", "evt_ip_ok"),
+    );
+    mockCheckOrMarkProcessed.mockResolvedValue({ alreadyProcessed: false });
+    mockSyncSucceeded.mockResolvedValue({
+      result: "no_metadata",
+      orderId: null,
+    });
+
+    const res = await POST(
+      makeRequestWithHeaders({ "x-forwarded-for": "3.18.12.63" }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockConstructEvent).toHaveBeenCalledTimes(1);
+    expect(mockSyncSucceeded).toHaveBeenCalledTimes(1);
+    expect(consoleWarnSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining("[STRIPE_WEBHOOK_IP_REJECTED]"),
+    );
+  });
+
+  it("IP non-Stripe (203.0.113.10) → 403 + log + AUCUN appel constructEvent/dédup/handler", async () => {
+    const res = await POST(
+      makeRequestWithHeaders({
+        "x-forwarded-for": "203.0.113.10",
+        "user-agent": "curl/8.0",
+      }),
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(body.error).toBe("Forbidden");
+    expect(mockConstructEvent).not.toHaveBeenCalled();
+    expect(mockCheckOrMarkProcessed).not.toHaveBeenCalled();
+    expect(mockSyncSucceeded).not.toHaveBeenCalled();
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[STRIPE_WEBHOOK_IP_REJECTED]"),
+    );
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("ip=203.0.113.10"),
+    );
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("ua=curl/8.0"),
+    );
+  });
+
+  it("x-real-ip Stripe seul (sans x-forwarded-for) → fallback OK, handler exécuté", async () => {
+    mockConstructEvent.mockReturnValue(
+      makeStripeEvent("payment_intent.succeeded", "evt_real_ip_ok"),
+    );
+    mockCheckOrMarkProcessed.mockResolvedValue({ alreadyProcessed: false });
+    mockSyncSucceeded.mockResolvedValue({
+      result: "no_metadata",
+      orderId: null,
+    });
+
+    const res = await POST(
+      makeRequestWithHeaders({ "x-real-ip": "54.187.216.72" }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockConstructEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("aucun header IP en production → 403 + log ip=null", async () => {
+    const res = await POST(makeRequestWithHeaders({}));
+
+    expect(res.status).toBe(403);
+    expect(mockConstructEvent).not.toHaveBeenCalled();
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("ip=null"),
+    );
+  });
+
+  it("VERCEL_ENV=preview + IP non-Stripe → bypass + handler exécuté (parité dev)", async () => {
+    process.env.VERCEL_ENV = "preview";
+    mockConstructEvent.mockReturnValue(
+      makeStripeEvent("payment_intent.succeeded", "evt_preview_bypass"),
+    );
+    mockCheckOrMarkProcessed.mockResolvedValue({ alreadyProcessed: false });
+    mockSyncSucceeded.mockResolvedValue({
+      result: "no_metadata",
+      orderId: null,
+    });
+
+    const res = await POST(
+      makeRequestWithHeaders({ "x-forwarded-for": "203.0.113.10" }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockConstructEvent).toHaveBeenCalledTimes(1);
+  });
+});

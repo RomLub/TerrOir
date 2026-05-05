@@ -1,17 +1,18 @@
 # Runbook — bascule Stripe test → live
 
-> **Statut : WIP — phase B à compléter** (3DS exhaustif, RGS payouts, communication producteurs).
+> **Statut : prêt côté code TerrOir.** Reste à arbitrer cutover date + RGS payouts + communication producteurs.
 >
-> Dernière mise à jour : 2026-05-05 (fix audit Stripe phase A — finding M-5 + L-5 + L-2 + M-6).
+> Dernière mise à jour : 2026-05-05 (fix audit Stripe phase B — L-1 IP allowlist, PCI SAQ-A audit, 3DS matrice).
 > Ce runbook prépare la bascule du compte Stripe test (`acct_1TNw9nGuakpserKp`) vers le compte live définitif au go-live TerrOir (~juillet 2026).
 
 ## Pré-requis bouclés
 
 - ✅ Audit Stripe phase A (`docs/audits/audit-stripe-2026-05-05.md`) lu.
 - ✅ Phase 1 fixes audit Stripe : `docs/fixes/fix-stripe-phase-1-2026-05-05.md` (idempotency revival, cron disputes deadline, guard charges_enabled, business_type prompt natif, refund producer audit, runbook draft).
-- ⏳ Phase 2 fixes audit Stripe : H-2 Connect v2, M-1 dynamic payment methods, M-3 webhook events utiles. **À faire avant go-live.**
-- ⏳ Phase 3 fixes audit Stripe : H-1 + H-3 upgrade SDK + apiVersion. **Impératif avant go-live** (cumuler bug version + bug env live = double périmètre debug en prod).
-- ⏳ Audit conformité (phase B) : PCI DSS, 3DS testing exhaustif, RGS payouts. À ouvrir en parallèle du dev V1.x.
+- ✅ Phase 2 fixes audit Stripe : H-2 Connect controller properties, M-1 dynamic payment methods, M-3 webhook events utiles, L-3 Apple Pay domain.
+- ✅ Phase 3 fixes audit Stripe : H-1 + H-3 upgrade SDK 22 + apiVersion `2026-04-22.dahlia` (commit 811d178).
+- ✅ Phase B fixes audit Stripe : L-1 IP allowlist webhook (`docs/fixes/fix-stripe-phase-b-prelaunch-2026-05-05.md`), PCI SAQ-A audit (`docs/audits/audit-stripe-pci-saq-a-2026-05-05.md` — éligible 10 OK / 2 WARN / 0 FAIL), 3DS matrice E2E (`tests/e2e/stripe-3ds-matrix.spec.ts` — 4 tests + 1 skip documenté).
+- ⏳ RGS payouts : décision T+7 vs T+2 à arbitrer V1.x.
 
 ---
 
@@ -165,14 +166,16 @@ WHERE stripe_account_id IS NOT NULL;
 
 ## Items à compléter pendant phase B
 
-> À l'inverse des items phase 1/2/3 (qui DOIVENT être bouclés avant go-live), les items ci-dessous peuvent être traités après le 1er mois live, sur la base des observations réelles.
+> Phase B pré-launch (L-1 IP allowlist + PCI SAQ-A audit + 3DS matrice) est ✅ DONE. Les items ci-dessous restent post-launch / V1.1.
 
-- **Conformité PCI DSS** : self-assessment SAQ A (le plus simple, applicable si TerrOir n'héberge jamais de PAN) à valider avec un consultant.
-- **3DS testing exhaustif** : SCA réglementation EU 2025 = 3DS obligatoire ≥30€. Tester les 4 paths Stripe (`requires_action`, `requires_payment_method`, fallback OTP, fallback challenge) via test cards live `4000 0027 6000 3184` (challenge) et `4000 0082 6000 3178` (OOB).
-- **RGS payouts** : Stripe Connect Express verse en T+7 par défaut (configurable T+2). Pour les producers, T+7 risque de générer du support "où est mon argent" — arbitrer si on bumpe à T+2 (cashflow plateforme moins bon mais UX producer mieux).
-- **L-1 IP allowlist webhook Stripe** : defense-in-depth via Vercel Edge Middleware ou Cloudflare WAF (audit phase A backlog).
-- **L-3 Apple Pay domain verification** : couplé Phase 2 M-1 dynamic payment methods.
-- **Cron dispute deadline check** : observation réelle des thresholds 24h / 72h. Si les disputes arrivent toutes le matin (déjà observé sur volumes test), aligner le cron à 6h UTC pour laisser plus de marge admin.
+- ✅ **Conformité PCI DSS** : SAQ-A audit léger réalisé 2026-05-05. **TerrOir éligible SAQ-A** (10 OK / 2 WARN / 0 FAIL). Cf. `docs/audits/audit-stripe-pci-saq-a-2026-05-05.md`. À re-valider avec un consultant en cas de demande Stripe / autorité.
+- ✅ **3DS testing exhaustif** : 4 tests E2E Playwright + 1 skip documenté (`tests/e2e/stripe-3ds-matrix.spec.ts`). Cas decline post-challenge laissé en couverture unitaire (`handle-payment-failed.test.ts`) — drive UI iframe Stripe hors scope E2E stable.
+- ✅ **L-1 IP allowlist webhook Stripe** : implémenté côté applicatif (`lib/stripe/ip-allowlist.ts` + check route). Bypass implicite preview/dev. Doc convention `docs/conventions/stripe-webhook.md` pour refresh trimestriel.
+- ✅ **L-3 Apple Pay domain verification** : FIXED phase 2 (cf. `docs/fixes/fix-stripe-phase-2-m1-l3-2026-05-05.md`).
+- ⏳ **RGS payouts** : Stripe Connect Express verse en T+7 par défaut (configurable T+2). Pour les producers, T+7 risque de générer du support "où est mon argent" — arbitrer si on bumpe à T+2 (cashflow plateforme moins bon mais UX producer mieux).
+- ⏳ **Cron dispute deadline check** : observation réelle des thresholds 24h / 72h. Si les disputes arrivent toutes le matin (déjà observé sur volumes test), aligner le cron à 6h UTC pour laisser plus de marge admin.
+- ⏳ **W-1 PCI durcissement headers de sécurité** (audit SAQ-A) : ajouter `headers()` dans `next.config.js` (X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, CSP). Backlog V1.1.
+- ⏳ **W-2 PCI rate-limit endpoints Stripe** (audit SAQ-A) : étendre `lib/rate-limit.ts` avec un helper `getStripeWriteRateLimit()` et l'appliquer à `/api/stripe/create-payment-intent`, `/api/stripe/refund`, `/api/stripe/connect/onboard`. Backlog V1.1.
 
 ---
 

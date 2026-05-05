@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { waitUntil } from "@vercel/functions";
 import type Stripe from "stripe";
 import { stripe } from "@/lib/stripe/server";
+import {
+  extractWebhookClientIp,
+  isStripeWebhookIp,
+} from "@/lib/stripe/ip-allowlist";
 import { syncStripeAccountFlags } from "@/lib/stripe/sync-account-flags";
 import { syncStripePaymentFailed } from "@/lib/stripe/handle-payment-failed";
 import { syncStripePaymentSucceeded } from "@/lib/stripe/handle-payment-succeeded";
@@ -30,6 +34,20 @@ import type { OrderItemLine } from "@/lib/resend/templates/order-confirmed-consu
 // Route Handler: on lit le body brut avec request.text() pour que
 // stripe.webhooks.constructEvent puisse vérifier la signature.
 export async function POST(request: Request) {
+  // Audit Stripe phase B L-1 : IP allowlist en défense en profondeur AVANT
+  // la vérif signature. Bypass implicite en non-production via
+  // isStripeWebhookIp (cf lib/stripe/ip-allowlist.ts) — les scans/floods
+  // hors prod ne touchent pas cette route, et `stripe listen` en dev
+  // continue de marcher sans config.
+  const clientIp = extractWebhookClientIp(request.headers);
+  if (!isStripeWebhookIp(clientIp)) {
+    const userAgent = request.headers.get("user-agent") ?? "unknown";
+    console.warn(
+      `[STRIPE_WEBHOOK_IP_REJECTED] ip=${clientIp ?? "null"} ua=${userAgent}`,
+    );
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const signature = request.headers.get("stripe-signature");
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
 
