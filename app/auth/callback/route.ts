@@ -78,9 +78,10 @@ export async function GET(request: NextRequest) {
   const next = sanitizeNext(url.searchParams.get("next"));
   // Deep-link post-auth : depuis la bascule au flow OTP token_hash, on ne
   // passe plus le redirectTo en query string sur l'emailRedirectTo (cf.
-  // requestMagicLinkAction). Source primaire = cookie redirect_after_auth
-  // posé au moment du form submit. Fallback ?redirectTo= conservé pour les
-  // anciens emails encore en circulation pendant la fenêtre de bascule.
+  // requestMagicLinkAction). Source primaire = cookie __Secure-redirect_after_auth
+  // (ou redirect_after_auth legacy en dev / pendant la transition M-2 jusqu'au
+  // 2026-05-12) posé au moment du form submit. Fallback ?redirectTo= conservé
+  // pour les anciens emails encore en circulation pendant la fenêtre de bascule.
   const redirectTo =
     readRedirectAfterAuth(request) ?? url.searchParams.get("redirectTo");
 

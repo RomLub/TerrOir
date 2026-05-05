@@ -99,8 +99,14 @@ export async function consumeRateLimit(
 // Helpers preconfigurés selon caps audit T-305. Lazy + memoized : pas de
 // client Redis créé tant qu'aucun helper n'est appelé. La memoization évite
 // de recréer le Ratelimit à chaque appel route handler.
+//
+// Audit Auth 2026-05-05 M-5 : magic_link séparé de login (3/120s vs 5/60s).
+// Rationnel : login mdp et magic link partageaient le même cap, ce qui
+// permettait à un attaquant de consommer le quota login pour tous les
+// users derrière une IP NAT en floodant le magic link.
 let _signupLimiter: Ratelimit | null | undefined;
 let _loginLimiter: Ratelimit | null | undefined;
+let _magicLinkLimiter: Ratelimit | null | undefined;
 let _recoveryLimiter: Ratelimit | null | undefined;
 
 export function getSignupRateLimit(): Ratelimit | null {
@@ -115,6 +121,13 @@ export function getLoginRateLimit(): Ratelimit | null {
     _loginLimiter = createRateLimiter(5, "60 s", "login");
   }
   return _loginLimiter;
+}
+
+export function getMagicLinkRateLimit(): Ratelimit | null {
+  if (_magicLinkLimiter === undefined) {
+    _magicLinkLimiter = createRateLimiter(3, "120 s", "magic_link");
+  }
+  return _magicLinkLimiter;
 }
 
 export function getRecoveryRateLimit(): Ratelimit | null {

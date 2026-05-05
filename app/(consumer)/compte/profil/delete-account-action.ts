@@ -228,6 +228,29 @@ export async function deleteAccountAction(
   //    sur user déjà supprimé).
   await supabase.auth.signOut();
 
+  // 7bis. Cleanup producer_interests (audit Auth H-2, RGPD article 17).
+  //       Si l'user avait déposé un intérêt waitlist avec le même email
+  //       avant de créer son compte, ces données survivraient sinon
+  //       (pas de FK vers auth.users). Fail-open : un échec ici ne doit
+  //       pas bloquer la suppression du compte.
+  try {
+    const { count } = await admin
+      .from("producer_interests")
+      .delete({ count: "exact" })
+      .ilike("email", session.email);
+    if (count && count > 0) {
+      console.warn("[delete-account] producer_interests cleanup", {
+        user_id_masked: session.id.slice(0, 8) + "...",
+        rows: count,
+      });
+    }
+  } catch (err) {
+    console.error("[delete-account] producer_interests cleanup failed", {
+      user_id_masked: session.id.slice(0, 8) + "...",
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+
   // 8. Suppression effective via Admin API (CASCADE public.users + notifications)
   const { error: deleteUserError } = await admin.auth.admin.deleteUser(
     session.id,

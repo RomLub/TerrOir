@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import type { User } from "@supabase/supabase-js";
 import { Logo } from "@/components/ui/logo";
 import { NavbarPublic } from "@/components/ui/navbar-public";
 import { Footer } from "@/components/ui/footer";
@@ -39,17 +40,23 @@ export default async function ConnexionLayout({
   const host = headers().get("host") ?? "";
 
   let alreadyLoggedInPath: string | null = null;
+  let user: User | null = null;
   try {
     const supabase = createSupabaseServerClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
     if (user) {
       const role = await loadRoleSnapshot(supabase, user.id);
       alreadyLoggedInPath = localPostLoginPath(role, host);
     }
-  } catch {
-    // fail-open
+  } catch (err) {
+    // Audit Auth 2026-05-05 M-4 : silent fail-open remplacé par log explicite
+    // (incident DB / RLS régression — UX confuse "pourquoi je suis renvoyé
+    // vers /connexion alors que je suis connecté ?" sans signal alerting).
+    console.error("[connexion/layout] role snapshot lookup failed", {
+      user_id_masked: user?.id?.slice(0, 8) + "...",
+      err: err instanceof Error ? err.message : String(err),
+    });
   }
   if (alreadyLoggedInPath) redirect(alreadyLoggedInPath);
 

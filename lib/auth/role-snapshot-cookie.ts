@@ -19,9 +19,21 @@ import type { NextRequest, NextResponse } from "next/server";
 // en Edge + Node 18+ + Browser. Bug détecté en preview Vercel (PR #44 v1) :
 // 500 MIDDLEWARE_INVOCATION_FAILED sur premier hit /compte. crypto.subtle.verify
 // est intrinsèquement timing-safe → pas besoin de timingSafeEqual manuel.
+//
+// Audit Auth 2026-05-05 M-2 : prefix __Secure- (default cross-subdomain) et
+// __Host- (admin no-domain) en prod. __Host- impose path=/ + secure=true +
+// domain non posé, déjà respecté côté admin (cookieOptionsForHost). En dev
+// (HTTP localhost), le browser rejette les préfixes __Secure-/__Host- — on
+// utilise alors les noms legacy pour rester fonctionnel.
+//
+// TODO 2026-05-12 : retirer COOKIE_NAME_*_LEGACY + double-lecture après TTL
+// max écoulé (15 min role snapshot). Migration sans casser les sessions en
+// cours grâce à la double-lecture transitoire.
 
-const COOKIE_NAME_DEFAULT = "__terroir_role_snapshot";
-const COOKIE_NAME_ADMIN = "sb-admin-role-snapshot";
+const COOKIE_NAME_DEFAULT_LEGACY = "__terroir_role_snapshot";
+const COOKIE_NAME_ADMIN_LEGACY = "sb-admin-role-snapshot";
+const COOKIE_NAME_DEFAULT_NEW = "__Secure-terroir_role_snapshot";
+const COOKIE_NAME_ADMIN_NEW = "__Host-sb-admin-role-snapshot";
 const SHARED_DOMAIN = ".terroir-local.fr";
 const APEX = "terroir-local.fr";
 export const ROLE_SNAPSHOT_TTL_SECONDS = 15 * 60; // 15 min — staleness max acceptable.
@@ -66,7 +78,17 @@ function isProdHost(host: string | null | undefined): boolean {
 }
 
 export function cookieNameForHost(host: string | null | undefined): string {
-  return isAdminHost(host) ? COOKIE_NAME_ADMIN : COOKIE_NAME_DEFAULT;
+  const isAdmin = isAdminHost(host);
+  if (isProdHost(host)) {
+    return isAdmin ? COOKIE_NAME_ADMIN_NEW : COOKIE_NAME_DEFAULT_NEW;
+  }
+  // Dev (HTTP localhost) : préfixes __Secure-/__Host- rejetés par le browser
+  // sans Secure attribute → fallback aux noms legacy pour rester fonctionnel.
+  return isAdmin ? COOKIE_NAME_ADMIN_LEGACY : COOKIE_NAME_DEFAULT_LEGACY;
+}
+
+function legacyCookieNameForHost(host: string | null | undefined): string {
+  return isAdminHost(host) ? COOKIE_NAME_ADMIN_LEGACY : COOKIE_NAME_DEFAULT_LEGACY;
 }
 
 export function cookieOptionsForHost(
@@ -227,8 +249,14 @@ export async function readRoleSnapshotFromRequest(
   request: NextRequest,
   host: string | null | undefined,
 ): Promise<RoleSnapshotPayload | null> {
-  const name = cookieNameForHost(host);
-  const raw = request.cookies.get(name)?.value;
+  // Migration M-2 : essaie le nouveau nom (prefix __Secure-/__Host-),
+  // fallback sur le legacy. À simplifier après 2026-05-12.
+  const currentName = cookieNameForHost(host);
+  const legacyName = legacyCookieNameForHost(host);
+  let raw = request.cookies.get(currentName)?.value;
+  if (!raw && currentName !== legacyName) {
+    raw = request.cookies.get(legacyName)?.value;
+  }
   return parseAndVerifyRoleSnapshot(raw);
 }
 
@@ -265,8 +293,15 @@ export function clearRoleSnapshotOnResponseCookies(
 ): void {
   // Set maxAge=0 avec MÊMES domain/path/secure/sameSite que le set : sinon
   // le browser considère que c'est un cookie différent et ne supprime pas.
+  // Migration M-2 : clear le nouveau ET le legacy. À simplifier après 2026-05-12.
   const opts = cookieOptionsForHost(host);
-  responseCookies.set(cookieNameForHost(host), "", { ...opts, maxAge: 0 });
+  const cleared = { ...opts, maxAge: 0 };
+  const currentName = cookieNameForHost(host);
+  const legacyName = legacyCookieNameForHost(host);
+  responseCookies.set(currentName, "", cleared);
+  if (currentName !== legacyName) {
+    responseCookies.set(legacyName, "", cleared);
+  }
 }
 
 export function clearRoleSnapshotOnResponse(
@@ -311,14 +346,23 @@ export function clearRoleSnapshotOnStore(
   host: string | null | undefined,
 ): void {
   if (!isClearableStore(cookieStore)) return;
+  // Migration M-2 : clear le nouveau ET le legacy. À simplifier après 2026-05-12.
   const opts = cookieOptionsForHost(host);
-  cookieStore.set(cookieNameForHost(host), "", { ...opts, maxAge: 0 });
+  const cleared = { ...opts, maxAge: 0 };
+  const currentName = cookieNameForHost(host);
+  const legacyName = legacyCookieNameForHost(host);
+  cookieStore.set(currentName, "", cleared);
+  if (currentName !== legacyName) {
+    cookieStore.set(legacyName, "", cleared);
+  }
 }
 
 // Exposé pour tests unitaires (override secret).
 export const __test__ = {
-  COOKIE_NAME_DEFAULT,
-  COOKIE_NAME_ADMIN,
+  COOKIE_NAME_DEFAULT_LEGACY,
+  COOKIE_NAME_ADMIN_LEGACY,
+  COOKIE_NAME_DEFAULT_NEW,
+  COOKIE_NAME_ADMIN_NEW,
   SHARED_DOMAIN,
   APEX,
 };

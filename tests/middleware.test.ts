@@ -134,8 +134,9 @@ describe("middleware — role snapshot cookie cache (T-321)", () => {
     expect(mockAdminUsersMaybeSingle).toHaveBeenCalledTimes(1);
 
     // Cookie role snapshot posé sur la réponse fallthrough.
+    // Audit M-2 : nom prod = __Secure-terroir_role_snapshot (prefix __Secure-).
     const setCookieHeader = response.headers.get("set-cookie") ?? "";
-    expect(setCookieHeader).toContain("__terroir_role_snapshot=");
+    expect(setCookieHeader).toContain("__Secure-terroir_role_snapshot=");
   });
 
   it("cache INVALID (signature corrompue) : fallback DB lookup", async () => {

@@ -15,6 +15,7 @@ import {
 import {
   consumeRateLimit,
   getLoginRateLimit,
+  getMagicLinkRateLimit,
   getRecoveryRateLimit,
 } from "@/lib/rate-limit";
 import {
@@ -97,17 +98,17 @@ export async function loginAction(
 
   if (error || !data.user) {
     // Audit forensique : on logue chaque tentative échouée pour permettre
-    // détection brute-force / énumération. email plaintext OK en metadata
-    // audit_logs (convention TerrOir, cf. magic link), userId null (user
-    // pas authentifié). reason_code catégoriel évite la dépendance directe
-    // aux codes Supabase verbatim côté analytics. logAuthEvent est fail-safe
-    // (swallow + warn) — un échec d'écriture audit ne bloque pas le retour
-    // d'erreur UI.
+    // détection brute-force / énumération. email_masked en metadata audit
+    // (audit Auth 2026-05-05 H-3 : alignement masking partout, y compris
+    // user pas authentifié). reason_code catégoriel évite la dépendance
+    // directe aux codes Supabase verbatim côté analytics. logAuthEvent est
+    // fail-safe (swallow + warn) — un échec d'écriture audit ne bloque pas
+    // le retour d'erreur UI.
     await logAuthEvent({
       eventType: "login_failed",
       userId: null,
       metadata: {
-        email: parsed.data.email,
+        email_masked: maskEmail(parsed.data.email),
         reason_code: classifyLoginError(error?.code, error?.message),
       },
     });
@@ -194,12 +195,12 @@ export async function requestMagicLinkAction(
     return { error: parsed.error.issues[0]?.message ?? "Email invalide" };
   }
 
-  // T-305 PR-B : rate-limit applicatif IP avant signInWithOtp. Mutualise
-  // getLoginRateLimit() avec loginAction (D2) — un attaquant qui alterne
-  // login mdp et magic link sur la même IP rencontre le compteur partagé.
+  // Audit Auth 2026-05-05 M-5 : rate-limit magic link séparé de login
+  // (3/120s vs 5/60s pour login). Évite qu'un attaquant flood magic link
+  // consomme le quota login pour tous les users derrière une IP NAT.
   const { ipAddress } = extractRequestContext(headers());
   const rateLimit = await consumeRateLimit(
-    getLoginRateLimit(),
+    getMagicLinkRateLimit(),
     ipAddress ?? "unknown",
   );
   if (!rateLimit.success) {
@@ -269,13 +270,12 @@ export async function requestMagicLinkAction(
 
   // Audit logué systématiquement (succès apparent ou pas) pour préserver
   // l'enumeration-resistance : un attaquant qui inspecte la table audit_logs
-  // ne peut pas distinguer email valide vs invalide. metadata.email en clair
-  // côté DB (pas un log applicatif Vercel) — cohérent avec la convention
-  // notifications.metadata.email (cf. lib/rgpd/mask-email.ts).
+  // ne peut pas distinguer email valide vs invalide. email_masked en
+  // metadata (audit Auth 2026-05-05 H-3 : alignement masking partout).
   await logAuthEvent({
     eventType: "account_login_magic_link",
     userId: null,
-    metadata: { email, isAdmin },
+    metadata: { email_masked: maskEmail(email), isAdmin },
   });
 
   return {
@@ -381,7 +381,7 @@ export async function requestPasswordResetAction(
   await logAuthEvent({
     eventType: "password_reset_request",
     userId: null,
-    metadata: { email },
+    metadata: { email_masked: maskEmail(email) },
   });
 
   return { sent: true };

@@ -13,8 +13,19 @@ import { isValidRedirectPath } from "./post-login-redirect";
 // Cross-subdomain : domain `.terroir-local.fr` pour que le cookie posé sur
 // www.* lors du form submit soit lisible sur admin.* (callback admin) et
 // pro.* (callback producer). HttpOnly + Secure réduisent l'exposition.
+//
+// Audit Auth 2026-05-05 M-2 : prefix __Secure- en prod (defense-in-depth :
+// browser n'accepte le cookie que via HTTPS). __Host- exclu : exige domain
+// non posé, incompatible avec le partage cross-subdomain ciblé. En dev
+// (HTTP localhost), le browser rejette les cookies __Secure-* — fallback
+// sur le nom legacy.
+//
+// TODO 2026-05-12 : retirer COOKIE_NAME_LEGACY + double-lecture après TTL
+// max écoulé (1h max pour ce cookie). Migration sans casser les sessions
+// en cours grâce à la double-lecture transitoire.
 
-const COOKIE_NAME = "redirect_after_auth";
+const COOKIE_NAME_LEGACY = "redirect_after_auth";
+const COOKIE_NAME_NEW = "__Secure-redirect_after_auth";
 const SHARED_DOMAIN = ".terroir-local.fr";
 const APEX = "terroir-local.fr";
 const MAX_AGE_SECONDS = 60 * 60; // 1h — suffisant pour cliquer sur un magic link.
@@ -28,11 +39,19 @@ interface RedirectCookieOptions {
   sameSite: "lax";
 }
 
+function isProdHost(host: string | null | undefined): boolean {
+  const hostname = (host ?? "").split(":")[0]?.toLowerCase() ?? "";
+  return hostname === APEX || hostname.endsWith(`.${APEX}`);
+}
+
+function cookieNameForHost(host: string | null | undefined): string {
+  return isProdHost(host) ? COOKIE_NAME_NEW : COOKIE_NAME_LEGACY;
+}
+
 function cookieOptionsForHost(
   host: string | null | undefined,
 ): RedirectCookieOptions {
-  const hostname = (host ?? "").split(":")[0]?.toLowerCase() ?? "";
-  const isProd = hostname === APEX || hostname.endsWith(`.${APEX}`);
+  const isProd = isProdHost(host);
   return {
     // Domain partagé en prod uniquement. Sur localhost / staging avec un host
     // différent, on laisse le cookie scopé au host courant (pas de domain).
@@ -50,37 +69,53 @@ function cookieOptionsForHost(
 
 // Pose le cookie depuis une Server Action. La validation isValidRedirectPath
 // est appliquée ici (defense-in-depth) pour qu'un FormData injecté avec un
-// path foireux ne contamine pas le cookie.
+// path foireux ne contamine pas le cookie. Écriture sur le nouveau nom
+// uniquement (legacy continuera d'être lu pour la transition).
 export function setRedirectAfterAuth(redirectTo: unknown): void {
   if (!isValidRedirectPath(redirectTo)) return;
   const host = headers().get("host");
-  cookies().set(COOKIE_NAME, redirectTo, cookieOptionsForHost(host));
+  cookies().set(cookieNameForHost(host), redirectTo, cookieOptionsForHost(host));
 }
 
 // Lit le cookie depuis une NextRequest (Route Handler /auth/callback).
 // Re-valide isValidRedirectPath en defense-in-depth : même HttpOnly, on ne
 // fait pas confiance aveuglément au contenu du cookie.
+//
+// Migration M-2 : essaie le nouveau nom, fallback sur le legacy. À retirer
+// après 2026-05-12 (TTL max 1h écoulé sur les sessions pré-bascule).
 export function readRedirectAfterAuth(request: NextRequest): string | null {
-  const raw = request.cookies.get(COOKIE_NAME)?.value;
+  const host = request.headers.get("host");
+  const currentName = cookieNameForHost(host);
+  let raw = request.cookies.get(currentName)?.value;
+  if (!raw && currentName !== COOKIE_NAME_LEGACY) {
+    raw = request.cookies.get(COOKIE_NAME_LEGACY)?.value;
+  }
   return isValidRedirectPath(raw) ? raw : null;
 }
 
 // Supprime le cookie en posant un cookie vide expiré sur la réponse. Utilise
 // les MÊMES domain/path/secure/sameSite que le set : sinon le browser
 // considère que c'est un cookie différent et ne le supprime pas.
+//
+// Migration M-2 : clear le nouveau ET le legacy (transition double). À
+// simplifier après 2026-05-12.
 export function clearRedirectAfterAuth(
   response: NextResponse,
   host: string | null | undefined,
 ): void {
   const opts = cookieOptionsForHost(host);
-  response.cookies.set(COOKIE_NAME, "", {
-    ...opts,
-    maxAge: 0,
-  });
+  const cleared = { ...opts, maxAge: 0 };
+  const currentName = cookieNameForHost(host);
+  response.cookies.set(currentName, "", cleared);
+  if (currentName !== COOKIE_NAME_LEGACY) {
+    response.cookies.set(COOKIE_NAME_LEGACY, "", cleared);
+  }
 }
 
 // Exposé pour les tests unitaires (mocks).
 export const __test__ = {
-  COOKIE_NAME,
+  COOKIE_NAME_LEGACY,
+  COOKIE_NAME_NEW,
+  cookieNameForHost,
   cookieOptionsForHost,
 };

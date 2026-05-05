@@ -96,6 +96,7 @@ const consumeRateLimitMock = vi.hoisted(() =>
 vi.mock("@/lib/rate-limit", () => ({
   consumeRateLimit: consumeRateLimitMock,
   getLoginRateLimit: () => ({}),
+  getMagicLinkRateLimit: () => ({}),
   getRecoveryRateLimit: () => ({}),
 }));
 
@@ -236,13 +237,13 @@ describe("requestPasswordResetAction", () => {
     expect(logAuthEventMock).toHaveBeenCalledWith({
       eventType: "password_reset_request",
       userId: null,
-      metadata: { email: "user@example.com" },
+      metadata: { email_masked: "us***@example.com" },
     });
   });
 });
 
 describe("loginAction (T-309 — audit login_failed sur fail path)", () => {
-  it("invalid_credentials → logAuthEvent login_failed avec reason_code=invalid_credentials + email plaintext + userId null", async () => {
+  it("invalid_credentials → logAuthEvent login_failed avec reason_code=invalid_credentials + email_masked + userId null", async () => {
     signInWithPasswordMock.mockResolvedValue({
       data: { user: null },
       error: {
@@ -261,7 +262,7 @@ describe("loginAction (T-309 — audit login_failed sur fail path)", () => {
       eventType: "login_failed",
       userId: null,
       metadata: {
-        email: "user@example.com",
+        email_masked: "us***@example.com",
         reason_code: "invalid_credentials",
       },
     });
@@ -282,7 +283,7 @@ describe("loginAction (T-309 — audit login_failed sur fail path)", () => {
       eventType: "login_failed",
       userId: null,
       metadata: {
-        email: "pending@example.com",
+        email_masked: "pe***@example.com",
         reason_code: "email_not_confirmed",
       },
     });
@@ -303,7 +304,7 @@ describe("loginAction (T-309 — audit login_failed sur fail path)", () => {
       eventType: "login_failed",
       userId: null,
       metadata: {
-        email: "user@example.com",
+        email_masked: "us***@example.com",
         reason_code: "technical",
       },
     });

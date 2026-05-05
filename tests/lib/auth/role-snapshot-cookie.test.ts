@@ -197,33 +197,39 @@ describe("signRoleSnapshot + parseAndVerifyRoleSnapshot", () => {
   });
 });
 
-describe("cookieNameForHost", () => {
-  it("admin.* → sb-admin-role-snapshot (isolation Chantier 4)", () => {
+describe("cookieNameForHost (M-2 prefixes __Secure-/__Host-)", () => {
+  it("admin.* prod → __Host-sb-admin-role-snapshot (no domain → __Host- compatible)", () => {
     expect(cookieNameForHost("admin.terroir-local.fr")).toBe(
-      "sb-admin-role-snapshot",
+      "__Host-sb-admin-role-snapshot",
     );
     expect(cookieNameForHost("admin.terroir-local.fr:443")).toBe(
-      "sb-admin-role-snapshot",
+      "__Host-sb-admin-role-snapshot",
     );
   });
 
-  it("www / pro / apex → __terroir_role_snapshot", () => {
+  it("www / pro / apex prod → __Secure-terroir_role_snapshot", () => {
     expect(cookieNameForHost("www.terroir-local.fr")).toBe(
-      "__terroir_role_snapshot",
+      "__Secure-terroir_role_snapshot",
     );
     expect(cookieNameForHost("pro.terroir-local.fr")).toBe(
-      "__terroir_role_snapshot",
+      "__Secure-terroir_role_snapshot",
     );
     expect(cookieNameForHost("terroir-local.fr")).toBe(
-      "__terroir_role_snapshot",
+      "__Secure-terroir_role_snapshot",
     );
   });
 
-  it("localhost → __terroir_role_snapshot (default)", () => {
+  it("localhost dev → fallback legacy __terroir_role_snapshot (préfixes rejetés sans HTTPS)", () => {
     expect(cookieNameForHost("localhost:3000")).toBe("__terroir_role_snapshot");
   });
 
-  it("null / undefined → default", () => {
+  it("admin.localhost dev → fallback legacy sb-admin-role-snapshot", () => {
+    expect(cookieNameForHost("admin.localhost:3000")).toBe(
+      "sb-admin-role-snapshot",
+    );
+  });
+
+  it("null / undefined → default legacy (host non détectable = treat as dev)", () => {
     expect(cookieNameForHost(null)).toBe("__terroir_role_snapshot");
     expect(cookieNameForHost(undefined)).toBe("__terroir_role_snapshot");
   });
@@ -277,7 +283,7 @@ describe("setRoleSnapshotOnResponseCookies / clearRoleSnapshotOnResponseCookies"
       },
     );
     expect(calls).toHaveLength(1);
-    expect(calls[0]!.name).toBe("__terroir_role_snapshot");
+    expect(calls[0]!.name).toBe("__Secure-terroir_role_snapshot");
     // Valeur signée → parsable
     const parsed = await parseAndVerifyRoleSnapshot(calls[0]!.value);
     expect(parsed?.user_id).toBe("u-1");
@@ -286,7 +292,7 @@ describe("setRoleSnapshotOnResponseCookies / clearRoleSnapshotOnResponseCookies"
     expect(parsed?.expires_at).toBeGreaterThan(Date.now());
   });
 
-  it("clear : cookie posé maxAge=0 + même name/options pour forcer suppression browser", () => {
+  it("clear : pose nouveau ET legacy en prod (M-2 transition double-clear)", () => {
     const calls: { name: string; value: string; options: { maxAge?: number } }[] =
       [];
     const responseCookies = {
@@ -298,10 +304,24 @@ describe("setRoleSnapshotOnResponseCookies / clearRoleSnapshotOnResponseCookies"
       responseCookies,
       "admin.terroir-local.fr",
     );
+    expect(calls).toHaveLength(2);
+    expect(calls[0]!.name).toBe("__Host-sb-admin-role-snapshot");
+    expect(calls[1]!.name).toBe("sb-admin-role-snapshot");
+    expect(calls.every((c) => c.value === "")).toBe(true);
+    expect(calls.every((c) => c.options.maxAge === 0)).toBe(true);
+  });
+
+  it("clear dev : pose 1 seul cookie (legacy = nouveau)", () => {
+    const calls: { name: string; value: string; options: { maxAge?: number } }[] =
+      [];
+    const responseCookies = {
+      set: (name: string, value: string, options: { maxAge?: number }) => {
+        calls.push({ name, value, options });
+      },
+    };
+    clearRoleSnapshotOnResponseCookies(responseCookies, "localhost:3000");
     expect(calls).toHaveLength(1);
-    expect(calls[0]!.name).toBe("sb-admin-role-snapshot");
-    expect(calls[0]!.value).toBe("");
-    expect(calls[0]!.options.maxAge).toBe(0);
+    expect(calls[0]!.name).toBe("__terroir_role_snapshot");
   });
 });
 
@@ -319,7 +339,7 @@ describe("setRoleSnapshotOnStore / clearRoleSnapshotOnStore", () => {
       isAdmin: false,
     });
     expect(calls).toHaveLength(1);
-    expect(calls[0]!.name).toBe("__terroir_role_snapshot");
+    expect(calls[0]!.name).toBe("__Secure-terroir_role_snapshot");
   });
 
   it("clear : délègue avec maxAge=0", () => {
