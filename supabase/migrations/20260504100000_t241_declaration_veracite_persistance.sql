@@ -1,6 +1,33 @@
 -- =============================================================================
 -- TerrOir — Chantier T-241 : persistance déclaration sur l'honneur producteur
 -- =============================================================================
+-- ⚠️ PATCH AUDIT RLS 2026-05-05 (avant 1er apply) — finding MEDIUM-3.
+-- Cette migration n'a PAS encore été apply en prod (vérifié via MCP : ni les
+-- 3 colonnes ni la RPC update_producer_onboarding ne sont présentes côté DB).
+-- L'audit du 2026-05-05 a identifié un risque CRITICAL si elle était appliquée
+-- en l'état : la RPC SECURITY DEFINER aurait l'ACL EXECUTE PUBLIC par défaut,
+-- permettant à n'importe quel authenticated d'appeler la fonction avec un
+-- p_user_id arbitraire et de modifier la fiche producteur d'un autre user.
+--
+-- Patch appliqué dans cette même migration (cf. en bas du fichier) :
+--   - REVOKE EXECUTE ON FUNCTION ... FROM PUBLIC, anon, authenticated
+--   - GRANT EXECUTE ... TO service_role
+--
+-- Pas de garde interne `auth.uid() = p_user_id` : la fonction est appelée
+-- exclusivement par la server action `complete-onboarding.ts` via le client
+-- admin service_role (sans JWT context, donc auth.uid() est NULL côté
+-- service_role — un guard auth.uid() casserait la chaîne d'appel). La
+-- restriction d'accès est posée au niveau ACL (defense-in-depth suffisante :
+-- service_role est le seul rôle légitime appelant).
+--
+-- Si une page d'édition producteur authentifiée (T-289 / T-294) doit appeler
+-- directement cette RPC sans passer par service_role, alors :
+--   1. GRANT EXECUTE TO authenticated explicite,
+--   2. ET ajouter le guard `if auth.uid() is null or auth.uid() is distinct
+--      from p_user_id then raise ... using errcode = '42501'; end if;`
+-- Ne PAS faire l'un sans l'autre — la garde sans le grant est inutile, le
+-- grant sans la garde réintroduit la faille.
+-- =============================================================================
 -- Ajoute 3 colonnes à `public.producers` pour archiver l'engagement déclaratif
 -- du producteur sur les 3 enums score-carbone (mode_elevage, alimentation,
 -- densite_animale). Avant T-241, la case « Je certifie… » de l'onboarding était
@@ -95,10 +122,11 @@ alter table public.producers
 --
 -- SECURITY DEFINER : la fonction tourne avec les droits de son owner
 -- (postgres) — elle est appelée par la server action via le client admin
--- service_role uniquement. Une éventuelle policy RLS future devra écraser
--- les UPDATE directs sur les 3 colonnes declaration_indicateurs_* (cf. point
--- TODO sécurité comité T-241 — T-287 / T-295) ; cette RPC reste le seul
--- write path légitime.
+-- service_role uniquement. L'accès est restreint au niveau ACL (REVOKE PUBLIC
+-- + GRANT TO service_role en fin de migration, patch audit 2026-05-05). Une
+-- policy RLS additionnelle sur les 3 colonnes declaration_indicateurs_* (cf.
+-- TODO sécurité comité T-241 — T-287 / T-295) reste pertinente comme
+-- defense-in-depth pour un éventuel write authentifié direct.
 -- =============================================================================
 
 create or replace function public.update_producer_onboarding(
@@ -212,3 +240,22 @@ comment on function public.update_producer_onboarding is
   'de re-persistance des declaration_indicateurs_* (case sur l''honneur DGCCRF). '
   'Voir lib/producers/declaration-veracite.ts pour la sémantique versionnée du '
   'wording certifié.';
+
+-- =============================================================================
+-- Patch audit RLS 2026-05-05 (MEDIUM-3) : ACL service_role only
+-- =============================================================================
+-- Sans ces deux instructions, CREATE FUNCTION accorde EXECUTE à PUBLIC par
+-- défaut → tout authenticated pourrait appeler la RPC avec un p_user_id
+-- arbitraire et modifier la fiche producteur d'un autre. Le grant ne couvre
+-- que service_role : la server action complete-onboarding.ts utilise déjà
+-- le client admin (service_role) — aucun changement applicatif requis.
+-- Cf. en-tête de migration pour la procédure d'ouverture future à
+-- authenticated (grant + guard auth.uid() = p_user_id à ajouter ensemble).
+-- =============================================================================
+revoke execute on function public.update_producer_onboarding(
+  uuid, text, text, text, text, text, text, text, text, text, text, text, text, boolean, text
+) from public, anon, authenticated;
+
+grant execute on function public.update_producer_onboarding(
+  uuid, text, text, text, text, text, text, text, text, text, text, text, text, boolean, text
+) to service_role;
