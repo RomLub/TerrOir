@@ -121,7 +121,18 @@ $ rg "replyTo|reply_to|Reply-To|List-Unsubscribe|listUnsubscribe" lib/ app/
 - Pour `producer-invitation` et `stock-alert-*`, lien direct vers le flow opt-out existant.
 - Pour `review-request`, équivaut à un opt-out global future-proof — décision business à prendre.
 
-## H-3 — Pas de webhook Resend entrant (rappel audit RPC §L-4, re-priorisé HIGH côté délivrabilité)
+## H-3 — Pas de webhook Resend entrant (rappel audit RPC §L-4, re-priorisé HIGH côté délivrabilité) — **FIXED 2026-05-05**
+
+> **Status FIXED** — cf [`docs/fixes/fix-email-h3-m5-webhook-resend-2026-05-05.md`](../fixes/fix-email-h3-m5-webhook-resend-2026-05-05.md).
+> Webhook handler `app/api/webhooks/resend/route.ts` créé avec vérification
+> Svix HMAC-SHA256 (manuel, pas de dep `svix`), dédup applicative
+> `webhook_events_processed` namespacée `resend_${svixId}`, routing 4 events
+> critiques (`email.bounced` Permanent/Transient, `email.complained`,
+> `email.delivered`, `email.delivery_delayed`) + 2 audit_logs forensiques
+> (`email_complaint_received` légal CASL, `email_hard_bounce_suppressed`).
+> Pré-requis manuel Romain : provisionner `RESEND_WEBHOOK_SECRET` (Vercel +
+> .env.local) + configurer le webhook côté Dashboard Resend. Détails
+> §"Action manuelle Romain post-deploy" du fix.
 
 **Preuve grep** :
 
@@ -299,7 +310,17 @@ Aucun deuxième argument `{ headers: { 'Idempotency-Key': ... } }`. Skill `sendi
 - Garde la logique INSERT `notifications` au final, mais après les retries.
 - Coût : ~30 lignes. Bénéfice : couvre les transients Resend (~99% des incidents).
 
-## M-5 — Pas de table `email_suppressions` ni pre-send check
+## M-5 — Pas de table `email_suppressions` ni pre-send check — **FIXED 2026-05-05**
+
+> **Status FIXED** — cf [`docs/fixes/fix-email-h3-m5-webhook-resend-2026-05-05.md`](../fixes/fix-email-h3-m5-webhook-resend-2026-05-05.md).
+> Migration `20260505600000_audit_email_h3_m5_email_suppressions.sql`
+> applique table `public.email_suppressions` (PK email, reasons
+> hard_bounce/complained/soft_bounce_threshold/soft_bounce_pending/manual,
+> RLS service-role only) + ALTER `notifications.statut` pour ajouter
+> 'skipped'. Helper `lib/resend/suppressions.ts` (canSendTo / addSuppression
+> / incrementSoftBounce) branché en pre-send check dans `sendTemplate`
+> (court-circuit + INSERT notifications statut='skipped'). 16 tests vitest
+> sur le helper, 3 sur sendTemplate.
 
 **Preuve grep** :
 

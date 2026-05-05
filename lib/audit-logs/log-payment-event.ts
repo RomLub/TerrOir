@@ -157,6 +157,17 @@ export const PAYMENT_EVENT_TYPES = [
   "stripe_early_fraud_warning_received",
   "stripe_charge_refunded_settled",
   "stripe_account_deauthorized",
+  // Audit Email phase 2 H-3 (2026-05-05) — webhook Resend entrant. Trace
+  // forensique des events delivery sensibles côté légal/compliance.
+  //   - email_complaint_received : email.complained → suppression IMMÉDIATE
+  //     + audit log (CASL/RGPD : conserver la trace formelle de la plainte
+  //     spam pour défense litige). Metadata : email (clear, traçabilité
+  //     serveur), source_resend_id (data.email_id Resend), svix_id.
+  //   - email_hard_bounce_suppressed : email.bounced bounce.type='Permanent'
+  //     → suppression immédiate. Forensique pour reconstitution chronologie
+  //     (quel email a bouncé, quand, source). Metadata identique.
+  "email_complaint_received",
+  "email_hard_bounce_suppressed",
 ] as const;
 
 export type PaymentEventType = (typeof PAYMENT_EVENT_TYPES)[number];
