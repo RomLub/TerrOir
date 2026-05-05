@@ -68,6 +68,17 @@ export const PAYMENT_EVENT_TYPES = [
   // `stripe.refunds.create` sur leur path respectif pour permettre la
   // détection background ultérieure.
   "order_admin_refund_failed",
+  // Audit Stripe L-5 (2026-05-05) — instrumentation success symétrique au
+  // failed historique : trace forensique systématique pour reconstitution
+  // chronologie (RGPD + dispute Stripe + détection abus producer).
+  "order_admin_refund_succeeded",
+  // Audit Stripe L-5 (2026-05-05) — refund producer-owned (path distinct
+  // de _admin sans cap, sans approval). Émis par /api/stripe/refund quand
+  // l'authoriseur est le producer propriétaire de l'order. Email admin
+  // déclenché en parallèle si amount >= SUPPORT_REFUND_THRESHOLD_EUR
+  // (default 100).
+  "order_producer_refund_succeeded",
+  "order_producer_refund_failed",
   "order_timeout_refund_failed",
   // Path cron timeout sur order pending non payée (PI status !== 'succeeded').
   // T-409 : skip refund Stripe + audit forensique pour ne pas polluer le
@@ -81,6 +92,14 @@ export const PAYMENT_EVENT_TYPES = [
   "stripe_account_updated",
   "stripe_payout_paid",
   "stripe_dispute",
+  // Audit Stripe M-4 (2026-05-05) — cron disputes-deadline-check :
+  //   - stripe_dispute_deadline_warning : email relance posé (urgency=soon|urgent),
+  //     metadata.dispute_id, hours_remaining, urgency, sms_sent (bool).
+  //   - stripe_dispute_deadline_missed  : evidence_due_by passée, status reste
+  //     needs_response (Stripe va auto-perdre). Marque forensique pour audit
+  //     post-mortem.
+  "stripe_dispute_deadline_warning",
+  "stripe_dispute_deadline_missed",
   // Bundle 3 webhook events go-Live (T-401) — Stripe signale les échecs
   // de virement Connect plateforme -> producteur.
   //   - stripe_transfer_failed : Transfer plateforme -> Connect account
