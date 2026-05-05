@@ -17,6 +17,9 @@ dotenv.config({ path: path.resolve(__dirname, '.env.local') });
  */
 export default defineConfig({
   testDir: './tests/e2e',
+  // Restreint à .spec.ts : empêche Playwright de charger les .test.ts Vitest
+  // sous tests/e2e/helpers/__tests__/ (default match = *.@(spec|test).?(c|m)[jt]s?(x)).
+  testMatch: '**/*.spec.ts',
   fullyParallel: false, // Séquentiel : on tape sur prod DB, on évite les races
   forbidOnly: !!process.env.CI,
   retries: 0, // 0 en local pour voir les vrais flakes

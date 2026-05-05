@@ -157,6 +157,15 @@ export async function cleanupTestUser(ctx: TestContext, userId: string): Promise
     );
   }
 
+  // 0. producers (FK user_id → public.users.id avec ON DELETE NO ACTION)
+  //    Doit être supprimé AVANT public.users sinon auth.admin.deleteUser
+  //    fail avec "Database error deleting user". Le commentaire historique
+  //    "producers.user_id CASCADE depuis auth.users" est erroné — vérifié
+  //    via information_schema.referential_constraints le 2026-05-05.
+  await safeDelete(ctx, 'producers', { user_id: userId }).catch((err) => {
+    console.warn(`[cleanup] producers failed for ${userId}:`, err);
+  });
+
   // 1. email_change_undo_tokens
   await safeDelete(ctx, 'email_change_undo_tokens', { user_id: userId }).catch((err) => {
     console.warn(`[cleanup] email_change_undo_tokens failed for ${userId}:`, err);
