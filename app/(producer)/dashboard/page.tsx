@@ -63,67 +63,117 @@ export default async function ProducerDashboardPage() {
   const weekEnd = addDays(weekStart, 7);
   const lastWeekStart = addDays(weekStart, -7);
 
-  const { data: user } = await admin
-    .from('users')
-    .select('prenom, nom')
-    .eq('id', session.id)
-    .maybeSingle();
+  // Week planning : slots sont désormais des instances matérialisées avec
+  // starts_at/ends_at timestamptz (Phase 1 créneaux). On fetch les slots de
+  // la semaine courante avec 1 jour de marge de part et d'autre pour absorber
+  // les edge cases TZ (weekStart en UTC vs slots.starts_at en Paris).
+  const slotsRangeStart = addDays(weekStart, -1);
+  const slotsRangeEnd = addDays(weekEnd, 1);
+
+  const [
+    { data: user },
+    { count: ordersToday },
+    { count: ordersYesterday },
+    { data: weekOrders },
+    { data: lastWeekOrders },
+    { data: producerRow },
+    { data: pendingRaw },
+    { data: upcomingRaw },
+    { data: slots },
+    { data: weekPickups },
+    { data: lowStockProducts },
+  ] = await Promise.all([
+    admin
+      .from('users')
+      .select('prenom, nom')
+      .eq('id', session.id)
+      .maybeSingle(),
+    admin
+      .from('orders')
+      .select('id', { count: 'exact', head: true })
+      .eq('producer_id', producer.id)
+      .gte('created_at', todayStart.toISOString())
+      .lt('created_at', tomorrowStart.toISOString()),
+    admin
+      .from('orders')
+      .select('id', { count: 'exact', head: true })
+      .eq('producer_id', producer.id)
+      .gte('created_at', yesterdayStart.toISOString())
+      .lt('created_at', todayStart.toISOString()),
+    admin
+      .from('orders')
+      .select('id, montant_total, statut')
+      .eq('producer_id', producer.id)
+      .gte('created_at', weekStart.toISOString())
+      .lt('created_at', weekEnd.toISOString()),
+    admin
+      .from('orders')
+      .select('montant_total, statut')
+      .eq('producer_id', producer.id)
+      .gte('created_at', lastWeekStart.toISOString())
+      .lt('created_at', weekStart.toISOString()),
+    admin
+      .from('producers')
+      .select('note_moyenne, nb_avis, badge_stock_score, badge_confirmation_score, badge_annulation_score')
+      .eq('id', producer.id)
+      .maybeSingle(),
+    admin
+      .from('orders')
+      .select(`
+        id, code_commande, created_at, montant_total, date_retrait,
+        consumer:consumer_id ( prenom ),
+        slots:slot_id ( starts_at, ends_at ),
+        order_items ( products:product_id ( nom ) )
+      `)
+      .eq('producer_id', producer.id)
+      .eq('statut', 'pending')
+      .order('created_at', { ascending: true })
+      .limit(5),
+    admin
+      .from('orders')
+      .select(`
+        id, code_commande, heure_retrait, date_retrait,
+        consumer:consumer_id ( prenom )
+      `)
+      .eq('producer_id', producer.id)
+      .in('statut', ['confirmed', 'ready'])
+      .gte('date_retrait', todayStart.toISOString().slice(0, 10))
+      .order('date_retrait', { ascending: true })
+      .order('heure_retrait', { ascending: true })
+      .limit(1),
+    admin
+      .from('slots')
+      .select('id, starts_at, ends_at')
+      .eq('producer_id', producer.id)
+      .eq('active', true)
+      .gte('starts_at', slotsRangeStart.toISOString())
+      .lt('starts_at', slotsRangeEnd.toISOString()),
+    admin
+      .from('orders')
+      .select('date_retrait, slot_id, statut')
+      .eq('producer_id', producer.id)
+      .gte('date_retrait', weekStart.toISOString().slice(0, 10))
+      .lt('date_retrait', weekEnd.toISOString().slice(0, 10)),
+    admin
+      .from('products')
+      .select('id, nom, stock_disponible, stock_illimite')
+      .eq('producer_id', producer.id)
+      .eq('active', true)
+      .eq('stock_illimite', false)
+      .lte('stock_disponible', 5)
+      .gt('stock_disponible', 0)
+      .limit(3),
+  ]);
+
   const firstName = user?.prenom?.trim() || user?.nom?.trim() || 'Pierre';
-
-  const { count: ordersToday } = await admin
-    .from('orders')
-    .select('id', { count: 'exact', head: true })
-    .eq('producer_id', producer.id)
-    .gte('created_at', todayStart.toISOString())
-    .lt('created_at', tomorrowStart.toISOString());
-
-  const { count: ordersYesterday } = await admin
-    .from('orders')
-    .select('id', { count: 'exact', head: true })
-    .eq('producer_id', producer.id)
-    .gte('created_at', yesterdayStart.toISOString())
-    .lt('created_at', todayStart.toISOString());
-
-  const { data: weekOrders } = await admin
-    .from('orders')
-    .select('id, montant_total, statut')
-    .eq('producer_id', producer.id)
-    .gte('created_at', weekStart.toISOString())
-    .lt('created_at', weekEnd.toISOString());
 
   const revenueWeek = (weekOrders ?? [])
     .filter((o) => o.statut !== 'cancelled' && o.statut !== 'refunded')
     .reduce((s, o) => s + Number(o.montant_total ?? 0), 0);
 
-  const { data: lastWeekOrders } = await admin
-    .from('orders')
-    .select('montant_total, statut')
-    .eq('producer_id', producer.id)
-    .gte('created_at', lastWeekStart.toISOString())
-    .lt('created_at', weekStart.toISOString());
-
   const revenueLastWeek = (lastWeekOrders ?? [])
     .filter((o) => o.statut !== 'cancelled' && o.statut !== 'refunded')
     .reduce((s, o) => s + Number(o.montant_total ?? 0), 0);
-
-  const { data: producerRow } = await admin
-    .from('producers')
-    .select('note_moyenne, nb_avis, badge_stock_score, badge_confirmation_score, badge_annulation_score')
-    .eq('id', producer.id)
-    .maybeSingle();
-
-  const { data: pendingRaw } = await admin
-    .from('orders')
-    .select(`
-      id, code_commande, created_at, montant_total, date_retrait,
-      consumer:consumer_id ( prenom ),
-      slots:slot_id ( starts_at, ends_at ),
-      order_items ( products:product_id ( nom ) )
-    `)
-    .eq('producer_id', producer.id)
-    .eq('statut', 'pending')
-    .order('created_at', { ascending: true })
-    .limit(5);
 
   const pendingOrders = ((pendingRaw ?? []) as unknown as Array<{
     id: string;
@@ -160,20 +210,6 @@ export default async function ProducerDashboardPage() {
     };
   });
 
-  // Next pickup (today or upcoming confirmed/ready)
-  const { data: upcomingRaw } = await admin
-    .from('orders')
-    .select(`
-      id, code_commande, heure_retrait, date_retrait,
-      consumer:consumer_id ( prenom )
-    `)
-    .eq('producer_id', producer.id)
-    .in('statut', ['confirmed', 'ready'])
-    .gte('date_retrait', todayStart.toISOString().slice(0, 10))
-    .order('date_retrait', { ascending: true })
-    .order('heure_retrait', { ascending: true })
-    .limit(1);
-
   let nextPickup: DashboardData['nextPickup'] = null;
   if (upcomingRaw && upcomingRaw.length > 0) {
     const u = upcomingRaw[0] as unknown as {
@@ -193,28 +229,6 @@ export default async function ProducerDashboardPage() {
       sub: `${consumer?.prenom ?? 'Client'} · ${u.code_commande ?? ''} · ${subDate}`.trim(),
     };
   }
-
-  // Week planning : slots sont désormais des instances matérialisées avec
-  // starts_at/ends_at timestamptz (Phase 1 créneaux). On fetch les slots de
-  // la semaine courante avec 1 jour de marge de part et d'autre pour absorber
-  // les edge cases TZ (weekStart en UTC vs slots.starts_at en Paris).
-  const slotsRangeStart = addDays(weekStart, -1);
-  const slotsRangeEnd = addDays(weekEnd, 1);
-
-  const { data: slots } = await admin
-    .from('slots')
-    .select('id, starts_at, ends_at')
-    .eq('producer_id', producer.id)
-    .eq('active', true)
-    .gte('starts_at', slotsRangeStart.toISOString())
-    .lt('starts_at', slotsRangeEnd.toISOString());
-
-  const { data: weekPickups } = await admin
-    .from('orders')
-    .select('date_retrait, slot_id, statut')
-    .eq('producer_id', producer.id)
-    .gte('date_retrait', weekStart.toISOString().slice(0, 10))
-    .lt('date_retrait', weekEnd.toISOString().slice(0, 10));
 
   const pickupsBySlotAndDay: Record<string, number> = {};
   (weekPickups ?? []).forEach((p) => {
@@ -263,16 +277,6 @@ export default async function ProducerDashboardPage() {
         : 'Évitez les annulations côté producteur pour améliorer ce score.',
     },
   ];
-
-  const { data: lowStockProducts } = await admin
-    .from('products')
-    .select('id, nom, stock_disponible, stock_illimite')
-    .eq('producer_id', producer.id)
-    .eq('active', true)
-    .eq('stock_illimite', false)
-    .lte('stock_disponible', 5)
-    .gt('stock_disponible', 0)
-    .limit(3);
 
   const stockAlerts = (lowStockProducts ?? []).map((p) => ({
     id: p.id as string,

@@ -24,10 +24,16 @@ export async function POST(request: Request) {
   const admin = createSupabaseAdminClient();
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
+  // Audit perf-postgres-2026-05-05 C-3 : SELECT initial enrichi via embeds
+  // PostgREST (`producer:producer_id (...)`, `consumer:consumer_id (...)`).
+  // Élimine le N+1 historique (1 + 2N queries → 1 query unique). Le cron
+  // utilise service_role → bypass RLS, embeds autorisés.
   const { data: orders, error } = await admin
     .from("orders")
     .select(
-      "id, code_commande, consumer_id, producer_id, montant_total, stripe_payment_intent_id",
+      `id, code_commande, consumer_id, producer_id, montant_total, stripe_payment_intent_id,
+       producer:producer_id ( nom_exploitation ),
+       consumer:consumer_id ( email )`,
     )
     .eq("statut", "pending")
     .lt("created_at", cutoff);
@@ -191,17 +197,16 @@ export async function POST(request: Request) {
       continue;
     }
 
-    // Producteur + email consommateur
-    const { data: producer } = await admin
-      .from("producers")
-      .select("nom_exploitation")
-      .eq("id", order.producer_id)
-      .maybeSingle();
-    const { data: consumer } = await admin
-      .from("users")
-      .select("email")
-      .eq("id", order.consumer_id)
-      .maybeSingle();
+    // Embeds PostgREST FK to-one : objet le plus souvent, array dans
+    // certaines versions de @supabase/supabase-js — normalisation safe.
+    const producerEmbed = Array.isArray(order.producer)
+      ? order.producer[0]
+      : order.producer;
+    const consumerEmbed = Array.isArray(order.consumer)
+      ? order.consumer[0]
+      : order.consumer;
+    const producer = producerEmbed as { nom_exploitation: string } | null;
+    const consumer = consumerEmbed as { email: string | null } | null;
 
     if (consumer?.email && producer) {
       const props = {

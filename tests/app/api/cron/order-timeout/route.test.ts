@@ -197,7 +197,15 @@ function makeRequest(opts: { auth?: string } = {}): Request {
   });
 }
 
-function makeOrder(opts: { id: string; paymentIntent?: string | null }) {
+function makeOrder(opts: {
+  id: string;
+  paymentIntent?: string | null;
+  // Audit perf-postgres-2026-05-05 C-3 : embeds PostgREST sur le SELECT
+  // initial. Defaults garantissent que les tests historiques (qui ne
+  // précisent rien) reçoivent producer + consumer valides.
+  producerEmbed?: { nom_exploitation: string } | null;
+  consumerEmbed?: { email: string | null } | null;
+}) {
   return {
     id: opts.id,
     code_commande: `CMD-${opts.id}`,
@@ -205,6 +213,14 @@ function makeOrder(opts: { id: string; paymentIntent?: string | null }) {
     producer_id: `producer-${opts.id}`,
     montant_total: 25.5,
     stripe_payment_intent_id: opts.paymentIntent ?? null,
+    producer:
+      opts.producerEmbed === undefined
+        ? { nom_exploitation: "Ferme Test" }
+        : opts.producerEmbed,
+    consumer:
+      opts.consumerEmbed === undefined
+        ? { email: "consumer@test.fr" }
+        : opts.consumerEmbed,
   };
 }
 
@@ -491,10 +507,13 @@ describe("POST /api/cron/order-timeout — multiple orders", () => {
 // =============================================================================
 describe("POST /api/cron/order-timeout — email notification", () => {
   it("skips email when consumer email is null", async () => {
-    const order = makeOrder({ id: "order-1", paymentIntent: null });
+    const order = makeOrder({
+      id: "order-1",
+      paymentIntent: null,
+      consumerEmbed: { email: null },
+    });
     const { client } = makeSupabase({
       selectOrders: { data: [order], error: null },
-      consumer: { data: { email: null }, error: null },
     });
     vi.mocked(createSupabaseAdminClient).mockReturnValue(client);
 
@@ -503,10 +522,13 @@ describe("POST /api/cron/order-timeout — email notification", () => {
   });
 
   it("skips email when producer record is missing", async () => {
-    const order = makeOrder({ id: "order-1", paymentIntent: null });
+    const order = makeOrder({
+      id: "order-1",
+      paymentIntent: null,
+      producerEmbed: null,
+    });
     const { client } = makeSupabase({
       selectOrders: { data: [order], error: null },
-      producer: { data: null, error: null },
     });
     vi.mocked(createSupabaseAdminClient).mockReturnValue(client);
 
@@ -515,11 +537,14 @@ describe("POST /api/cron/order-timeout — email notification", () => {
   });
 
   it("sends order_timeout_cancelled email with correct props/metadata when consumer+producer are present", async () => {
-    const order = makeOrder({ id: "order-7", paymentIntent: null });
+    const order = makeOrder({
+      id: "order-7",
+      paymentIntent: null,
+      producerEmbed: { nom_exploitation: "Ferme du Test" },
+      consumerEmbed: { email: "alice@example.com" },
+    });
     const { client } = makeSupabase({
       selectOrders: { data: [order], error: null },
-      producer: { data: { nom_exploitation: "Ferme du Test" }, error: null },
-      consumer: { data: { email: "alice@example.com" }, error: null },
     });
     vi.mocked(createSupabaseAdminClient).mockReturnValue(client);
 

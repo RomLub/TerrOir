@@ -119,7 +119,10 @@ function AdminProducteursPageInner() {
       query = query.neq('statut', 'draft').neq('statut', 'deleted');
     }
     const { data, error: fetchError } = await query
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      // Audit perf-postgres-2026-05-05 M-2 : protection minimale en attendant
+      // une cursor pagination complète (à intégrer avant V1.0 publique).
+      .limit(100);
     if (fetchError) { setError(fetchError.message); setLoading(false); return; }
 
     const rows: Producer[] = ((data ?? []) as unknown as Array<{

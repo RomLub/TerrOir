@@ -88,7 +88,10 @@ export default function CommandesPage() {
           order_items ( id )
         `)
         .eq('consumer_id', user.id)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        // Audit perf-postgres-2026-05-05 M-2 : protection minimale en attendant
+        // une cursor pagination complète (à intégrer avant V1.0 publique).
+        .limit(100);
 
       if (!active) return;
 

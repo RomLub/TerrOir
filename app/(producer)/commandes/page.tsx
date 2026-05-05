@@ -82,7 +82,10 @@ export default function ProducerCommandesPage() {
           order_items ( quantite, products:product_id ( nom, unite ) )
         `)
         .eq('producer_id', prod.id)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        // Audit perf-postgres-2026-05-05 M-2 : protection minimale en attendant
+        // une cursor pagination complète (à intégrer avant V1.0 publique).
+        .limit(100);
 
       if (!active) return;
 
