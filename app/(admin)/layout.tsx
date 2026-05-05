@@ -10,6 +10,11 @@ import { AdminSidebar } from "./_components/AdminSidebar";
 // désactivé / contourné (matcher cassé, header injection, régression
 // isolation cookies). Coût : un getUser() supplémentaire par route admin —
 // dédupliqué par React cache via getSessionUser().
+//
+// Audit régression 2026-05-05 N-2 : check host gardé prod-only — en dev
+// (NODE_ENV !== 'production') localhost:3000 / vercel preview ne match pas
+// "admin.*" et serait hard-redirigé vers la prod. Le check session+isAdmin
+// reste actif partout (pas de relâchement sécurité).
 export default async function AdminLayout({
   children,
 }: {
@@ -19,7 +24,10 @@ export default async function AdminLayout({
   if (!session?.isAdmin) redirect("/connexion");
 
   const host = headers().get("host") ?? "";
-  if (!host.startsWith("admin.")) {
+  if (
+    process.env.NODE_ENV === "production" &&
+    !host.startsWith("admin.")
+  ) {
     redirect("https://admin.terroir-local.fr/tableau-de-bord");
   }
 

@@ -7,6 +7,11 @@ import { getSessionUser } from "@/lib/auth/session";
 // redirige producer draft vers /onboarding). Ce check serveur protège si
 // le middleware est désactivé / contourné. Pas de check role producer ici
 // (le middleware §3b s'en occupe et redirige déjà selon producer.statut).
+//
+// Audit régression 2026-05-05 N-2 : check host gardé prod-only — en dev
+// (NODE_ENV !== 'production') localhost:3000 / vercel preview ne match pas
+// "pro.*" et serait hard-redirigé vers la prod. Le check session reste
+// actif partout (pas de relâchement sécurité).
 export default async function ProducerLayout({
   children,
 }: {
@@ -16,7 +21,10 @@ export default async function ProducerLayout({
   if (!session) redirect("/connexion");
 
   const host = headers().get("host") ?? "";
-  if (!host.startsWith("pro.")) {
+  if (
+    process.env.NODE_ENV === "production" &&
+    !host.startsWith("pro.")
+  ) {
     redirect("https://pro.terroir-local.fr/dashboard");
   }
 
