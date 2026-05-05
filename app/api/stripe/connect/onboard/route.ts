@@ -30,6 +30,11 @@ export async function POST() {
   let stripeAccountId = producer.stripe_account_id as string | null;
 
   if (!stripeAccountId) {
+    // Audit Stripe L-2 (2026-05-05) : `business_type` retiré (auparavant
+    // hardcodé à 'individual' qui force le KYC auto-entrepreneur). Stripe
+    // demande désormais le type via le accountLink natif (sélecteur
+    // Auto-entrepreneur / SARL / EURL / SAS / GAEC / Autre tenu à jour côté
+    // Stripe). Plus simple côté UI TerrOir et flow KYC à jour.
     const account = await stripe.accounts.create({
       type: "express",
       country: "FR",
@@ -38,7 +43,6 @@ export async function POST() {
         card_payments: { requested: true },
         transfers: { requested: true },
       },
-      business_type: "individual",
     });
     stripeAccountId = account.id;
 

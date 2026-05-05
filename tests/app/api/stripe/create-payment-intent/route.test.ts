@@ -120,6 +120,9 @@ const DEFAULT_ORDER = {
 };
 
 const DEFAULT_USER_PROFILE = { prenom: "Alice", nom: "Tester" };
+// Audit Stripe M-6 : guard pré-PI charges_enabled. Defaut "ready" → tous les
+// tests historiques continuent de passer le guard sans modif.
+const DEFAULT_PRODUCER_STRIPE = { stripe_charges_enabled: true };
 
 function defaultResp(table: string, op: Op): Resp {
   // T-405 : l'UPDATE de create-payment-intent route utilise `.select("id")`
@@ -130,6 +133,8 @@ function defaultResp(table: string, op: Op): Resp {
   if (op === "update" || op === "insert") return { data: null, error: null };
   if (table === "orders") return { data: DEFAULT_ORDER, error: null };
   if (table === "users") return { data: DEFAULT_USER_PROFILE, error: null };
+  if (table === "producers")
+    return { data: DEFAULT_PRODUCER_STRIPE, error: null };
   return { data: null, error: null };
 }
 
@@ -289,6 +294,31 @@ describe("B. T-406 — order.statut guard", () => {
     const body = (await res.json()) as { client_secret: string };
     expect(body.client_secret).toBe(PI_CLIENT_SECRET);
     expect(mockPaymentIntentsCreate).toHaveBeenCalledTimes(1);
+  });
+});
+
+// --- B'. Audit Stripe M-6 — guard producer.stripe_charges_enabled --------
+
+describe("B'. Audit Stripe M-6 — producer charges_enabled guard", () => {
+  it("M-6-A producer.stripe_charges_enabled=false → 409 'producer_not_ready', paymentIntents.create jamais appelé", async () => {
+    responses.producers = responses.producers ?? {};
+    responses.producers.select = [
+      { data: { stripe_charges_enabled: false }, error: null },
+    ];
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "producer_not_ready" });
+    expect(mockPaymentIntentsCreate).not.toHaveBeenCalled();
+    expect(mockGetOrCreateStripeCustomer).not.toHaveBeenCalled();
+  });
+
+  it("M-6-B producer introuvable (data=null) → 409 'producer_not_ready'", async () => {
+    responses.producers = responses.producers ?? {};
+    responses.producers.select = [{ data: null, error: null }];
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "producer_not_ready" });
+    expect(mockPaymentIntentsCreate).not.toHaveBeenCalled();
   });
 });
 

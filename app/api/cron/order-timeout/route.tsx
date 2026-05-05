@@ -17,7 +17,11 @@ import OrderTimeoutCancelled, {
 } from "@/lib/resend/templates/order-timeout-cancelled";
 import { mapWithConcurrency } from "@/lib/concurrency/p-limit";
 
-// Toutes les heures : annule + rembourse les commandes pending depuis +24h.
+// Quotidien à 9h UTC (cf. vercel.json schedule "0 9 * * *") : annule +
+// rembourse les commandes pending depuis +24h. Audit Stripe L-4 (2026-05-05)
+// alignement commentaire ↔ schedule. Conséquence UX : timeout effectif
+// compris entre 24h et 48h (vs 24-25h en hourly), trade-off accepté pour
+// limiter les invocations cron à 1/jour.
 //
 // Audit RPC M-1 : passage de boucle séquentielle à mapWithConcurrency
 // (cap 5 — opérations mixtes Stripe + Resend, on prend le plus restrictif).

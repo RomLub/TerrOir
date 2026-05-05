@@ -57,10 +57,31 @@ export async function POST(request: Request) {
     );
   }
 
+  const admin = createSupabaseAdminClient();
+
+  // Audit Stripe M-6 (defense-in-depth) : guard pré-PI sur producer.charges_enabled.
+  // L'invariant promoteProducerToPublicIfActive empêche déjà un producer
+  // non-charges-enabled d'apparaître en statut='public' côté RLS, mais on
+  // attrape ici le cas limite producer charges_enabled au moment de l'order
+  // mais qui perd la capability ENTRE order create et PI create (latence
+  // webhook account.updated, KYC re-flagged). Évite aussi un transfer cron
+  // weekly qui échouera plus tard sans signal côté consumer.
+  const { data: producer } = await admin
+    .from("producers")
+    .select("stripe_charges_enabled")
+    .eq("id", order.producer_id)
+    .maybeSingle();
+
+  if (!producer?.stripe_charges_enabled) {
+    return NextResponse.json(
+      { error: "producer_not_ready" },
+      { status: 409 },
+    );
+  }
+
   // Stripe Customer (Phase 6) : toujours attaché au PI, même si save_card=false.
   // Préparation pour Phase 7 (sélecteur CB enregistrée au checkout) et pour
   // cohérence de l'historique Stripe côté customer.
-  const admin = createSupabaseAdminClient();
   const { data: profile } = await admin
     .from("users")
     .select("prenom, nom")
