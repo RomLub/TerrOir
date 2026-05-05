@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Button, Badge, MiniMap, ProductCard } from '@/components/ui';
+import { Button, Badge, ProductCard } from '@/components/ui';
 import { useCartStore } from '@/lib/store/cart';
 import { formatSlotTime, formatSlotRange } from '@/lib/slots/format-slot-time';
 import { useUserContext } from '@/components/providers/user-provider';
 import { StockAlertForm } from './_components/StockAlertForm';
+import { MiniMapLazy } from './_components/MiniMapLazy';
 
 export type ProducerSummary = {
   id: string;
@@ -332,7 +333,7 @@ export function ProductPageClient({
               </div>
               <div className="relative h-44 bg-green-100/50">
                 {producer.lat != null && producer.lng != null ? (
-                  <MiniMap
+                  <MiniMapLazy
                     latitude={producer.lat}
                     longitude={producer.lng}
                     markerLabel={`${producer.name} — ${producer.commune}`}

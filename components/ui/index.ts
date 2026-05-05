@@ -87,7 +87,6 @@ export {
   ROLE_TOGGLE_LABEL_CONSUMER,
   ROLE_TOGGLE_LABEL_PRODUCER,
 } from "./role-toggle";
-export { MiniMap, type MiniMapProps } from "./mini-map";
 export { PostIt, type PostItProps } from "./post-it";
 export { MapSarthe, type MapSartheProps } from "./map-sarthe";
 export {

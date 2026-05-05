@@ -10,6 +10,7 @@ import { useCartStore, type CartItem } from '@/lib/store/cart';
 import { itemKey, type ValidateResponse } from '@/lib/cart/validate';
 import { classifyStripeError, type CheckoutError } from '@/lib/checkout/classify-stripe-error';
 import { SUPPORT_EMAIL_PUBLIC } from '@/lib/env/support-email-public';
+import { clientLog } from '@/lib/utils/client-log';
 import { listPaymentMethodsAction, type PaymentMethodSummary } from './actions';
 
 const BRAND_LABEL: Record<string, string> = {
@@ -174,7 +175,8 @@ export default function CheckoutPage() {
           // depuis T-434. Discriminer par hint pour UX riche au lieu d'un
           // message hardcodé qui masquait les hints UX FR du serveur.
           const errPayload = orderData as OrderCreateErrorPayload;
-          console.warn(
+          clientLog(
+            'warn',
             '[CHECKOUT_ORDER_CREATE_ERR]',
             `status=${orderRes.status}`,
             `hint=${errPayload.hint ?? 'none'}`,
@@ -233,7 +235,7 @@ export default function CheckoutPage() {
           // confirmed/ready/completed/refunded). Pas de retry possible
           // sur cette order, l'user doit consulter ses commandes.
           if (piRes.status === 409) {
-            console.warn('[CHECKOUT_INIT_409]', 'create-payment-intent', piData?.error);
+            clientLog('warn', '[CHECKOUT_INIT_409]', 'create-payment-intent', piData?.error);
             setInitError({ kind: 'init_409', message: 'Cette commande n\'est plus payable.' });
             return;
           }
@@ -453,7 +455,7 @@ function CheckoutForm({
         setSelectedPmId(defaultPm.id);
       } else {
         if ('error' in res) {
-          console.warn('[LIST_PM]', res.error);
+          clientLog('warn', '[LIST_PM]', res.error);
         }
         // Fail-silent : on laisse le mode 'new' par défaut.
         setSavedPms([]);
@@ -483,7 +485,7 @@ function CheckoutForm({
 
       if (payError) {
         const classified = classifyStripeError(payError);
-        console.warn(`[CHECKOUT_${classified.kind.toUpperCase()}]`, classified.code ?? payError.code, payError.decline_code);
+        clientLog('warn', `[CHECKOUT_${classified.kind.toUpperCase()}]`, classified.code ?? payError.code, payError.decline_code);
         setError(classified);
         setProcessing(false);
         return;
@@ -529,7 +531,7 @@ function CheckoutForm({
 
     if (payError) {
       const classified = classifyStripeError(payError);
-      console.warn(`[CHECKOUT_${classified.kind.toUpperCase()}]`, classified.code ?? payError.code, payError.decline_code);
+      clientLog('warn', `[CHECKOUT_${classified.kind.toUpperCase()}]`, classified.code ?? payError.code, payError.decline_code);
       setError(classified);
       setProcessing(false);
       return;
@@ -544,10 +546,10 @@ function CheckoutForm({
             body: JSON.stringify({ order_id: orderId }),
           });
           if (!res.ok) {
-            console.warn('[ENSURE_DEFAULT_PM]', res.status, await res.text());
+            clientLog('warn', '[ENSURE_DEFAULT_PM]', res.status, await res.text());
           }
         } catch (err) {
-          console.warn('[ENSURE_DEFAULT_PM]', (err as Error).message);
+          clientLog('warn', '[ENSURE_DEFAULT_PM]', (err as Error).message);
         }
       }
       clear();

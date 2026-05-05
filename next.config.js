@@ -4,9 +4,20 @@
 // /app/icon.png                   → favicon 64x64 (auto-détecté par Next.js)
 // Composant React <Logo /> dans components/ui/logo.tsx → SVG inline (UI in-app)
 
+const withBundleAnalyzer = require("@next/bundle-analyzer")({
+  enabled: process.env.ANALYZE === "true",
+});
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  experimental: {
+    optimizePackageImports: [
+      "@/components/ui",
+      "date-fns",
+      "@stripe/react-stripe-js",
+    ],
+  },
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "**.supabase.co" },
@@ -19,4 +30,4 @@ const nextConfig = {
   },
 };
 
-module.exports = nextConfig;
+module.exports = withBundleAnalyzer(nextConfig);

@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Cormorant_Garamond, Caveat } from "next/font/google";
+import { SpeedInsights } from "@vercel/speed-insights/next";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import { UserProvider } from "@/components/providers/user-provider";
 import { getInitialUserPayload } from "@/lib/auth/session";
@@ -67,6 +69,8 @@ export default async function RootLayout({
     >
       <body className="min-h-screen bg-terroir-bg font-sans text-terroir-ink antialiased">
         <UserProvider initial={initial}>{children}</UserProvider>
+        <SpeedInsights />
+        <Analytics />
       </body>
     </html>
   );
