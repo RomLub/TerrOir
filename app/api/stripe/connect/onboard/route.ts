@@ -3,6 +3,10 @@ import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
 import { NEXT_PUBLIC_PRODUCER_URL } from "@/lib/env/urls";
+import {
+  consumeRateLimit,
+  getStripeConnectOnboardRateLimit,
+} from "@/lib/rate-limit";
 
 // Génère un lien d'onboarding Stripe Connect pour le producteur connecté.
 // Crée le compte Express si aucun n'existe encore et persiste le stripe_account_id.
@@ -10,6 +14,24 @@ export async function POST() {
   const session = await getSessionUser();
   if (!session || (!session.roles.includes("producer") && !session.isAdmin)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  // Audit Stripe pré-launch W-2 : rate-limit applicatif user-keyed (3/60s).
+  // 1 onboard/producer en pratique, 3 retries généreux (erreur réseau,
+  // refresh page Stripe Connect). Logué [STRIPE_CONNECT_ONBOARD_RATE_LIMITED].
+  const rl = await consumeRateLimit(
+    getStripeConnectOnboardRateLimit(),
+    session.id,
+  );
+  if (!rl.success) {
+    const retryAfter = Math.max(1, Math.ceil((rl.reset - Date.now()) / 1000));
+    console.warn(
+      `[STRIPE_CONNECT_ONBOARD_RATE_LIMITED] user=${session.id} cap=${rl.limit} retry_after=${retryAfter}`,
+    );
+    return NextResponse.json(
+      { error: "rate_limited", retry_after: retryAfter },
+      { status: 429, headers: { "Retry-After": String(retryAfter) } },
+    );
   }
 
   const admin = createSupabaseAdminClient();

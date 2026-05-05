@@ -24,6 +24,7 @@ const {
   mockRecordRefundAttempt,
   mockRevalidatePublicStats,
   mockSendTemplate,
+  mockConsumeRateLimit,
 } = vi.hoisted(() => ({
   mockRevalidateTag: vi.fn(),
   mockRefundCreate: vi.fn(),
@@ -31,6 +32,14 @@ const {
   mockRecordRefundAttempt: vi.fn(),
   mockRevalidatePublicStats: vi.fn(),
   mockSendTemplate: vi.fn(),
+  mockConsumeRateLimit: vi.fn(),
+}));
+
+// Audit Stripe pré-launch W-2 : mock @/lib/rate-limit pour éviter le
+// warn lazy-init Upstash en CI. Default beforeEach = success:true.
+vi.mock("@/lib/rate-limit", () => ({
+  consumeRateLimit: mockConsumeRateLimit,
+  getStripeRefundRateLimit: () => null,
 }));
 
 vi.mock("@vercel/functions", () => ({
@@ -243,6 +252,12 @@ beforeEach(() => {
   mockLogPaymentEvent.mockReset().mockResolvedValue(undefined);
   mockRecordRefundAttempt.mockReset().mockResolvedValue(null);
   mockSendTemplate.mockReset().mockResolvedValue({ ok: true, id: "email_id" });
+  mockConsumeRateLimit.mockReset().mockResolvedValue({
+    success: true,
+    limit: 5,
+    remaining: 4,
+    reset: Date.now() + 60_000,
+  });
   delete process.env.SUPPORT_REFUND_THRESHOLD_EUR;
   consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
   savedCronSecret = process.env.CRON_SECRET;
@@ -680,5 +695,66 @@ describe("G. T-408 idempotencyKey passe en 2e arg de refunds.create", () => {
     ];
     expect(params.payment_intent).toBe(PI_ID);
     expect(options).toEqual({ idempotencyKey: `refund_${ORDER_ID}_admin` });
+  });
+});
+
+// --- H. Audit Stripe pré-launch W-2 — rate-limit applicatif --------------
+// Cap 5/60s, key user si session, IP fallback sinon. Le rate-limit s'évalue
+// AVANT l'admin client + auth check métier (anti-flood le plus tôt possible).
+
+describe("H. W-2 — rate-limit applicatif (5/60s)", () => {
+  it("H1 rate-limit non dépassé → flow nominal 200, consumeRateLimit appelé avec session.id (admin)", async () => {
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(200);
+    expect(mockConsumeRateLimit).toHaveBeenCalledTimes(1);
+    expect(mockConsumeRateLimit.mock.calls[0]?.[1]).toBe("admin-1");
+  });
+
+  it("H2 rate-limit dépassé → 429 + retry_after + Retry-After header, aucun appel Stripe / Supabase métier", async () => {
+    const reset = Date.now() + 30_000;
+    mockConsumeRateLimit.mockResolvedValueOnce({
+      success: false,
+      limit: 5,
+      remaining: 0,
+      reset,
+    });
+
+    const res = await POST(makeRequest());
+    const body = (await res.json()) as { error: string; retry_after: number };
+
+    expect(res.status).toBe(429);
+    expect(body.error).toBe("rate_limited");
+    expect(body.retry_after).toBeGreaterThan(0);
+    expect(body.retry_after).toBeLessThanOrEqual(31);
+    expect(res.headers.get("Retry-After")).toBe(String(body.retry_after));
+
+    expect(mockRefundCreate).not.toHaveBeenCalled();
+    expect(captured.fromCalls).toEqual([]);
+
+    const warnCalls = consoleWarnSpy.mock.calls.map((c: unknown[]) =>
+      String(c[0] ?? ""),
+    );
+    const rlLog = warnCalls.find((m: string) =>
+      m.includes("[STRIPE_REFUND_RATE_LIMITED]"),
+    );
+    expect(rlLog).toBeDefined();
+    expect(rlLog!).toContain("key=admin-1");
+    expect(rlLog!).toContain("cap=5");
+  });
+
+  it("H3 session absente → key = IP fallback (x-forwarded-for)", async () => {
+    sessionUser = null;
+    mockConsumeRateLimit.mockResolvedValueOnce({
+      success: false,
+      limit: 5,
+      remaining: 0,
+      reset: Date.now() + 30_000,
+    });
+
+    const res = await POST(
+      makeRequest({ headers: { "x-forwarded-for": "203.0.113.42, 10.0.0.1" } }),
+    );
+    expect(res.status).toBe(429);
+    expect(mockConsumeRateLimit.mock.calls[0]?.[1]).toBe("203.0.113.42");
   });
 });

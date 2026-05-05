@@ -7,6 +7,10 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
 import { getOrCreateStripeCustomer } from "@/lib/stripe/customer";
 import { eurosToCents } from "@/lib/money/cents";
+import {
+  consumeRateLimit,
+  getStripeCreatePaymentIntentRateLimit,
+} from "@/lib/rate-limit";
 
 const bodySchema = z.object({
   order_id: z.string().uuid(),
@@ -20,6 +24,25 @@ export async function POST(request: Request) {
   }
   if (!session.email) {
     return NextResponse.json({ error: "Email manquant" }, { status: 500 });
+  }
+
+  // Audit Stripe pré-launch W-2 : rate-limit applicatif user-keyed (10/60s).
+  // Cap absorbe 1 PI/checkout + retries 2-3 typiques (réseau, double-clic) +
+  // marge confortable. Defensive layer — pas de PCI direct, mais limite
+  // l'abus volume détectable côté PSP.
+  const rl = await consumeRateLimit(
+    getStripeCreatePaymentIntentRateLimit(),
+    session.id,
+  );
+  if (!rl.success) {
+    const retryAfter = Math.max(1, Math.ceil((rl.reset - Date.now()) / 1000));
+    console.warn(
+      `[STRIPE_CREATE_PI_RATE_LIMITED] user=${session.id} cap=${rl.limit} retry_after=${retryAfter}`,
+    );
+    return NextResponse.json(
+      { error: "rate_limited", retry_after: retryAfter },
+      { status: 429, headers: { "Retry-After": String(retryAfter) } },
+    );
   }
 
   const body = await request.json().catch(() => null);

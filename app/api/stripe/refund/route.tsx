@@ -18,6 +18,11 @@ import {
   assertTransition,
   type OrderStatus,
 } from "@/lib/orders/stateMachine";
+import {
+  consumeRateLimit,
+  getStripeRefundRateLimit,
+} from "@/lib/rate-limit";
+import { extractRequestContext } from "@/lib/audit-logs/log-auth-event";
 
 const bodySchema = z.object({ order_id: z.string().uuid() });
 
@@ -40,6 +45,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
 
+  // Audit Stripe pré-launch W-2 : rate-limit applicatif (5/60s). Key user
+  // si session, IP fallback sinon (un caller anonyme tombe en 403 plus bas
+  // mais on freine quand même le flood). Logué [STRIPE_REFUND_RATE_LIMITED].
+  const session = await getSessionUser();
+  const rateLimitKey =
+    session?.id ?? extractRequestContext(request.headers).ipAddress ?? "unknown";
+  const rl = await consumeRateLimit(getStripeRefundRateLimit(), rateLimitKey);
+  if (!rl.success) {
+    const retryAfter = Math.max(1, Math.ceil((rl.reset - Date.now()) / 1000));
+    console.warn(
+      `[STRIPE_REFUND_RATE_LIMITED] key=${rateLimitKey} cap=${rl.limit} retry_after=${retryAfter}`,
+    );
+    return NextResponse.json(
+      { error: "rate_limited", retry_after: retryAfter },
+      { status: 429, headers: { "Retry-After": String(retryAfter) } },
+    );
+  }
+
   const admin = createSupabaseAdminClient();
 
   const { data: order } = await admin
@@ -56,7 +79,6 @@ export async function POST(request: Request) {
 
   let authorized = false;
   let refundedByProducer = false;
-  const session = await getSessionUser();
   if (session?.isAdmin) {
     authorized = true;
   } else if (session?.roles.includes("producer")) {

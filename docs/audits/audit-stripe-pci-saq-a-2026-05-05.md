@@ -3,7 +3,7 @@
 > **Périmètre** : Self-Assessment Questionnaire A (SAQ-A) — applicable aux marchands qui externalisent **intégralement** la collecte/traitement/stockage des données de carte à un tiers PCI-validé. C'est le scope le plus light de PCI DSS, accessible aux intégrations e-commerce qui utilisent **Stripe Checkout**, **Stripe Elements iframe-only**, ou redirect-style.
 > **Méthode** : audit READ-ONLY sur la base de code TerrOir + grep ciblés. Aucune modification appliquée.
 > **Lié à** : audit Stripe phase A `audit-stripe-2026-05-05.md`, plan phase B pré-launch.
-> **Décision finale** : ✅ **TerrOir est éligible SAQ-A** sous réserve des 2 WARN documentés ci-dessous (headers de sécurité, rate-limiting endpoints Stripe).
+> **Décision finale** : ✅ **TerrOir est éligible SAQ-A** sous réserve du WARN restant documenté ci-dessous (headers de sécurité). W-2 rate-limiting endpoints Stripe **FIXED 2026-05-05**.
 
 ---
 
@@ -21,10 +21,10 @@
 | 8. Cookies session sécurisés (HttpOnly, Secure, SameSite)           |   OK   | Géré par `@supabase/ssr` — défauts production-safe                     |
 | 9. `STRIPE_SECRET_KEY` jamais exposé côté client                    |   OK   | Uniquement `lib/stripe/server.ts` + scripts + tests E2E                |
 | 10. Idempotency-key sur opérations Stripe write                     |   OK   | Audit phase A §L-6, doc `docs/conventions/stripe-idempotency.md`       |
-| 11. Rate-limiting endpoints Stripe critiques                        | WARN   | Uniquement signup/login/recovery — `/api/stripe/*` non rate-limité     |
+| 11. Rate-limiting endpoints Stripe critiques                        |   OK   | FIXED 2026-05-05 — 3 endpoints rate-limités via Upstash sliding window |
 | 12. Anti-CSRF                                                       |   OK   | Cookies Supabase `SameSite=Lax` par défaut + `@supabase/ssr` SSR-side  |
 
-**Verdict counts** : 10 OK / 2 WARN / 0 FAIL → SAQ-A éligible. Les 2 WARN sont des durcissements defense-in-depth, pas des bloqueurs PCI SAQ-A.
+**Verdict counts** : 11 OK / 1 WARN / 0 FAIL → SAQ-A éligible. Le WARN restant (W-1 headers de sécurité) est un durcissement defense-in-depth, pas un bloqueur PCI SAQ-A. W-2 a été remédié 2026-05-05 (rate-limit Stripe write).
 
 ---
 
@@ -159,24 +159,30 @@ async headers() {
 
 **Estimé** : 1-2h pour les 4 headers simples. **2-4h** supplémentaires si on veut une vraie CSP testée (Stripe + Mapbox + Supabase + Resend tracking pixels). Pas bloquant pour go-live ; à inscrire au backlog V1.1.
 
-### W-2 — Endpoints Stripe non rate-limités
+### W-2 — Endpoints Stripe non rate-limités — ✅ FIXED 2026-05-05
 
-**Preuve** : `lib/rate-limit.ts` expose 4 helpers (`signup`, `login`, `magic_link`, `recovery`). Aucun consommé dans `app/api/stripe/*` (grep `Ratelimit|rateLimit` dans `app/api/stripe/` = 0 hit, sauf `audit-stripe-2026-05-05.md` qui est doc).
+**État initial** : `lib/rate-limit.ts` exposait 4 helpers (`signup`, `login`, `magic_link`, `recovery`). Aucun consommé dans `app/api/stripe/*`.
 
-**Endpoints concernés** :
-- `POST /api/stripe/create-payment-intent` — abuse possible : un user authentifié pourrait créer N PaymentIntents en spam (chaque PI = 1 round-trip Stripe + log Audit). Pas de coût direct (Stripe ne facture pas la création), mais pollution Dashboard.
-- `POST /api/stripe/refund` — déjà protégé par session admin / producer-owner, mais un admin compromis pourrait refund N orders en boucle.
-- `POST /api/stripe/connect/onboard` — création comptes Connect en spam = impact reputation TerrOir auprès Stripe (KYC peut s'inquiéter d'un volume anormal).
-- `POST /api/stripe/webhook` — protégé par signature + IP allowlist (LOT 1) — pas besoin de rate-limit applicatif.
+**Remédiation appliquée** (durcissement V1.1 anticipé pré-launch) :
 
-**Severity SAQ-A** : WARN, le SAQ-A ne demande pas de rate-limit applicatif, mais le PSP Stripe peut suspendre TerrOir si un volume anormal est détecté côté API.
+3 nouveaux helpers ajoutés à `lib/rate-limit.ts` (Upstash Redis sliding window, fail-open, prefix-scoped) :
 
-**Fix recommandé V1.1** :
-- Ajouter un `getStripeWriteRateLimit()` dans `lib/rate-limit.ts` (ex. `10/min/user`).
-- Consommer dans `/api/stripe/create-payment-intent`, `/api/stripe/refund`, `/api/stripe/connect/onboard`.
-- Webhook restant exempté (signature suffit + IP allowlist).
+| Helper                                       | Cap     | Endpoint                                 | Key            |
+|----------------------------------------------|---------|------------------------------------------|----------------|
+| `getStripeCreatePaymentIntentRateLimit`      | 10/60s  | `POST /api/stripe/create-payment-intent` | `userId`       |
+| `getStripeRefundRateLimit`                   | 5/60s   | `POST /api/stripe/refund`                | `userId` ∥ IP  |
+| `getStripeConnectOnboardRateLimit`           | 3/60s   | `POST /api/stripe/connect/onboard`       | `userId`       |
 
-**Estimé** : 2-3h. À inscrire au backlog V1.1.
+`POST /api/stripe/webhook` reste hors scope (signature `stripe.webhooks.constructEvent` + IP allowlist phase B LOT 1 = double-defense suffisante).
+
+**Comportement** :
+- Au-delà du cap → `429 { error: 'rate_limited', retry_after: <seconds> }` + header `Retry-After`.
+- Logging greppable : `[STRIPE_CREATE_PI_RATE_LIMITED]`, `[STRIPE_REFUND_RATE_LIMITED]`, `[STRIPE_CONNECT_ONBOARD_RATE_LIMITED]`.
+- Fail-open hérité de l'infra T-305 : `UPSTASH_*` absent ou Redis throw → success=true (jamais bloquer un consumer en cas d'incident infra).
+
+**Tests** : `tests/app/api/stripe/{create-payment-intent,refund,connect/onboard}/route.test.ts` couvrent les 2 cas par endpoint (rate-limit non dépassé / dépassé). Refund teste aussi le fallback IP via `x-forwarded-for`.
+
+**Convention** : cf. `docs/conventions/rate-limiting.md` pour ajouter de nouveaux rate-limits.
 
 ---
 
@@ -202,7 +208,7 @@ async headers() {
 
 ## Recommandations pour go-live
 
-Aucune action bloquante PCI SAQ-A. Les 2 WARN (W-1 headers, W-2 rate-limit Stripe endpoints) sont à traiter en **V1.1** comme durcissement defense-in-depth, pas comme prérequis du go-live.
+Aucune action bloquante PCI SAQ-A. Le WARN W-1 (headers de sécurité) reste à traiter en **V1.1** comme durcissement defense-in-depth, pas comme prérequis du go-live. W-2 a été remédié pré-launch (rate-limit Stripe write — cf. ci-dessus).
 
 Sur le runbook de bascule test→live :
 1. Confirmer que les variables `STRIPE_SECRET_KEY` (`sk_live_*`) et `STRIPE_WEBHOOK_SECRET` (whsec live) sont configurées **uniquement** sur l'environnement Production Vercel (pas Preview).

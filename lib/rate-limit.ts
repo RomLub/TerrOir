@@ -104,10 +104,21 @@ export async function consumeRateLimit(
 // Rationnel : login mdp et magic link partageaient le même cap, ce qui
 // permettait à un attaquant de consommer le quota login pour tous les
 // users derrière une IP NAT en floodant le magic link.
+//
+// Audit Stripe pré-launch W-2 (2026-05-05) : extension aux 3 endpoints
+// Stripe write — keying par userId (session obligatoire sur les 3 routes).
+// Caps choisis pour absorber les retries légitimes (réseau flaky, double-clic
+// React) sans bloquer les flows nominaux :
+//   create_payment_intent  10/60s — 1 PI/checkout, retries 2-3 typiques.
+//   refund                  5/60s — admin/producer manuel, 2-3/min en pratique.
+//   connect_onboard         3/60s — 1 onboard/producer, retry erreur OK.
 let _signupLimiter: Ratelimit | null | undefined;
 let _loginLimiter: Ratelimit | null | undefined;
 let _magicLinkLimiter: Ratelimit | null | undefined;
 let _recoveryLimiter: Ratelimit | null | undefined;
+let _stripeCreatePaymentIntentLimiter: Ratelimit | null | undefined;
+let _stripeRefundLimiter: Ratelimit | null | undefined;
+let _stripeConnectOnboardLimiter: Ratelimit | null | undefined;
 
 export function getSignupRateLimit(): Ratelimit | null {
   if (_signupLimiter === undefined) {
@@ -135,4 +146,33 @@ export function getRecoveryRateLimit(): Ratelimit | null {
     _recoveryLimiter = createRateLimiter(3, "60 s", "recovery");
   }
   return _recoveryLimiter;
+}
+
+export function getStripeCreatePaymentIntentRateLimit(): Ratelimit | null {
+  if (_stripeCreatePaymentIntentLimiter === undefined) {
+    _stripeCreatePaymentIntentLimiter = createRateLimiter(
+      10,
+      "60 s",
+      "stripe_create_payment_intent",
+    );
+  }
+  return _stripeCreatePaymentIntentLimiter;
+}
+
+export function getStripeRefundRateLimit(): Ratelimit | null {
+  if (_stripeRefundLimiter === undefined) {
+    _stripeRefundLimiter = createRateLimiter(5, "60 s", "stripe_refund");
+  }
+  return _stripeRefundLimiter;
+}
+
+export function getStripeConnectOnboardRateLimit(): Ratelimit | null {
+  if (_stripeConnectOnboardLimiter === undefined) {
+    _stripeConnectOnboardLimiter = createRateLimiter(
+      3,
+      "60 s",
+      "stripe_connect_onboard",
+    );
+  }
+  return _stripeConnectOnboardLimiter;
 }

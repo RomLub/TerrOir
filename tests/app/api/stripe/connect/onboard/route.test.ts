@@ -28,10 +28,19 @@ const {
   mockAccountsCreate,
   mockAccountsDel,
   mockAccountLinksCreate,
+  mockConsumeRateLimit,
 } = vi.hoisted(() => ({
   mockAccountsCreate: vi.fn(),
   mockAccountsDel: vi.fn(),
   mockAccountLinksCreate: vi.fn(),
+  mockConsumeRateLimit: vi.fn(),
+}));
+
+// Audit Stripe pré-launch W-2 : mock @/lib/rate-limit pour éviter le
+// warn lazy-init Upstash en CI. Default beforeEach = success:true.
+vi.mock("@/lib/rate-limit", () => ({
+  consumeRateLimit: mockConsumeRateLimit,
+  getStripeConnectOnboardRateLimit: () => null,
 }));
 
 vi.mock("@/lib/stripe/server", () => ({
@@ -141,6 +150,12 @@ beforeEach(() => {
   mockAccountLinksCreate
     .mockReset()
     .mockResolvedValue({ url: "https://connect.stripe.com/setup/acct_new_test" });
+  mockConsumeRateLimit.mockReset().mockResolvedValue({
+    success: true,
+    limit: 3,
+    remaining: 2,
+    reset: Date.now() + 60_000,
+  });
   consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 });
 
@@ -350,5 +365,50 @@ describe("POST /api/stripe/connect/onboard — compensation T-418", () => {
     expect(warned).toContain("account=acct_new_test");
     expect(warned).toContain(`producer=${PRODUCER_ID}`);
     expect(warned).toContain("Account has activity");
+  });
+});
+
+// =============================================================================
+// 6. Audit Stripe pré-launch W-2 — rate-limit applicatif (3/60s user-keyed)
+// =============================================================================
+
+describe("POST /api/stripe/connect/onboard — W-2 rate-limit (3/60s)", () => {
+  it("rate-limit non dépassé → flow nominal 200, consumeRateLimit appelé avec session.id", async () => {
+    const res = await POST();
+    expect(res.status).toBe(200);
+    expect(mockConsumeRateLimit).toHaveBeenCalledTimes(1);
+    expect(mockConsumeRateLimit.mock.calls[0]?.[1]).toBe(USER_ID);
+  });
+
+  it("rate-limit dépassé → 429 + retry_after + Retry-After header, aucun appel Stripe", async () => {
+    const reset = Date.now() + 30_000;
+    mockConsumeRateLimit.mockResolvedValueOnce({
+      success: false,
+      limit: 3,
+      remaining: 0,
+      reset,
+    });
+
+    const res = await POST();
+    const body = (await res.json()) as { error: string; retry_after: number };
+
+    expect(res.status).toBe(429);
+    expect(body.error).toBe("rate_limited");
+    expect(body.retry_after).toBeGreaterThan(0);
+    expect(body.retry_after).toBeLessThanOrEqual(31);
+    expect(res.headers.get("Retry-After")).toBe(String(body.retry_after));
+
+    expect(mockAccountsCreate).not.toHaveBeenCalled();
+    expect(mockAccountLinksCreate).not.toHaveBeenCalled();
+
+    const warnCalls = consoleWarnSpy.mock.calls.map((c: unknown[]) =>
+      String(c[0] ?? ""),
+    );
+    const rlLog = warnCalls.find((m: string) =>
+      m.includes("[STRIPE_CONNECT_ONBOARD_RATE_LIMITED]"),
+    );
+    expect(rlLog).toBeDefined();
+    expect(rlLog!).toContain(`user=${USER_ID}`);
+    expect(rlLog!).toContain("cap=3");
   });
 });

@@ -168,14 +168,14 @@ WHERE stripe_account_id IS NOT NULL;
 
 > Phase B pré-launch (L-1 IP allowlist + PCI SAQ-A audit + 3DS matrice) est ✅ DONE. Les items ci-dessous restent post-launch / V1.1.
 
-- ✅ **Conformité PCI DSS** : SAQ-A audit léger réalisé 2026-05-05. **TerrOir éligible SAQ-A** (10 OK / 2 WARN / 0 FAIL). Cf. `docs/audits/audit-stripe-pci-saq-a-2026-05-05.md`. À re-valider avec un consultant en cas de demande Stripe / autorité.
+- ✅ **Conformité PCI DSS** : SAQ-A audit léger réalisé 2026-05-05. **TerrOir éligible SAQ-A** (11 OK / 1 WARN / 0 FAIL — W-2 remédié pré-launch). Cf. `docs/audits/audit-stripe-pci-saq-a-2026-05-05.md`. À re-valider avec un consultant en cas de demande Stripe / autorité.
 - ✅ **3DS testing exhaustif** : 4 tests E2E Playwright + 1 skip documenté (`tests/e2e/stripe-3ds-matrix.spec.ts`). Cas decline post-challenge laissé en couverture unitaire (`handle-payment-failed.test.ts`) — drive UI iframe Stripe hors scope E2E stable.
 - ✅ **L-1 IP allowlist webhook Stripe** : implémenté côté applicatif (`lib/stripe/ip-allowlist.ts` + check route). Bypass implicite preview/dev. Doc convention `docs/conventions/stripe-webhook.md` pour refresh trimestriel.
 - ✅ **L-3 Apple Pay domain verification** : FIXED phase 2 (cf. `docs/fixes/fix-stripe-phase-2-m1-l3-2026-05-05.md`).
 - ⏳ **RGS payouts** : Stripe Connect Express verse en T+7 par défaut (configurable T+2). Pour les producers, T+7 risque de générer du support "où est mon argent" — arbitrer si on bumpe à T+2 (cashflow plateforme moins bon mais UX producer mieux).
 - ⏳ **Cron dispute deadline check** : observation réelle des thresholds 24h / 72h. Si les disputes arrivent toutes le matin (déjà observé sur volumes test), aligner le cron à 6h UTC pour laisser plus de marge admin.
 - ⏳ **W-1 PCI durcissement headers de sécurité** (audit SAQ-A) : ajouter `headers()` dans `next.config.js` (X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, CSP). Backlog V1.1.
-- ⏳ **W-2 PCI rate-limit endpoints Stripe** (audit SAQ-A) : étendre `lib/rate-limit.ts` avec un helper `getStripeWriteRateLimit()` et l'appliquer à `/api/stripe/create-payment-intent`, `/api/stripe/refund`, `/api/stripe/connect/onboard`. Backlog V1.1.
+- ✅ **W-2 PCI rate-limit endpoints Stripe** (audit SAQ-A) — FIXED 2026-05-05 (durcissement V1.1 anticipé pré-launch). 3 helpers ajoutés à `lib/rate-limit.ts` : `getStripeCreatePaymentIntentRateLimit` (10/60s), `getStripeRefundRateLimit` (5/60s), `getStripeConnectOnboardRateLimit` (3/60s). Cf. `docs/conventions/rate-limiting.md` + `docs/audits/audit-stripe-pci-saq-a-2026-05-05.md` §W-2.
 
 ---
 

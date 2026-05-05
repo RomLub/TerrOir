@@ -17,6 +17,7 @@ const {
   mockPaymentIntentsUpdate,
   mockPaymentIntentsCancel,
   mockGetOrCreateStripeCustomer,
+  mockConsumeRateLimit,
   StripeIdempotencyError,
 } = vi.hoisted(() => {
   // Mock minimal de Stripe.errors.StripeIdempotencyError pour les tests T-405
@@ -36,9 +37,18 @@ const {
     mockPaymentIntentsUpdate: vi.fn(),
     mockPaymentIntentsCancel: vi.fn(),
     mockGetOrCreateStripeCustomer: vi.fn(),
+    mockConsumeRateLimit: vi.fn(),
     StripeIdempotencyError,
   };
 });
+
+// Audit Stripe pré-launch W-2 : mock @/lib/rate-limit pour éviter le
+// warn lazy-init Upstash en CI. Default beforeEach = success:true → tous
+// les tests historiques traversent le rate-limit transparent.
+vi.mock("@/lib/rate-limit", () => ({
+  consumeRateLimit: mockConsumeRateLimit,
+  getStripeCreatePaymentIntentRateLimit: () => null,
+}));
 
 // Mock du module `stripe` (default export Stripe class) pour exposer
 // `Stripe.errors.StripeIdempotencyError` dans le code production. Le client
@@ -241,6 +251,12 @@ beforeEach(() => {
   mockPaymentIntentsUpdate.mockReset().mockResolvedValue({});
   mockPaymentIntentsCancel.mockReset().mockResolvedValue({});
   mockGetOrCreateStripeCustomer.mockReset().mockResolvedValue(CUSTOMER_ID);
+  mockConsumeRateLimit.mockReset().mockResolvedValue({
+    success: true,
+    limit: 10,
+    remaining: 9,
+    reset: Date.now() + 60_000,
+  });
 });
 
 afterEach(() => {
@@ -485,5 +501,58 @@ describe("D. T-405 — race protection + rollback compensation", () => {
     expect(reuseLog!).toContain("idempotent");
     // Retrieve emis sur le PI gagnant.
     expect(mockPaymentIntentsRetrieve).toHaveBeenCalledWith("pi_winning_999");
+  });
+});
+
+// --- E. Audit Stripe pré-launch W-2 — rate-limit applicatif --------------
+// Cap 10/60s user-keyed. consumeRateLimit success=false → 429 + retry_after,
+// pas d'appel Stripe. Le path success=true par defaut beforeEach couvre
+// l'absence de régression (cf. tous les tests A→D).
+
+describe("E. W-2 — rate-limit applicatif (10/60s user-keyed)", () => {
+  it("E1 rate-limit non dépassé (success=true) → flow nominal 200", async () => {
+    // Cas explicite : success:true par defaut beforeEach. On verifie aussi
+    // que consumeRateLimit a bien ete appele avec session.id.
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(200);
+    expect(mockConsumeRateLimit).toHaveBeenCalledTimes(1);
+    expect(mockConsumeRateLimit.mock.calls[0]?.[1]).toBe(CONSUMER_ID);
+    expect(mockPaymentIntentsCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it("E2 rate-limit dépassé (success=false) → 429 + retry_after + Retry-After header, aucun appel Stripe", async () => {
+    const reset = Date.now() + 30_000;
+    mockConsumeRateLimit.mockResolvedValueOnce({
+      success: false,
+      limit: 10,
+      remaining: 0,
+      reset,
+    });
+    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const res = await POST(makeRequest());
+    const body = (await res.json()) as { error: string; retry_after: number };
+
+    expect(res.status).toBe(429);
+    expect(body.error).toBe("rate_limited");
+    expect(body.retry_after).toBeGreaterThan(0);
+    expect(body.retry_after).toBeLessThanOrEqual(31);
+    expect(res.headers.get("Retry-After")).toBe(String(body.retry_after));
+
+    // Aucun appel Stripe / Supabase metier après refus rate-limit.
+    expect(mockPaymentIntentsCreate).not.toHaveBeenCalled();
+    expect(mockGetOrCreateStripeCustomer).not.toHaveBeenCalled();
+    expect(captured.fromCalls).toEqual([]);
+
+    // Log greppable [STRIPE_CREATE_PI_RATE_LIMITED] avec userId + cap.
+    const warnCalls = consoleWarnSpy.mock.calls.map((c: unknown[]) =>
+      String(c[0] ?? ""),
+    );
+    const rlLog = warnCalls.find((m: string) =>
+      m.includes("[STRIPE_CREATE_PI_RATE_LIMITED]"),
+    );
+    expect(rlLog).toBeDefined();
+    expect(rlLog!).toContain(`user=${CONSUMER_ID}`);
+    expect(rlLog!).toContain("cap=10");
   });
 });
