@@ -621,12 +621,18 @@ function CheckoutForm({
       )}
 
       {/* PaymentElement toujours monté (required par useElements) mais caché
-          en mode 'saved' pour éviter un remount coûteux. */}
+          en mode 'saved' pour éviter un remount coûteux. Audit M-1 + L-3 :
+          wallets Apple Pay / Google Pay autorisés (domain enregistré côté
+          Stripe via scripts/register-payment-method-domain.ts, PI créé avec
+          automatic_payment_methods.enabled). Le PaymentElement détecte
+          automatiquement le support device-side (Safari iOS pour Apple Pay,
+          Chrome avec compte Google pour Google Pay). En mode 'saved', le
+          path confirmCardPayment est card-only (cohérent : on confirme une
+          CB déjà attachée au Customer, pas un wallet). */}
       <div className={mode === 'saved' ? 'hidden' : 'space-y-4'}>
         <PaymentElement
           options={{
             layout: 'tabs',
-            wallets: { applePay: 'never', googlePay: 'never' },
           }}
         />
         <label className="flex items-start gap-3 cursor-pointer select-none">

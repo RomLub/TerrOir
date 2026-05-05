@@ -339,6 +339,36 @@ describe("C. T-404 — idempotencyKey passe en 2e arg de paymentIntents.create",
   });
 });
 
+// --- C'. Audit Stripe M-1 — automatic_payment_methods (Card+ApplePay+GooglePay)
+// remplace payment_method_types: ['card'] hardcodé. allow_redirects:'never'
+// préserve le flow single-page (pas de SEPA Debit redirect / Bancontact / iDEAL).
+
+describe("C'. Audit Stripe M-1 — automatic_payment_methods config", () => {
+  it("M-1-A PI cree avec automatic_payment_methods.enabled=true et allow_redirects='never'", async () => {
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(200);
+    expect(mockPaymentIntentsCreate).toHaveBeenCalledTimes(1);
+    const [params] = mockPaymentIntentsCreate.mock.calls[0]! as [
+      Record<string, unknown>,
+      unknown,
+    ];
+    expect(params.automatic_payment_methods).toEqual({
+      enabled: true,
+      allow_redirects: "never",
+    });
+  });
+
+  it("M-1-B payment_method_types n'est plus passe (laisse Stripe Dashboard piloter le set)", async () => {
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(200);
+    const [params] = mockPaymentIntentsCreate.mock.calls[0]! as [
+      Record<string, unknown>,
+      unknown,
+    ];
+    expect(params.payment_method_types).toBeUndefined();
+  });
+});
+
 // --- D. T-405 verrou DB anti-race + rollback + catch idempotency reuse ---
 
 describe("D. T-405 — race protection + rollback compensation", () => {

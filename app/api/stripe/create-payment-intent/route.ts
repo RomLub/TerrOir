@@ -137,10 +137,18 @@ export async function POST(request: Request) {
   // (montant_total − 6%) est déclenché plus tard par /api/cron/weekly-payout.
   const amount = eurosToCents(order.montant_total);
 
-  // payment_method_types: ["card"] explicite → désactive le default
-  // automatic_payment_methods qui activerait Link dans le Payment Element.
-  // Notre propre système de cartes sauvegardées (Stripe Customer) couvre
-  // le besoin sans la friction Link (email+téléphone+nom obligatoires).
+  // Audit Stripe phase 2 M-1 + L-3 (2026-05-05) — passage à dynamic payment
+  // methods. Active Card + Apple Pay + Google Pay (domain `www.terroir-local.fr`
+  // enregistré via scripts/register-payment-method-domain.ts) selon la décision
+  // du compte Stripe Dashboard. `allow_redirects: 'never'` filtre les méthodes
+  // redirect-based (SEPA Debit redirect, Bancontact, iDEAL...) pour préserver
+  // le flow single-page existant : confirmPayment retourne le PI inline sans
+  // sortir de la page checkout. SEPA Direct Debit reste explicitement OUT
+  // de cette phase (chantier V1.1 dédié — implique un handler
+  // payment_intent.processing + UI processing-state + adaptation cron
+  // order-timeout, non triviale). Link reste désactivable côté Dashboard
+  // (compte → settings/payment_methods) si Romain veut le retirer ; le code
+  // ne le hardcode plus.
   // T-404 idempotencyKey : `pi_create_${order.id}` (UUID stable). Empeche
   // la double creation Stripe sur retry (timeout reseau, double-clic client,
   // re-render React). Cohérent avec le pattern `refund_${order_id}_*` des
@@ -152,7 +160,10 @@ export async function POST(request: Request) {
         amount,
         currency: "eur",
         customer: customerId,
-        payment_method_types: ["card"],
+        automatic_payment_methods: {
+          enabled: true,
+          allow_redirects: "never",
+        },
         ...(setupFutureUsage && { setup_future_usage: setupFutureUsage }),
         metadata: {
           order_id: order.id,

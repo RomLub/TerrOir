@@ -237,6 +237,27 @@ test('Smoke Phase 3 Lot 3 — Connect onboard + checkout E2E (SDK 22 + dahlia)',
     const piBody = (await piResponse.json()) as { client_secret: string };
     expect(piBody.client_secret).toMatch(/^pi_.+_secret_/);
     console.log(`[smoke] PI client_secret OK (préfixe ${piBody.client_secret.slice(0, 12)}…)`);
+
+    // Audit Stripe phase 2 M-1 : vérifie que le PI a bien
+    // automatic_payment_methods.enabled (Card + Apple Pay + Google Pay activés
+    // dynamiquement via Dashboard) au lieu de payment_method_types: ['card']
+    // hardcodé. allow_redirects:'never' filtre SEPA/Bancontact/iDEAL pour
+    // préserver le flow single-page (skip explicite SEPA cf phase V1.1).
+    // Note : Apple Pay / Google Pay E2E réels (modal Wallet device-side) =
+    // impossible à automatiser proprement (Apple Pay requiert iPhone Safari
+    // physique + carte sandbox + biométrie ; Google Pay requiert Chrome avec
+    // compte Google + carte sandbox). Test plan post-deploy = matrice manuelle
+    // documentée dans docs/fixes/fix-stripe-phase-2-m1-l3-2026-05-05.md.
+    const piId = piBody.client_secret.split('_secret_')[0]!;
+    const pi = await stripe.paymentIntents.retrieve(piId);
+    expect(pi.automatic_payment_methods?.enabled).toBe(true);
+    expect(pi.automatic_payment_methods?.allow_redirects).toBe('never');
+    expect(pi.payment_method_types).toEqual(
+      expect.arrayContaining(['card']),
+    );
+    console.log(
+      `[smoke] PI automatic_payment_methods OK (methods=${pi.payment_method_types.join(',')})`,
+    );
   });
 
   // ──────────────────────────────────────────────────────────────────────

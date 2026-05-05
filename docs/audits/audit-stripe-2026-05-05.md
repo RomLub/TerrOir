@@ -146,7 +146,17 @@ TerrOir Express → la plateforme paye les chargebacks. Audit perte attendue : a
 
 # MEDIUM
 
-## M-1 — `payment_method_types: ["card"]` hardcodé → désactive Apple Pay, Google Pay, SEPA (et Link, intentionnellement)
+## M-1 — `payment_method_types: ["card"]` hardcodé → désactive Apple Pay, Google Pay, SEPA (et Link, intentionnellement) ✅ FIXED (Phase 2)
+
+> **Statut 2026-05-05** : FIXED côté code TerrOir. `automatic_payment_methods:
+> { enabled: true, allow_redirects: 'never' }` remplace le hardcode `card`.
+> Domain `www.terroir-local.fr` enregistré via `payment_method_domains` API
+> (statuses apple_pay/google_pay/link/paypal = active). +2 tests vitest +
+> extension E2E smoke phase 3.
+> Cf [`docs/fixes/fix-stripe-phase-2-m1-l3-2026-05-05.md`](../fixes/fix-stripe-phase-2-m1-l3-2026-05-05.md).
+> **Action restante côté Romain** : 4 vérifications Dashboard Stripe (test +
+> live le jour cutover) + apply script sur compte LIVE.
+> SEPA / Bancontact / Klarna : skip explicite phase 2 (cf §Trade-offs du fix doc).
 
 **File** : `app/api/stripe/create-payment-intent/route.ts:131-143`.
 
@@ -358,7 +368,19 @@ Tous les producers sont créés en `individual` (auto-entrepreneur). En France :
 
 **Fix recommandé** : prompter le `business_type` lors du flow producer signup (radio button "Auto-entrepreneur / SARL / EURL / SAS / GAEC / Autre"), passer la valeur à `accounts.create`. Ou alternativement, omettre `business_type` et laisser Stripe demander via le accountLink (Stripe a un sélecteur natif).
 
-## L-3 — Apple Pay / Google Pay non configurés (lié à M-1)
+## L-3 — Apple Pay / Google Pay non configurés (lié à M-1) ✅ FIXED (Phase 2)
+
+> **Statut 2026-05-05** : FIXED via script `scripts/register-payment-method-
+> domain.ts` (idempotent, dry-run par défaut). Apply test mode confirmé OK :
+> `pmd_1TTpcUGuakpserKpzxh2ic0E` enabled=true, statuses apple_pay=active +
+> google_pay=active. Découverte clé : depuis avril 2025 Stripe gère la
+> verification Apple sans fichier `.well-known/...` → registration via
+> `payment_method_domains` API suffit, **0 changement middleware**, 0 fichier
+> physique versionné.
+> Cf [`docs/fixes/fix-stripe-phase-2-m1-l3-2026-05-05.md`](../fixes/fix-stripe-phase-2-m1-l3-2026-05-05.md).
+> **Action restante côté Romain** : `npx tsx scripts/register-payment-method-
+> domain.ts --apply` sur compte LIVE le jour du cutover (couplé bascule
+> `STRIPE_SECRET_KEY=sk_live_*`).
 
 Pas de domain verification Stripe trouvée :
 - Pas de fichier `.well-known/apple-developer-merchantid-domain-association`.
