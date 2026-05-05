@@ -3,7 +3,7 @@
 > **Périmètre** : Self-Assessment Questionnaire A (SAQ-A) — applicable aux marchands qui externalisent **intégralement** la collecte/traitement/stockage des données de carte à un tiers PCI-validé. C'est le scope le plus light de PCI DSS, accessible aux intégrations e-commerce qui utilisent **Stripe Checkout**, **Stripe Elements iframe-only**, ou redirect-style.
 > **Méthode** : audit READ-ONLY sur la base de code TerrOir + grep ciblés. Aucune modification appliquée.
 > **Lié à** : audit Stripe phase A `audit-stripe-2026-05-05.md`, plan phase B pré-launch.
-> **Décision finale** : ✅ **TerrOir est éligible SAQ-A** sous réserve du WARN restant documenté ci-dessous (headers de sécurité). W-2 rate-limiting endpoints Stripe **FIXED 2026-05-05**.
+> **Décision finale** : ✅ **TerrOir est éligible SAQ-A**. W-1 headers de sécurité **FIXED 2026-05-05** (Session H — `next.config.js` async headers + CSP Report-Only initial). W-2 rate-limiting endpoints Stripe **FIXED 2026-05-05**.
 
 ---
 
@@ -13,7 +13,7 @@
 |---------------------------------------------------------------------|:------:|------------------------------------------------------------------------|
 | 1. Aucune CB ne transite par les serveurs TerrOir                   |   OK   | Stripe Elements iframe-only (PaymentElement)                           |
 | 2. HTTPS partout en production                                      |   OK   | Vercel auto-issue Let's Encrypt + force HTTPS sur les domaines custom  |
-| 3. Headers de sécurité applicatifs (CSP, X-Frame, etc.)             | WARN   | next.config.js n'expose pas de `headers()` — uniquement HSTS via Vercel|
+| 3. Headers de sécurité applicatifs (CSP, X-Frame, etc.)             |   OK   | FIXED 2026-05-05 — `next.config.js` async headers, CSP Report-Only      |
 | 4. Aucun stockage local de données carte (localStorage/Storage)     |   OK   | Zustand stocke uniquement le panier (productId, qty), pas de PAN       |
 | 5. Aucun log applicatif de données carte                            |   OK   | Grep `card_number/cvv/cvc` = 0 hit applicatif                          |
 | 6. Stripe webhook signature vérifiée                                |   OK   | `stripe.webhooks.constructEvent` (cf. Phase 1)                         |
@@ -24,7 +24,7 @@
 | 11. Rate-limiting endpoints Stripe critiques                        |   OK   | FIXED 2026-05-05 — 3 endpoints rate-limités via Upstash sliding window |
 | 12. Anti-CSRF                                                       |   OK   | Cookies Supabase `SameSite=Lax` par défaut + `@supabase/ssr` SSR-side  |
 
-**Verdict counts** : 11 OK / 1 WARN / 0 FAIL → SAQ-A éligible. Le WARN restant (W-1 headers de sécurité) est un durcissement defense-in-depth, pas un bloqueur PCI SAQ-A. W-2 a été remédié 2026-05-05 (rate-limit Stripe write).
+**Verdict counts** : 12 OK / 0 WARN / 0 FAIL → SAQ-A éligible. W-1 (headers de sécurité) et W-2 (rate-limit Stripe write) ont été remédiés 2026-05-05.
 
 ---
 
@@ -119,9 +119,9 @@ Pas de double-submit token explicite, mais SameSite=Lax + le passage par le midd
 
 ## WARN — durcissements recommandés
 
-### W-1 — `next.config.js` ne définit pas de `headers()`
+### W-1 — `next.config.js` ne définit pas de `headers()` — ✅ FIXED 2026-05-05
 
-**Preuve** : `next.config.js:1-22` → uniquement `reactStrictMode` + `images.remotePatterns`. Pas de `headers()` Next.js, pas de `middleware.ts` qui pose des headers de sécurité.
+**État initial** : `next.config.js:1-22` exposait uniquement `reactStrictMode` + `images.remotePatterns`. Pas de `headers()` Next.js, pas de `middleware.ts` qui pose des headers de sécurité.
 
 | Header                       | Source actuelle                           | Recommandation pour SAQ-A polish                |
 |------------------------------|-------------------------------------------|-------------------------------------------------|
@@ -134,30 +134,23 @@ Pas de double-submit token explicite, mais SameSite=Lax + le passage par le midd
 
 **Severity SAQ-A** : WARN, pas FAIL. Le SAQ-A n'exige pas explicitement ces headers (ils relèvent plus de l'hygiène générale OWASP). Mais Stripe Radar / la PSP marketplace TerrOir ferait remonter ces drapeaux dans n'importe quel pentest light.
 
-**Fix recommandé V1.1** :
+**Remédiation appliquée 2026-05-05 (Session H pré-launch — durcissement V1.1 anticipé)** :
 
-```js
-// next.config.js
-async headers() {
-  return [
-    {
-      source: "/:path*",
-      headers: [
-        { key: "X-Frame-Options", value: "SAMEORIGIN" },
-        { key: "X-Content-Type-Options", value: "nosniff" },
-        { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-        { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(self)" },
-        // CSP plus complexe : Stripe Elements requiert frame-src + script-src
-        // sur https://js.stripe.com et https://m.stripe.network. Mapbox aussi
-        // a besoin d'un worker-src 'self' blob:. À élaborer en chantier dédié
-        // pour ne pas casser la prod par typo CSP.
-      ],
-    },
-  ];
-}
-```
+`next.config.js` exporte désormais une fonction `async headers()` qui pose 5 headers sur `/:path*` :
 
-**Estimé** : 1-2h pour les 4 headers simples. **2-4h** supplémentaires si on veut une vraie CSP testée (Stripe + Mapbox + Supabase + Resend tracking pixels). Pas bloquant pour go-live ; à inscrire au backlog V1.1.
+| Header                                    | Valeur                                                                                                                | Rôle                                                                       |
+|-------------------------------------------|-----------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------|
+| `X-Frame-Options`                         | `DENY`                                                                                                                | Anti-clickjacking. DENY plutôt que SAMEORIGIN (TerrOir n'embed jamais TerrOir). |
+| `X-Content-Type-Options`                  | `nosniff`                                                                                                             | Anti-MIME-confusion / drive-by exec.                                        |
+| `Referrer-Policy`                         | `strict-origin-when-cross-origin`                                                                                     | Pas de fuite URL en HTTPS→HTTP downgrade.                                   |
+| `Permissions-Policy`                      | `camera=(), microphone=(), geolocation=(self), payment=(self), interest-cohort=()`                                    | geolocation pour DistanceWidget, payment pour Stripe PaymentRequest API.    |
+| `Content-Security-Policy-Report-Only`     | Whitelist Stripe (js + hooks + m.stripe.network + api), Mapbox (api/tiles/events), Vercel Analytics, Supabase (URL projet via `NEXT_PUBLIC_SUPABASE_URL` parsé). frame-ancestors 'none' (équivalent X-Frame-Options DENY pour CSP-aware browsers). | Mode Report-Only initial pour observer 7j sans casser la prod si la policy a un trou. |
+
+Trade-off explicite : `'unsafe-inline'` + `'unsafe-eval'` dans `script-src` sont nécessaires pour Next.js (bootstrap hydratation, RSC payload) + Stripe.js (eval interne sur certains chemins). Une migration vers nonce-based CSP (Next 14 middleware nonces) est V1.2+.
+
+**Procédure migration Report-Only → enforce** :
+
+Documentée dans `docs/conventions/security-headers.md`. **Date cible Romain : 2026-05-12** (7 jours d'observation Vercel logs / browser console pour détecter d'éventuelles violations Mapbox tiles ou Vercel Analytics). Si aucune violation critique, swap la clé `Content-Security-Policy-Report-Only` → `Content-Security-Policy` dans `next.config.js`.
 
 ### W-2 — Endpoints Stripe non rate-limités — ✅ FIXED 2026-05-05
 
@@ -208,7 +201,7 @@ async headers() {
 
 ## Recommandations pour go-live
 
-Aucune action bloquante PCI SAQ-A. Le WARN W-1 (headers de sécurité) reste à traiter en **V1.1** comme durcissement defense-in-depth, pas comme prérequis du go-live. W-2 a été remédié pré-launch (rate-limit Stripe write — cf. ci-dessus).
+Aucune action bloquante PCI SAQ-A. W-1 (headers de sécurité) et W-2 (rate-limit Stripe write) ont été remédiés pré-launch (cf. ci-dessus). Reste à valider le passage CSP Report-Only → enforce après 7j d'observation (date cible 2026-05-12).
 
 Sur le runbook de bascule test→live :
 1. Confirmer que les variables `STRIPE_SECRET_KEY` (`sk_live_*`) et `STRIPE_WEBHOOK_SECRET` (whsec live) sont configurées **uniquement** sur l'environnement Production Vercel (pas Preview).

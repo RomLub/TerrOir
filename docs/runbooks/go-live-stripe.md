@@ -2,7 +2,7 @@
 
 > **Statut : prêt côté code TerrOir.** Reste à arbitrer cutover date + RGS payouts + communication producteurs.
 >
-> Dernière mise à jour : 2026-05-05 (fix audit Stripe phase B — L-1 IP allowlist, PCI SAQ-A audit, 3DS matrice).
+> Dernière mise à jour : 2026-05-05 (Session H — W-1 PCI headers Next.js + 3DS decline E2E).
 > Ce runbook prépare la bascule du compte Stripe test (`acct_1TNw9nGuakpserKp`) vers le compte live définitif au go-live TerrOir (~juillet 2026).
 
 ## Pré-requis bouclés
@@ -11,7 +11,8 @@
 - ✅ Phase 1 fixes audit Stripe : `docs/fixes/fix-stripe-phase-1-2026-05-05.md` (idempotency revival, cron disputes deadline, guard charges_enabled, business_type prompt natif, refund producer audit, runbook draft).
 - ✅ Phase 2 fixes audit Stripe : H-2 Connect controller properties, M-1 dynamic payment methods, M-3 webhook events utiles, L-3 Apple Pay domain.
 - ✅ Phase 3 fixes audit Stripe : H-1 + H-3 upgrade SDK 22 + apiVersion `2026-04-22.dahlia` (commit 811d178).
-- ✅ Phase B fixes audit Stripe : L-1 IP allowlist webhook (`docs/fixes/fix-stripe-phase-b-prelaunch-2026-05-05.md`), PCI SAQ-A audit (`docs/audits/audit-stripe-pci-saq-a-2026-05-05.md` — éligible 10 OK / 2 WARN / 0 FAIL), 3DS matrice E2E (`tests/e2e/stripe-3ds-matrix.spec.ts` — 4 tests + 1 skip documenté).
+- ✅ Phase B fixes audit Stripe : L-1 IP allowlist webhook (`docs/fixes/fix-stripe-phase-b-prelaunch-2026-05-05.md`), PCI SAQ-A audit (`docs/audits/audit-stripe-pci-saq-a-2026-05-05.md` — éligible 12 OK / 0 WARN / 0 FAIL après W-1 + W-2 fix), 3DS matrice E2E (`tests/e2e/stripe-3ds-matrix.spec.ts` — 4 tests + 1 skip documenté), 3DS decline E2E (`tests/e2e/stripe-decline.spec.ts` — 2 tests : API+webhook chain + UI iframe drive).
+- ✅ Session H fixes pré-launch : W-1 PCI headers `next.config.js` (CSP Report-Only initial, X-Frame-Options DENY, X-Content-Type-Options, Referrer-Policy, Permissions-Policy — cf. `docs/conventions/security-headers.md`).
 - ⏳ RGS payouts : décision T+7 vs T+2 à arbitrer V1.x.
 
 ---
@@ -169,12 +170,12 @@ WHERE stripe_account_id IS NOT NULL;
 > Phase B pré-launch (L-1 IP allowlist + PCI SAQ-A audit + 3DS matrice) est ✅ DONE. Les items ci-dessous restent post-launch / V1.1.
 
 - ✅ **Conformité PCI DSS** : SAQ-A audit léger réalisé 2026-05-05. **TerrOir éligible SAQ-A** (11 OK / 1 WARN / 0 FAIL — W-2 remédié pré-launch). Cf. `docs/audits/audit-stripe-pci-saq-a-2026-05-05.md`. À re-valider avec un consultant en cas de demande Stripe / autorité.
-- ✅ **3DS testing exhaustif** : 4 tests E2E Playwright + 1 skip documenté (`tests/e2e/stripe-3ds-matrix.spec.ts`). Cas decline post-challenge laissé en couverture unitaire (`handle-payment-failed.test.ts`) — drive UI iframe Stripe hors scope E2E stable.
+- ✅ **3DS testing exhaustif** : 4 tests E2E Playwright + 1 skip documenté (`tests/e2e/stripe-3ds-matrix.spec.ts`). Cas decline simple (sans 3DS challenge) couvert par `tests/e2e/stripe-decline.spec.ts` (2 tests : API+webhook chain + UI iframe drive). Cas decline post-challenge 3DS laissé en couverture unitaire (`handle-payment-failed.test.ts`) — drive UI iframe `hooks.stripe.com` hors scope E2E stable.
 - ✅ **L-1 IP allowlist webhook Stripe** : implémenté côté applicatif (`lib/stripe/ip-allowlist.ts` + check route). Bypass implicite preview/dev. Doc convention `docs/conventions/stripe-webhook.md` pour refresh trimestriel.
 - ✅ **L-3 Apple Pay domain verification** : FIXED phase 2 (cf. `docs/fixes/fix-stripe-phase-2-m1-l3-2026-05-05.md`).
 - ⏳ **RGS payouts** : Stripe Connect Express verse en T+7 par défaut (configurable T+2). Pour les producers, T+7 risque de générer du support "où est mon argent" — arbitrer si on bumpe à T+2 (cashflow plateforme moins bon mais UX producer mieux).
 - ⏳ **Cron dispute deadline check** : observation réelle des thresholds 24h / 72h. Si les disputes arrivent toutes le matin (déjà observé sur volumes test), aligner le cron à 6h UTC pour laisser plus de marge admin.
-- ⏳ **W-1 PCI durcissement headers de sécurité** (audit SAQ-A) : ajouter `headers()` dans `next.config.js` (X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, CSP). Backlog V1.1.
+- ✅ **W-1 PCI durcissement headers de sécurité** (audit SAQ-A) — FIXED 2026-05-05 (Session H, durcissement V1.1 anticipé pré-launch). 5 headers posés dans `next.config.js` async headers : X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy strict-origin-when-cross-origin, Permissions-Policy (camera/microphone none, geolocation/payment self), Content-Security-Policy-Report-Only (Stripe + Mapbox + Vercel Analytics + Supabase whitelistés). **Action restante** : passage CSP Report-Only → enforce après 7j observation Vercel logs (date cible 2026-05-12). Procédure cf. `docs/conventions/security-headers.md`.
 - ✅ **W-2 PCI rate-limit endpoints Stripe** (audit SAQ-A) — FIXED 2026-05-05 (durcissement V1.1 anticipé pré-launch). 3 helpers ajoutés à `lib/rate-limit.ts` : `getStripeCreatePaymentIntentRateLimit` (10/60s), `getStripeRefundRateLimit` (5/60s), `getStripeConnectOnboardRateLimit` (3/60s). Cf. `docs/conventions/rate-limiting.md` + `docs/audits/audit-stripe-pci-saq-a-2026-05-05.md` §W-2.
 
 ---

@@ -621,8 +621,10 @@ PI créé sur compte plateforme TerrOir
 ## Phase B pré-launch (traités 2026-05-05) ✅
 
 - **L-1 IP allowlist** — FIXED via `lib/stripe/ip-allowlist.ts`.
-- **PCI DSS SAQ-A audit léger** — AUDITED (10 OK / 2 WARN / 0 FAIL → SAQ-A éligible). Cf. [`docs/audits/audit-stripe-pci-saq-a-2026-05-05.md`](./audit-stripe-pci-saq-a-2026-05-05.md). Les 2 WARN (headers de sécurité, rate-limit endpoints Stripe) sont du durcissement V1.1, pas des bloqueurs SAQ-A.
+- **PCI DSS SAQ-A audit léger** — AUDITED (12 OK / 0 WARN / 0 FAIL → SAQ-A éligible après remédiation W-1 + W-2 pré-launch). Cf. [`docs/audits/audit-stripe-pci-saq-a-2026-05-05.md`](./audit-stripe-pci-saq-a-2026-05-05.md).
 - **3DS matrice exhaustive** — TESTED (4 tests E2E + 1 skip documenté). Cf. [`tests/e2e/stripe-3ds-matrix.spec.ts`](../../tests/e2e/stripe-3ds-matrix.spec.ts). Cas decline post-challenge skip avec doc (drive UI iframe Stripe hors scope E2E stable).
+- **3DS decline simple E2E** — TESTED (Session H, 2026-05-05). Cf. [`tests/e2e/stripe-decline.spec.ts`](../../tests/e2e/stripe-decline.spec.ts) — 2 tests : (1) API+webhook chain (carte 4000 0000 0000 0002 → confirm side serveur → webhook synthétique signé → order pending → cancelled+payment_failed) ; (2) UI iframe drive (cart hydration → /compte/checkout → fill PaymentElement iframe → assert message "refusé" affiché côté UI). Fallback `--headed` documenté si headless échoue à driver l'iframe.
+- **W-1 headers de sécurité Next.js** — FIXED (Session H, 2026-05-05). `next.config.js` async headers : X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy, Permissions-Policy, CSP en mode Report-Only initial. Cf. [`docs/conventions/security-headers.md`](../conventions/security-headers.md) pour la procédure de migration vers enforce.
 
 ## Post-launch (LOW priority — peuvent attendre V1.1)
 
