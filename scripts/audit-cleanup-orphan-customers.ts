@@ -115,7 +115,7 @@ const admin: SupabaseClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
 });
 
 const stripe = new Stripe(STRIPE_SECRET_KEY, {
-  apiVersion: "2025-02-24.acacia",
+  apiVersion: "2026-04-22.dahlia",
   typescript: true,
 });
 

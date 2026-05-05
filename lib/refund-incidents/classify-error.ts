@@ -96,7 +96,7 @@ export type ClassifiedRefundError = {
 // Helper type-guard exporté (réutilisable T-102.3 mail Resend)
 // ============================================================================
 
-export function isStripeError(e: unknown): e is Stripe.errors.StripeError {
+export function isStripeError(e: unknown): e is InstanceType<typeof Stripe.errors.StripeError> {
   return e instanceof Stripe.errors.StripeError;
 }
 
@@ -166,7 +166,7 @@ const UNKNOWN_CODES: ReadonlySet<string> = new Set([
 // Classification
 // ============================================================================
 
-function extractBase(error: Stripe.errors.StripeError): Omit<
+function extractBase(error: InstanceType<typeof Stripe.errors.StripeError>): Omit<
   ClassifiedRefundError,
   "category"
 > {
