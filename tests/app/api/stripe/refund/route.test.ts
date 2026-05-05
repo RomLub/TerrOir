@@ -11,18 +11,39 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+vi.hoisted(() => {
+  process.env.SUPPORT_EMAIL = "admin@terroir-local.fr";
+  process.env.NEXT_PUBLIC_APP_URL = "http://localhost:3000";
+  process.env.NEXT_PUBLIC_PRODUCER_URL = "http://localhost:3000";
+});
+
 const {
   mockRevalidateTag,
   mockRefundCreate,
   mockLogPaymentEvent,
   mockRecordRefundAttempt,
   mockRevalidatePublicStats,
+  mockSendTemplate,
 } = vi.hoisted(() => ({
   mockRevalidateTag: vi.fn(),
   mockRefundCreate: vi.fn(),
   mockLogPaymentEvent: vi.fn(),
   mockRecordRefundAttempt: vi.fn(),
   mockRevalidatePublicStats: vi.fn(),
+  mockSendTemplate: vi.fn(),
+}));
+
+vi.mock("@vercel/functions", () => ({
+  waitUntil: (p: Promise<unknown>) => p,
+}));
+
+vi.mock("@/lib/resend/send", () => ({
+  sendTemplate: mockSendTemplate,
+}));
+
+vi.mock("@/lib/resend/templates/admin-producer-refund-alert", () => ({
+  default: () => null,
+  subject: (p: { amount: number }) => `subject-${p.amount}`,
 }));
 
 vi.mock("next/cache", () => ({
@@ -221,6 +242,8 @@ beforeEach(() => {
   mockRevalidatePublicStats.mockClear();
   mockLogPaymentEvent.mockReset().mockResolvedValue(undefined);
   mockRecordRefundAttempt.mockReset().mockResolvedValue(null);
+  mockSendTemplate.mockReset().mockResolvedValue({ ok: true, id: "email_id" });
+  delete process.env.SUPPORT_REFUND_THRESHOLD_EUR;
   consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
   savedCronSecret = process.env.CRON_SECRET;
   delete process.env.CRON_SECRET;
@@ -483,15 +506,18 @@ describe("F. T-107 Instrumentation order_admin_refund_failed (audit_logs)", () =
     await expect(POST(makeRequest())).rejects.toThrow("card_declined");
 
     expect(mockLogPaymentEvent).toHaveBeenCalledTimes(1);
-    expect(mockLogPaymentEvent).toHaveBeenCalledWith({
-      eventType: "order_admin_refund_failed",
-      userId: CONSUMER_ID,
-      metadata: {
-        order_id: ORDER_ID,
-        payment_intent_id: PI_ID,
-        refund_error: "card_declined",
-      },
-    });
+    expect(mockLogPaymentEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "order_admin_refund_failed",
+        userId: CONSUMER_ID,
+        metadata: expect.objectContaining({
+          order_id: ORDER_ID,
+          payment_intent_id: PI_ID,
+          refund_error: "card_declined",
+          emitted_by: "admin",
+        }),
+      }),
+    );
 
     // T-102.2.b — recordRefundAttempt appelée en parallèle (double écriture).
     expect(mockRecordRefundAttempt).toHaveBeenCalledTimes(1);
@@ -516,10 +542,21 @@ describe("F. T-107 Instrumentation order_admin_refund_failed (audit_logs)", () =
     expect(mockRevalidateTag).not.toHaveBeenCalled();
   });
 
-  it("F2 happy path Stripe OK → logPaymentEvent + recordRefundAttempt JAMAIS appelés (pas de pollution audit nominal)", async () => {
+  it("F2 happy path admin Stripe OK → logPaymentEvent('order_admin_refund_succeeded'), recordRefundAttempt JAMAIS appelé", async () => {
     const res = await POST(makeRequest());
     expect(res.status).toBe(200);
-    expect(mockLogPaymentEvent).not.toHaveBeenCalled();
+    // Audit Stripe L-5 : event success symétrique au failed historique.
+    expect(mockLogPaymentEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "order_admin_refund_succeeded",
+        userId: CONSUMER_ID,
+        metadata: expect.objectContaining({
+          order_id: ORDER_ID,
+          emitted_by: "admin",
+          refund_id: "re_test_123",
+        }),
+      }),
+    );
     // T-102.2.b — pas d'incident sur succès (helper appelé que dans le catch).
     expect(mockRecordRefundAttempt).not.toHaveBeenCalled();
   });
@@ -537,6 +574,7 @@ describe("F. T-107 Instrumentation order_admin_refund_failed (audit_logs)", () =
         metadata: expect.objectContaining({
           order_id: ORDER_ID,
           refund_error: "network_error",
+          emitted_by: "admin",
         }),
       }),
     );
@@ -549,6 +587,83 @@ describe("F. T-107 Instrumentation order_admin_refund_failed (audit_logs)", () =
         outcome: "failed",
       }),
     );
+  });
+});
+
+// --- F'. Audit Stripe L-5 — workflow refund producer ---------------------
+
+describe("F'. Audit Stripe L-5 — refund producer audit + email admin", () => {
+  function setProducerSession() {
+    sessionUser = {
+      id: PRODUCER_USER_ID,
+      email: "prod@example.com",
+      roles: ["producer"],
+      isAdmin: false,
+    };
+    pushProducerSelect({ data: { id: PRODUCER_ID }, error: null });
+  }
+
+  it("L-5-A producer + amount < seuil (default 100) → audit log producer mais PAS d'email admin", async () => {
+    setProducerSession();
+    setOrderFetch({ montant_total: 50 });
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(200);
+    expect(mockLogPaymentEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "order_producer_refund_succeeded",
+        metadata: expect.objectContaining({
+          emitted_by: "producer",
+          producer_id: PRODUCER_ID,
+          amount: 50,
+        }),
+      }),
+    );
+    expect(mockSendTemplate).not.toHaveBeenCalled();
+  });
+
+  it("L-5-B producer + amount >= seuil → audit log producer + email admin", async () => {
+    setProducerSession();
+    setOrderFetch({ montant_total: 150 });
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(200);
+    expect(mockLogPaymentEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "order_producer_refund_succeeded",
+        metadata: expect.objectContaining({ amount: 150 }),
+      }),
+    );
+    expect(mockSendTemplate).toHaveBeenCalledTimes(1);
+    expect(mockSendTemplate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "admin@terroir-local.fr",
+        template: "admin_producer_refund_alert",
+      }),
+    );
+  });
+
+  it("L-5-C producer + Stripe throw → logPaymentEvent('order_producer_refund_failed')", async () => {
+    setProducerSession();
+    mockRefundCreate.mockReset().mockRejectedValueOnce(new Error("boom"));
+    await expect(POST(makeRequest())).rejects.toThrow("boom");
+    expect(mockLogPaymentEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "order_producer_refund_failed",
+        metadata: expect.objectContaining({
+          emitted_by: "producer",
+          refund_error: "boom",
+        }),
+      }),
+    );
+    expect(mockSendTemplate).not.toHaveBeenCalled();
+  });
+
+  it("L-5-D SUPPORT_REFUND_THRESHOLD_EUR=200 + amount=150 → pas d'email", async () => {
+    process.env.SUPPORT_REFUND_THRESHOLD_EUR = "200";
+    setProducerSession();
+    setOrderFetch({ montant_total: 150 });
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(200);
+    expect(mockSendTemplate).not.toHaveBeenCalled();
   });
 });
 

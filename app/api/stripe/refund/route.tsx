@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { waitUntil } from "@vercel/functions";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -7,6 +8,11 @@ import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
 import { classifyRefundError } from "@/lib/refund-incidents/classify-error";
 import { recordRefundAttempt } from "@/lib/refund-incidents/record-refund-attempt";
 import { revalidatePublicStats } from "@/lib/stats/revalidate";
+import { sendTemplate } from "@/lib/resend/send";
+import { SUPPORT_EMAIL } from "@/lib/env/support-email";
+import AdminProducerRefundAlert, {
+  subject as producerRefundAlertSubject,
+} from "@/lib/resend/templates/admin-producer-refund-alert";
 import {
   InvalidOrderTransitionError,
   assertTransition,
@@ -14,6 +20,17 @@ import {
 } from "@/lib/orders/stateMachine";
 
 const bodySchema = z.object({ order_id: z.string().uuid() });
+
+// Audit Stripe L-5 (2026-05-05) : seuil au-delà duquel un refund producer
+// déclenche un email admin. Default 100€, configurable via env. Sujet V1.x
+// si abus observé : cap montant + approval admin avant émission.
+function producerRefundThreshold(): number {
+  const raw = process.env.SUPPORT_REFUND_THRESHOLD_EUR;
+  if (!raw) return 100;
+  const parsed = Number.parseFloat(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 100;
+  return parsed;
+}
 
 // Auth: admin ou producteur propriétaire de la commande.
 export async function POST(request: Request) {
@@ -38,6 +55,7 @@ export async function POST(request: Request) {
   }
 
   let authorized = false;
+  let refundedByProducer = false;
   const session = await getSessionUser();
   if (session?.isAdmin) {
     authorized = true;
@@ -47,7 +65,10 @@ export async function POST(request: Request) {
       .select("id")
       .eq("user_id", session.id)
       .maybeSingle();
-    if (producer?.id === order.producer_id) authorized = true;
+    if (producer?.id === order.producer_id) {
+      authorized = true;
+      refundedByProducer = true;
+    }
   }
 
   if (!authorized) {
@@ -102,13 +123,20 @@ export async function POST(request: Request) {
       outcome: "failed",
       classified,
     });
+    // Audit Stripe L-5 : discrimination producer vs admin sur l'audit log.
+    // refund_incidents reste sur kind='admin' (les paths cron retry sont
+    // câblés dessus) — V1.x peut ajouter kind='producer' si retry distinct.
     await logPaymentEvent({
-      eventType: "order_admin_refund_failed",
+      eventType: refundedByProducer
+        ? "order_producer_refund_failed"
+        : "order_admin_refund_failed",
       userId: order.consumer_id,
       metadata: {
         order_id: order.id,
+        producer_id: order.producer_id,
         payment_intent_id: order.stripe_payment_intent_id,
         refund_error: (e as Error).message,
+        emitted_by: refundedByProducer ? "producer" : "admin",
       },
     });
     throw e;
@@ -139,6 +167,63 @@ export async function POST(request: Request) {
   // public-stats → invalidation requise. Le helper swallow toute exception
   // (cache flapping ne doit pas faire échouer le 200 vers l'admin).
   await revalidatePublicStats({ source: "stripe-refund", orderId: order.id });
+
+  // Audit Stripe L-5 : event success discriminé producer/admin. Le path
+  // historique restait silent au succès (uniquement audit log côté failure).
+  // Maintenant : trace forensique systématique pour reconstitution chronologie
+  // (RGPD + dispute Stripe + détection abus producer).
+  await logPaymentEvent({
+    eventType: refundedByProducer
+      ? "order_producer_refund_succeeded"
+      : "order_admin_refund_succeeded",
+    userId: order.consumer_id,
+    metadata: {
+      order_id: order.id,
+      producer_id: order.producer_id,
+      payment_intent_id: order.stripe_payment_intent_id,
+      refund_id: refund.id,
+      amount: Number(order.montant_total),
+      emitted_by: refundedByProducer ? "producer" : "admin",
+    },
+  }).catch(() => {});
+
+  // Audit Stripe L-5 : email admin si producer + montant >= seuil.
+  // Pas de cap, pas d'approval — uniquement signal de visibilité (cas
+  // problématique : producer mal intentionné refund toutes ses commandes
+  // pour fuir la commission TerrOir). Sujet V1.x si abus observé.
+  if (refundedByProducer) {
+    const threshold = producerRefundThreshold();
+    const amount = Number(order.montant_total);
+    if (Number.isFinite(amount) && amount >= threshold) {
+      const props = {
+        codeCommande: order.code_commande,
+        amount,
+        threshold,
+        refundId: refund.id,
+        orderId: order.id,
+        producerId: order.producer_id,
+        dashboardUrl: `https://dashboard.stripe.com/refunds/${refund.id}`,
+      };
+      waitUntil(
+        sendTemplate({
+          to: SUPPORT_EMAIL,
+          userId: null,
+          template: "admin_producer_refund_alert",
+          subject: producerRefundAlertSubject(props),
+          element: <AdminProducerRefundAlert {...props} />,
+          metadata: {
+            order_id: order.id,
+            refund_id: refund.id,
+            producer_id: order.producer_id,
+          },
+        }).catch((err) => {
+          console.error(
+            `[PRODUCER_REFUND_ALERT_EMAIL_ERR] order=${order.id} refund=${refund.id} error=${(err as Error).message}`,
+          );
+        }),
+      );
+    }
+  }
 
   if (order.consumer_id) {
     await admin.from("notifications").insert({
