@@ -78,7 +78,22 @@ $ npm ls stripe
 
 **Coût estimé** : 4-8h sur le dahlia changelog + breaking changes TS éventuels. **Avant go-live** : impératif. Cumuler bug de version + bug d'env live = doublement du périmètre de debug en prod.
 
-## H-2 — Connect onboarding via `type: "express"` (Accounts v1 legacy) ≠ best-practice 2026
+## H-2 — Connect onboarding via `type: "express"` (Accounts v1 legacy) ≠ best-practice 2026 ✅ FIXED (Phase 2)
+
+> **Statut 2026-05-05** : FIXED via Stratégie A (controller properties sur
+> `POST /v1/accounts`). Le legacy `type: "express"` est purgé, les 4
+> controller properties explicites (fees=application, losses=application,
+> requirement_collection=stripe, stripe_dashboard.type=express) préservent
+> 100% le comportement Express. Comptes Connect existants restent
+> fonctionnels (Stripe rétro-attribue les controller props équivalentes).
+> +2 tests vitest (H-2-A controller payload, H-2-B no legacy `type`). Smoke
+> E2E re-exécuté OK (compte test acct_1TTq1VGpYNMCpZlt créé via controller
+> props + AccountLink + cleanup OK).
+> Cf [`docs/fixes/fix-stripe-phase-2-h2-connect-controller-properties-2026-05-05.md`](../fixes/fix-stripe-phase-2-h2-connect-controller-properties-2026-05-05.md).
+> Stratégie B (Accounts v2 API) écartée pour V1.0 — TerrOir n'utilise pas
+> Stripe Billing/Customer-as-Account (cf investigation §10 D-1).
+> **0 action manuelle Romain** (pas de migration Stripe-side, pas de
+> Dashboard config).
 
 **File** : `app/api/stripe/connect/onboard/route.ts:33-42`.
 

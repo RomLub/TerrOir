@@ -35,13 +35,41 @@ export async function POST() {
     // demande désormais le type via le accountLink natif (sélecteur
     // Auto-entrepreneur / SARL / EURL / SAS / GAEC / Autre tenu à jour côté
     // Stripe). Plus simple côté UI TerrOir et flow KYC à jour.
+    //
+    // Audit Stripe H-2 (2026-05-05) : controller properties remplacent le
+    // legacy `type: "express"`. Comportement Express préservé via les 4
+    // properties explicites (cf docs/audits/audit-stripe-h2-connect-v2-
+    // 2026-05-05.md §1) :
+    //   - controller.losses.payments = "application" : la plateforme TerrOir
+    //     paye les chargebacks (cohérent finding H-2 Phase 1 — modèle Express).
+    //   - controller.fees.payer = "application" : équivalent fonctionnel à
+    //     l'ancien "application_express" implicite. La différence n'a aucun
+    //     impact sur Separate Charges & Transfers (cf doc Stripe direct-
+    //     charges-fee-payer-behavior : "Any activity occurring at the
+    //     platform account level is billed to your platform").
+    //   - controller.requirement_collection = "stripe" : Stripe Express
+    //     Dashboard collecte le KYC (pas TerrOir).
+    //   - controller.stripe_dashboard.type = "express" : producer accède
+    //     à un Dashboard Stripe Express simplifié (lecture seule, payouts).
+    //
+    // Comptes Connect existants (créés avec legacy type:"express") restent
+    // 100% fonctionnels — Stripe rétro-attribue les controller properties
+    // équivalentes côté serveur (cf doc Stripe migrate-to-controller-
+    // properties : "you don't need to update your existing connected
+    // accounts"). Aucune migration data, aucun changement webhook
+    // (account.updated reste identique).
     const account = await stripe.accounts.create({
-      type: "express",
       country: "FR",
       email: session.email ?? undefined,
       capabilities: {
         card_payments: { requested: true },
         transfers: { requested: true },
+      },
+      controller: {
+        fees: { payer: "application" },
+        losses: { payments: "application" },
+        requirement_collection: "stripe",
+        stripe_dashboard: { type: "express" },
       },
     });
     stripeAccountId = account.id;

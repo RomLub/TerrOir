@@ -177,6 +177,57 @@ describe("POST /api/stripe/connect/onboard — path nominal", () => {
 });
 
 // =============================================================================
+// 1'. Audit Stripe H-2 — controller properties remplacent legacy type:"express"
+// =============================================================================
+//
+// Phase 2 H-2 (2026-05-05) — preuve de non-régression côté payload Stripe :
+// le code ne passe plus le legacy `type` parameter (strap-to-avoid skill
+// stripe-best-practices/connect.md:14) et passe les 4 controller properties
+// explicites équivalentes au comportement Express.
+
+describe("POST /api/stripe/connect/onboard — H-2 controller properties", () => {
+  it("H-2-A accounts.create reçoit les 4 controller properties Express-equivalent", async () => {
+    await POST();
+
+    expect(mockAccountsCreate).toHaveBeenCalledTimes(1);
+    const payload = mockAccountsCreate.mock.calls[0]?.[0] as Record<
+      string,
+      unknown
+    >;
+
+    // 4 controller properties exactes (mapping Express documenté
+    // docs/audits/audit-stripe-h2-connect-v2-2026-05-05.md §1).
+    expect(payload.controller).toEqual({
+      fees: { payer: "application" },
+      losses: { payments: "application" },
+      requirement_collection: "stripe",
+      stripe_dashboard: { type: "express" },
+    });
+
+    // Capabilities + country + email préservés (regression guard).
+    expect(payload.country).toBe("FR");
+    expect(payload.email).toBe("producer@example.com");
+    expect(payload.capabilities).toEqual({
+      card_payments: { requested: true },
+      transfers: { requested: true },
+    });
+  });
+
+  it("H-2-B accounts.create ne passe PLUS le legacy `type` parameter", async () => {
+    await POST();
+
+    const payload = mockAccountsCreate.mock.calls[0]?.[0] as Record<
+      string,
+      unknown
+    >;
+    // Strap-to-avoid skill connect.md:14 : "Don't use the legacy `type`
+    // parameter (`type: 'express'`, ...) in POST /v1/accounts for new
+    // platforms". Validation directe : la propriété ne doit pas exister.
+    expect(payload.type).toBeUndefined();
+  });
+});
+
+// =============================================================================
 // 2. Path déjà account — skip création, accountLinks direct
 // =============================================================================
 
