@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/auth/session";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const bodySchema = z.object({
@@ -8,6 +9,16 @@ const bodySchema = z.object({
   note: z.number().int().min(1).max(5),
   commentaire: z.string().trim().max(2000).optional(),
 });
+
+// Audit RPC M-2 : refacto user-client + RLS-driven (audit-rpc-edge-2026-05-05).
+// Avant : admin client + check applicatif `order.consumer_id !== session.id`
+// (fragile, contournement RLS direct si check buggé). Après : SELECT initial
+// via user client → RLS "orders parties read" filtre naturellement. INSERT
+// review via user client → RLS "reviews consumer insert after completed order"
+// valide consumer_id + statut completed. Admin client conservé uniquement
+// pour le bloc notifications admins (RLS n'autorise qu'INSERT service-role).
+//
+// Pattern aligné avec /api/orders/create (user client SELECT, write côté RLS).
 
 export async function POST(request: Request) {
   const session = await getSessionUser();
@@ -23,19 +34,29 @@ export async function POST(request: Request) {
     );
   }
 
-  const admin = createSupabaseAdminClient();
+  const supabase = createSupabaseServerClient();
 
-  const { data: order } = await admin
+  // RLS "orders parties read" : auth.uid() == consumer_id OR owns_producer.
+  // Si l'user n'est pas concerné → 0 row → 404 (équivalent fonctionnel d'un
+  // 403, mais on ne révèle pas l'existence d'une order qui n'appartient pas
+  // à l'user).
+  const { data: order } = await supabase
     .from("orders")
-    .select("id, consumer_id, producer_id, statut")
+    .select("id, producer_id, consumer_id, statut")
     .eq("id", parsed.data.order_id)
     .maybeSingle();
   if (!order) {
     return NextResponse.json({ error: "Order not found" }, { status: 404 });
   }
+
+  // Le filtre RLS autorise aussi le producer-owner à lire l'order. On
+  // restreint la création de review au consumer (cohérent avec la RLS
+  // "reviews consumer insert after completed order" qui exige
+  // auth.uid() == consumer_id en with_check).
   if (order.consumer_id !== session.id) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
+
   if (order.statut !== "completed") {
     return NextResponse.json(
       { error: "La commande doit être terminée pour noter" },
@@ -43,7 +64,10 @@ export async function POST(request: Request) {
     );
   }
 
-  const { data: existing } = await admin
+  // RLS "reviews author read" filtre sur consumer_id = auth.uid() — donc
+  // user client voit uniquement ses propres reviews. Si une review existe
+  // déjà pour cet order, c'est forcément la sienne.
+  const { data: existing } = await supabase
     .from("reviews")
     .select("id")
     .eq("order_id", order.id)
@@ -55,7 +79,10 @@ export async function POST(request: Request) {
     );
   }
 
-  const { data: review, error: insertError } = await admin
+  // INSERT user client : la RLS "reviews consumer insert after completed
+  // order" valide auth.uid() == consumer_id ET is_completed_order_of_caller
+  // (defense-in-depth si le check applicatif ci-dessus était contourné).
+  const { data: review, error: insertError } = await supabase
     .from("reviews")
     .insert({
       order_id: order.id,
@@ -75,10 +102,10 @@ export async function POST(request: Request) {
     );
   }
 
-  // Notifier tous les admins pour modération
-  const { data: admins } = await admin
-    .from("admin_users")
-    .select("id");
+  // Notifications admins : admin client requis (RLS notifications n'autorise
+  // que self-read, pas d'INSERT pour authenticated).
+  const admin = createSupabaseAdminClient();
+  const { data: admins } = await admin.from("admin_users").select("id");
   if (admins && admins.length > 0) {
     await admin.from("notifications").insert(
       admins.map((a) => ({

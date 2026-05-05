@@ -3,6 +3,7 @@ import { assertCronAuth } from "@/lib/cron/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { retryIncident, type RetryIncidentResult } from "@/lib/refund-incidents/retry-incident";
 import type { RefundKind } from "@/lib/refund-incidents/types";
+import { mapWithConcurrency } from "@/lib/concurrency/p-limit";
 
 // Cron daily Vercel `0 4 * * *` (4h UTC, soit 5-6h Paris hors heures de
 // pointe). Tente de re-rembourser les orders dont le refund initial a
@@ -20,16 +21,20 @@ import type { RefundKind } from "@/lib/refund-incidents/types";
 // Algorithme :
 //   1. SELECT refund_incidents WHERE status IN ('pending','retrying')
 //      AND retry_count < max_retries ORDER BY first_failed_event_at ASC
-//      LIMIT 1000 (FIFO, plus ancien d'abord, équitable).
-//   2. Pour chaque incident : retryIncident(...) → délègue Stripe call +
-//      record_refund_attempt + UPDATE closure_reason si revival success +
-//      INSERT notification placeholder si exhausted.
+//      LIMIT BATCH_LIMIT (FIFO, plus ancien d'abord, équitable).
+//   2. Pour chaque incident : retryIncident(...) en parallèle borné
+//      (Stripe accepte 25 req/s, on cap à 10 simultanés pour rester safe
+//      même avec d'autres consumers Stripe en parallèle).
 //
 // Auth : header `Authorization: Bearer ${CRON_SECRET}` via assertCronAuth.
 //
-// Limite 1000 : volume cumulé attendu très faible. Tape la limite = signal
-// d'incident plus large (Stripe down, RGPD purge massive en cours, etc.) —
-// à monitorer en T-102.6 (chantier futur).
+// Audit RPC M-1 : passage de boucle séquentielle à mapWithConcurrency
+// (cap 10 Stripe). Sur 100 incidents : 50s → ~5s. Avec maxDuration=60.
+
+export const maxDuration = 60;
+
+const BATCH_LIMIT = 1000;
+const STRIPE_CONCURRENCY = 10;
 
 type IncidentRow = {
   id: string;
@@ -57,7 +62,7 @@ export async function POST(request: Request) {
 
   // PostgREST ne permet pas de comparer 2 colonnes (retry_count < max_retries).
   // On récupère tous les status non-terminaux et on filtre côté JS. Volume
-  // attendu très faible (<<1000 rows en prod), coût négligeable.
+  // attendu très faible (<<BATCH_LIMIT en prod), coût négligeable.
   const { data: incidents, error } = await admin
     .from("refund_incidents")
     .select(
@@ -65,84 +70,102 @@ export async function POST(request: Request) {
     )
     .in("status", ["pending", "retrying"])
     .order("first_failed_event_at", { ascending: true })
-    .limit(1000);
+    .limit(BATCH_LIMIT);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const rows = ((incidents ?? []) as IncidentRow[]).filter(
+  // Signal d'incident large : si on tape la limite, le run suivant en
+  // ramassera le reste mais c'est worth d'alerter (Stripe down, RGPD
+  // purge massive, etc.).
+  if (incidents && incidents.length === BATCH_LIMIT) {
+    console.warn(
+      `[CRON_BATCH_TRUNCATED] cron=retry-failed-refunds processed=${BATCH_LIMIT} limit=${BATCH_LIMIT}`,
+    );
+  }
+
+  const eligible = ((incidents ?? []) as IncidentRow[]).filter(
     (r) => r.retry_count < r.max_retries,
   );
 
-  if (rows.length === 0) {
+  if (eligible.length === 0) {
     return NextResponse.json({ processed: 0, results: [] });
   }
 
-  const results: ProcessedResult[] = [];
+  const settled = await mapWithConcurrency(
+    eligible,
+    STRIPE_CONCURRENCY,
+    async (incident): Promise<ProcessedResult | null> => {
+      // Defensive : si kind n'est pas un RefundKind valide, on skip (la table
+      // a un CHECK kind IN ('revival','admin','timeout') donc ne devrait pas
+      // arriver, mais le cast TS impose un check runtime).
+      if (
+        incident.kind !== "revival" &&
+        incident.kind !== "admin" &&
+        incident.kind !== "timeout"
+      ) {
+        console.warn(
+          `[REFUND_RETRY_SKIP_BAD_KIND] incident=${incident.id} order=${incident.order_id} kind=${incident.kind}`,
+        );
+        return null;
+      }
+      const kind: RefundKind = incident.kind;
 
-  for (const incident of rows) {
-    // Defensive : si kind n'est pas un RefundKind valide, on skip (la table
-    // a un CHECK kind IN ('revival','admin','timeout') donc ne devrait pas
-    // arriver, mais le cast TS impose un check runtime).
-    if (
-      incident.kind !== "revival" &&
-      incident.kind !== "admin" &&
-      incident.kind !== "timeout"
-    ) {
-      console.warn(
-        `[REFUND_RETRY_SKIP_BAD_KIND] incident=${incident.id} order=${incident.order_id} kind=${incident.kind}`,
-      );
-      continue;
-    }
-    const kind: RefundKind = incident.kind;
+      // Defensive : blocked_reason doit être valide pour kind='revival'. Si
+      // null sur kind='revival' (ne devrait pas arriver, posé par T-102.2.b),
+      // on skip pour ne pas crasher l'UPDATE closure_reason côté helper.
+      let blockedReason: "blocked_stock" | "blocked_slot" | null = null;
+      if (
+        incident.blocked_reason === "blocked_stock" ||
+        incident.blocked_reason === "blocked_slot"
+      ) {
+        blockedReason = incident.blocked_reason;
+      }
+      if (kind === "revival" && blockedReason === null) {
+        console.warn(
+          `[REFUND_RETRY_SKIP_BAD_BLOCKED] incident=${incident.id} order=${incident.order_id} blocked=${incident.blocked_reason ?? "null"}`,
+        );
+        return null;
+      }
 
-    // Defensive : blocked_reason doit être valide pour kind='revival'. Si
-    // null sur kind='revival' (ne devrait pas arriver, posé par T-102.2.b),
-    // on skip pour ne pas crasher l'UPDATE closure_reason côté helper.
-    let blockedReason: "blocked_stock" | "blocked_slot" | null = null;
-    if (
-      incident.blocked_reason === "blocked_stock" ||
-      incident.blocked_reason === "blocked_slot"
-    ) {
-      blockedReason = incident.blocked_reason;
-    }
-    if (kind === "revival" && blockedReason === null) {
-      console.warn(
-        `[REFUND_RETRY_SKIP_BAD_BLOCKED] incident=${incident.id} order=${incident.order_id} blocked=${incident.blocked_reason ?? "null"}`,
-      );
-      continue;
-    }
+      // Helper retry est resilient : tous les chemins d'erreur sont catchés
+      // côté retryIncident. On wrap quand même dans un try/catch global pour
+      // ne jamais casser la concurrence (1 incident foireux ne doit pas
+      // remonter et torpiller mapWithConcurrency).
+      let result: RetryIncidentResult;
+      try {
+        result = await retryIncident({
+          incidentId: incident.id,
+          orderId: incident.order_id,
+          kind,
+          paymentIntentId: incident.payment_intent_id,
+          consumerId: incident.consumer_id,
+          blockedReason,
+          retryCount: incident.retry_count,
+          admin,
+        });
+      } catch (helperException) {
+        console.error(
+          `[REFUND_RETRY_HELPER_CRASH] incident=${incident.id} order=${incident.order_id} kind=${kind} exception=${(helperException as Error).message}`,
+        );
+        result = "failed_will_retry";
+      }
 
-    // Helper retry est resilient : tous les chemins d'erreur sont catchés
-    // côté retryIncident. On wrap quand même dans un try/catch global pour
-    // ne jamais casser la boucle batch (1 incident foireux ne doit pas
-    // bloquer les autres).
-    let result: RetryIncidentResult;
-    try {
-      result = await retryIncident({
-        incidentId: incident.id,
-        orderId: incident.order_id,
+      return {
+        incident_id: incident.id,
+        order_id: incident.order_id,
         kind,
-        paymentIntentId: incident.payment_intent_id,
-        consumerId: incident.consumer_id,
-        blockedReason,
-        retryCount: incident.retry_count,
-        admin,
-      });
-    } catch (helperException) {
-      console.error(
-        `[REFUND_RETRY_HELPER_CRASH] incident=${incident.id} order=${incident.order_id} kind=${kind} exception=${(helperException as Error).message}`,
-      );
-      result = "failed_will_retry";
-    }
+        result,
+      };
+    },
+  );
 
-    results.push({
-      incident_id: incident.id,
-      order_id: incident.order_id,
-      kind,
-      result,
-    });
+  const results: ProcessedResult[] = [];
+  for (const r of settled) {
+    if (r.status === "fulfilled" && r.value !== null) {
+      results.push(r.value);
+    }
   }
 
   return NextResponse.json({ processed: results.length, results });
