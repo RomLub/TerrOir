@@ -208,7 +208,15 @@ export async function syncStripePaymentSucceeded(
           : "order_revival_blocked_slot";
 
       try {
-        await stripe.refunds.create({ payment_intent: paymentIntent.id });
+        // T-408 idempotencyKey : `refund_${orderId}_revival` (context
+        // discriminator distinct des paths admin / timeout / retry).
+        // Defense-in-depth : la dédup webhook_events_processed évite déjà
+        // un 2e refund sur rejouage Stripe, mais cohérence avec les autres
+        // paths refund + protection contre purge erronée de la table dédup.
+        await stripe.refunds.create(
+          { payment_intent: paymentIntent.id },
+          { idempotencyKey: `refund_${orderId}_revival` },
+        );
 
         // UPDATE closure_reason pour drill-down UI consumer/admin.
         // statut reste 'cancelled' (l'order n'a jamais été engagée),
