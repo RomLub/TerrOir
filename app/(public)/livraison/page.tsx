@@ -35,7 +35,7 @@ import { NEXT_PUBLIC_APP_URL } from "@/lib/env/urls";
 export const metadata: Metadata = {
   title: "Livraison et retrait — TerrOir | Marketplace producteurs Sarthe",
   description:
-    "Récupérez vos produits directement chez le producteur (retrait à la ferme gratuit) ou par envoi postal pour les produits secs. France métropolitaine.",
+    "Récupère tes produits directement chez le producteur (retrait à la ferme gratuit) ou par envoi postal pour les produits secs. France métropolitaine.",
   alternates: {
     canonical: `${NEXT_PUBLIC_APP_URL}/livraison`,
   },
@@ -43,8 +43,8 @@ export const metadata: Metadata = {
 };
 
 const RETRAIT_BENEFITS = [
-  { icon: "🤝", title: "Vous rencontrez le producteur" },
-  { icon: "🌾", title: "Vous voyez la ferme" },
+  { icon: "🤝", title: "Tu rencontres le producteur" },
+  { icon: "🌾", title: "Tu vois la ferme" },
   { icon: "0 €", title: "Pas de frais de livraison" },
   { icon: "❄️", title: "Produits ultra-frais, préparés juste avant le retrait" },
 ];
@@ -63,7 +63,7 @@ const FAQ_ITEMS = [
     q: "Que faire si je rate mon créneau de retrait ?",
     a: (
       <>
-        Contactez directement le producteur (ses coordonnées sont sur sa
+        Contacte directement le producteur (ses coordonnées sont sur sa
         fiche), un nouveau créneau pourra être convenu ensemble.
       </>
     ),
@@ -82,7 +82,7 @@ const FAQ_ITEMS = [
     q: "Mon colis postal est arrivé en retard ou abîmé. Que faire ?",
     a: (
       <>
-        Signalez-le-nous via{" "}
+        Signale-le-nous via{" "}
         <Link
           href="/contact"
           className="text-green-900 underline decoration-dotted underline-offset-4 hover:text-terra-700"
@@ -109,7 +109,7 @@ export default async function LivraisonPage() {
           Livraison et retrait
         </h1>
         <p className="mt-6 text-[17px] text-dark/70 max-w-2xl mx-auto leading-relaxed">
-          Récupérez vos produits directement chez le producteur ou recevez-les
+          Récupère tes produits directement chez le producteur ou reçois-les
           par envoi postal pour les denrées non périssables.
         </p>
       </section>
@@ -126,8 +126,8 @@ export default async function LivraisonPage() {
                 Retrait à la ferme
               </h2>
               <p className="mt-4 text-[15px] text-dark/75 leading-relaxed">
-                Le cœur du modèle TerrOir : vous rencontrez votre producteur,
-                vous voyez l&apos;exploitation, vous repartez avec vos produits.
+                Le cœur du modèle TerrOir : tu rencontres ton producteur,
+                tu vois l&apos;exploitation, tu repars avec tes produits.
                 <strong className="text-green-900"> Gratuit.</strong>
               </p>
             </div>
@@ -139,7 +139,7 @@ export default async function LivraisonPage() {
                     01
                   </span>
                   <span>
-                    Vous choisissez un créneau lors de la commande.
+                    Tu choisis un créneau lors de la commande.
                   </span>
                 </li>
                 <li className="flex gap-3">
@@ -147,7 +147,7 @@ export default async function LivraisonPage() {
                     02
                   </span>
                   <span>
-                    Vous récupérez votre commande directement à la ferme du
+                    Tu récupères ta commande directement à la ferme du
                     producteur.
                   </span>
                 </li>
@@ -239,7 +239,7 @@ export default async function LivraisonPage() {
               </h3>
               <ul className="mt-3 space-y-2 text-[14px] text-dark/75 leading-relaxed list-disc pl-5">
                 <li>
-                  Le producteur vous expédie sous quelques jours ouvrés selon
+                  Le producteur t&apos;expédie sous quelques jours ouvrés selon
                   ses modalités.
                 </li>
                 <li>
@@ -269,7 +269,7 @@ export default async function LivraisonPage() {
                     href="/contact"
                     className="text-green-900 underline decoration-dotted underline-offset-4 hover:text-terra-700"
                   >
-                    contactez-nous
+                    contacte-nous
                   </Link>
                   .
                 </li>
@@ -324,12 +324,12 @@ export default async function LivraisonPage() {
           </p>
 
           <p className="mt-3 text-center text-[14px] text-dark/65">
-            Vous ne trouvez pas de producteur près de chez vous ?{" "}
+            Tu ne trouves pas de producteur près de chez toi ?{" "}
             <Link
               href="/contact"
               className="text-green-900 underline decoration-dotted underline-offset-4 hover:text-terra-700"
             >
-              Signalez-le-nous
+              Signale-le-nous
             </Link>
             .
           </p>
@@ -342,8 +342,8 @@ export default async function LivraisonPage() {
           En cas de problème
         </h2>
         <p className="mt-5 text-[15px] text-dark/75 leading-relaxed">
-          Si un produit n&apos;est pas conforme à votre commande à la
-          réception (produit gâté, manquant, défaut), contactez-nous
+          Si un produit n&apos;est pas conforme à ta commande à la
+          réception (produit gâté, manquant, défaut), contacte-nous
           rapidement pour trouver une solution avec le producteur.
         </p>
         <p className="mt-4 text-[14px] text-violet-500 leading-relaxed">
@@ -390,7 +390,7 @@ export default async function LivraisonPage() {
           ))}
         </div>
         <p className="mt-6 text-[14px] text-dark/65">
-          Vous ne trouvez pas votre réponse ?{" "}
+          Tu ne trouves pas ta réponse ?{" "}
           <Link
             href="/faq"
             className="text-green-900 underline decoration-dotted underline-offset-4 hover:text-terra-700"
@@ -408,7 +408,7 @@ export default async function LivraisonPage() {
             Une question sur la livraison ?
           </p>
           <p className="mt-2 text-[14px] text-dark/65 max-w-md mx-auto leading-relaxed">
-            L&apos;équipe TerrOir vous répond sous 24 heures ouvrées.
+            L&apos;équipe TerrOir te répond sous 24 heures ouvrées.
           </p>
           <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
             <Link href="/contact">

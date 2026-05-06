@@ -32,7 +32,7 @@ import { NEXT_PUBLIC_APP_URL } from "@/lib/env/urls";
 export const metadata: Metadata = {
   title: "FAQ — TerrOir | Marketplace producteurs Sarthe",
   description:
-    "Toutes les réponses à vos questions sur TerrOir : commandes, paiement, livraison, producteurs. Une question spécifique ? Contactez-nous.",
+    "Toutes les réponses à tes questions sur TerrOir : commandes, paiement, livraison, producteurs. Une question spécifique ? Contacte-nous.",
   alternates: {
     canonical: `${NEXT_PUBLIC_APP_URL}/faq`,
   },
@@ -102,10 +102,10 @@ const CATEGORIES: Category[] = [
         q: "Comment je crée mon compte ?",
         a: (
           <>
-            Cliquez sur « Inscription » depuis la page d&apos;accueil. La
+            Clique sur « Inscription » depuis la page d&apos;accueil. La
             création de compte est obligatoire pour passer commande, ce qui
-            nous permet de vous offrir un meilleur service après-vente et
-            de garantir la traçabilité de votre commande.
+            nous permet de t&apos;offrir un meilleur service après-vente et
+            de garantir la traçabilité de ta commande.
           </>
         ),
       },
@@ -113,8 +113,8 @@ const CATEGORIES: Category[] = [
         q: "Est-ce gratuit pour les acheteurs ?",
         a: (
           <>
-            Oui. Aucun frais d&apos;inscription, aucun abonnement. Vous
-            payez uniquement le prix des produits et, le cas échéant, les
+            Oui. Aucun frais d&apos;inscription, aucun abonnement. Tu
+            paies uniquement le prix des produits et, le cas échéant, les
             frais d&apos;envoi postal pour les denrées non-périssables.
           </>
         ),
@@ -124,10 +124,10 @@ const CATEGORIES: Category[] = [
         a: (
           <>
             Chaque producteur dispose de sa fiche personnelle avec son
-            catalogue. Vous parcourez les producteurs ou directement les
-            produits, ajoutez vos articles au panier, choisissez votre mode
+            catalogue. Tu parcours les producteurs ou directement les
+            produits, ajoutes tes articles au panier, choisis ton mode
             de récupération (retrait à la ferme ou envoi postal selon le
-            producteur), et payez en une fois.
+            producteur), et payes en une fois.
           </>
         ),
       },
@@ -142,10 +142,10 @@ const CATEGORIES: Category[] = [
         q: "Comment passer une commande ?",
         a: (
           <>
-            Parcourez les producteurs ou les produits, ajoutez au panier,
-            validez votre panier, choisissez votre mode de récupération
-            (retrait à la ferme ou envoi postal), payez par carte bancaire.
-            Vous recevez ensuite un email de confirmation.
+            Parcours les producteurs ou les produits, ajoute au panier,
+            valide ton panier, choisis ton mode de récupération
+            (retrait à la ferme ou envoi postal), paie par carte bancaire.
+            Tu reçois ensuite un email de confirmation.
           </>
         ),
       },
@@ -153,9 +153,9 @@ const CATEGORIES: Category[] = [
         q: "Puis-je commander chez plusieurs producteurs en une seule fois ?",
         a: (
           <>
-            Vous pouvez ajouter au panier des produits de plusieurs
+            Tu peux ajouter au panier des produits de plusieurs
             producteurs, mais chaque commande chez un producteur sera
-            traitée séparément. Vous aurez donc un retrait (ou un envoi)
+            traitée séparément. Tu auras donc un retrait (ou un envoi)
             distinct par producteur.
           </>
         ),
@@ -164,10 +164,10 @@ const CATEGORIES: Category[] = [
         q: "Comment se passe le retrait à la ferme ?",
         a: (
           <>
-            Lors de la commande, vous choisissez un créneau parmi ceux
-            proposés par le producteur. Le jour J, vous vous rendez à
+            Lors de la commande, tu choisis un créneau parmi ceux
+            proposés par le producteur. Le jour J, tu te rends à
             l&apos;adresse indiquée sur la fiche producteur pour récupérer
-            votre commande. C&apos;est gratuit, et vous rencontrez
+            ta commande. C&apos;est gratuit, et tu rencontres
             directement le producteur. Plus de détails sur la page{" "}
             <InternalLink href="/livraison">Livraison et retrait</InternalLink>.
           </>
@@ -177,7 +177,7 @@ const CATEGORIES: Category[] = [
         q: "Que faire si je ne peux pas venir au créneau choisi ?",
         a: (
           <>
-            Contactez directement le producteur (ses coordonnées figurent
+            Contacte directement le producteur (ses coordonnées figurent
             sur sa fiche) pour convenir d&apos;un nouveau créneau.
           </>
         ),
@@ -221,7 +221,7 @@ const CATEGORIES: Category[] = [
     title: "Paiement",
     items: [
       {
-        q: "Quels moyens de paiement acceptez-vous ?",
+        q: "Quels moyens de paiement sont acceptés ?",
         a: (
           <>
             Carte bancaire (Visa, Mastercard, Carte Bleue), Apple Pay et
@@ -235,7 +235,7 @@ const CATEGORIES: Category[] = [
         a: (
           <>
             Oui. Tous les paiements sont traités par Stripe, leader mondial
-            des paiements en ligne, certifié PCI DSS niveau 1. Vos données
+            des paiements en ligne, certifié PCI DSS niveau 1. Tes données
             de carte ne transitent jamais par nos serveurs et ne sont pas
             stockées chez nous.
           </>
@@ -245,8 +245,8 @@ const CATEGORIES: Category[] = [
         q: "Vais-je recevoir une facture ?",
         a: (
           <>
-            Oui, vous recevez automatiquement par email un récapitulatif
-            de votre commande après confirmation du paiement, faisant
+            Oui, tu reçois automatiquement par email un récapitulatif
+            de ta commande après confirmation du paiement, faisant
             office de facture.
           </>
         ),
@@ -255,7 +255,7 @@ const CATEGORIES: Category[] = [
         q: "Quand suis-je débité ?",
         a: (
           <>
-            Au moment de la validation finale de votre commande. Le débit
+            Au moment de la validation finale de ta commande. Le débit
             est immédiat.
           </>
         ),
@@ -264,9 +264,9 @@ const CATEGORIES: Category[] = [
         q: "Que faire si mon paiement est refusé ?",
         a: (
           <>
-            Vérifiez les informations saisies, votre plafond bancaire, ou
-            réessayez avec une autre carte. Si le problème persiste,
-            contactez votre banque ou{" "}
+            Vérifie les informations saisies, ton plafond bancaire, ou
+            réessaie avec une autre carte. Si le problème persiste,
+            contacte ta banque ou{" "}
             <InternalLink href="/contact">notre équipe</InternalLink>.
           </>
         ),
@@ -296,7 +296,7 @@ const CATEGORIES: Category[] = [
         q: "Puis-je visiter une ferme avant de commander ?",
         a: (
           <>
-            Oui, et c&apos;est même encouragé. Contactez directement le
+            Oui, et c&apos;est même encouragé. Contacte directement le
             producteur via sa fiche producteur pour convenir d&apos;une
             visite à la ferme.
           </>
@@ -356,7 +356,7 @@ const CATEGORIES: Category[] = [
         q: "Que faire si un produit n'est pas conforme à ma commande ?",
         a: (
           <>
-            Signalez-nous le problème via{" "}
+            Signale-nous le problème via{" "}
             <InternalLink href="/contact">Contact</InternalLink> dans les
             meilleurs délais. Nous trouvons une solution avec le producteur
             (remboursement ou remplacement).{" "}
@@ -384,18 +384,18 @@ const CATEGORIES: Category[] = [
         q: "Puis-je supprimer mon compte ?",
         a: (
           <>
-            Oui, à tout moment depuis votre espace personnel ou en nous
+            Oui, à tout moment depuis ton espace personnel ou en nous
             contactant. La suppression est définitive et entraîne la perte
-            de votre historique.
+            de ton historique.
           </>
         ),
       },
       {
-        q: "Comment garantissez-vous la fraîcheur des produits ?",
+        q: "Comment la fraîcheur des produits est-elle garantie ?",
         a: (
           <>
             Le retrait à la ferme garantit une fraîcheur maximale puisque
-            le producteur prépare votre commande juste avant le retrait.
+            le producteur prépare ta commande juste avant le retrait.
             Pour l&apos;envoi postal, seules les denrées non-périssables
             sont autorisées.
           </>
@@ -533,14 +533,14 @@ export default function FaqPage() {
       <section className="max-w-3xl mx-auto px-6 pb-20">
         <div className="rounded-2xl border border-dark/[0.06] bg-white p-7 md:p-10 shadow-soft text-center">
           <p className="font-serif text-[24px] md:text-[28px] text-green-900 leading-tight">
-            Vous n&apos;avez pas trouvé votre réponse&nbsp;?
+            Tu n&apos;as pas trouvé ta réponse&nbsp;?
           </p>
           <p className="mt-2 text-[14px] text-dark/65 max-w-md mx-auto leading-relaxed">
-            L&apos;équipe TerrOir vous répond sous 24 heures ouvrées.
+            L&apos;équipe TerrOir te répond sous 24 heures ouvrées.
           </p>
           <div className="mt-6">
             <Link href="/contact">
-              <Button size="lg">Contactez-nous →</Button>
+              <Button size="lg">Contacte-nous →</Button>
             </Link>
           </div>
         </div>

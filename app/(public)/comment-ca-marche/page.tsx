@@ -5,9 +5,9 @@ import { useState } from 'react';
 import { Button } from '@/components/ui';
 
 const STEPS_CONSO = [
-  { n: '01', title: 'Trouvez un éleveur près de chez vous', text: "Explorez la carte interactive et filtrez par espèce, label ou distance. Chaque ferme a sa fiche détaillée." },
-  { n: '02', title: 'Choisissez vos pièces et un créneau', text: "Sélectionnez vos produits et réservez un créneau de retrait à la ferme parmi ceux proposés par l'éleveur." },
-  { n: '03', title: 'Récupérez et savourez', text: "Présentez votre code de commande à la ferme. Vous payez sur place, en direct, et vous repartez avec votre viande." },
+  { n: '01', title: 'Trouve un éleveur près de chez toi', text: "Explore la carte interactive et filtre par espèce, label ou distance. Chaque ferme a sa fiche détaillée." },
+  { n: '02', title: 'Choisis tes pièces et un créneau', text: "Sélectionne tes produits et réserve un créneau de retrait à la ferme parmi ceux proposés par l'éleveur." },
+  { n: '03', title: 'Récupère et savoure', text: "Présente ton code de commande à la ferme et repars avec ta viande. Le paiement a déjà été effectué en ligne au moment de la commande." },
 ];
 
 const STEPS_PROD = [
@@ -17,9 +17,9 @@ const STEPS_PROD = [
 ];
 
 const FAQ = [
-  { q: 'Comment fonctionne le paiement ?', a: "Vous payez directement à l'éleveur lors du retrait, en espèces ou par carte selon ses moyens. TerrOir ne prend aucune commission sur le paiement." },
+  { q: 'Comment fonctionne le paiement ?', a: "Tu payes directement à l'éleveur lors du retrait, en espèces ou par carte selon ses moyens. TerrOir ne prend aucune commission sur le paiement." },
   { q: 'Et si la quantité varie au moment du retrait ?', a: "C'est normal pour de la viande à la pièce. Le prix final est ajusté au poids réel pesé à la ferme. Le total estimé sur la commande sert de base." },
-  { q: 'Puis-je annuler une commande ?', a: "Oui, tant que le créneau de retrait n'est pas dépassé. Prévenez simplement l'éleveur via la messagerie pour libérer le créneau." },
+  { q: 'Puis-je annuler une commande ?', a: "Oui, tant que le créneau de retrait n'est pas dépassé. Préviens simplement l'éleveur via la messagerie pour libérer le créneau." },
   { q: "Les producteurs sont-ils vérifiés ?", a: "Tous les producteurs présents sur TerrOir sont des éleveurs sarthois certifiés. Nous vérifions les labels, l'adresse d'exploitation et le numéro SIRET avant publication." },
   { q: 'Y a-t-il une livraison à domicile ?', a: "Non. TerrOir est un site de retrait à la ferme uniquement. C'est ce qui nous permet de garder des prix justes et de préserver le lien direct." },
 ];
@@ -32,7 +32,7 @@ export default function CommentCaMarchePage() {
       <section className="max-w-5xl mx-auto px-6 pt-20 pb-12 text-center">
         <span className="text-[11px] uppercase tracking-[0.2em] text-terra-700 font-semibold">Le fonctionnement</span>
         <h1 className="mt-3 font-serif text-[44px] md:text-[64px] text-green-900 leading-[1.02] tracking-tight">
-          Du pré à votre table,<br/>en trois étapes.
+          Du pré à ta table,<br/>en trois étapes.
         </h1>
         <p className="mt-5 text-[17px] text-dark/70 max-w-2xl mx-auto leading-relaxed">
           TerrOir met en relation directe les éleveurs de la Sarthe et les amateurs de viande de qualité. Pas d&apos;intermédiaire, pas de stock, pas de gâchis.
@@ -47,7 +47,7 @@ export default function CommentCaMarchePage() {
         <StepsRow steps={STEPS_PROD} variant="terra" />
       </Section>
 
-      <Section eyebrow="Questions fréquentes" title="Tout ce que vous voulez savoir" subtitle={null}>
+      <Section eyebrow="Questions fréquentes" title="Tout ce que tu veux savoir" subtitle={null}>
         <div className="max-w-3xl mx-auto divide-y divide-dark/[0.08] rounded-2xl bg-white border border-dark/[0.06] shadow-soft">
           {FAQ.map((item, i) => {
             const isOpen = open === i;
@@ -67,10 +67,10 @@ export default function CommentCaMarchePage() {
       <section className="max-w-5xl mx-auto px-6 pt-16">
         <div className="rounded-2xl border border-dark/[0.08] bg-white p-7 md:p-10 shadow-soft text-center">
           <p className="font-serif text-[24px] md:text-[28px] text-green-900 leading-tight">
-            Vous avez d&apos;autres questions ?
+            Tu as d&apos;autres questions ?
           </p>
           <p className="mt-2 text-[14px] text-dark/65 max-w-md mx-auto leading-relaxed">
-            L&apos;équipe TerrOir vous répond sous 24 heures ouvrées.
+            L&apos;équipe TerrOir te répond sous 24 heures ouvrées.
           </p>
           <div className="mt-5">
             <Link href="/contact">
@@ -94,7 +94,7 @@ export default function CommentCaMarchePage() {
         <div className="bg-green-900 text-white rounded-3xl p-10 md:p-16 text-center">
           <h2 className="font-serif text-[36px] md:text-[48px] leading-tight">Prêt à goûter la différence ?</h2>
           <p className="mt-4 text-[16px] text-green-100/85 max-w-xl mx-auto">
-            Trouvez un éleveur près de chez vous et passez votre première commande dès aujourd&apos;hui.
+            Trouve un éleveur près de chez toi et passe ta première commande dès aujourd&apos;hui.
           </p>
           <div className="mt-7">
             <Link href="/carte"><Button size="lg">Trouver un producteur →</Button></Link>
