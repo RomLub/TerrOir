@@ -147,7 +147,7 @@ export default function AdminCategoriesPage() {
           className="w-72 rounded-md border border-gray-300 px-3 py-2 text-[13px] placeholder:text-gray-400 focus:border-terroir-green-700 focus:outline-none focus:ring-2 focus:ring-terroir-green-700"
         />
         <p className="text-[12px] text-gray-500">
-          Tri par ordre d'affichage puis nom
+          Tri par ordre puis nom
         </p>
       </div>
 
