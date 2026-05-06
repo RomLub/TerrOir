@@ -58,3 +58,11 @@ const META: Record<ProducerStatus, Meta> = {
 export function ProducerStatusBadge({ status }: { status: ProducerStatus }) {
   return <StatusDotBadge {...META[status]} />;
 }
+
+// T-105 — exposé pour les libellés FR contextuels hors badge (ex: encadré
+// "Un producteur est déjà inscrit, statut actuel : Suspendu" dans
+// InviteModal). Réutilise la même source que le badge pour rester aligné.
+export function getProducerStatusLabel(status: string): string {
+  if (status in META) return META[status as ProducerStatus].label;
+  return status;
+}

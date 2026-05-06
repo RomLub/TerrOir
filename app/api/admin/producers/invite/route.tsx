@@ -68,8 +68,14 @@ export async function POST(request: Request) {
       type: "admin_invite_blocked_admin",
       invitation_email: input.email,
     });
+    // T-105 : `kind` ajouté pour permettre à l'UI admin de différencier les
+    // 409 (admin / producer / draft_resend) sans regex sur le message texte.
+    // `error` (legacy) reste fourni pour compat consumers tiers / logs.
     return NextResponse.json(
-      { error: "Impossible d'inviter un administrateur comme producteur" },
+      {
+        error: "Impossible d'inviter un administrateur comme producteur",
+        kind: "blocked_admin",
+      },
       { status: 409 },
     );
   }
@@ -128,8 +134,16 @@ export async function POST(request: Request) {
         invitation_email: input.email,
         statut: existingProducer?.statut ?? null,
       });
+      // T-105 : `kind` + `statut` exposés à l'UI pour message contextuel
+      // (suspendu, supprimé, actif…). Pas de leak — l'admin a déjà saisi
+      // l'email volontairement, et la sémantique est nécessaire à la
+      // décision UX (ex: producer suspended ≠ producer actif).
       return NextResponse.json(
-        { error: "Ce producteur est déjà inscrit" },
+        {
+          error: "Ce producteur est déjà inscrit",
+          kind: "blocked_producer",
+          statut: existingProducer?.statut ?? null,
+        },
         { status: 409 },
       );
     }

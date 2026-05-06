@@ -46,6 +46,7 @@ export {
 } from "./status-dot-badge";
 export {
   ProducerStatusBadge,
+  getProducerStatusLabel,
   type ProducerStatus,
 } from "./producer-status-badge";
 export { AdminModal, type AdminModalProps } from "./admin-modal";

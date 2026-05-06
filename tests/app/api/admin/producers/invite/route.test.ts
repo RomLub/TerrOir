@@ -273,12 +273,15 @@ describe("A. Auth & validation", () => {
 // --- B. Cas 4 — admin existant -------------------------------------------
 
 describe("B. Cas 4 — admin existant", () => {
-  it("B1 email matche admin_users → 409 message dédié, pas d'invitation envoyée", async () => {
+  it("B1 email matche admin_users → 409 message dédié + kind, pas d'invitation envoyée", async () => {
     pushResp("admin_users", "select", { data: { id: "admin-9" }, error: null });
     const res = await POST(makeRequest(VALID_BODY));
     expect(res.status).toBe(409);
+    // T-105 : `kind` ajouté pour permettre à l'UI admin de différencier les
+    // 2 cas blocked sans regex sur le message texte.
     expect(await res.json()).toEqual({
       error: "Impossible d'inviter un administrateur comme producteur",
+      kind: "blocked_admin",
     });
     expect(captured.fromCalls).toEqual(["admin_users"]);
     expect(mockSendTemplate).not.toHaveBeenCalled();
@@ -305,13 +308,16 @@ describe("C. Cas 3 — producer existant", () => {
     ["suspended", "C4"],
     ["deleted", "C5"],
   ])(
-    "%s → 409 dur 'Ce producteur est déjà inscrit', pas d'invitation [%s]",
+    "%s → 409 dur 'Ce producteur est déjà inscrit' + kind + statut, pas d'invitation [%s]",
     async (statut) => {
       setupProducerWithStatut(statut);
       const res = await POST(makeRequest(VALID_BODY));
       expect(res.status).toBe(409);
+      // T-105 : `kind` + `statut` exposés pour message UX contextuel.
       expect(await res.json()).toEqual({
         error: "Ce producteur est déjà inscrit",
+        kind: "blocked_producer",
+        statut,
       });
       expect(captured.fromCalls).toEqual(["admin_users", "users", "producers"]);
       expect(mockSendTemplate).not.toHaveBeenCalled();

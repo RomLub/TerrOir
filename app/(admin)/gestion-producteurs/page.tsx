@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { AdminModal, AdminPageHeader, Button, FilterTabs, ProducerStatusBadge, TableActionButton, TableStatus, type ProducerStatus } from '@/components/ui';
+import { AdminModal, AdminPageHeader, Button, FilterTabs, ProducerStatusBadge, TableActionButton, TableStatus, getProducerStatusLabel, type ProducerStatus } from '@/components/ui';
 import { ListingHeader } from '@/components/listings/ListingHeader';
 import {
   applyCursor,
@@ -482,12 +482,22 @@ function InviteModal({
   // on bascule en mode confirmation : encadré informatif orange + bouton
   // dédié "Confirmer la relance". Le 2nd POST embarque confirm_draft_resend=true.
   const [confirmDraftResend, setConfirmDraftResend] = useState(false);
+  // T-105 : capture des 2 autres cas 409 contextuels (admin ou producer
+  // déjà inscrit). Affichage encadré dédié au lieu d'une simple ligne
+  // rouge — cohérence avec l'encadré orange draft_resend et bleu
+  // existing_account=consumer. `statut` n'est rempli que pour blocked_producer.
+  const [blocked, setBlocked] = useState<
+    | { kind: 'blocked_admin' }
+    | { kind: 'blocked_producer'; statut: string | null }
+    | null
+  >(null);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.includes('@')) return;
     setSubmitting(true);
     setError(null);
+    setBlocked(null);
 
     try {
       const res = await fetch('/api/admin/producers/invite', {
@@ -504,6 +514,21 @@ function InviteModal({
         if (body.kind === 'draft_resend_confirm_required') {
           setConfirmDraftResend(true);
           setError(null);
+          return;
+        }
+        // T-105 : 2 cas 409 contextuels — afficher l'encadré dédié plutôt
+        // qu'une simple ligne rouge sous le form (cohérence draft_resend +
+        // existing_account). Garde-fou kind: si le backend devient muet
+        // (contrat cassé), fallback sur le message texte historique.
+        if (body.kind === 'blocked_admin') {
+          setBlocked({ kind: 'blocked_admin' });
+          return;
+        }
+        if (body.kind === 'blocked_producer') {
+          setBlocked({
+            kind: 'blocked_producer',
+            statut: typeof body.statut === 'string' ? body.statut : null,
+          });
           return;
         }
         setError(body.error ?? 'Invitation impossible');
@@ -597,11 +622,45 @@ function InviteModal({
               </p>
             </div>
           )}
+          {blocked?.kind === 'blocked_admin' && (
+            <div
+              className="rounded-md border border-gray-300 bg-gray-50 px-4 py-3 text-[13px] text-gray-800"
+              role="alert"
+            >
+              <p className="font-semibold">Cet email est déjà rattaché à un compte administrateur</p>
+              <p className="mt-1 leading-relaxed">
+                Un administrateur ne peut pas être invité comme producteur. Utilisez une autre
+                adresse email.
+              </p>
+            </div>
+          )}
+          {blocked?.kind === 'blocked_producer' && (
+            <div
+              className="rounded-md border border-red-300 bg-red-50 px-4 py-3 text-[13px] text-red-900"
+              role="alert"
+            >
+              <p className="font-semibold">Un producteur est déjà inscrit avec cet email</p>
+              <p className="mt-1 leading-relaxed">
+                {blocked.statut
+                  ? `Statut actuel : ${getProducerStatusLabel(blocked.statut)}.`
+                  : null}{' '}
+                Pour le retrouver, ouvrez la liste des producteurs et filtrez sur son email.
+              </p>
+              <Link
+                href="/gestion-producteurs"
+                onClick={onClose}
+                className="mt-2 inline-block text-[13px] font-medium text-red-900 underline hover:text-red-700"
+              >
+                Aller à la liste des producteurs →
+              </Link>
+            </div>
+          )}
           <div>
             <label className="mb-1.5 block text-[12px] font-medium text-gray-800">Email du producteur</label>
             <input type="email" required value={email} onChange={(e) => {
                 setEmail(e.target.value);
                 if (confirmDraftResend) setConfirmDraftResend(false);
+                if (blocked) setBlocked(null);
               }}
               placeholder="contact@ma-ferme.fr"
               className="w-full rounded-md border border-gray-300 bg-white px-3 py-2.5 text-[14px] text-gray-900 placeholder:text-gray-400 focus:border-terroir-green-700 focus:outline-none focus:ring-2 focus:ring-terroir-green-700" />
