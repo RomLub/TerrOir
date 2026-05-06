@@ -1,11 +1,12 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Button, OrderStatusBadge, type OrderStatus } from '@/components/ui';
 import { ListingHeader } from '@/components/listings/ListingHeader';
 import { buildCursorUrl } from '@/lib/pagination/cursor';
 import { ProducerLayout } from '../_components/ProducerLayout';
+import { PickupValidationCard } from './_components/PickupValidationCard';
 
 export type ProducerOrderRow = {
   id: string;
@@ -63,6 +64,12 @@ export function ProducerCommandesClient({
   const activeStatuses = TABS.find((t) => t.value === tab)!.statuses;
   const filtered = orders.filter((o) => activeStatuses.includes(o.status));
 
+  const onPickupValidated = useCallback((orderId: string) => {
+    setOrders((arr) =>
+      arr.map((o) => (o.id === orderId ? { ...o, status: 'completed' } : o)),
+    );
+  }, []);
+
   const actOnOrder = async (id: string, action: 'confirm' | 'cancel') => {
     setWorking(id);
     try {
@@ -94,6 +101,10 @@ export function ProducerCommandesClient({
           </div>
           {error && <p className="mt-2 text-[13px] text-terra-700">{error}</p>}
         </header>
+
+        <div className="mb-8">
+          <PickupValidationCard onValidated={onPickupValidated} />
+        </div>
 
         <div className="flex gap-1.5 flex-wrap border-b border-dark/[0.08]">
           {TABS.map((t) => {
