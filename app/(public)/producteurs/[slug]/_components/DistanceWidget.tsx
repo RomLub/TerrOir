@@ -333,11 +333,13 @@ function CollapseLink({ onClick }: { onClick: () => void }) {
 
 function PrivacyNote() {
   // Information RGPD au point de collecte (art. 13 RGPD) — wording mis à
-  // jour T-219 (cache serveur géocodage CP→coords) :
+  // jour T-263 (mention explicite sessionStorage) en complément de T-219
+  // (cache serveur géocodage CP→coords) :
   //   (a) finalité explicite : calcul de distance.
   //   (b) caractère facultatif : la fiche reste accessible sans saisie.
   //   (c) durée de conservation côté navigateur : sessionStorage seulement
-  //       (purge fermeture onglet).
+  //       (purge fermeture onglet) — verbalisé "stockage de session" pour
+  //       que l'utilisateur non-tech identifie la nature du stockage.
   //   (d) chaîne CP→coords : transite via /api/geocode (cache Supabase
   //       anonyme, ni compte ni IP côté table geocode_cache, hit_count
   //       agrégé) puis api-adresse.data.gouv.fr en cache miss. Cf. continuité
@@ -349,10 +351,11 @@ function PrivacyNote() {
     <p className="mt-4 text-[11px] leading-[1.5] text-terroir-ink/[0.55]">
       Saisie facultative — la fiche du producteur reste consultable sans. Ta
       position (géoloc ou résolue depuis ton code postal) reste dans ton
-      navigateur pour calculer la distance ; elle n&apos;est jamais associée
-      à ton compte ni à ta visite côté serveur. La saisie d&apos;un code
-      postal transite via TerrOir (cache anonyme du couple code postal →
-      coordonnées commune) vers le service public api-adresse.data.gouv.fr.
+      navigateur (stockage de session, effacé à la fermeture de l&apos;onglet)
+      pour calculer la distance ; elle n&apos;est jamais associée à ton compte
+      ni à ta visite côté serveur. La saisie d&apos;un code postal transite
+      via TerrOir (cache anonyme du couple code postal → coordonnées commune)
+      vers le service public api-adresse.data.gouv.fr.
     </p>
   );
 }

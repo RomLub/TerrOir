@@ -173,6 +173,12 @@ describe("DistanceWidget — disclosure 3 états (T-240)", () => {
     // anonyme côté serveur). On vérifie le nouveau wording cohérent avec
     // PrivacyNote().
     expect(container.textContent).toContain("Saisie facultative");
+    // T-263 : mention explicite sessionStorage (verbalisée "stockage de
+    // session") pour que l'utilisateur non-tech identifie la nature et la
+    // durée du stockage côté navigateur.
+    expect(container.textContent).toContain(
+      "stockage de session, effacé à la fermeture de l'onglet",
+    );
     expect(container.textContent).toContain(
       "n'est jamais associée à ton compte ni à ta visite côté serveur",
     );
