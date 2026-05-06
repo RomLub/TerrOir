@@ -26,7 +26,7 @@ export default function StockAlertBackInStock(props: Props) {
         Bonne nouvelle, c&apos;est de retour !
       </h1>
       <p>
-        Le produit que vous suiviez vient d&apos;être réapprovisionné :
+        Le produit que tu suivais vient d&apos;être réapprovisionné :
       </p>
       <p
         style={{
@@ -53,8 +53,8 @@ export default function StockAlertBackInStock(props: Props) {
         ) : null}
       </p>
       <p>
-        Le stock est limité — pensez à passer commande rapidement si ce
-        produit vous intéresse toujours.
+        Le stock est limité — pense à passer commande rapidement si ce
+        produit t&rsquo;intéresse toujours.
       </p>
       <p style={{ margin: "20px 0" }}>
         <a
@@ -76,7 +76,7 @@ export default function StockAlertBackInStock(props: Props) {
         style={{ border: 0, borderTop: "1px solid #e5e5e5", margin: "24px 0 12px" }}
       />
       <p style={{ fontSize: 11, color: "#8a8a8a", lineHeight: 1.5 }}>
-        Vous recevez cet email car vous avez créé une alerte stock pour ce
+        Tu reçois cet email car tu as créé une alerte stock pour ce
         produit. Cette alerte est désormais consommée et ne se déclenchera plus.{" "}
         <a href={props.unsubscribeUrl} style={{ color: "#8a8a8a" }}>
           Se désabonner de toutes les alertes liées à cette adresse

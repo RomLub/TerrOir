@@ -19,8 +19,8 @@ export default function OrderReminderConsumer(props: Props) {
         Retrait prévu demain
       </h1>
       <p>
-        Petit rappel : votre commande chez <strong>{props.exploitation}</strong>{" "}
-        vous attend demain.
+        Petit rappel : ta commande chez <strong>{props.exploitation}</strong>{" "}
+        t&rsquo;attend demain.
       </p>
 
       <div

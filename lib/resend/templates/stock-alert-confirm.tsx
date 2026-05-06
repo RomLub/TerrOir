@@ -18,16 +18,16 @@ export interface Props {
 }
 
 export const subject = (p: Props) =>
-  `Confirmez votre alerte stock — ${p.productName}`;
+  `Confirme ton alerte stock — ${p.productName}`;
 
 export default function StockAlertConfirm(props: Props) {
   return (
     <EmailLayout title={subject(props)}>
       <h1 style={{ color: emailTheme.green, marginTop: 0 }}>
-        Confirmez votre alerte
+        Confirme ton alerte
       </h1>
       <p>
-        Vous avez demandé à être prévenu(e) au retour en stock de ce produit :
+        Tu as demandé à être prévenu(e) au retour en stock de ce produit :
       </p>
       <p
         style={{
@@ -47,8 +47,8 @@ export default function StockAlertConfirm(props: Props) {
         </a>
       </p>
       <p>
-        Pour activer votre alerte, cliquez sur le bouton ci-dessous. Sans cette
-        confirmation, votre demande sera automatiquement supprimée sous 7 jours.
+        Pour activer ton alerte, clique sur le bouton ci-dessous. Sans cette
+        confirmation, ta demande sera automatiquement supprimée sous 7 jours.
       </p>
       <p style={{ margin: "20px 0" }}>
         <a
@@ -73,8 +73,8 @@ export default function StockAlertConfirm(props: Props) {
         style={{ border: 0, borderTop: "1px solid #e5e5e5", margin: "24px 0 12px" }}
       />
       <p style={{ fontSize: 11, color: "#8a8a8a", lineHeight: 1.5 }}>
-        Si vous n&apos;êtes pas à l&apos;origine de cette demande, ignorez
-        simplement cet email — votre adresse ne sera pas conservée.{" "}
+        Si tu n&apos;es pas à l&apos;origine de cette demande, ignore
+        simplement cet email — ton adresse ne sera pas conservée.{" "}
         <a href={props.unsubscribeUrl} style={{ color: "#8a8a8a" }}>
           Se désabonner immédiatement
         </a>

@@ -19,7 +19,7 @@ export interface Props {
 }
 
 export const subject = (p: Props) =>
-  `Votre commande ${p.codeCommande} est confirmée`;
+  `Ta commande ${p.codeCommande} est confirmée`;
 
 export default function OrderConfirmedConsumer(props: Props) {
   return (
@@ -28,7 +28,7 @@ export default function OrderConfirmedConsumer(props: Props) {
         Commande confirmée
       </h1>
       <p>
-        Votre producteur a confirmé votre commande. À retirer sur place, frais
+        Ton producteur a confirmé ta commande. À retirer sur place, frais
         du jour.
       </p>
 

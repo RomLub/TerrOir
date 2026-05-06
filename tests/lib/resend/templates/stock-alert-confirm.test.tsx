@@ -32,7 +32,7 @@ const PROPS = {
 
 describe("StockAlertConfirm — subject", () => {
   it("inclut le nom du produit", () => {
-    expect(subject(PROPS)).toBe("Confirmez votre alerte stock — Côte de bœuf");
+    expect(subject(PROPS)).toBe("Confirme ton alerte stock — Côte de bœuf");
   });
 });
 

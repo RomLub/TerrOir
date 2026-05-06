@@ -15,21 +15,21 @@ export interface Props {
 }
 
 export const subject = (_p: Props) =>
-  "TerrOir — confirmez votre nouvelle adresse email";
+  "TerrOir — confirme ta nouvelle adresse email";
 
 export default function EmailChangeOtpNew(props: Props) {
   return (
     <EmailLayout title={subject(props)}>
       <h1 style={{ color: emailTheme.green, marginTop: 0 }}>
-        Confirmez votre nouvelle adresse
+        Confirme ta nouvelle adresse
       </h1>
       <p>
         Cette adresse email vient d&apos;être désignée comme nouvelle adresse
         principale d&apos;un compte TerrOir.
       </p>
       <p>
-        Pour finaliser le changement, saisissez ce code dans l&apos;app (cette
-        étape vérifie que vous avez bien accès à cette adresse) :
+        Pour finaliser le changement, saisis ce code dans l&apos;app (cette
+        étape vérifie que tu as bien accès à cette adresse) :
       </p>
       <p
         style={{
@@ -58,8 +58,8 @@ export default function EmailChangeOtpNew(props: Props) {
         }}
       />
       <p style={{ fontSize: 11, color: "#8a8a8a", lineHeight: 1.5 }}>
-        Si vous n&apos;êtes pas à l&apos;origine de cette demande, ignorez cet
-        email. Sans confirmation, votre adresse ne sera pas associée à un
+        Si tu n&apos;es pas à l&apos;origine de cette demande, ignore cet
+        email. Sans confirmation, ton adresse ne sera pas associée à un
         compte.
       </p>
     </EmailLayout>

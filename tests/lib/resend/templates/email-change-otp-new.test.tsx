@@ -24,7 +24,7 @@ const PROPS = {
 describe("EmailChangeOtpNew — subject", () => {
   it("subject FR fixe (pas dépendant des props)", () => {
     expect(subject(PROPS)).toBe(
-      "TerrOir — confirmez votre nouvelle adresse email",
+      "TerrOir — confirme ta nouvelle adresse email",
     );
   });
 });
@@ -42,7 +42,7 @@ describe("EmailChangeOtpNew — render HTML", () => {
 
   it("inclut un disclaimer si l'user n'est pas à l'origine", async () => {
     const html = await render(<EmailChangeOtpNew {...PROPS} />);
-    expect(html).toContain("ignorez cet");
+    expect(html).toContain("ignore cet");
   });
 
   it("ne révèle PAS l'ancienne adresse (asymétrie vs otp-current)", async () => {

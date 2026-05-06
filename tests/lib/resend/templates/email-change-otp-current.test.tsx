@@ -26,7 +26,7 @@ const PROPS = {
 describe("EmailChangeOtpCurrent — subject", () => {
   it("subject FR fixe (pas dépendant des props)", () => {
     expect(subject(PROPS)).toBe(
-      "TerrOir — code de vérification pour changer votre email",
+      "TerrOir — code de vérification pour changer ton email",
     );
   });
 });
@@ -49,7 +49,7 @@ describe("EmailChangeOtpCurrent — render HTML", () => {
 
   it("inclut un disclaimer si l'user n'est pas à l'origine", async () => {
     const html = await render(<EmailChangeOtpCurrent {...PROPS} />);
-    expect(html).toContain("ignorez cet");
+    expect(html).toContain("ignore cet");
   });
 
   it("ne rend pas l'OTP comme valeur attribut JSX (preuve d'inline body)", async () => {

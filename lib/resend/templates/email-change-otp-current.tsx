@@ -19,22 +19,22 @@ export interface Props {
 }
 
 export const subject = (_p: Props) =>
-  "TerrOir — code de vérification pour changer votre email";
+  "TerrOir — code de vérification pour changer ton email";
 
 export default function EmailChangeOtpCurrent(props: Props) {
   return (
     <EmailLayout title={subject(props)}>
       <h1 style={{ color: emailTheme.green, marginTop: 0 }}>
-        Confirmez le changement d&apos;email
+        Confirme le changement d&apos;email
       </h1>
       <p>
-        Vous (ou quelqu&apos;un avec accès à votre compte) avez demandé à
-        changer l&apos;adresse email de votre compte TerrOir vers{" "}
+        Tu (ou quelqu&apos;un avec accès à ton compte) as demandé à
+        changer l&apos;adresse email de ton compte TerrOir vers{" "}
         <strong>{props.newEmail}</strong>.
       </p>
       <p>
-        Pour confirmer que cette demande vient bien de vous, saisissez ce code
-        dans l&apos;app (cette étape vérifie votre adresse actuelle) :
+        Pour confirmer que cette demande vient bien de toi, saisis ce code
+        dans l&apos;app (cette étape vérifie ton adresse actuelle) :
       </p>
       <p
         style={{
@@ -63,9 +63,9 @@ export default function EmailChangeOtpCurrent(props: Props) {
         }}
       />
       <p style={{ fontSize: 11, color: "#8a8a8a", lineHeight: 1.5 }}>
-        Si vous n&apos;êtes pas à l&apos;origine de cette demande, ignorez cet
-        email. Aucune modification ne sera apportée à votre compte. Si cette
-        situation se répète, contactez le support.
+        Si tu n&apos;es pas à l&apos;origine de cette demande, ignore cet
+        email. Aucune modification ne sera apportée à ton compte. Si cette
+        situation se répète, contacte le support.
       </p>
     </EmailLayout>
   );

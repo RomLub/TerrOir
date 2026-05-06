@@ -8,23 +8,23 @@ export interface Props {
 }
 
 export const subject = (p: Props) => {
-  if (p.dayOffset === 0) return `Laissez un avis sur ${p.exploitation}`;
-  if (p.dayOffset === 2) return `Votre avis compte — ${p.exploitation}`;
-  return `Dernière invitation : partagez votre avis sur ${p.exploitation}`;
+  if (p.dayOffset === 0) return `Laisse un avis sur ${p.exploitation}`;
+  if (p.dayOffset === 2) return `Ton avis compte — ${p.exploitation}`;
+  return `Dernière invitation : partage ton avis sur ${p.exploitation}`;
 };
 
 export default function ReviewRequest(props: Props) {
   const intro =
     props.dayOffset === 0
-      ? "Merci d'avoir commandé sur TerrOir. Comment s'est passé votre retrait ?"
+      ? "Merci d'avoir commandé sur TerrOir. Comment s'est passé ton retrait ?"
       : props.dayOffset === 2
-        ? "On ne veut pas insister, mais votre retour aide les producteurs."
-        : "Dernière relance — votre avis reste précieux pour la communauté.";
+        ? "On ne veut pas insister, mais ton retour aide les producteurs."
+        : "Dernière relance — ton avis reste précieux pour la communauté.";
 
   return (
     <EmailLayout title={subject(props)}>
       <h1 style={{ color: emailTheme.green, marginTop: 0 }}>
-        Votre avis sur {props.exploitation}
+        Ton avis sur {props.exploitation}
       </h1>
       <p>{intro}</p>
       <p>Commande : <strong>{props.codeCommande}</strong></p>
