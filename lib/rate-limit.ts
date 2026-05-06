@@ -119,6 +119,12 @@ let _recoveryLimiter: Ratelimit | null | undefined;
 let _stripeCreatePaymentIntentLimiter: Ratelimit | null | undefined;
 let _stripeRefundLimiter: Ratelimit | null | undefined;
 let _stripeConnectOnboardLimiter: Ratelimit | null | undefined;
+// Page /contact (P0 légales 2026-05-06) : cap volontairement bas (3/h/IP)
+// car spam form public à fort coût (envoi email Resend + bruit dans la
+// boîte support contact@terroir-local.fr). Honeypot anti-bot côté route
+// reste la première ligne de défense ; le rate-limit absorbe les spammers
+// qui contournent le honeypot.
+let _contactFormLimiter: Ratelimit | null | undefined;
 
 export function getSignupRateLimit(): Ratelimit | null {
   if (_signupLimiter === undefined) {
@@ -175,4 +181,11 @@ export function getStripeConnectOnboardRateLimit(): Ratelimit | null {
     );
   }
   return _stripeConnectOnboardLimiter;
+}
+
+export function getContactFormRateLimit(): Ratelimit | null {
+  if (_contactFormLimiter === undefined) {
+    _contactFormLimiter = createRateLimiter(3, "1 h", "contact_form");
+  }
+  return _contactFormLimiter;
 }

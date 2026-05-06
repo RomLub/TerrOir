@@ -64,6 +64,22 @@ export default function CommentCaMarchePage() {
         </div>
       </Section>
 
+      <section className="max-w-5xl mx-auto px-6 pt-16">
+        <div className="rounded-2xl border border-dark/[0.08] bg-white p-7 md:p-10 shadow-soft text-center">
+          <p className="font-serif text-[24px] md:text-[28px] text-green-900 leading-tight">
+            Vous avez d&apos;autres questions ?
+          </p>
+          <p className="mt-2 text-[14px] text-dark/65 max-w-md mx-auto leading-relaxed">
+            L&apos;équipe TerrOir vous répond sous 24 heures ouvrées.
+          </p>
+          <div className="mt-5">
+            <Link href="/contact">
+              <Button size="md" variant="secondary">Nous contacter →</Button>
+            </Link>
+          </div>
+        </div>
+      </section>
+
       <section className="max-w-5xl mx-auto px-6 py-20">
         <div className="bg-green-900 text-white rounded-3xl p-10 md:p-16 text-center">
           <h2 className="font-serif text-[36px] md:text-[48px] leading-tight">Prêt à goûter la différence ?</h2>

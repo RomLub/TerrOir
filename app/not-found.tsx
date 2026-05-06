@@ -40,6 +40,16 @@ export default function NotFound() {
           Voir tous les produits
         </Link>
       </div>
+      <p className="mt-8 text-[13px] text-dark/60">
+        Vous cherchez quelque chose qui n&apos;existe pas ?{" "}
+        <Link
+          href="/contact"
+          className="text-green-900 underline decoration-dotted underline-offset-4 hover:text-terra-700"
+        >
+          Signalez-le-nous
+        </Link>
+        .
+      </p>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { Button, Input, Textarea } from '@/components/ui';
 
@@ -108,6 +109,22 @@ export default function DevenirProducteurPage() {
               <p className="mt-3 text-[14px] text-dark/75 leading-relaxed">{a.text}</p>
             </article>
           ))}
+        </div>
+      </section>
+
+      <section className="max-w-5xl mx-auto px-6 pb-16">
+        <div className="rounded-2xl border border-dark/[0.08] bg-white p-7 md:p-10 shadow-soft text-center">
+          <p className="font-serif text-[24px] md:text-[28px] text-green-900 leading-tight">
+            Une question avant de candidater ?
+          </p>
+          <p className="mt-2 text-[14px] text-dark/65 max-w-md mx-auto leading-relaxed">
+            L&apos;équipe TerrOir vous répond sous 24 heures ouvrées.
+          </p>
+          <div className="mt-5">
+            <Link href="/contact">
+              <Button size="md" variant="secondary">Nous contacter →</Button>
+            </Link>
+          </div>
         </div>
       </section>
 

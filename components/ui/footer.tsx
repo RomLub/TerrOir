@@ -96,22 +96,31 @@ export function Footer({
             </div>
           ))}
 
-          {/* TerrOir : contact + mentions légales pending (pas de href mort) */}
+          {/* TerrOir : contact + politique de confidentialité (P0 légales
+              2026-05-06). Mentions légales · CGU · CGV restent à créer. */}
           <div>
             <h4 className="mb-4 text-xs font-semibold uppercase tracking-[0.14em] text-white/45">
               TerrOir
             </h4>
             <ul className="flex flex-col gap-2.5">
               <li>
-                <a
-                  href="mailto:contact@terroir-local.fr"
+                <Link
+                  href="/contact"
                   className="text-sm text-white/80 transition-colors hover:text-white"
                 >
                   Contact
-                </a>
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/politique-confidentialite"
+                  className="text-sm text-white/80 transition-colors hover:text-white"
+                >
+                  Politique de confidentialité
+                </Link>
               </li>
               <li className="text-xs italic leading-relaxed text-white/40">
-                Mentions légales · CGU · CGV · Politique de confidentialité{" "}
+                Mentions légales · CGU · CGV{" "}
                 <span className="not-italic">— à venir</span>
               </li>
             </ul>
