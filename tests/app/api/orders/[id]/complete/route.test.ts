@@ -7,6 +7,11 @@
 // Pas de revalidateTag (intentionnel — la commande reste dans le filtre
 // IN ('confirmed','ready','completed')).
 //
+// LOT 5 chantier pickup-validation 2026-05-06 — la route est rétrofittée
+// avec audit log cluster pickup_* et rate-limit Upstash 10/min/producer
+// partagés avec /api/producer/orders/validate-pickup. Tests étendus pour
+// vérifier les events audit posés sur chaque branch + le 429 rate-limit.
+//
 // Pattern Supabase aligné sur tests/app/api/orders/[id]/cancel/route.test.ts.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -24,9 +29,16 @@ vi.hoisted(() => {
 
 // --- Hoisted mocks partagés avec les factories vi.mock -------------------
 
-const { mockRevalidateTag, mockSendTemplate } = vi.hoisted(() => ({
+const {
+  mockRevalidateTag,
+  mockSendTemplate,
+  mockLogPickupEvent,
+  mockConsumeRateLimit,
+} = vi.hoisted(() => ({
   mockRevalidateTag: vi.fn(),
   mockSendTemplate: vi.fn(),
+  mockLogPickupEvent: vi.fn(),
+  mockConsumeRateLimit: vi.fn(),
 }));
 
 vi.mock("next/cache", () => ({
@@ -36,6 +48,22 @@ vi.mock("next/cache", () => ({
 vi.mock("@/lib/resend/send", () => ({
   sendTemplate: mockSendTemplate,
 }));
+
+vi.mock("@/lib/audit-logs/log-pickup-event", () => ({
+  logPickupEvent: mockLogPickupEvent,
+}));
+
+// importOriginal pour préserver les autres helpers (getProducersSearch
+// RateLimit etc.) consommés par d'autres tests partageant le worker
+// vitest. Cf. docs/conventions/vitest-mocking-patterns.md (LOT 8).
+vi.mock("@/lib/rate-limit", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/rate-limit")>();
+  return {
+    ...actual,
+    consumeRateLimit: mockConsumeRateLimit,
+    getPickupValidationRateLimit: () => ({}),
+  };
+});
 
 // --- Auth mocks ----------------------------------------------------------
 
@@ -51,9 +79,14 @@ vi.mock("@/lib/auth/session", () => ({
   getSessionUser: async () => sessionUser,
 }));
 
-let userOwnsProducerResult: boolean;
+// LOT 5 — la route appelle désormais getOwnedProducerId pour récupérer
+// le producerId (utilisé pour rate-limit keying + audit log metadata).
+// Le helper userOwnsProducer n'est plus consommé par /complete mais
+// gardé en mock no-op pour ne pas casser d'éventuels tests transverses.
+let ownedProducerIdResult: string | null;
 vi.mock("@/lib/auth/producerOwnership", () => ({
-  userOwnsProducer: async () => userOwnsProducerResult,
+  getOwnedProducerId: async () => ownedProducerIdResult,
+  userOwnsProducer: async () => true,
 }));
 
 // --- Supabase admin client mock ------------------------------------------
@@ -183,6 +216,8 @@ const PARAMS = { params: { id: ORDER_ID } };
 
 // --- Setup / teardown ----------------------------------------------------
 
+const SESSION_USER_ID = "user-prod-owner";
+
 beforeEach(() => {
   captured = {
     fromCalls: [],
@@ -194,14 +229,21 @@ beforeEach(() => {
   };
   responses = {};
   sessionUser = {
-    id: "user-prod-owner",
+    id: SESSION_USER_ID,
     email: "prod@example.com",
     roles: ["producer"],
     isAdmin: false,
   };
-  userOwnsProducerResult = true;
+  ownedProducerIdResult = PRODUCER_ID;
   mockSendTemplate.mockReset().mockResolvedValue({ ok: true, id: "res_1" });
   mockRevalidateTag.mockReset();
+  mockLogPickupEvent.mockReset().mockResolvedValue(undefined);
+  mockConsumeRateLimit.mockReset().mockResolvedValue({
+    success: true,
+    limit: 10,
+    remaining: 9,
+    reset: Date.now() + 60_000,
+  });
 });
 
 afterEach(() => {
@@ -272,13 +314,29 @@ describe("C. Order lookup + idempotence", () => {
 
 // --- D. Autorisation -----------------------------------------------------
 
-describe("D. Autorisation (userOwnsProducer)", () => {
-  it("D1 session pas owner → 403, pas d'UPDATE", async () => {
-    userOwnsProducerResult = false;
+describe("D. Autorisation (getOwnedProducerId)", () => {
+  it("D1 user sans producer (getOwnedProducerId null) → 403, pas de I/O orders", async () => {
+    ownedProducerIdResult = null;
     const res = await POST(makeRequest(), PARAMS);
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: "Forbidden" });
     expect(captured.updates).toEqual([]);
+    // Sortie avant rate-limit + lookup orders
+    expect(mockConsumeRateLimit).not.toHaveBeenCalled();
+    expect(captured.fromCalls.includes("orders")).toBe(false);
+  });
+
+  it("D2 producer du user ≠ producer de l'order → 403 + audit pickup_attempt_invalid wrong_producer", async () => {
+    ownedProducerIdResult = "another-producer";
+    const res = await POST(makeRequest(), PARAMS);
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "Forbidden" });
+    expect(captured.updates).toEqual([]);
+    const meta = mockLogPickupEvent.mock.calls.find(
+      (c) =>
+        (c[0] as { eventType: string }).eventType === "pickup_attempt_invalid",
+    )?.[0] as { metadata: Record<string, unknown> } | undefined;
+    expect(meta?.metadata.reason).toBe("wrong_producer");
   });
 });
 
@@ -454,5 +512,106 @@ describe("I. Email consumer (review_request_j0)", () => {
     const res = await POST(makeRequest(), PARAMS);
     expect(res.status).toBe(200);
     expect(mockSendTemplate).not.toHaveBeenCalled();
+  });
+});
+
+// --- J. LOT 5 — Audit log cluster pickup_* + rate-limit ----------------
+
+describe("J. Audit log cluster pickup_* (LOT 5)", () => {
+  it("J1 nominal ready → audit pickup_validated avec metadata complet", async () => {
+    await POST(makeRequest(), PARAMS);
+    const validatedCalls = mockLogPickupEvent.mock.calls.filter(
+      (c) => (c[0] as { eventType: string }).eventType === "pickup_validated",
+    );
+    expect(validatedCalls).toHaveLength(1);
+    const meta = (
+      validatedCalls[0]![0] as {
+        userId: string;
+        metadata: Record<string, unknown>;
+      }
+    );
+    expect(meta.userId).toBe(SESSION_USER_ID);
+    expect(meta.metadata.producer_id).toBe(PRODUCER_ID);
+    expect(meta.metadata.order_id).toBe(ORDER_ID);
+    expect(meta.metadata.route).toBe("complete_id_based");
+    expect(typeof meta.metadata.completed_at).toBe("string");
+  });
+
+  it("J2 already completed (idempotent) → audit pickup_attempt_invalid reason=already_completed", async () => {
+    setOrderFetch({ statut: "completed" });
+    const res = await POST(makeRequest(), PARAMS);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, already: true });
+    const invalidCalls = mockLogPickupEvent.mock.calls.filter(
+      (c) =>
+        (c[0] as { eventType: string }).eventType === "pickup_attempt_invalid",
+    );
+    expect(invalidCalls).toHaveLength(1);
+    const meta = (invalidCalls[0]![0] as { metadata: Record<string, unknown> })
+      .metadata;
+    expect(meta.reason).toBe("already_completed");
+    expect(meta.route).toBe("complete_id_based");
+  });
+
+  it("J3 assertTransition fail (pending) → audit reason=order_not_confirmed:pending", async () => {
+    setOrderFetch({ statut: "pending" });
+    await POST(makeRequest(), PARAMS);
+    const meta = mockLogPickupEvent.mock.calls.find(
+      (c) =>
+        (c[0] as { eventType: string }).eventType === "pickup_attempt_invalid",
+    )?.[0] as { metadata: Record<string, unknown> } | undefined;
+    expect(meta?.metadata.reason).toBe("order_not_confirmed:pending");
+  });
+
+  it("J4 code mismatch → audit reason=code_mismatch (et pas de UPDATE/email)", async () => {
+    const res = await POST(
+      makeRequest({ body: { code_commande: "WRONG1" } }),
+      PARAMS,
+    );
+    expect(res.status).toBe(400);
+    const meta = mockLogPickupEvent.mock.calls.find(
+      (c) =>
+        (c[0] as { eventType: string }).eventType === "pickup_attempt_invalid",
+    )?.[0] as { metadata: Record<string, unknown> } | undefined;
+    expect(meta?.metadata.reason).toBe("code_mismatch");
+    expect(captured.updates).toEqual([]);
+    expect(mockSendTemplate).not.toHaveBeenCalled();
+  });
+
+  it("J5 rate-limit hit → 429 + Retry-After header + audit pickup_attempt_rate_limited", async () => {
+    mockConsumeRateLimit.mockResolvedValue({
+      success: false,
+      limit: 10,
+      remaining: 0,
+      reset: Date.now() + 30_000,
+    });
+    const res = await POST(makeRequest(), PARAMS);
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toMatch(/^\d+$/);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("rate_limit");
+    // Sortie avant lookup orders + UPDATE + email
+    expect(captured.fromCalls.includes("orders")).toBe(false);
+    expect(captured.updates).toEqual([]);
+    expect(mockSendTemplate).not.toHaveBeenCalled();
+    const rateLimitedCalls = mockLogPickupEvent.mock.calls.filter(
+      (c) =>
+        (c[0] as { eventType: string }).eventType ===
+        "pickup_attempt_rate_limited",
+    );
+    expect(rateLimitedCalls).toHaveLength(1);
+    const meta = (rateLimitedCalls[0]![0] as { metadata: Record<string, unknown> })
+      .metadata;
+    expect(meta.producer_id).toBe(PRODUCER_ID);
+    expect(meta.route).toBe("complete_id_based");
+  });
+
+  it("J6 rate-limit success → consumeRateLimit appelé avec key producer:<id>", async () => {
+    await POST(makeRequest(), PARAMS);
+    expect(mockConsumeRateLimit).toHaveBeenCalledTimes(1);
+    expect(mockConsumeRateLimit).toHaveBeenCalledWith(
+      expect.anything(),
+      `producer:${PRODUCER_ID}`,
+    );
   });
 });
