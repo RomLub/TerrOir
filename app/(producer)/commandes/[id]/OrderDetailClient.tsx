@@ -29,7 +29,7 @@ export function OrderDetailClient({ data }: { data: OrderDetailData }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const canValidateCode = order.status === 'ready';
+  const canValidateCode = order.status === 'confirmed';
 
   const call = async (action: 'confirm' | 'cancel', opts?: { reason?: string }) => {
     setBusy(action);

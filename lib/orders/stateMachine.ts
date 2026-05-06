@@ -14,9 +14,16 @@ export type OrderStatus =
   | "cancelled"
   | "refunded";
 
+// Modèle métier réel = 3 états actifs (pending → confirmed → completed).
+// La transition canonique du pickup est `confirmed → completed` : producer
+// reçoit, valide, prépare, le consumer arrive avec le code, producer saisit
+// le code → completed direct. `ready` est un état dormant (aucune route ne
+// le set en pratique) conservé en transition légale `confirmed → ready` et
+// `ready → completed` pour ne pas casser d'éventuels enregistrements
+// historiques. À nettoyer ou réaffecter dans un chantier dédié.
 const TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
   pending: ["confirmed", "cancelled", "refunded"],
-  confirmed: ["ready", "cancelled", "refunded"],
+  confirmed: ["ready", "completed", "cancelled", "refunded"],
   ready: ["completed", "cancelled", "refunded"],
   completed: [],
   cancelled: [],

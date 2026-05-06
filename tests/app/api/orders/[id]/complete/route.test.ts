@@ -1,9 +1,11 @@
 // Vitest pour POST /api/orders/[id]/complete.
 // Couverture : zod body (code_commande required), auth, order lookup,
 // idempotence, autorisation, state machine (assertTransition vers completed
-// depuis ready only), code_commande check (case-insensitive trim), UPDATE
-// orders, email review_request_j0. Pas de revalidateTag (intentionnel — la
-// commande reste dans le filtre IN ('confirmed','ready','completed')).
+// depuis confirmed OU ready — modèle 3 états réel : pickup direct depuis
+// confirmed, transition ready → completed conservée legacy), code_commande
+// check (case-insensitive trim), UPDATE orders, email review_request_j0.
+// Pas de revalidateTag (intentionnel — la commande reste dans le filtre
+// IN ('confirmed','ready','completed')).
 //
 // Pattern Supabase aligné sur tests/app/api/orders/[id]/cancel/route.test.ts.
 
@@ -282,7 +284,7 @@ describe("D. Autorisation (userOwnsProducer)", () => {
 
 // --- E. Transition (state machine) ---------------------------------------
 
-describe("E. Transition state machine — completed depuis ready only", () => {
+describe("E. Transition state machine — completed depuis confirmed OU ready", () => {
   it("E1 statut pending + code valide → 409 InvalidOrderTransitionError", async () => {
     setOrderFetch({ statut: "pending" });
     const res = await POST(makeRequest(), PARAMS);
@@ -293,15 +295,26 @@ describe("E. Transition state machine — completed depuis ready only", () => {
     expect(captured.updates).toEqual([]);
   });
 
-  it("E2 statut confirmed + code valide → 409", async () => {
+  it("E2 statut confirmed + code valide → 200 (pickup direct, modèle 3 états)", async () => {
     setOrderFetch({ statut: "confirmed" });
+    const res = await POST(makeRequest(), PARAMS);
+    expect(res.status).toBe(200);
+    const orderUpdate = captured.updates.find((u) => u.table === "orders");
+    expect(orderUpdate).toBeDefined();
+    expect((orderUpdate!.payload as Record<string, unknown>).statut).toBe(
+      "completed",
+    );
+  });
+
+  it("E3 statut cancelled → 409", async () => {
+    setOrderFetch({ statut: "cancelled" });
     const res = await POST(makeRequest(), PARAMS);
     expect(res.status).toBe(409);
     expect(captured.updates).toEqual([]);
   });
 
-  it("E3 statut cancelled → 409", async () => {
-    setOrderFetch({ statut: "cancelled" });
+  it("E4 statut refunded → 409", async () => {
+    setOrderFetch({ statut: "refunded" });
     const res = await POST(makeRequest(), PARAMS);
     expect(res.status).toBe(409);
     expect(captured.updates).toEqual([]);

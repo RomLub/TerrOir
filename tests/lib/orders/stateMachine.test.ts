@@ -24,7 +24,7 @@ const STATUSES: readonly OrderStatus[] = [
 // revue consciente de la matrice.
 const LEGAL: Record<OrderStatus, readonly OrderStatus[]> = {
   pending: ["confirmed", "cancelled", "refunded"],
-  confirmed: ["ready", "cancelled", "refunded"],
+  confirmed: ["ready", "completed", "cancelled", "refunded"],
   ready: ["completed", "cancelled", "refunded"],
   completed: [],
   cancelled: [],
@@ -80,7 +80,6 @@ describe("assertTransition — contrat throw / no-throw", () => {
       // Sauts en avant impossibles
       ["pending", "ready"],
       ["pending", "completed"],
-      ["confirmed", "completed"],
       // Retours en arrière interdits
       ["confirmed", "pending"],
       ["ready", "confirmed"],
