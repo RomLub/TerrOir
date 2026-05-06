@@ -32,6 +32,20 @@ const SESSION_KEY = "terroir_geo_session";
 // que le format n'est pas exactement 5 chiffres. Décision comité review T-200 r2.
 const POSTAL_CODE_REGEX = /^\d{5}$/;
 
+// A11y disclosure (T-273) — pattern WAI-ARIA "Disclosure" :
+//   - le bouton replié (CollapsedButton) porte `aria-expanded={false}` +
+//     `aria-controls={PANEL_ID}` : le screen reader annonce "collapsed"
+//     et fait le lien avec le panneau en cas de support (NVDA, VoiceOver).
+//   - le panneau déployé porte `id={PANEL_ID}`.
+//   - les liens "Masquer" portent `aria-expanded={true}` + le même
+//     `aria-controls`. Multiple triggers sur un même panneau est ARIA-valide
+//     (ex. "Masquer" mobile + "Masquer" desktop dans DistanceResult).
+// Pas de focus management explicite au toggle : le pattern Disclosure
+// classique laisse le focus là où il est (l'utilisateur clavier reste sur
+// le bouton qu'il vient d'activer, le contenu est lu post-render). Refacto
+// disclosure plus profond → T-256 (dette a11y consciente).
+const PANEL_ID = "distance-widget-panel";
+
 type GeoSource = "geoloc" | "postal";
 type GeoSession = { lat: number; lng: number; source: GeoSource };
 
@@ -270,7 +284,7 @@ export function DistanceWidget({
   const displayName = formatProducerNameForWidget(producerName);
 
   return (
-    <div className="rounded-xl border border-terroir-border bg-white p-5">
+    <div id={PANEL_ID} className="rounded-xl border border-terroir-border bg-white p-5">
       <div className="flex items-start justify-between gap-3">
         <p className="text-[14px] leading-[1.55] text-terroir-ink/[0.78]">
           Indique ta position pour découvrir la distance à vol d&apos;oiseau
@@ -345,6 +359,10 @@ function CollapsedButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
+      // A11y T-273 : pattern Disclosure — bouton replié, lié au panneau via
+      // aria-controls. aria-expanded=false annonce l'état au screen reader.
+      aria-expanded={false}
+      aria-controls={PANEL_ID}
       // h-11 = 44px tap target. Volontairement sobre (variant secondaire
       // outline) pour ne pas concurrencer le CTA primaire de la fiche.
       className="inline-flex h-11 items-center gap-2 rounded-lg border border-terroir-border bg-white px-4 text-[13px] font-semibold text-green-900 hover:bg-green-100/60 disabled:opacity-60"
@@ -360,6 +378,12 @@ function CollapseLink({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
+      // A11y T-273 : second trigger du même panneau (multi-trigger valide
+      // ARIA). aria-expanded=true annonce l'état déployé courant ; le clic
+      // bascule vers replié.
+      aria-expanded={true}
+      aria-controls={PANEL_ID}
+      aria-label="Masquer le détail de la distance"
       className="shrink-0 text-[12px] text-terroir-ink/[0.55] underline-offset-2 hover:text-green-900 hover:underline"
     >
       Masquer
@@ -413,7 +437,7 @@ function DistanceResult({
   const ratio = Math.max(0.04, Math.min(distance / ref, 1));
   const displayName = formatProducerNameForWidget(producerName);
   return (
-    <div className="rounded-xl border border-terroir-border bg-white p-5">
+    <div id={PANEL_ID} className="rounded-xl border border-terroir-border bg-white p-5">
       <div className="grid gap-5 md:grid-cols-2">
         <div>
           <div className="flex items-start justify-between gap-3">
@@ -498,7 +522,7 @@ function DistanceOutOfReach({
   // factuel et neutre — pas de rouge ni de wording culpabilisant.
   const displayName = formatProducerNameForWidget(producerName);
   return (
-    <div className="rounded-xl border border-terroir-border bg-white p-5">
+    <div id={PANEL_ID} className="rounded-xl border border-terroir-border bg-white p-5">
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-terra-700">

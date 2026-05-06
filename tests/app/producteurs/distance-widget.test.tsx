@@ -109,6 +109,11 @@ describe("DistanceWidget — disclosure 3 états (T-240)", () => {
     // button (pas de submit qui déclencherait un formulaire fantôme).
     expect(compact.getAttribute("type")).toBe("button");
     expect(compact.disabled).toBe(false);
+    // A11y T-273 : disclosure pattern — bouton replié, lié au panneau.
+    expect(compact.getAttribute("aria-expanded")).toBe("false");
+    expect(compact.getAttribute("aria-controls")).toBe(
+      "distance-widget-panel",
+    );
     // Le détail (invite + RGPD + bouton géoloc) ne doit PAS être monté.
     expect(container.textContent).not.toContain(
       "Indique ta position pour découvrir",
@@ -229,6 +234,16 @@ describe("DistanceWidget — disclosure 3 états (T-240)", () => {
       container.querySelectorAll("button"),
     ).find((b) => b.textContent?.trim() === "Masquer");
     expect(collapseLink).not.toBeUndefined();
+    // A11y T-273 : second trigger du même panneau, aria-expanded=true.
+    expect(collapseLink!.getAttribute("aria-expanded")).toBe("true");
+    expect(collapseLink!.getAttribute("aria-controls")).toBe(
+      "distance-widget-panel",
+    );
+    expect(collapseLink!.getAttribute("aria-label")).toBe(
+      "Masquer le détail de la distance",
+    );
+    // Le panneau cible existe bien dans le DOM avec le bon id.
+    expect(container.querySelector("#distance-widget-panel")).not.toBeNull();
     // Aucun message d'erreur initial (l'état d'erreur n'apparaît qu'après
     // une tentative de géoloc/CP qui échoue).
     expect(container.querySelector('[role="alert"]')).toBeNull();
