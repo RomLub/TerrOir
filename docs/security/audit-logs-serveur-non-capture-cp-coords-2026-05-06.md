@@ -270,3 +270,39 @@ Analytics ou un outil tiers de session-replay (aucun installé).
 
 Recommandation R1 (border le log B1) à acter avant ou pendant l'audit
 T-003 externe.
+
+---
+
+## Note de clôture R1 — 2026-05-06
+
+**Statut R1** : ✅ **résolu** (commit `5f03916`).
+
+Le finding B1 (`lib/geo/geocode-cache.ts:57,99` — CP saisi présent dans
+`console.error` en cas d'erreur DB) est corrigé : le CP a été retiré
+des 2 messages d'erreur, seul le message d'erreur DB (`error.message`)
+est conservé. Le commentaire ligne 117-118 de `geocode-cache.ts` a été
+mis à jour en cohérence pour refléter la nouvelle absence du CP.
+
+**Avant** :
+```ts
+console.error(`[GEOCODE_CACHE_HIT_ERROR] cp=${parsed.data} error=${error.message}`);
+console.error(`[GEOCODE_CACHE_WRITE_ERROR] cp=${parsed.data} error=${error.message}`);
+```
+
+**Après** :
+```ts
+console.error(`[GEOCODE_CACHE_HIT_ERROR] error=${error.message}`);
+console.error(`[GEOCODE_CACHE_WRITE_ERROR] error=${error.message}`);
+```
+
+**Impact tests** : 0 test impacté (grep `GEOCODE_CACHE_HIT_ERROR` /
+`GEOCODE_CACHE_WRITE_ERROR` côté `tests/` → aucun match).
+
+**Doctrine étendue** (à porter au backlog T-249-bis) : tout
+`console.error` / `console.warn` / `console.log` dans `lib/geo/*` doit
+exclure le CP et autres champs géoloc. Pattern à étendre par audit
+transverse de tous les `console.*` dans `lib/*` pour chasser d'autres
+leaks défensifs similaires (hors scope cette session).
+
+→ **Findings § B1 désormais résolu**. La conformité T-200 r1 sur les
+logs serveur est désormais sans nuance.
