@@ -188,8 +188,8 @@ function PanierClientInner() {
         <div className="max-w-xl mx-auto text-left">
           <StaleItemsBanner changes={staleChanges} forceShow={forceRefresh} />
         </div>
-        <p className="font-serif text-[28px] text-green-900">Votre panier est vide</p>
-        <p className="mt-3 text-[16px] text-dark/70">Découvrez les éleveurs sarthois près de chez vous.</p>
+        <p className="font-serif text-[28px] text-green-900">Ton panier est vide</p>
+        <p className="mt-3 text-[16px] text-dark/70">Découvre les éleveurs sarthois près de chez toi.</p>
         <div className="mt-8"><Link href="/carte"><Button size="lg">Trouver un producteur →</Button></Link></div>
       </div>
     );

@@ -58,7 +58,7 @@ export function StaleItemsBanner({
         </span>
         <div className="flex-1 min-w-0">
           <h2 className="font-serif text-[18px] text-terra-900 leading-tight">
-            Votre panier a été mis à jour
+            Ton panier a été mis à jour
           </h2>
           <p className="text-[13px] text-dark/70 mt-1">
             Certains produits ne sont plus disponibles ou ont été ajustés depuis leur ajout.

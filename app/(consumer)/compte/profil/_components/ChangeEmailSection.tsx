@@ -138,8 +138,8 @@ export default function ChangeEmailSection({
       <header>
         <h2 className="text-lg font-semibold text-terroir-ink">Email</h2>
         <p className="mt-1 text-sm text-terroir-muted">
-          Utilisé pour vous connecter et recevoir vos confirmations de commande.
-          Le changement requiert la validation de codes envoyés à votre adresse
+          Utilisé pour te connecter et recevoir tes confirmations de commande.
+          Le changement requiert la validation de codes envoyés à ton adresse
           actuelle puis à la nouvelle.
         </p>
       </header>
@@ -175,7 +175,7 @@ export default function ChangeEmailSection({
         <VerifyOtpStep
           stepName="current"
           newEmailValue={newEmailValue}
-          targetDescription={`à votre adresse actuelle (${currentEmail})`}
+          targetDescription={`à ton adresse actuelle (${currentEmail})`}
           verifyState={verifyCurrentState}
           verifyAction={verifyCurrentAction}
           requestAction={requestAction}
@@ -239,7 +239,7 @@ function EnterEmailStep({
         required
         value={newEmailValue}
         onChange={(e) => onNewEmailChange(e.target.value)}
-        hint="Vous recevrez d'abord un code à votre adresse actuelle, puis un autre à cette nouvelle adresse pour confirmer le changement."
+        hint="Tu recevras d'abord un code à ton adresse actuelle, puis un autre à cette nouvelle adresse pour confirmer le changement."
       />
 
       {requestState.error ? (

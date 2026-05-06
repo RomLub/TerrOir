@@ -36,11 +36,11 @@ function RevivalBlockedView({
   const isStock = closureReason === 'revival_blocked_stock';
   const headline = 'Commande non honorée';
   const reasonText = isStock
-    ? 'Le stock du produit a été épuisé entre votre tentative initiale de paiement et la validation finale.'
-    : 'Le créneau de retrait a été pris par un autre client entre votre tentative initiale et la validation finale.';
+    ? 'Le stock du produit a été épuisé entre ta tentative initiale de paiement et la validation finale.'
+    : 'Le créneau de retrait a été pris par un autre client entre ta tentative initiale et la validation finale.';
   const fixSuggestion = isStock
-    ? 'Vous pouvez repasser commande chez ce producteur ou un autre.'
-    : 'Vous pouvez choisir un autre créneau ou un autre producteur.';
+    ? 'Tu peux repasser commande chez ce producteur ou un autre.'
+    : 'Tu peux choisir un autre créneau ou un autre producteur.';
 
   return (
     <section className="max-w-3xl mx-auto py-8 text-center">
@@ -51,7 +51,7 @@ function RevivalBlockedView({
       <h1 className="mt-2 font-serif text-[44px] md:text-[56px] text-green-900 leading-tight">{headline}</h1>
       <p className="mt-3 text-[16px] text-dark/70 max-w-xl mx-auto">
         {reasonText}{' '}
-        <strong>Un remboursement intégral a été initié</strong> sur votre moyen de paiement
+        <strong>Un remboursement intégral a été initié</strong> sur ton moyen de paiement
         (3 à 5 jours ouvrés). {fixSuggestion}
       </p>
 
@@ -143,13 +143,13 @@ export function ConfirmationClient({ orderId, codeCommande, statut, closureReaso
         <span className="mt-6 inline-block text-[11px] uppercase tracking-[0.2em] text-terra-700 font-semibold">Commande confirmée</span>
         <h1 className="mt-2 font-serif text-[44px] md:text-[56px] text-green-900 leading-tight">Merci, c&apos;est payé.</h1>
         <p className="mt-3 text-[16px] text-dark/70 max-w-xl mx-auto">
-          Votre commande est transmise à {producer.name}. Un email de confirmation vient de vous être envoyé.
+          Ta commande est transmise à {producer.name}. Un email de confirmation vient de t&apos;être envoyé.
         </p>
 
         <div className="mt-10">
           <CodeCommande code={codeCommande} />
           <p className="mt-4 text-[14px] text-dark/70 font-medium">
-            Notez ce code — vous devrez le présenter au producteur.
+            Note ce code — tu devras le présenter au producteur.
           </p>
         </div>
 

@@ -131,18 +131,18 @@ function VerifySubmitButton() {
 function verifyOtpReasonToMessage(state: VerifyOtpState): string {
   switch (state.reason) {
     case "session":
-      return "Session expirée. Reconnectez-vous.";
+      return "Session expirée. Reconnecte-toi.";
     case "format":
       return "Le code doit contenir 6 chiffres.";
     case "no_active":
-      return "Aucun code actif. Demandez un nouveau code via 'Renvoyer'.";
+      return "Aucun code actif. Demande un nouveau code via 'Renvoyer'.";
     case "expired":
-      return "Code expiré. Demandez un nouveau code via 'Renvoyer'.";
+      return "Code expiré. Demande un nouveau code via 'Renvoyer'.";
     case "attempts_exceeded":
-      return "Trop de tentatives. Demandez un nouveau code via 'Renvoyer'.";
+      return "Trop de tentatives. Demande un nouveau code via 'Renvoyer'.";
     case "invalid":
       return state.attemptsRemaining !== undefined
-        ? `Code incorrect. Il vous reste ${state.attemptsRemaining} tentative${
+        ? `Code incorrect. Il te reste ${state.attemptsRemaining} tentative${
             state.attemptsRemaining > 1 ? "s" : ""
           }.`
         : "Code incorrect.";

@@ -13,7 +13,7 @@ export const revalidate = 0;
 export default function PanierPage() {
   return (
     <section>
-      <h1 className="font-serif text-[40px] md:text-[52px] text-green-900 leading-tight">Votre panier</h1>
+      <h1 className="font-serif text-[40px] md:text-[52px] text-green-900 leading-tight">Ton panier</h1>
       <PanierClient />
     </section>
   );

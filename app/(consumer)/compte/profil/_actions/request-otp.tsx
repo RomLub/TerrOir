@@ -62,7 +62,7 @@ export async function requestOtpAction(
 ): Promise<RequestOtpState> {
   const session = await getSessionUser();
   if (!session?.email) {
-    return { error: "Session introuvable. Reconnectez-vous." };
+    return { error: "Session introuvable. Reconnecte-toi." };
   }
 
   const parsed = requestOtpSchema.safeParse({

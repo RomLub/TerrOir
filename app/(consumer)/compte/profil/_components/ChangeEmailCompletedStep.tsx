@@ -26,11 +26,11 @@ export function CompletedStep({
         Email mis à jour avec succès.
       </p>
       <p className="text-sm text-terroir-ink">
-        Votre adresse de connexion est désormais <strong>{newEmail}</strong>.
+        Ton adresse de connexion est désormais <strong>{newEmail}</strong>.
       </p>
       <p className="text-sm text-terroir-muted">
-        Vos sessions actives sur les autres appareils ont été déconnectées —
-        vous resterez connecté sur cet appareil.
+        Tes sessions actives sur les autres appareils ont été déconnectées —
+        tu resteras connecté sur cet appareil.
       </p>
       <button
         type="button"
@@ -72,13 +72,13 @@ export function CompleteErrorPanel({
 function completeReasonToMessage(reason: CompleteEmailChangeReason): string {
   switch (reason) {
     case "session":
-      return "Session expirée. Reconnectez-vous.";
+      return "Session expirée. Reconnecte-toi.";
     case "format":
       return "Email invalide.";
     case "same_email":
       return "Le nouvel email est identique à l'actuel.";
     case "flow_invalid":
-      return "Le flow de changement n'est plus valide. Recommencez depuis le début.";
+      return "Le flow de changement n'est plus valide. Recommence depuis le début.";
     case "email_collision":
       return "Cet email est déjà utilisé par un autre compte.";
     case "auth_update_failed":

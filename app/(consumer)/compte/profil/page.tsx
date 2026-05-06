@@ -38,7 +38,7 @@ export default function ProfilPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!active) return;
       if (!user) {
-        setError("Vous devez être connecté.");
+        setError("Tu dois être connecté.");
         setLoading(false);
         return;
       }
@@ -126,7 +126,7 @@ export default function ProfilPage() {
             Mes informations
           </h1>
           <p className="mt-2 text-sm text-terroir-muted">
-            Ces informations sont utilisées pour vos commandes et retraits chez
+            Ces informations sont utilisées pour tes commandes et retraits chez
             les éleveurs.
           </p>
         </header>
@@ -165,7 +165,7 @@ export default function ProfilPage() {
                 placeholder="06 12 34 56 78"
                 value={profil.telephone}
                 onChange={(e) => update("telephone")(e.target.value)}
-                hint="Utilisé par l'éleveur pour vous prévenir au moment du retrait."
+                hint="Utilisé par l'éleveur pour te prévenir au moment du retrait."
               />
             </div>
 

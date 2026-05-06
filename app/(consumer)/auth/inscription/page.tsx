@@ -30,15 +30,15 @@ export default function InscriptionPage() {
       <main className="flex min-h-screen items-center justify-center p-8">
         <div className="w-full max-w-md space-y-4 rounded-lg bg-white p-8 text-center shadow-sm">
           <h1 className="text-2xl font-bold text-terroir-green">
-            Vérifiez vos emails
+            Vérifie tes emails
           </h1>
           <p className="text-sm text-terroir-ink">
             Un mail de confirmation a été envoyé à{" "}
-            <strong>{state.success.email}</strong>. Cliquez sur le lien pour
-            activer votre compte.
+            <strong>{state.success.email}</strong>. Clique sur le lien pour
+            activer ton compte.
           </p>
           <p className="text-xs text-terroir-muted">
-            Pensez à consulter vos spams si vous ne le trouvez pas.
+            Pense à consulter tes spams si tu ne le trouves pas.
           </p>
           <Link
             href="/connexion"

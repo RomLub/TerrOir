@@ -189,7 +189,7 @@ export default async function ComptePage() {
           href="/compte/paiements"
           icon={<CardIcon />}
           title="Moyens de paiement"
-          description="Vos cartes enregistrées"
+          description="Tes cartes enregistrées"
         />
       </div>
     </div>

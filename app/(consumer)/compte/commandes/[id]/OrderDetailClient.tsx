@@ -151,25 +151,25 @@ export function OrderDetailClient({ data }: { data: OrderDetailData }) {
 
         {showReview && (
           <section className="mt-8 bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6 md:p-8">
-            <div className="text-[11px] uppercase tracking-[0.14em] text-terra-700 font-semibold">Votre avis</div>
-            <h2 className="mt-2 font-serif text-[28px] text-green-900 leading-tight">Comment s&apos;est passée votre commande ?</h2>
+            <div className="text-[11px] uppercase tracking-[0.14em] text-terra-700 font-semibold">Ton avis</div>
+            <h2 className="mt-2 font-serif text-[28px] text-green-900 leading-tight">Comment s&apos;est passée ta commande ?</h2>
 
             {submitted ? (
               <div className="mt-5 p-4 rounded-xl bg-green-100/60 border border-green-300/40 text-[14px] text-green-900">
-                ✓ Merci pour votre avis ! Il sera publié après modération.
+                ✓ Merci pour ton avis ! Il sera publié après modération.
               </div>
             ) : (
               <form onSubmit={submitReview} className="mt-5 space-y-4">
                 <div>
-                  <div className="text-[12px] text-dark/70 font-medium mb-2">Votre note</div>
+                  <div className="text-[12px] text-dark/70 font-medium mb-2">Ta note</div>
                   <StarRating value={rating} onChange={setRating} size="lg" />
                 </div>
                 <Textarea
-                  label="Votre commentaire"
+                  label="Ton commentaire"
                   rows={4}
                   value={review}
                   onChange={(e) => setReview(e.target.value)}
-                  placeholder="Parlez de la qualité, de l'accueil, du produit…"
+                  placeholder="Parle de la qualité, de l'accueil, du produit…"
                 />
                 {error && <p className="text-[13px] text-terra-700">{error}</p>}
                 <Button type="submit" disabled={rating === 0 || submitting}>
@@ -182,7 +182,7 @@ export function OrderDetailClient({ data }: { data: OrderDetailData }) {
 
         {o.hasReview && o.statut === 'completed' && (
           <section className="mt-8 p-4 rounded-xl bg-green-100/60 border border-green-300/40 text-[14px] text-green-900 text-center">
-            Merci, votre avis a déjà été enregistré.
+            Merci, ton avis a déjà été enregistré.
           </section>
         )}
     </section>

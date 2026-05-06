@@ -69,7 +69,7 @@ export default function AddCardModal({
           Ajouter une carte
         </h2>
         <p className="mt-3 text-[13px] text-gray-600">
-          Votre carte sera enregistrée chez Stripe et réutilisable pour vos
+          Ta carte sera enregistrée chez Stripe et réutilisable pour tes
           prochaines commandes.
         </p>
 

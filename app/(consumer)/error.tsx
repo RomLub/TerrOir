@@ -25,8 +25,8 @@ export default function ConsumerError({
         Cette page n&apos;a pas pu s&apos;afficher.
       </h1>
       <p className="mt-3 text-[14px] text-dark/70">
-        Une erreur côté serveur a interrompu le chargement de votre espace
-        compte. Réessayez — on a peut-être juste eu un hoquet réseau.
+        Une erreur côté serveur a interrompu le chargement de ton espace
+        compte. Réessaie — on a peut-être juste eu un hoquet réseau.
       </p>
       {error.digest ? (
         <p className="mono mt-3 text-[11px] uppercase tracking-[0.14em] text-dark/40">

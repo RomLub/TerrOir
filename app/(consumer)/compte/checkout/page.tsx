@@ -271,7 +271,7 @@ export default function CheckoutPage() {
   if (!group) {
     return (
       <section className="py-24 text-center">
-        <h1 className="font-serif text-[36px] text-green-900">Votre panier est vide</h1>
+        <h1 className="font-serif text-[36px] text-green-900">Ton panier est vide</h1>
         <div className="mt-6"><Link href="/carte"><Button size="lg">Trouver un producteur →</Button></Link></div>
       </section>
     );
@@ -284,14 +284,14 @@ export default function CheckoutPage() {
 
         {multipleGroups && (
           <div className="mt-4 p-4 rounded-xl bg-terra-100/60 border border-terra-300/40 text-[13px] text-terra-900">
-            Votre panier contient plusieurs producteurs ou créneaux. Seule la première commande est traitée ici — les autres restent dans votre panier.
+            Ton panier contient plusieurs producteurs ou créneaux. Seule la première commande est traitée ici — les autres restent dans ton panier.
           </div>
         )}
 
         <div className="mt-8 grid lg:grid-cols-[1fr_380px] gap-10 items-start">
           <div className="space-y-6">
             <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
-              <div className="text-[11px] uppercase tracking-[0.14em] text-terra-700 font-semibold mb-3">Votre commande</div>
+              <div className="text-[11px] uppercase tracking-[0.14em] text-terra-700 font-semibold mb-3">Ta commande</div>
               <ul className="divide-y divide-dark/[0.06]">
                 {group.items.map((it) => (
                   <li key={`${it.productId}-${it.creneauId}-${it.dateRetrait}`} className="py-3 flex items-center justify-between gap-4">
@@ -348,7 +348,7 @@ export default function CheckoutPage() {
 
               {!cgvAccepted && (
                 <p className="text-[13px] text-dark/60">
-                  Pour finaliser votre commande, acceptez les conditions générales de vente.
+                  Pour finaliser ta commande, accepte les conditions générales de vente.
                 </p>
               )}
 
@@ -367,7 +367,7 @@ export default function CheckoutPage() {
                     {technicalError.details ? ` — ${technicalError.details}` : ''}
                   </p>
                   <a
-                    href={`mailto:${SUPPORT_EMAIL_PUBLIC}?subject=${encodeURIComponent(`Erreur technique commande - ${technicalError.code}`)}&body=${encodeURIComponent(`Code erreur : ${technicalError.code}\nDétails : ${technicalError.details ?? 'N/A'}\n\nContexte : (décrivez ce que vous tentiez de faire)`)}`}
+                    href={`mailto:${SUPPORT_EMAIL_PUBLIC}?subject=${encodeURIComponent(`Erreur technique commande - ${technicalError.code}`)}&body=${encodeURIComponent(`Code erreur : ${technicalError.code}\nDétails : ${technicalError.details ?? 'N/A'}\n\nContexte : (décris ce que tu tentais de faire)`)}`}
                     className="inline-block mt-3 text-[13px] underline text-terra-900 hover:text-terra-700"
                   >
                     Contacter le support →
@@ -432,7 +432,7 @@ export default function CheckoutPage() {
                 {(order ? Number(order.montant_total) : subtotal).toFixed(2).replace('.', ',')} €
               </span>
             </div>
-            <p className="text-[11px] text-dark/50 text-center mt-3">Vous recevrez un code de commande à présenter au retrait.</p>
+            <p className="text-[11px] text-dark/50 text-center mt-3">Tu recevras un code de commande à présenter au retrait.</p>
           </aside>
         </div>
     </section>

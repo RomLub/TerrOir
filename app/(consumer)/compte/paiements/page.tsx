@@ -74,7 +74,7 @@ export default async function PaiementsPage() {
           Moyens de paiement
         </h1>
         <p className="mt-2 text-sm text-terroir-muted">
-          Enregistrez une carte pour faciliter vos prochaines commandes.
+          Enregistre une carte pour faciliter tes prochaines commandes.
         </p>
       </header>
 

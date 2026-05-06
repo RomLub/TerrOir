@@ -19,7 +19,7 @@ const PREFS: Array<{
     key: 'email_review_response',
     label: "Réponse d'un producteur à mon avis",
     description:
-      'Recevoir un email quand un producteur publie une réponse à un avis que vous avez laissé.',
+      'Recevoir un email quand un producteur publie une réponse à un avis que tu as laissé.',
   },
 ];
 
@@ -72,8 +72,8 @@ export function NotificationsClient({
         </p>
         <h1 className="mt-1 font-serif text-[28px] text-gray-900">Notifications</h1>
         <p className="mt-2 text-[14px] text-gray-600">
-          Choisissez quelles notifications email vous souhaitez recevoir. Les
-          emails liés à vos commandes et à votre compte (sécurité,
+          Choisis quelles notifications email tu souhaites recevoir. Les
+          emails liés à tes commandes et à ton compte (sécurité,
           authentification) ne sont pas désactivables.
         </p>
       </header>

@@ -89,7 +89,7 @@ export default function PaymentMethodsList({
       if (res.defaultChanged && res.newDefault) {
         const newDefaultLabel = `${formatBrand(res.newDefault.brand)} •••• ${res.newDefault.last4}`;
         flash(
-          `Carte ${deletedLabel} supprimée. ${newDefaultLabel} est maintenant votre carte par défaut.`,
+          `Carte ${deletedLabel} supprimée. ${newDefaultLabel} est maintenant ta carte par défaut.`,
         );
       } else {
         flash(`Carte ${deletedLabel} supprimée.`);

@@ -23,8 +23,8 @@ export default function DeleteAccountSection() {
     <section className="mt-12 rounded-2xl border border-red-200 bg-red-50/40 p-6">
       <h2 className="text-lg font-semibold text-red-700">Zone dangereuse</h2>
       <p className="mt-2 text-sm text-terroir-muted">
-        La suppression de compte est irréversible. Elle efface vos données
-        personnelles et respecte votre droit à l&apos;oubli (RGPD).
+        La suppression de compte est irréversible. Elle efface tes données
+        personnelles et respecte ton droit à l&apos;oubli (RGPD).
       </p>
       <div className="mt-4">
         <button
@@ -111,19 +111,19 @@ function DeleteModal({ onClose }: { onClose: () => void }) {
               id="delete-account-title"
               className="mt-1 font-serif text-[24px] leading-tight text-gray-900"
             >
-              Supprimer définitivement votre compte
+              Supprimer définitivement ton compte
             </h2>
 
             <ul className="mt-4 list-disc space-y-1.5 rounded-md border border-red-200 bg-red-50/60 p-4 pl-8 text-[13px] leading-relaxed text-red-900">
               <li>Cette action est irréversible.</li>
-              <li>Toutes vos données personnelles seront effacées.</li>
+              <li>Toutes tes données personnelles seront effacées.</li>
               <li>
-                Vos commandes passées seront anonymisées (obligation
+                Tes commandes passées seront anonymisées (obligation
                 comptable).
               </li>
               {isProducer ? (
                 <li>
-                  Vos produits, créneaux et avis reçus seront supprimés. Votre
+                  Tes produits, créneaux et avis reçus seront supprimés. Ta
                   fiche producteur sera anonymisée.
                 </li>
               ) : null}
