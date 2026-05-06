@@ -22,11 +22,44 @@ import { DistanceWidget } from "@/app/(public)/producteurs/[slug]/_components/Di
 
 const SESSION_KEY = "terroir_geo_session";
 
-// Coords producteur (Maraîchage des Alpes Mancelles, ~Sarthe).
+// =============================================================================
+// Coords fixture Paris ↔ Sarthe (T-277) — dérivation explicite de la plage
+// =============================================================================
+// Producteur fixture : Maraîchage des Alpes Mancelles (Sarthe rurale, à
+// l'ouest du Mans). Coords WGS84 lat 48.45 / lng 0.18.
 const PRODUCER_LAT = 48.45;
 const PRODUCER_LNG = 0.18;
-// Coords consumer (Paris). Distance Haversine attendue ~205 km.
+// Consumer fixture : Paris centre. Coords WGS84 lat 48.85 / lng 2.35.
+//
+// Distance Haversine attendue (cf. `lib/geo/haversine.ts`, formule grand-cercle
+// avec rayon Terre 6371 km, arrondi à 1 décimale via `Math.round(km * 10) / 10`) :
+//
+//   haversineKm(48.45, 0.18, 48.85, 2.35) = 165.5 km
+//
+// Vérifiable d'une commande :
+//   node -e "import('./lib/geo/haversine.js').then(m=>console.log(m.haversineKm(48.45,0.18,48.85,2.35)))"
+//
+// La plage assertée plus bas est `> 150 && < 250`. Marge volontairement large
+// (±50 km autour de la valeur de référence) :
+//   - absorber une éventuelle évolution future de la formule (ex. adoption
+//     de Vincenty pour gérer l'aplatissement de la Terre, +/- 0.5 % typique),
+//   - absorber un changement d'arrondi (`Math.round` → `Math.floor`),
+//   - absorber un éventuel `roundCoord` appliqué côté composant à l'entrée
+//     du calcul (T-200 r2 a fixé l'arrondi au site d'exposition, pas au site
+//     de calcul, mais le couplage reste à surveiller).
+// La borne basse `> 150` reste largement au-dessus de zéro pour que le test
+// fail si jamais haversineKm renvoyait 0/NaN par bug (verrou anti-régression
+// déjà mentionné dans le test "(b)" via la regex extraction).
+// La borne haute `< 250` reste suffisamment serrée pour que le test fail
+// si jamais la mauvaise distance était calculée (ex. confusion lat/lng,
+// renvoi en miles au lieu de km : 165.5 km ≈ 102.8 miles, hors plage).
 const CONSUMER_SESSION = { lat: 48.85, lng: 2.35, source: "postal" as const };
+// Valeur de référence dérivée — ne pas hardcoder la plage en magic numbers
+// dans les assertions, dériver les bornes de cette constante pour que la
+// plage suive automatiquement si on change de fixture (ex. Lyon ↔ Sarthe).
+const PARIS_SARTHE_KM_REF = 165.5; // haversineKm(PRODUCER_LAT, PRODUCER_LNG, ...CONSUMER_SESSION)
+const PARIS_SARTHE_KM_MIN = PARIS_SARTHE_KM_REF - 50; // 115.5
+const PARIS_SARTHE_KM_MAX = PARIS_SARTHE_KM_REF + 50; // 215.5
 
 let container: HTMLDivElement;
 let root: Root;
@@ -113,8 +146,10 @@ describe("DistanceWidget — disclosure 3 états (T-240)", () => {
     );
     expect(match).not.toBeNull();
     const km = Number(match![1]);
-    expect(km).toBeGreaterThan(150);
-    expect(km).toBeLessThan(250);
+    // T-277 : plage dérivée de PARIS_SARTHE_KM_REF (cf. constantes ci-dessus,
+    // valeur Haversine documentée = 165.5 km, marge ±50 km).
+    expect(km).toBeGreaterThan(PARIS_SARTHE_KM_MIN);
+    expect(km).toBeLessThan(PARIS_SARTHE_KM_MAX);
     expect(compact.textContent).not.toContain("Voir la distance");
     // Comportement métier : bouton cliquable post-mount (le clic déploie le
     // résultat complet — testé dans le 5e test).
