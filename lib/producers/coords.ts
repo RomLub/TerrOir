@@ -29,12 +29,41 @@
  *
  * # Précision retenue
  *
- * Arrondi à 2 décimales :
+ * Arrondi à 2 décimales (T-231 — compromis sécurité/précision documenté) :
  *   - ~1.1 km en latitude (constant), ~750 m en longitude à 47° (Sarthe).
  *   - Suffisant pour ne pas pinpoint la maison, suffisant pour un widget
  *     distance "à vol d'oiseau" (erreur < 1% à 100 km).
  *   - Marge négligeable face à la référence GMS_DISTANCE_KM_REFERENCE
  *     = 1500 km du score carbone (l'erreur d'arrondi disparaît dans le ratio).
+ *
+ * Tableau de référence (précision linéaire d'un arrondi décimal en latitude,
+ * indépendant de la longitude — la longitude se rétrécit avec cos(lat)) :
+ *
+ *   | décimales | précision lat | usage                                  |
+ *   |-----------|---------------|----------------------------------------|
+ *   | 6         | ~10 cm        | maison / point GPS exact (à exclure)   |
+ *   | 4         | ~11 m         | parcelle / bâtiment (à exclure)        |
+ *   | 3         | ~110 m        | rue (à exclure : pinpoint possible)    |
+ *   | 2         | ~1.1 km       | choix actuel — village / hameau        |
+ *   | 1         | ~11 km        | bassin de vie (étudié sous T-217)      |
+ *
+ * Conséquence sur l'affichage côté DistanceWidget : pour un producteur à
+ * quelques km du visiteur, la distance Haversine calculée sur des coords
+ * arrondies peut s'écarter de ±1-2 km de la valeur vraie (l'erreur
+ * d'arrondi est non négligeable face à la grandeur mesurée). C'est un coût
+ * assumé du floutage : on préfère afficher "4 km" pour un voisin réel à
+ * 3 km plutôt qu'exposer l'adresse exacte. Au-delà de ~50 km l'écart
+ * relatif redevient indétectable à l'œil.
+ *
+ * # Décisions ouvertes (à arrêter par Romain, hors scope T-231)
+ *
+ *   - T-217 : choisir une stratégie uniforme — maintien de l'arrondi à
+ *     2 décimales OU bascule sur une grille commune-centroïde / floutage
+ *     ≥ 1 km uniforme (qui supprimerait la tension précision affichée vs
+ *     ré-identification au prix d'une distance moins parlante).
+ *   - T-227 : étude de la ré-identification par croisement (nom de ferme +
+ *     commune + photos + GPS arrondi) — décide si l'arrondi 2 décimales
+ *     reste suffisant en présence d'autres signaux publics.
  *
  * # Garantie de déterminisme
  *
