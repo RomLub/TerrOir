@@ -3,11 +3,24 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+// T-130 : la sidebar supporte désormais des "group headers" inline en plus
+// des items cliquables. Choix retenu : entrées plates groupées avec
+// séparateur + label uppercase (la sidebar actuelle est plate, sans
+// support natif du nesting collapsible — ajouter un drawer collapsible
+// pour 3 entrées seulement serait une sur-ingénierie).
 type NavItem = {
+  kind: "item";
   href: string;
   label: string;
   icon: JSX.Element;
 };
+
+type NavGroup = {
+  kind: "group";
+  label: string;
+};
+
+type NavEntry = NavItem | NavGroup;
 
 const DashboardIcon = (
   <svg
@@ -143,15 +156,76 @@ const ComplianceIcon = (
   </svg>
 );
 
-const NAV: NavItem[] = [
-  { href: "/tableau-de-bord", label: "Tableau de bord", icon: DashboardIcon },
-  { href: "/producer-interests", label: "Leads producteurs", icon: LeadsIcon },
-  { href: "/gestion-producteurs", label: "Gestion producteurs", icon: ProducersIcon },
-  { href: "/suivi-commandes", label: "Suivi commandes", icon: OrdersIcon },
-  { href: "/audit-logs", label: "Journal d'audit", icon: AuditLogsIcon },
-  { href: "/avis", label: "Avis", icon: ReviewsIcon },
-  { href: "/legal-compliance", label: "Conformité légale", icon: ComplianceIcon },
-  { href: "/gms-prices", label: "Prix GMS", icon: GmsPricesIcon },
+// T-130 — icônes pour la section Catégorisation produits.
+const CategoryIcon = (
+  <svg
+    aria-hidden="true"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="h-4 w-4"
+  >
+    <path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+    <line x1="7" y1="7" x2="7.01" y2="7" />
+  </svg>
+);
+
+const AnimalIcon = (
+  <svg
+    aria-hidden="true"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="h-4 w-4"
+  >
+    <path d="M4.5 9a2.5 2.5 0 0 1 0-5 2.5 2.5 0 0 1 0 5z" />
+    <path d="M19.5 9a2.5 2.5 0 0 0 0-5 2.5 2.5 0 0 0 0 5z" />
+    <path d="M8 14a2 2 0 0 1 0-4 2 2 0 0 1 0 4z" />
+    <path d="M16 14a2 2 0 0 0 0-4 2 2 0 0 0 0 4z" />
+    <path d="M9 17.5C9 19.5 10.5 21 12 21s3-1.5 3-3.5c0-2.5-1.5-4-3-4s-3 1.5-3 3.5z" />
+  </svg>
+);
+
+const CutIcon = (
+  <svg
+    aria-hidden="true"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="h-4 w-4"
+  >
+    <path d="M5.42 9.42 8 12" />
+    <circle cx="4" cy="8" r="2" />
+    <path d="m14 10-3-3" />
+    <circle cx="13" cy="11" r="2" />
+    <path d="m22 22-7.28-7.28" />
+    <path d="M19 22 9 12" />
+  </svg>
+);
+
+const NAV: NavEntry[] = [
+  { kind: "item", href: "/tableau-de-bord", label: "Tableau de bord", icon: DashboardIcon },
+  { kind: "item", href: "/producer-interests", label: "Leads producteurs", icon: LeadsIcon },
+  { kind: "item", href: "/gestion-producteurs", label: "Gestion producteurs", icon: ProducersIcon },
+  { kind: "item", href: "/suivi-commandes", label: "Suivi commandes", icon: OrdersIcon },
+  { kind: "item", href: "/audit-logs", label: "Journal d'audit", icon: AuditLogsIcon },
+  { kind: "item", href: "/avis", label: "Avis", icon: ReviewsIcon },
+  { kind: "item", href: "/legal-compliance", label: "Conformité légale", icon: ComplianceIcon },
+  { kind: "item", href: "/gms-prices", label: "Prix GMS", icon: GmsPricesIcon },
+  // ─── Catégorisation produits (T-130) ────────────────────────────────
+  { kind: "group", label: "Catégorisation produits" },
+  { kind: "item", href: "/categorisation/categories", label: "Catégories", icon: CategoryIcon },
+  { kind: "item", href: "/categorisation/animaux", label: "Espèces animales", icon: AnimalIcon },
+  { kind: "item", href: "/categorisation/morceaux", label: "Morceaux", icon: CutIcon },
 ];
 
 function isActive(pathname: string | null, href: string): boolean {
@@ -166,12 +240,23 @@ export function AdminSidebar() {
     <aside className="sticky top-24 h-fit min-h-[400px] w-[220px] flex-shrink-0 rounded-md border border-gray-200 bg-white shadow-sm">
       <nav aria-label="Navigation back-office" className="py-2">
         <ul className="flex flex-col">
-          {NAV.map((item) => {
-            const active = isActive(pathname, item.href);
+          {NAV.map((entry, idx) => {
+            if (entry.kind === "group") {
+              return (
+                <li
+                  key={`group-${idx}`}
+                  role="presentation"
+                  className="mt-3 border-t border-gray-200 px-4 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-terroir-green-700"
+                >
+                  {entry.label}
+                </li>
+              );
+            }
+            const active = isActive(pathname, entry.href);
             return (
-              <li key={item.href}>
+              <li key={entry.href}>
                 <Link
-                  href={item.href}
+                  href={entry.href}
                   aria-current={active ? "page" : undefined}
                   className={`flex items-center gap-3 border-l-2 px-4 py-2.5 text-sm transition-colors ${
                     active
@@ -180,9 +265,9 @@ export function AdminSidebar() {
                   }`}
                 >
                   <span className={active ? "text-gray-900" : "text-gray-500"}>
-                    {item.icon}
+                    {entry.icon}
                   </span>
-                  {item.label}
+                  {entry.label}
                 </Link>
               </li>
             );
