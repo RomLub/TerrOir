@@ -2,6 +2,8 @@
 
 Priorités forward-looking uniquement. Pour l'historique complet des commits / chantiers clos, voir [`CHANGELOG.md`](./CHANGELOG.md). Pour les leçons apprises / pitfalls thématiques, voir [`LESSONS.md`](./LESSONS.md).
 
+> 🚀 **Pré-Live** : la checklist consolidée P0/P1/P2 des bloquants ouverture publique est désormais [`docs/runbooks/checklist-pre-live-2026-05-06.md`](./runbooks/checklist-pre-live-2026-05-06.md) (T-244 + T-257 + T-261). À utiliser comme source de vérité unique au moment du go-live. Les items détaillés ci-dessous restent la source d'origine des descriptions, la checklist est une vue synthétisée.
+
 > **Convention numérotation T-XXX** (instaurée 28/04/2026) — chaque item porte un identifiant stable permettant le référencement (« supprime T-005 », « reflag T-010 »). Numérotation par catégorie avec espaces réservés pour insertion future :
 > - `T-001` → `T-009` : Bloquants lancement
 > - `T-010` → `T-019` : Bugs et incidents identifiés
