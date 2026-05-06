@@ -138,6 +138,15 @@ let _auditLogsEmailLookupLimiter: Ratelimit | null | undefined;
 // applicative DB. Continuité T-200 r1 : pas de profilage user, pas de
 // jointure user→cp côté geocode_cache.
 let _geocodeLimiter: Ratelimit | null | undefined;
+// T-236 : route /api/producers/search. Cap 30/min/IP — pendant l'usage
+// nominal (carte consumer + filtre rayon), 1-3 requêtes par session
+// utilisateur typique. Au-delà = balayage de CPs visant à trianguler la
+// position d'un producteur via les distances retournées (attaque de
+// trilatération inverse, cf. T-227 backlog). Couplé au flou roundCoord ~1km
+// déjà appliqué côté search route et fetchPublicProducerBySlug, ce cap
+// rend économiquement non rentable l'attaque (au plus 30 mesures/min/IP,
+// chacune bruitée par l'arrondi). Identifier IP éphémère, pas de log par-IP.
+let _producersSearchLimiter: Ratelimit | null | undefined;
 
 export function getSignupRateLimit(): Ratelimit | null {
   if (_signupLimiter === undefined) {
@@ -219,4 +228,15 @@ export function getGeocodeRateLimit(): Ratelimit | null {
     _geocodeLimiter = createRateLimiter(30, "60 s", "geocode");
   }
   return _geocodeLimiter;
+}
+
+export function getProducersSearchRateLimit(): Ratelimit | null {
+  if (_producersSearchLimiter === undefined) {
+    _producersSearchLimiter = createRateLimiter(
+      30,
+      "60 s",
+      "producers_search",
+    );
+  }
+  return _producersSearchLimiter;
 }

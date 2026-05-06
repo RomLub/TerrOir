@@ -1,9 +1,43 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { roundCoord } from "@/lib/producers/coords";
+import {
+  consumeRateLimit,
+  getProducersSearchRateLimit,
+} from "@/lib/rate-limit";
+import { extractRequestContext } from "@/lib/audit-logs/log-auth-event";
 
 // GET /api/producers/search?lat=&lng=&radius=&especes=bovin,ovin&labels=bio
 export async function GET(request: Request) {
+  // T-236 : rate-limit IP cap 30/min — anti-trilatération inverse. Couplé
+  // au flou roundCoord côté résultats, rend économiquement non rentable
+  // une énumération de CPs visant à trianguler l'adresse producteur.
+  // Fail-open si Upstash absent (cohérent pattern lib/rate-limit.ts).
+  // Pas d'audit log applicatif : pattern T-200 r1 sur les routes publiques
+  // anonymes côté géoloc (cf. /api/geocode) — zéro log par-IP côté DB.
+  const { ipAddress } = extractRequestContext(request.headers);
+  const limiter = getProducersSearchRateLimit();
+  const rateResult = await consumeRateLimit(
+    limiter,
+    ipAddress ?? "anon-no-ip",
+  );
+  if (!rateResult.success) {
+    console.warn(
+      `[PRODUCERS_SEARCH_RATE_LIMIT] ip=${ipAddress ?? "(none)"}`,
+    );
+    return NextResponse.json(
+      { error: "Trop de requêtes" },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(
+            Math.max(1, Math.ceil((rateResult.reset - Date.now()) / 1000)),
+          ),
+        },
+      },
+    );
+  }
+
   const url = new URL(request.url);
   const lat = parseFloat(url.searchParams.get("lat") ?? "");
   const lng = parseFloat(url.searchParams.get("lng") ?? "");
