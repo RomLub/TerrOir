@@ -131,7 +131,7 @@ export default function SlotRulesList({ rules }: { rules: SlotRuleRow[] }) {
   return (
     <>
       <div className="mb-6 flex items-center justify-end">
-        <Button variant="accent" size="lg" onClick={openCreate}>
+        <Button variant="primary" size="lg" onClick={openCreate}>
           + Ajouter une règle
         </Button>
       </div>
@@ -145,7 +145,7 @@ export default function SlotRulesList({ rules }: { rules: SlotRuleRow[] }) {
             Créez votre première règle pour ouvrir des créneaux de retrait.
           </p>
           <div className="mt-5">
-            <Button variant="accent" size="lg" onClick={openCreate}>
+            <Button variant="primary" size="lg" onClick={openCreate}>
               Créer votre première règle
             </Button>
           </div>

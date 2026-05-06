@@ -350,7 +350,7 @@ export function PickupValidationCard({
             />
             <Button
               type="submit"
-              variant="accent"
+              variant="success"
               size="lg"
               disabled={busy || code.trim().length === 0}
             >

@@ -172,7 +172,7 @@ export function DashboardClient({ data: initial }: { data: DashboardData }) {
                       ⏱ {p.hoursLeft}h restantes
                     </div>
                   </div>
-                  <Link href={`/commandes/${p.id}`}><Button variant="accent" size="sm">Voir</Button></Link>
+                  <Link href={`/commandes/${p.id}`}><Button variant="primary" size="sm">Voir</Button></Link>
                 </div>
               </div>
             </article>

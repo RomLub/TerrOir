@@ -160,7 +160,7 @@ export function ProducerCommandesClient({
                   </>
                 )}
                 {(o.status === 'confirmed' || o.status === 'ready') && (
-                  <Link href={`/commandes/${o.id}`}><Button variant="accent" size="sm">Voir le détail</Button></Link>
+                  <Link href={`/commandes/${o.id}`}><Button variant="primary" size="sm">Voir le détail</Button></Link>
                 )}
                 {(o.status === 'completed' || o.status === 'cancelled' || o.status === 'refunded') && (
                   <Link href={`/commandes/${o.id}`}><Button variant="ghost" size="sm">Voir le détail</Button></Link>

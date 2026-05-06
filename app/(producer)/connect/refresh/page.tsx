@@ -72,7 +72,7 @@ export default function ConnectRefreshPage() {
             >
               Retour aux paramètres
             </button>
-            <Button type="button" variant="accent" onClick={resume} disabled={connecting}>
+            <Button type="button" variant="primary" onClick={resume} disabled={connecting}>
               {connecting ? 'Redirection…' : "Reprendre l'onboarding"}
             </Button>
           </div>

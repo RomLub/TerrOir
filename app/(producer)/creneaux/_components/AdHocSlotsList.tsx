@@ -59,7 +59,7 @@ export default function AdHocSlotsList({ slots }: { slots: AdHocSlot[] }) {
   return (
     <>
       <div className="mb-4 flex items-center justify-end">
-        <Button variant="accent" size="lg" onClick={() => setModalOpen(true)}>
+        <Button variant="primary" size="lg" onClick={() => setModalOpen(true)}>
           + Ajouter un créneau ponctuel
         </Button>
       </div>

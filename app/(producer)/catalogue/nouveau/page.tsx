@@ -413,7 +413,7 @@ export default function ProductNewPage() {
 
             <div className="flex gap-3 justify-end pt-2">
               <Link href="/catalogue"><Button variant="ghost" size="lg" type="button">Annuler</Button></Link>
-              <Button variant="accent" size="lg" type="submit" disabled={saving || !producerId}>
+              <Button variant="success" size="lg" type="submit" disabled={saving || !producerId}>
                 {saving ? 'Enregistrement…' : 'Enregistrer le produit'}
               </Button>
             </div>

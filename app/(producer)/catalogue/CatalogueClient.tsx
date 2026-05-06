@@ -159,14 +159,14 @@ export function CatalogueClient({
             </p>
             {error && <p className="mt-2 text-[13px] text-terra-700">{error}</p>}
           </div>
-          <Link href="/catalogue/nouveau"><Button variant="accent" size="lg">+ Ajouter un produit</Button></Link>
+          <Link href="/catalogue/nouveau"><Button variant="primary" size="lg">+ Ajouter un produit</Button></Link>
         </header>
 
         {products.length === 0 ? (
           <div className="bg-white rounded-2xl border border-dark/[0.06] p-12 text-center">
             <h3 className="font-serif text-[24px] text-green-900">Aucun produit</h3>
             <p className="text-[14px] text-dark/60 mt-1">Créez votre premier produit pour l&apos;afficher sur votre page.</p>
-            <div className="mt-6"><Link href="/catalogue/nouveau"><Button variant="accent" size="lg">+ Ajouter un produit</Button></Link></div>
+            <div className="mt-6"><Link href="/catalogue/nouveau"><Button variant="primary" size="lg">+ Ajouter un produit</Button></Link></div>
           </div>
         ) : (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -306,7 +306,7 @@ export function CatalogueClient({
               <Button
                 onClick={submitStock}
                 disabled={submittingStock}
-                variant="accent"
+                variant="success"
               >
                 {submittingStock ? 'Enregistrement…' : 'Enregistrer'}
               </Button>
