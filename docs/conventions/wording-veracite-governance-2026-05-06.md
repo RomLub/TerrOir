@@ -135,7 +135,7 @@ Cas limite anti-pattern à NE PAS faire : modifier silencieusement l'entrée pou
 
 - **T-241** — chantier d'origine, persistance des 3 colonnes via RPC atomique `update_producer_onboarding`.
 - **T-279** (livré dans la même session) — runbook admin extraction snapshot DGCCRF.
-- **T-292** (livré dans la même session) — contrainte CHECK côté DB sur `declaration_indicateurs_wording_version` (whitelist `v1.0` / `v1.1`).
+- **T-292** (livré dans la même session — migration `20260506183454_t292_declaration_wording_version_check.sql` appliquée prod) — contrainte CHECK côté DB sur `declaration_indicateurs_wording_version` (whitelist `v1.0` / `v1.1`). Bump futur = nouvelle migration DROP+ADD avec liste étendue (cf. § « Étape 3 — Modification de la contrainte DB »).
 - **T-278** (backlog) — déclencheur business du bump v1.0 → v1.1 (mention horodatage probatoire dans le wording, RGPD information loyale).
 - **T-288** (backlog) — UX re-coche producteurs déjà certifiés au moment du bump.
 - **T-293** (backlog) — runbook bump v1.0 → v1.1 (procédure pas-à-pas spécifique au premier bump).
