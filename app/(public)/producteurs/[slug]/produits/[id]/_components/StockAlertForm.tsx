@@ -162,7 +162,7 @@ export function StockAlertForm({ productId, productName }: Props) {
       <div className="mt-4">
         <Button
           type="submit"
-          variant="accent"
+          variant="primary"
           size="lg"
           className="w-full"
           disabled={!canSubmit}
