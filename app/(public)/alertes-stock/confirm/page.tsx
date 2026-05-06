@@ -13,33 +13,33 @@ const MESSAGES: Record<
   { title: string; body: string; cta: string }
 > = {
   success: {
-    title: "Votre alerte est confirmée",
+    title: "Ton alerte est confirmée",
     body:
-      "Vous recevrez un email dès que ce produit sera à nouveau disponible. Vous pouvez vous désabonner à tout moment depuis le lien en pied d'email.",
+      "Tu recevras un email dès que ce produit sera à nouveau disponible. Tu peux te désabonner à tout moment depuis le lien en pied d'email.",
     cta: "Continuer mes achats",
   },
   already_confirmed: {
     title: "Alerte déjà active",
     body:
-      "Cette alerte avait déjà été confirmée. Vous serez bien prévenu(e) au retour en stock.",
+      "Cette alerte avait déjà été confirmée. Tu seras bien prévenu(e) au retour en stock.",
     cta: "Retour aux producteurs",
   },
   expired: {
     title: "Lien de confirmation expiré",
     body:
-      "Ce lien de confirmation est expiré (validité 7 jours). Pour réactiver l'alerte, retournez sur la fiche du produit et créez-en une nouvelle.",
+      "Ce lien de confirmation est expiré (validité 7 jours). Pour réactiver l'alerte, retourne sur la fiche du produit et crées-en une nouvelle.",
     cta: "Voir les producteurs",
   },
   unsubscribed: {
     title: "Désabonnement déjà effectué",
     body:
-      "Vous vous étiez désabonné(e) de cette alerte. Pour la réactiver, retournez sur la fiche produit et créez une nouvelle alerte.",
+      "Tu t'étais désabonné(e) de cette alerte. Pour la réactiver, retourne sur la fiche produit et crée une nouvelle alerte.",
     cta: "Voir les producteurs",
   },
   invalid: {
     title: "Lien de confirmation invalide",
     body:
-      "Ce lien n'est pas reconnu. Vérifiez que vous avez cliqué le lien le plus récent reçu par email, ou créez une nouvelle alerte depuis la fiche produit.",
+      "Ce lien n'est pas reconnu. Vérifie que tu as cliqué le lien le plus récent reçu par email, ou crée une nouvelle alerte depuis la fiche produit.",
     cta: "Voir les producteurs",
   },
 };

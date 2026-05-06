@@ -12,7 +12,7 @@ import { ProducteursClient } from './ProducteursClient';
 export const metadata: Metadata = {
   title: 'Tous les producteurs | TerrOir',
   description:
-    'Annuaire des producteurs sarthois : trouvez les éleveurs et maraîchers près de chez vous, filtrez par espèce et label.',
+    'Annuaire des producteurs sarthois : trouve les éleveurs et maraîchers près de chez toi, filtre par espèce et label.',
 };
 
 export default function ProducteursPage() {
@@ -23,7 +23,7 @@ export default function ProducteursPage() {
           <div>
             <span className="text-[11px] uppercase tracking-[0.18em] text-terra-700 font-semibold">Annuaire</span>
             <h1 className="mt-2 font-serif text-[40px] md:text-[52px] text-green-900 leading-[1.05] tracking-tight">
-              Tous les producteurs près de chez vous
+              Tous les producteurs près de chez toi
             </h1>
           </div>
           <Link href="/carte">

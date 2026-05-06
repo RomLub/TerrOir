@@ -58,7 +58,7 @@ export default function ContactPage() {
           Contact
         </h1>
         <p className="mt-5 text-[17px] text-dark/70 max-w-2xl mx-auto leading-relaxed">
-          Une question, un retour, un projet ? Écrivez-nous et nous vous
+          Une question, un retour, un projet ? Écris-nous et nous te
           répondrons sous 24 heures ouvrées.
         </p>
       </section>
@@ -69,7 +69,7 @@ export default function ContactPage() {
             Avant de nous contacter
           </h2>
           <p className="mt-2 text-[14px] text-dark/65">
-            La réponse à votre question s&apos;y trouve peut-être déjà :
+            La réponse à ta question s&apos;y trouve peut-être déjà :
           </p>
           <ul className="mt-6 grid gap-4 sm:grid-cols-2">
             {HELP_LINKS.map((link) => (
@@ -170,7 +170,7 @@ export default function ContactPage() {
             </div>
 
             <p className="text-[12px] text-dark/55 leading-relaxed">
-              Vos données ne sont utilisées que pour vous répondre. Voir notre{" "}
+              Tes données ne sont utilisées que pour te répondre. Voir notre{" "}
               <Link
                 href="/politique-confidentialite"
                 className="text-green-900 underline decoration-dotted underline-offset-4 hover:text-terra-700"

@@ -45,8 +45,8 @@ export default function ReinitialiserMotDePassePage({
           </h1>
           <p className="mt-1 text-sm text-terroir-muted">
             {isShapeValid
-              ? "Choisissez un mot de passe d'au moins 8 caractères."
-              : "Le lien que vous avez utilisé est invalide ou incomplet."}
+              ? "Choisis un mot de passe d'au moins 8 caractères."
+              : "Le lien que tu as utilisé est invalide ou incomplet."}
           </p>
         </div>
 
@@ -58,7 +58,7 @@ export default function ReinitialiserMotDePassePage({
               role="alert"
               className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
             >
-              Lien invalide ou expiré. Veuillez redemander un nouveau lien de
+              Lien invalide ou expiré. Demande un nouveau lien de
               réinitialisation.
             </div>
             <Link

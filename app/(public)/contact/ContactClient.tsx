@@ -105,8 +105,8 @@ export function ContactClient() {
         setErrorMessage(
           payload?.error ??
             (res.status === 429
-              ? "Vous avez envoyé plusieurs messages récemment. Merci de patienter avant de réessayer."
-              : "Impossible d'envoyer votre message. Merci de réessayer."),
+              ? "Tu as envoyé plusieurs messages récemment. Merci de patienter avant de réessayer."
+              : "Impossible d'envoyer ton message. Merci de réessayer."),
         );
         return;
       }
@@ -115,7 +115,7 @@ export function ContactClient() {
     } catch {
       setStatus("error");
       setErrorMessage(
-        "Erreur réseau. Vérifiez votre connexion et réessayez.",
+        "Erreur réseau. Vérifie ta connexion et réessaie.",
       );
     }
   };
@@ -130,8 +130,8 @@ export function ContactClient() {
           Message reçu
         </h2>
         <p className="mt-3 text-[15px] text-dark/75 leading-relaxed">
-          Nous avons bien reçu votre message. Un membre de l&apos;équipe TerrOir
-          vous répondra sous 24 heures ouvrées à l&apos;adresse{" "}
+          Nous avons bien reçu ton message. Un membre de l&apos;équipe TerrOir
+          te répondra sous 24 heures ouvrées à l&apos;adresse{" "}
           <strong>{trimmedEmail}</strong>.
         </p>
       </div>
@@ -148,7 +148,7 @@ export function ContactClient() {
       noValidate
     >
       <h2 className="font-serif text-[26px] md:text-[30px] text-green-900 leading-tight">
-        Écrivez-nous
+        Écris-nous
       </h2>
 
       {/* Honeypot caché : tabIndex=-1 + autoComplete=off + visuellement masqué.
@@ -163,7 +163,7 @@ export function ContactClient() {
           overflow: "hidden",
         }}
       >
-        <label htmlFor="contact-website">Site web (laissez vide)</label>
+        <label htmlFor="contact-website">Site web (laisse vide)</label>
         <input
           id="contact-website"
           name="website"
@@ -219,13 +219,13 @@ export function ContactClient() {
 
       <Textarea
         name="message"
-        label="Votre message"
+        label="Ton message"
         rows={6}
         value={form.message}
         onChange={update("message")}
         required
         disabled={submitting}
-        placeholder="Détaillez votre demande pour qu'on puisse vous répondre au mieux."
+        placeholder="Détaille ta demande pour qu'on puisse te répondre au mieux."
         hint={
           trimmedMessage.length > 0 && trimmedMessage.length < MIN_MESSAGE_LENGTH
             ? `Encore ${MIN_MESSAGE_LENGTH - trimmedMessage.length} caractère${MIN_MESSAGE_LENGTH - trimmedMessage.length > 1 ? "s" : ""}…`

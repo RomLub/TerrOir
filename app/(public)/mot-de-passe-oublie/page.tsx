@@ -45,11 +45,11 @@ export default function MotDePasseOubliePage() {
       <main className="flex min-h-screen items-center justify-center p-8">
         <div className="w-full max-w-md space-y-4 rounded-lg bg-white p-8 text-center shadow-sm">
           <h1 className="text-2xl font-bold text-terroir-green">
-            Vérifiez vos emails
+            Vérifie tes emails
           </h1>
           <p className="text-sm text-terroir-ink">
             Si cette adresse est connue, un email de réinitialisation vient
-            d&apos;être envoyé. Pensez à consulter vos spams.
+            d&apos;être envoyé. Pense à consulter tes spams.
           </p>
           <Link
             href="/connexion"
@@ -72,7 +72,7 @@ export default function MotDePasseOubliePage() {
           Mot de passe oublié
         </h1>
         <p className="text-sm text-terroir-muted">
-          Saisissez votre email, nous vous enverrons un lien pour définir un
+          Saisis ton email, nous t&apos;enverrons un lien pour définir un
           nouveau mot de passe.
         </p>
 

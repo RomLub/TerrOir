@@ -8,21 +8,21 @@ const MESSAGES: Record<
   { title: string; body: string; cta: string }
 > = {
   success: {
-    title: "Vous êtes désabonné(e)",
+    title: "Tu es désabonné(e)",
     body:
-      "Vous ne recevrez plus aucun email pour cette alerte stock. Si vous changez d'avis, vous pouvez créer une nouvelle alerte depuis la fiche produit.",
+      "Tu ne recevras plus aucun email pour cette alerte stock. Si tu changes d'avis, tu peux créer une nouvelle alerte depuis la fiche produit.",
     cta: "Voir les producteurs",
   },
   already_unsubscribed: {
     title: "Désabonnement déjà effectué",
     body:
-      "Vous étiez déjà désinscrit(e) de cette alerte — aucun email ne vous sera envoyé.",
+      "Tu étais déjà désinscrit(e) de cette alerte — aucun email ne te sera envoyé.",
     cta: "Voir les producteurs",
   },
   invalid: {
     title: "Lien de désabonnement invalide",
     body:
-      "Ce lien n'est pas reconnu. Si vous recevez encore des emails non souhaités, contactez-nous via le formulaire de support.",
+      "Ce lien n'est pas reconnu. Si tu reçois encore des emails non souhaités, contacte-nous via le formulaire de support.",
     cta: "Voir les producteurs",
   },
 };

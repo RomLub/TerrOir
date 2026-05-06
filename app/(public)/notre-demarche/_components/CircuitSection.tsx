@@ -19,7 +19,7 @@ export function CircuitSection({ className = "" }: CircuitSectionProps) {
             La répartition
           </span>
           <h2 className="mt-4 font-serif text-[32px] font-medium leading-[1.1] tracking-[-0.005em] text-green-900 md:text-[44px]">
-            Voici comment se répartit ce que vous payez,
+            Voici comment se répartit ce que tu payes,
             <br />
             <em className="not-italic">
               <span className="italic text-terra-700">maillon par maillon.</span>

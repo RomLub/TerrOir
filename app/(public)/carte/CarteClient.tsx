@@ -550,7 +550,7 @@ function CarteClientContent() {
                 <span className="absolute inset-0 rounded-full bg-[#1976D2]/30" />
                 <span className="w-2.5 h-2.5 rounded-full bg-[#1976D2] border-2 border-white" />
               </span>
-              Votre position
+              Ta position
             </div>
           </div>
 
