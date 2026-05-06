@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { escapeIlikeEmail } from "@/lib/supabase/escape-ilike";
 import { getSessionUser } from "@/lib/auth/session";
 import { pickInitialInfos } from "@/lib/producers/pick-initial-infos";
 import { OnboardingWizard, type WizardCase } from "./_components/OnboardingWizard";
@@ -94,7 +95,7 @@ export default async function InvitationPage({ searchParams }: PageProps) {
   const { data: adminRow } = await admin
     .from("admin_users")
     .select("id")
-    .ilike("email", email)
+    .ilike("email", escapeIlikeEmail(email))
     .maybeSingle();
   if (adminRow) {
     return (
@@ -110,7 +111,7 @@ export default async function InvitationPage({ searchParams }: PageProps) {
   const { data: existingUser } = await admin
     .from("users")
     .select("id, roles, prenom, nom, telephone")
-    .ilike("email", email)
+    .ilike("email", escapeIlikeEmail(email))
     .maybeSingle();
 
   const existingRoles = Array.isArray(existingUser?.roles)
@@ -194,7 +195,7 @@ export default async function InvitationPage({ searchParams }: PageProps) {
   const { data: lead } = await admin
     .from("producer_interests")
     .select("prenom, nom, telephone, nom_exploitation, commune")
-    .ilike("email", email)
+    .ilike("email", escapeIlikeEmail(email))
     .in("statut", ["contacted", "onboarded"])
     .order("created_at", { ascending: false })
     .limit(1)

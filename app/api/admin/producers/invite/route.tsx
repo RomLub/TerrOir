@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { escapeIlikeEmail } from "@/lib/supabase/escape-ilike";
 import { sendTemplate } from "@/lib/resend/send";
 import { generateOptOutToken } from "@/lib/rgpd/opt-out-token";
 import { maskEmail } from "@/lib/rgpd/mask-email";
@@ -53,7 +54,7 @@ export async function POST(request: Request) {
   const { data: existingAdmin, error: adminCheckError } = await admin
     .from("admin_users")
     .select("id")
-    .ilike("email", input.email)
+    .ilike("email", escapeIlikeEmail(input.email))
     .maybeSingle();
   if (adminCheckError) {
     return NextResponse.json({ error: adminCheckError.message }, { status: 500 });
@@ -83,7 +84,7 @@ export async function POST(request: Request) {
   const { data: existingUser, error: userCheckError } = await admin
     .from("users")
     .select("id, roles")
-    .ilike("email", input.email)
+    .ilike("email", escapeIlikeEmail(input.email))
     .maybeSingle();
   if (userCheckError) {
     return NextResponse.json({ error: userCheckError.message }, { status: 500 });
@@ -202,7 +203,7 @@ export async function POST(request: Request) {
   const { data: revokedInvitations, error: revokeError } = await admin
     .from("producer_invitations")
     .update({ expires_at: nowIso })
-    .ilike("email", input.email)
+    .ilike("email", escapeIlikeEmail(input.email))
     .is("used_at", null)
     .gt("expires_at", nowIso)
     .select("id");
@@ -340,7 +341,7 @@ export async function POST(request: Request) {
     const { data: bumped, error: bumpError } = await admin
       .from("producer_interests")
       .update({ statut: "contacted" })
-      .ilike("email", input.email)
+      .ilike("email", escapeIlikeEmail(input.email))
       .eq("statut", "new")
       .select("id");
     if (bumpError) {
@@ -370,7 +371,7 @@ export async function POST(request: Request) {
     const { data: existingLead, error: existingLeadError } = await admin
       .from("producer_interests")
       .select("id")
-      .ilike("email", input.email)
+      .ilike("email", escapeIlikeEmail(input.email))
       .maybeSingle();
     if (existingLeadError) {
       console.warn(

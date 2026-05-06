@@ -107,23 +107,85 @@ Call sites déjà conformes pré-T-110 (gardés en l'état) :
 
 ---
 
-## Risque résiduel `_` / `%` dans les inputs
+## Risque résiduel `_` / `%` dans les inputs — résolu T-110-bis
 
 `.ilike()` interprète `%` (joker n caractères) et `_` (joker 1 caractère)
 comme wildcards SQL. Pour des emails RFC-valides :
-- `%` n'est pas autorisé en partie locale (RFC 5321). Risque nul.
-- `_` est techniquement autorisé. Risque théorique : `bob_doe@example.com`
-  saisi exact match aussi `bobXdoe@example.com` (improbable en pratique).
+- `%` n'est PAS autorisé en partie locale RFC 5322 (mais reste théoriquement
+  injectable si la validation Zod n'est pas en amont).
+- `_` EST autorisé en partie locale RFC 5322. Risque réel :
+  `bob_doe@example.com` saisi exact match aussi `bobXdoe@example.com`,
+  `bobAdoe@example.com`, `bob1doe@example.com`, etc.
 
-**Backlog T-110-bis** : créer un helper `escapeIlikeEmail(email)` qui
-échappe `%`, `_`, `\` avant `.ilike()`, et l'imposer sur tous les call
-sites email-keyed via une règle ESLint custom (alignée avec T-255 et T-266).
-Pattern existant : `lib/legal/compliance.ts:154` fait déjà cet escape pour
-les recherches partielles. Hors-scope T-110.
+### Résolution T-110-bis (2026-05-06)
+
+Helper `lib/supabase/escape-ilike.ts` qui échappe `_`, `%`, `\` (le
+backslash en cas de quoted local-part RFC 5322 rare) :
+
+```ts
+export function escapeIlikeEmail(email: string): string {
+  return email.replace(/[\\_%]/g, (m) => `\\${m}`);
+}
+```
+
+Pattern wrap appliqué sur tous les call sites `.ilike("email", X)` :
+
+```ts
+.ilike("email", escapeIlikeEmail(email))
+```
+
+22 call sites de production wrappés sur 13 fichiers :
+
+| Fichier | Call sites |
+|---------|------------|
+| `lib/audit-logs/email-lookup.ts` | 1 |
+| `lib/resend/suppressions.ts` | 2 |
+| `lib/stock-alerts/create-alert.ts` | 1 |
+| `lib/producer-interests/upsert-interest.ts` | 1 |
+| `app/connexion/actions.ts` | 2 |
+| `app/(producer)/onboarding/page.tsx` | 1 |
+| `app/(producer)/invitation/_actions/login-and-upgrade.ts` | 1 |
+| `app/(producer)/invitation/_actions/complete-onboarding.ts` | 1 |
+| `app/(producer)/invitation/_actions/accept-invitation.ts` | 1 |
+| `app/(producer)/invitation/page.tsx` | 3 |
+| `app/api/stock-alerts/route.tsx` | 1 |
+| `app/(consumer)/compte/profil/delete-account-action.ts` | 1 |
+| `app/(public)/desabonnement/unsubscribe-action.ts` | 1 |
+| `app/(public)/desabonnement/request-new-link-action.tsx` | 1 |
+| `app/api/admin/producers/invite/route.tsx` | 5 |
+
+**Cas non wrappés (volontaires)** :
+- `lib/legal/compliance.ts:155` — pattern différent (recherche partielle
+  `%X%` avec son propre escape ligne 154 sur le même set de caractères).
+- `tests/e2e/*` (×8) — recipients déterministes générés via `Date.now()`,
+  pas de risque wildcard.
+- `scripts/seed*.ts` — seed CLI avec emails contrôlés.
+
+### Doctrine renforcée (T-110-bis)
+
+> **Tout lookup email-keyed utilise `.ilike("email", escapeIlikeEmail(input))`.**
+> Double couche defense in depth :
+> 1. Validation Zod `.email()` amont (rejette les formats invalides type
+>    `<bogus>` mais accepte `_` RFC-valide).
+> 2. `escapeIlikeEmail(input)` côté query pour neutraliser les wildcards
+>    Postgres ILIKE.
+
+### Tests contractuels
+
+`tests/lib/supabase/escape-ilike.test.ts` — 8 tests couvrant :
+- No-op sur emails sans wildcards
+- Échappement `_` / `%` / `\` (3 caractères)
+- Mix des 3 caractères sur même input
+- Edge case empty string
+- Régression : caractères non-wildcards inchangés
+- Non-idempotence (escape × 2 → augmente backslashes, pattern documenté)
+
+Validation : `npx vitest run` → 184/184 fichiers, 2154/2154 tests passent
+(+8 vs baseline T-110). `npx tsc --noEmit` → 0 erreur.
 
 ---
 
-## Tests
+## Tests T-110 initial
 
 Aucun nouveau test fonctionnel ajouté (chaque call site déjà couvert par
 les tests existants — seuls les mocks ont été ajustés).
@@ -131,13 +193,19 @@ les tests existants — seuls les mocks ont été ajustés).
 Validation : `npx vitest run` → 181/181 fichiers, 2098/2098 tests passent
 post-migration. `npx tsc --noEmit` → 0 erreur.
 
+(Cf. section "Résolution T-110-bis" ci-dessus pour les tests contractuels
+sur `escapeIlikeEmail` ajoutés post-T-110-bis.)
+
 ---
 
 ## Backlog
 
-- **T-110-bis** : helper `escapeIlikeEmail` + règle ESLint pour bloquer
-  `.ilike("email", X)` sans escape (cf. risque résiduel `_`/`%`).
-- **T-110-ter** (optionnel) : trigger DB `BEFORE INSERT/UPDATE` qui
+- **T-110-ter** (optionnel) : règle ESLint `no-restricted-syntax` pour
+  bloquer tout nouveau `.ilike("email", X)` qui n'utilise pas
+  `escapeIlikeEmail(X)`. Pattern aligné avec T-255 / T-266. Pas urgent —
+  un développeur attentif respectera la doctrine documentée. À ouvrir si
+  un nouveau call site oublie l'escape en revue.
+- **T-110-quater** (optionnel) : trigger DB `BEFORE INSERT/UPDATE` qui
   `lower()` le champ email côté users / admin_users / producers /
   producer_interests / email_suppressions / product_stock_alerts.
   Ferme définitivement le risque casse mixte côté table — mais nécessite

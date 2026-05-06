@@ -4,6 +4,7 @@ import { z } from "zod";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { escapeIlikeEmail } from "@/lib/supabase/escape-ilike";
 import { getSessionUser } from "@/lib/auth/session";
 import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 import { logAdminInviteEvent } from "@/lib/audit-logs/log-admin-invite-event";
@@ -80,7 +81,7 @@ export async function acceptInvitationAction(
   const { data: existingUser } = await admin
     .from("users")
     .select("id, roles")
-    .ilike("email", invitation.email)
+    .ilike("email", escapeIlikeEmail(invitation.email))
     .maybeSingle();
 
   if (!existingUser) return { error: "Utilisateur introuvable" };

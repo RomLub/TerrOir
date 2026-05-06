@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { escapeIlikeEmail } from "@/lib/supabase/escape-ilike";
 import { createStockAlert } from "@/lib/stock-alerts/create-alert";
 import { sendTemplate } from "@/lib/resend/send";
 import { NEXT_PUBLIC_APP_URL } from "@/lib/env/urls";
@@ -97,7 +98,7 @@ export async function POST(request: Request) {
   const { data: recentAlerts, error: countError } = await admin
     .from("product_stock_alerts")
     .select("id")
-    .ilike("email", email)
+    .ilike("email", escapeIlikeEmail(email))
     .gte("created_at", windowStart);
 
   if (countError) {

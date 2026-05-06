@@ -1,5 +1,6 @@
 import "server-only";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { escapeIlikeEmail } from "@/lib/supabase/escape-ilike";
 
 // T-083 — Lookup email → user_id pour le filtre /admin/audit-logs avec
 // garantie anti-énumération.
@@ -79,10 +80,12 @@ export async function lookupUserIdByEmail(
   // T-110 : .ilike() pour case-insensitive defense-in-depth. `normalized` est
   // déjà lowercase via normalizeEmail(), mais la table peut contenir des emails
   // en casse mixte (legacy avant doctrine T-110, mirror auth.users non normalisé).
+  // T-110-bis : escapeIlikeEmail neutralise les wildcards Postgres ILIKE
+  // (`_`, `%`, `\`) qui sont autorisés en local-part RFC 5322.
   const { data, error } = await admin
     .from("users")
     .select("id")
-    .ilike("email", normalized)
+    .ilike("email", escapeIlikeEmail(normalized))
     .maybeSingle();
   if (error || !data?.id) {
     return { userId: SENTINEL_NOT_FOUND_USER_ID, found: false };

@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { escapeIlikeEmail } from "@/lib/supabase/escape-ilike";
 import { loginSchema } from "@/lib/auth/validators";
 import { maskEmail } from "@/lib/rgpd/mask-email";
 import {
@@ -228,7 +229,7 @@ export async function requestMagicLinkAction(
     const { data: adminRow } = await admin
       .from("admin_users")
       .select("id")
-      .ilike("email", email)
+      .ilike("email", escapeIlikeEmail(email))
       .maybeSingle();
     isAdmin = !!adminRow;
   } catch (err) {
@@ -358,7 +359,7 @@ export async function requestPasswordResetAction(
     const { data: adminRow } = await admin
       .from("admin_users")
       .select("id")
-      .ilike("email", email)
+      .ilike("email", escapeIlikeEmail(email))
       .maybeSingle();
     isAdmin = !!adminRow;
   } catch (err) {

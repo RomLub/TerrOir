@@ -2,6 +2,7 @@
 
 import { z } from 'zod';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import { escapeIlikeEmail } from '@/lib/supabase/escape-ilike';
 import { generateOptOutToken } from '@/lib/rgpd/opt-out-token';
 import { sendTemplate } from '@/lib/resend/send';
 import OptOutLink, {
@@ -39,7 +40,7 @@ export async function requestNewOptOutLinkAction(
   const { data: lead } = await admin
     .from('producer_interests')
     .select('email')
-    .ilike('email', email)
+    .ilike('email', escapeIlikeEmail(email))
     .maybeSingle();
 
   if (lead) {

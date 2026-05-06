@@ -1,5 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { escapeIlikeEmail } from "@/lib/supabase/escape-ilike";
 
 // Helper UPSERT pour producer_interests (création initiale + mise à jour
 // sur conflit email).
@@ -109,7 +110,7 @@ export async function upsertProducerInterest(
       commune: input.commune,
       message: input.message,
     })
-    .ilike("email", email)
+    .ilike("email", escapeIlikeEmail(email))
     .select("id")
     .single();
 

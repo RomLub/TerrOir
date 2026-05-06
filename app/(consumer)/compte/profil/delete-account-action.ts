@@ -59,6 +59,7 @@ import { revalidateTag } from "next/cache";
 import { z } from "zod";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { escapeIlikeEmail } from "@/lib/supabase/escape-ilike";
 import { getSessionUser } from "@/lib/auth/session";
 import {
   deleteStripeConnectAccount,
@@ -237,7 +238,7 @@ export async function deleteAccountAction(
     const { count } = await admin
       .from("producer_interests")
       .delete({ count: "exact" })
-      .ilike("email", session.email);
+      .ilike("email", escapeIlikeEmail(session.email));
     if (count && count > 0) {
       console.warn("[delete-account] producer_interests cleanup", {
         user_id_masked: session.id.slice(0, 8) + "...",

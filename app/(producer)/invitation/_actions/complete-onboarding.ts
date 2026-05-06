@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { escapeIlikeEmail } from "@/lib/supabase/escape-ilike";
 import { getSessionUser } from "@/lib/auth/session";
 import { invitationBusinessInfoSchema } from "@/lib/auth/validators";
 import { maskEmail } from "@/lib/rgpd/mask-email";
@@ -231,7 +232,7 @@ export async function completeOnboardingAction(
     const { data: bumped, error: bumpError } = await admin
       .from("producer_interests")
       .update({ statut: "onboarded" })
-      .ilike("email", session.email)
+      .ilike("email", escapeIlikeEmail(session.email))
       .eq("statut", "contacted")
       .select("id");
     if (bumpError) {

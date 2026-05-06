@@ -1,5 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { escapeIlikeEmail } from "@/lib/supabase/escape-ilike";
 import { generateAlertToken } from "./tokens";
 
 // Helper d'écriture pour product_stock_alerts (création + résurrection).
@@ -103,7 +104,7 @@ export async function createStockAlert(
     .from("product_stock_alerts")
     .select("id, confirmed_at, unsubscribed_at")
     .eq("product_id", input.product_id)
-    .ilike("email", email)
+    .ilike("email", escapeIlikeEmail(email))
     .maybeSingle();
 
   if (selectError || !existing) {

@@ -1,6 +1,7 @@
 'use server';
 
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import { escapeIlikeEmail } from '@/lib/supabase/escape-ilike';
 import { verifyOptOutToken } from '@/lib/rgpd/opt-out-token';
 
 type Result = { success: true } | { success: false; error: string };
@@ -23,7 +24,7 @@ export async function unsubscribeAction(formData: FormData): Promise<Result> {
   const { error } = await admin
     .from('producer_interests')
     .delete()
-    .ilike('email', email);
+    .ilike('email', escapeIlikeEmail(email));
 
   if (error) {
     return { success: false, error: 'Erreur technique. Merci de réessayer.' };

@@ -1,5 +1,6 @@
 import "server-only";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { escapeIlikeEmail } from "@/lib/supabase/escape-ilike";
 import { maskEmail } from "@/lib/rgpd/mask-email";
 
 // Audit Email H-3 + M-5 (2026-05-05) — helpers suppression list email.
@@ -67,10 +68,11 @@ export async function canSendTo(email: string): Promise<boolean> {
     const admin = createSupabaseAdminClient();
     // T-110 : .ilike() pour case-insensitive defense-in-depth (cf. doctrine
     // docs/fixes/email-lookup-ilike-2026-05-06.md).
+    // T-110-bis : escapeIlikeEmail neutralise wildcards `_`/`%`/`\`.
     const { data, error } = await admin
       .from("email_suppressions")
       .select("reason")
-      .ilike("email", normalized)
+      .ilike("email", escapeIlikeEmail(normalized))
       .maybeSingle();
 
     if (error) {
@@ -127,10 +129,11 @@ export async function incrementSoftBounce(
   const admin = createSupabaseAdminClient();
 
   // T-110 : .ilike() pour case-insensitive defense-in-depth.
+  // T-110-bis : escapeIlikeEmail neutralise wildcards `_`/`%`/`\`.
   const { data: existing, error: readErr } = await admin
     .from("email_suppressions")
     .select("email, reason, soft_bounce_count")
-    .ilike("email", normalized)
+    .ilike("email", escapeIlikeEmail(normalized))
     .maybeSingle();
 
   if (readErr) {

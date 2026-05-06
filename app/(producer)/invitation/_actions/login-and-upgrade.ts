@@ -3,6 +3,7 @@
 import { cookies, headers } from "next/headers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { escapeIlikeEmail } from "@/lib/supabase/escape-ilike";
 import { invitationLoginAndUpgradeSchema } from "@/lib/auth/validators";
 import {
   extractRequestContext,
@@ -77,7 +78,7 @@ export async function loginAndUpgradeAction(
   const { data: existingUser } = await admin
     .from("users")
     .select("id, roles")
-    .ilike("email", invitation.email)
+    .ilike("email", escapeIlikeEmail(invitation.email))
     .maybeSingle();
 
   if (!existingUser) {

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { escapeIlikeEmail } from "@/lib/supabase/escape-ilike";
 import { getSessionUser } from "@/lib/auth/session";
 import { pickInitialInfos } from "@/lib/producers/pick-initial-infos";
 import { OnboardingWizard } from "../invitation/_components/OnboardingWizard";
@@ -48,7 +49,7 @@ export default async function OnboardingPage() {
         ? admin
             .from("producer_interests")
             .select("prenom, nom, telephone, nom_exploitation, commune")
-            .ilike("email", session.email)
+            .ilike("email", escapeIlikeEmail(session.email))
             .in("statut", ["contacted", "onboarded"])
             .order("created_at", { ascending: false })
             .limit(1)
