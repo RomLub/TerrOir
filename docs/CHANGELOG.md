@@ -7,6 +7,24 @@ Pour les priorités forward-looking, voir [`TODO.md`](./TODO.md).
 
 ---
 
+## 2026-05-06 (T-217 politique uniforme floutage coordonnées producteur)
+
+> Formalisation Option A (maintien `roundCoord` 2 décimales sur les 4 surfaces publiques) après audit T-217 préalable. Le chantier ne modifie aucun comportement runtime — la garantie au runtime est strictement identique à T-200 r3. Il ferme le trou de couverture de tests (le contrat sécurité de la fiche slug n'avait pas de verrou, contrairement à `/api/producers/search`).
+>
+> 🟢 **Décision** : Option A retenue (status quo `roundCoord` 2 décimales, ~1.1 km lat). Options B (commune-centroïde, ~5-10 km) et C (grille 1 km snap) explicitement écartées — la menace dominante T-227 est photos+commune, pas GPS, donc B/C ne résolvent pas le vrai risque pour un coût élevé (B = ~500 LOC + 3 migrations DB).
+>
+> 🟢 **Test contractuel ajouté** : `tests/app/(public)/producteurs/[slug]/page.test.tsx` (3 cas — floutage 2 décimales, scan exhaustif, propagation `null`). Pattern `findByName` sur l'arbre ReactElement (env=node, pas de jsdom), cohérent avec `tests/app/(producer)/invitation/page.test.tsx`. Le test mocke uniquement la couche Supabase + `unstable_cache` + `notFound`, et utilise le vrai `fetchPublicProducerBySlug` → si quelqu'un casse `roundCoord` côté fetcher, le test pète.
+>
+> 🟢 **Pas de `roundCoord` défensif au niveau page** : décision documentée dans `docs/fixes/coords-privacy-policy-2026-05-06.md`. Quatre raisons (DRY, lisibilité, bon signal anti-régression via test, cohérence avec pattern route search). Note explicite pour les futurs audits : si quelqu'un re-conclut "fuite ligne 118-119 de page.tsx" sans tracer la source du `producer`, c'est un faux positif — `producer` provient de `fetchCachedProducerBlock` → `fetchPublicProducerBySlug` qui floute déjà.
+>
+> 🟢 **Doc nouvelle** : `docs/fixes/coords-privacy-policy-2026-05-06.md` — rationale Option A, liste des 4 call sites verrouillés, helper canonique, modèle d'attaque résiduel T-227, recommandations privacy producteur (ne pas publier photos exploitation + adresse exacte ensemble), backlog defense in depth (T-235 vue Postgres, T-236 rate-limit, T-238 scan auto), continuité T-200 r1/r2/r3.
+>
+> 🟢 **Backlog inchangé** : T-227 (étude ré-identification par croisement) reste ouvert pour reprogrammation, T-235/T-236/T-238 restent prérequis Live (cf. T-244 priorisation).
+>
+> 🧪 **Tests effectués** : 3 nouveaux tests verts (`tests/app/(public)/producteurs/[slug]/page.test.tsx`). Pas de régression sur les tests existants (coords + route search).
+
+---
+
 ## 2026-05-03 (T-081 Phase 3 finale audit logs cluster `admin_invite_*`)
 
 > Bouclage Phase 3 du chantier audit_logs (T-081) : 5 trous restants comblés sur le flow d'invitation producer. Les 13 events précédents (Phase 1 auth + Phase 2 payment + Phase 2bis retry refund + T-081 PR-A + T-307/T-309/T-310 cluster invitation) restent inchangés. Total post-T-081 : 18 event types Auth (cf. `lib/audit-logs/log-auth-event.ts` const `AUTH_EVENT_TYPES`).
