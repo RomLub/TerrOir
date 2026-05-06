@@ -96,11 +96,12 @@ export function Footer({
             </div>
           ))}
 
-          {/* TerrOir : contact + politique de confidentialité (P0 légales
-              2026-05-06). Mentions légales · CGU · CGV restent à créer. */}
+          {/* Aide : contact + livraison + politique de confidentialité (P0
+              légales 2026-05-06). Mentions légales · CGU · CGV restent à
+              créer. */}
           <div>
             <h4 className="mb-4 text-xs font-semibold uppercase tracking-[0.14em] text-white/45">
-              TerrOir
+              Aide
             </h4>
             <ul className="flex flex-col gap-2.5">
               <li>
@@ -109,6 +110,14 @@ export function Footer({
                   className="text-sm text-white/80 transition-colors hover:text-white"
                 >
                   Contact
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/livraison"
+                  className="text-sm text-white/80 transition-colors hover:text-white"
+                >
+                  Livraison et retrait
                 </Link>
               </li>
               <li>

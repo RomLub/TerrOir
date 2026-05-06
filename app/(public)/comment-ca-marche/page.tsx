@@ -89,6 +89,15 @@ export default function CommentCaMarchePage() {
           <div className="mt-7">
             <Link href="/carte"><Button size="lg">Trouver un producteur →</Button></Link>
           </div>
+          <p className="mt-5 text-[13px] text-green-100/70">
+            En savoir plus sur les modalités :{" "}
+            <Link
+              href="/livraison"
+              className="text-white underline decoration-dotted underline-offset-4 hover:text-green-100"
+            >
+              Livraison et retrait
+            </Link>
+          </p>
         </div>
       </section>
     </div>

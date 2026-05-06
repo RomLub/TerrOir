@@ -88,3 +88,23 @@ export async function revalidateProducerCard(opts: {
     );
   }
 }
+
+// Page /livraison (P0 légales 2026-05-06) : carte SVG des départements
+// couverts. Le tag est invalidé quand un producer change d'état public
+// (devient public, retire son catalogue, suppression RGPD). Le wiring
+// dans les flows producer existants n'est pas posé dans cette PR : la
+// carte tolère un délai jusqu'à 10 min (revalidate par défaut), suffisant
+// pour le besoin actuel. À câbler en même temps que le bouton publish/
+// unpublish producer si la latence devient gênante.
+export async function revalidateCoverageDepartments(opts: {
+  source: string;
+  producerId?: string;
+}): Promise<void> {
+  try {
+    revalidateTag("coverage-departments");
+  } catch (e) {
+    console.warn(
+      `[COVERAGE_REVAL_WARN] source=${opts.source} producerId=${opts.producerId ?? "none"} ${(e as Error).message}`,
+    );
+  }
+}
