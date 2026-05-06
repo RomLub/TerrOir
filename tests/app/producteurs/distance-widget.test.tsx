@@ -167,10 +167,17 @@ describe("DistanceWidget — disclosure 3 états (T-240)", () => {
     expect(okBtn!.disabled).toBe(true);
     expect(okBtn!.getAttribute("aria-busy")).toBe("false");
     // Mention RGPD au point de collecte (art. 13) toujours présente après
-    // la refonte disclosure (verrou anti-régression r4).
+    // la refonte disclosure (verrou anti-régression r4 + T-219 r1).
+    // Wording mis à jour T-219 : la position résultante reste dans le
+    // navigateur, mais le CP transite désormais via /api/geocode (cache
+    // anonyme côté serveur). On vérifie le nouveau wording cohérent avec
+    // PrivacyNote().
     expect(container.textContent).toContain("Saisie facultative");
     expect(container.textContent).toContain(
-      "jamais envoyée ni enregistrée sur nos serveurs",
+      "n'est jamais associée à ton compte ni à ta visite côté serveur",
+    );
+    expect(container.textContent).toContain(
+      "cache anonyme du couple code postal",
     );
     expect(container.textContent).toContain("api-adresse.data.gouv.fr");
     // Lien "Masquer" présent pour replier.

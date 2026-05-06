@@ -7,6 +7,40 @@ Pour les priorités forward-looking, voir [`TODO.md`](./TODO.md).
 
 ---
 
+## 2026-05-06 (T-219 cache serveur géocodage CP→lat/lng)
+
+> Cache persistant Supabase (`public.geocode_cache`) qui amortit les appels au géocodeur public `api-adresse.data.gouv.fr`. Le DistanceWidget hit ce cache via `/api/geocode` plutôt que d'appeler gouv.fr direct depuis le navigateur. Continuité T-200 r1 préservée (pas de PII, pas de log par-IP, pas de profilage user).
+>
+> 🟢 **Option α retenue (vs β Upstash KV / γ unstable_cache)** : CP français = stables à vie → TTL inutile, persistance permanente cross-deploy = bon modèle. Observabilité SQL (`hit_count`, `last_hit_at`) utile pour T-204 plan scaling.
+>
+> 🟢 **Migration DB** : `supabase/migrations/20260506181153_t219_geocode_cache.sql` (à appliquer manuellement via Supabase Studio). Table + 4 CHECK + 2 index + 2 policies RLS (public read, service-role write) + 2 RPC atomiques (`bump_geocode_cache` UPDATE...RETURNING, `upsert_geocode_cache` INSERT...ON CONFLICT préserve `resolved_at`).
+>
+> 🟢 **Backend** :
+> - `lib/geo/geocode-cache.ts` (3 fonctions `getCachedGeocode` / `setCachedGeocode` / `resolvePostalCode` orchestrateur). Validation Zod CP, fail-safe (null/false sur input invalide). Pas de log par-IP / par-User.
+> - `app/api/geocode/route.ts` GET — Zod validation, rate-limit Upstash 30/min/IP via nouveau helper `getGeocodeRateLimit()`, mapping erreurs typées → HTTP (400/404/429/502), Cache-Control `public, max-age=2592000` (30 jours).
+>
+> 🟢 **Frontend** :
+> - `lib/geo/geocode-postal-client.ts` — nouveau helper navigateur `geocodePostalCodeViaApi` qui fetch `/api/geocode` (signature symétrique avec `geocodePostalCode` pour limiter le diff côté widget).
+> - `app/(public)/producteurs/[slug]/_components/DistanceWidget.tsx` — bascule sur `geocodePostalCodeViaApi`. UX préservée (timeout 8s, validation regex, messages d'erreur typés). 2 nouveaux codes côté client (`rate_limited`, `upstream_unavailable`) + messages FR ajoutés dans `GEOCODE_POSTAL_ERROR_MESSAGES`.
+> - `lib/geo/geocode-postal.ts` conservé — plus appelé côté client mais reste utilisé côté serveur par `geocode-cache.ts:resolvePostalCode` sur le path cache miss.
+>
+> 🟢 **PrivacyNote DistanceWidget mis à jour** pour refléter la nouvelle chaîne (le CP transite via TerrOir, cache anonyme côté serveur, avant l'appel à gouv.fr). Wording explicite « n'est jamais associée à ton compte ni à ta visite côté serveur » qui préserve la promesse RGPD T-200 r1 sans mentir sur le passage par TerrOir. Suivi T-207 : réintroduire un `<Link>` cliquable au moment de la livraison de la politique de confidentialité globale.
+>
+> 🟢 **Continuité T-200 r1** documentée formellement (`docs/fixes/geocode-cache-2026-05-06.md`) : aucune des 4 contraintes substantielles n'est violée — CP = donnée publique INSEE (pas PII), pas de colonne IP dans `geocode_cache`, pas de jointure user→cp, `hit_count` agrégé anonyme, AUCUN `INSERT` dans `audit_logs` côté route (verrou explicite dans le test).
+>
+> 🟢 **Tests vitest** :
+> - `tests/lib/geo/geocode-cache.test.ts` (23 tests) : cache hit/miss/UPSERT/bump RPC, validation Zod, plages WGS84, fail-safe, contrat T-200 r1 (signatures sans IP/userId/userAgent).
+> - `tests/app/api/geocode/route.test.ts` (14 tests) : validation querystring, happy path 200 cache hit / cache miss, mapping erreurs (400/404/429/502), Cache-Control 30j, **verrou anti-audit-log** (la route ne fait JAMAIS d'`INSERT audit_logs`).
+> - `tests/app/producteurs/distance-widget.test.tsx` (existant, ajusté wording RGPD T-219).
+>
+> 🟢 **Backlog associé** : T-204 partiellement clôturée (cache en place, plan B fournisseur T-226 reste ouvert). T-207 mis à jour (réintroduire Link au go-live). T-237 (tests interactifs widget) bénéficiera du mock `/api/geocode`.
+>
+> 🧪 **Tests effectués** : 37 nouveaux tests verts (23 + 14). Suite complète Vitest 2091 verts, zéro régression.
+>
+> ⚠️ **À faire avant prod** : appliquer la migration `20260506181153_t219_geocode_cache.sql` manuellement via Supabase Studio ou MCP Supabase. La route `/api/geocode` retournera `502 upstream_unavailable` tant que la table + RPC ne sont pas en base.
+
+---
+
 ## 2026-05-06 (T-217 politique uniforme floutage coordonnées producteur)
 
 > Formalisation Option A (maintien `roundCoord` 2 décimales sur les 4 surfaces publiques) après audit T-217 préalable. Le chantier ne modifie aucun comportement runtime — la garantie au runtime est strictement identique à T-200 r3. Il ferme le trou de couverture de tests (le contrat sécurité de la fiche slug n'avait pas de verrou, contrairement à `/api/producers/search`).

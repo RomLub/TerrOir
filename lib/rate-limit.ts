@@ -131,6 +131,13 @@ let _contactFormLimiter: Ratelimit | null | undefined;
 // log meta event 'admin_audit_logs_email_lookup'). Pas IP-keyed : tous
 // les admins partagent le réseau bureau quand co-localisés.
 let _auditLogsEmailLookupLimiter: Ratelimit | null | undefined;
+// T-219 : route /api/geocode (cache CP→lat/lng). Cap 30/min/IP — un
+// utilisateur légitime saisit quelques CPs par session ; au-delà = soit
+// énumération de CPs (trilatération inverse, cf. T-236), soit script abus.
+// Identifier IP éphémère côté Upstash (TTL = window), pas de persistance
+// applicative DB. Continuité T-200 r1 : pas de profilage user, pas de
+// jointure user→cp côté geocode_cache.
+let _geocodeLimiter: Ratelimit | null | undefined;
 
 export function getSignupRateLimit(): Ratelimit | null {
   if (_signupLimiter === undefined) {
@@ -205,4 +212,11 @@ export function getAuditLogsEmailLookupRateLimit(): Ratelimit | null {
     );
   }
   return _auditLogsEmailLookupLimiter;
+}
+
+export function getGeocodeRateLimit(): Ratelimit | null {
+  if (_geocodeLimiter === undefined) {
+    _geocodeLimiter = createRateLimiter(30, "60 s", "geocode");
+  }
+  return _geocodeLimiter;
 }

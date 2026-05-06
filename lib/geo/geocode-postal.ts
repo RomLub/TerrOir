@@ -21,7 +21,12 @@ export type GeocodePostalErrorCode =
   | "invalid_format"
   | "not_found"
   | "network"
-  | "timeout";
+  | "timeout"
+  // Codes émis par la route serveur /api/geocode (T-219). Le helper
+  // navigateur `geocodePostalCodeViaApi` les propage tels quels au widget,
+  // qui les traduit via GEOCODE_POSTAL_ERROR_MESSAGES.
+  | "rate_limited"
+  | "upstream_unavailable";
 
 export type GeocodePostalResult =
   | { ok: true; lat: number; lng: number }
@@ -80,4 +85,8 @@ export const GEOCODE_POSTAL_ERROR_MESSAGES: Record<
   not_found: "Code postal introuvable.",
   network: "Service de localisation indisponible. Réessaie dans un instant.",
   timeout: "Le service de localisation met trop de temps. Réessaie.",
+  rate_limited:
+    "Trop de saisies récentes. Patiente un instant avant de réessayer.",
+  upstream_unavailable:
+    "Service de localisation indisponible. Réessaie dans un instant.",
 };

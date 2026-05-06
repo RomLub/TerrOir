@@ -2,10 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { DISTANCE_OUT_OF_REACH_KM, haversineKm } from "@/lib/geo/haversine";
-import {
-  geocodePostalCode,
-  GEOCODE_POSTAL_ERROR_MESSAGES,
-} from "@/lib/geo/geocode-postal";
+import { GEOCODE_POSTAL_ERROR_MESSAGES } from "@/lib/geo/geocode-postal";
+import { geocodePostalCodeViaApi } from "@/lib/geo/geocode-postal-client";
 import {
   GMS_DISTANCE_KM_REFERENCE,
   GMS_DISTANCE_SOURCE_LABEL,
@@ -164,7 +162,9 @@ export function DistanceWidget({
     e.preventDefault();
     setError(null);
     setPending(true);
-    const result = await geocodePostalCode(postalInput);
+    // T-219 : passe par /api/geocode (cache Supabase + rate-limit Upstash)
+    // au lieu de taper api-adresse.data.gouv.fr en direct depuis le client.
+    const result = await geocodePostalCodeViaApi(postalInput);
     setPending(false);
     if (!result.ok) {
       setError(GEOCODE_POSTAL_ERROR_MESSAGES[result.code]);
@@ -332,23 +332,27 @@ function CollapseLink({ onClick }: { onClick: () => void }) {
 }
 
 function PrivacyNote() {
-  // Information RGPD au point de collecte (art. 13 RGPD) — wording r4 :
+  // Information RGPD au point de collecte (art. 13 RGPD) — wording mis à
+  // jour T-219 (cache serveur géocodage CP→coords) :
   //   (a) finalité explicite : calcul de distance.
   //   (b) caractère facultatif : la fiche reste accessible sans saisie.
-  //   (c) durée de conservation : session navigateur uniquement, jamais
-  //       persistée ni loggée côté serveur (cf. geocode-postal.ts qui
-  //       attaque api-adresse.data.gouv.fr en direct depuis le navigateur).
-  //   (d) sous-traitant tiers nommé : api-adresse.data.gouv.fr (service public).
-  // Le renvoi vers la politique de confidentialité globale est volontairement
-  // retiré tant que la page n'existe pas (suivi T-207). Promettre un document
-  // opposable absent serait trompeur. À réintroduire en <Link> au go-live.
+  //   (c) durée de conservation côté navigateur : sessionStorage seulement
+  //       (purge fermeture onglet).
+  //   (d) chaîne CP→coords : transite via /api/geocode (cache Supabase
+  //       anonyme, ni compte ni IP côté table geocode_cache, hit_count
+  //       agrégé) puis api-adresse.data.gouv.fr en cache miss. Cf. continuité
+  //       T-200 r1 documentée dans docs/fixes/geocode-cache-2026-05-06.md.
+  // Le renvoi vers la politique de confidentialité globale reste volontairement
+  // retiré tant que la page n'existe pas (suivi T-207). À réintroduire en
+  // <Link> au go-live, en intégrant le wording cache serveur ci-dessus.
   return (
     <p className="mt-4 text-[11px] leading-[1.5] text-terroir-ink/[0.55]">
       Saisie facultative — la fiche du producteur reste consultable sans. Ta
-      position est utilisée uniquement pour calculer la distance jusqu&apos;à
-      la ferme : elle reste dans ton navigateur (session uniquement, jamais
-      envoyée ni enregistrée sur nos serveurs). La saisie d&apos;un code postal
-      interroge le service public api-adresse.data.gouv.fr.
+      position (géoloc ou résolue depuis ton code postal) reste dans ton
+      navigateur pour calculer la distance ; elle n&apos;est jamais associée
+      à ton compte ni à ta visite côté serveur. La saisie d&apos;un code
+      postal transite via TerrOir (cache anonyme du couple code postal →
+      coordonnées commune) vers le service public api-adresse.data.gouv.fr.
     </p>
   );
 }
