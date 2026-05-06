@@ -55,6 +55,10 @@ export type ProducersAbonnementNiveau = (typeof PRODUCERS_ABONNEMENT_NIVEAU_VALU
 export const PRODUCERS_ALIMENTATION_VALUES = ["pature_dominante", "mixte", "aliments_achetes"] as const;
 export type ProducersAlimentation = (typeof PRODUCERS_ALIMENTATION_VALUES)[number];
 
+// producers.declaration_indicateurs_wording_version (source: in, last migration: 20260506183454_t292_declaration_wording_version_check.sql)
+export const PRODUCERS_DECLARATION_INDICATEURS_WORDING_VERSION_VALUES = ["v1.0", "v1.1"] as const;
+export type ProducersDeclarationIndicateursWordingVersion = (typeof PRODUCERS_DECLARATION_INDICATEURS_WORDING_VERSION_VALUES)[number];
+
 // producers.densite_animale (source: in, last migration: 20260503100000_t200_score_carbone.sql)
 export const PRODUCERS_DENSITE_ANIMALE_VALUES = ["extensive", "standard", "intensive"] as const;
 export type ProducersDensiteAnimale = (typeof PRODUCERS_DENSITE_ANIMALE_VALUES)[number];
