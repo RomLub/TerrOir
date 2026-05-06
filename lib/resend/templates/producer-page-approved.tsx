@@ -6,14 +6,14 @@ export interface Props {
 }
 
 export const subject = (p: Props) =>
-  `Votre page ${p.exploitation} est en ligne sur TerrOir`;
+  `Ta page ${p.exploitation} est en ligne sur TerrOir`;
 
 export default function ProducerPageApproved(props: Props) {
   return (
     <EmailLayout title={subject(props)}>
       <h1 style={{ color: emailTheme.green, marginTop: 0 }}>Félicitations !</h1>
       <p>
-        Votre page <strong>{props.exploitation}</strong> vient d&apos;être validée
+        Ta page <strong>{props.exploitation}</strong> vient d&apos;être validée
         par l&apos;équipe TerrOir. Elle est maintenant visible publiquement.
       </p>
       <p>
@@ -33,8 +33,8 @@ export default function ProducerPageApproved(props: Props) {
         </a>
       </p>
       <p>
-        N&apos;hésitez pas à partager ce lien à vos clients et sur vos réseaux pour
-        recevoir vos premières commandes.
+        N&apos;hésite pas à partager ce lien à tes clients et sur tes réseaux pour
+        recevoir tes premières commandes.
       </p>
     </EmailLayout>
   );

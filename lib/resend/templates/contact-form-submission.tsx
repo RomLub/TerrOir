@@ -134,8 +134,8 @@ export default function ContactFormSubmission(props: Props) {
         style={{ border: 0, borderTop: "1px solid #e5e5e5", margin: "24px 0 12px" }}
       />
       <p style={{ fontSize: 11, color: "#8a8a8a", lineHeight: 1.5 }}>
-        Pour répondre directement au visiteur, utilisez la fonction
-        « Répondre » de votre client mail — l&apos;adresse Reply-To est
+        Pour répondre directement au visiteur, utilise la fonction
+        « Répondre » de ton client mail — l&apos;adresse Reply-To est
         positionnée sur {props.email}.
       </p>
     </EmailLayout>

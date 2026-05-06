@@ -10,7 +10,7 @@ export interface Props {
 }
 
 export const subject = (p: Props) =>
-  `[TerrOir] ${p.producerName} a répondu à votre avis`;
+  `[TerrOir] ${p.producerName} a répondu à ton avis`;
 
 // Email notification consumer : producer a répondu à son avis (CGU 6.4).
 // Inclut le rappel de l'avis original (extrait court) + le texte complet
@@ -30,12 +30,12 @@ export default function ReviewResponseNotification(props: Props) {
   return (
     <EmailLayout title={subject(props)}>
       <h1 style={{ color: emailTheme.green, marginTop: 0, fontSize: 22 }}>
-        {props.producerName} a répondu à votre avis
+        {props.producerName} a répondu à ton avis
       </h1>
       <p>{greeting}</p>
       <p>
         Le producteur <strong>{props.producerName}</strong> vient de répondre à
-        l&apos;avis que vous avez laissé sur sa page TerrOir.
+        l&apos;avis que tu as laissé sur sa page TerrOir.
       </p>
 
       {reviewExcerpt && (
@@ -51,7 +51,7 @@ export default function ReviewResponseNotification(props: Props) {
           }}
         >
           <div style={{ fontSize: 11, color: "#888", marginBottom: 4 }}>
-            Votre avis
+            Ton avis
           </div>
           « {reviewExcerpt} »
         </div>
@@ -101,7 +101,7 @@ export default function ReviewResponseNotification(props: Props) {
       </p>
 
       <p style={{ fontSize: 12, color: "#888", marginTop: 32 }}>
-        Vous recevez cet email parce que vous avez laissé un avis sur TerrOir.{" "}
+        Tu reçois cet email parce que tu as laissé un avis sur TerrOir.{" "}
         <a href={props.preferencesUrl} style={{ color: emailTheme.green }}>
           Désactiver ces notifications
         </a>

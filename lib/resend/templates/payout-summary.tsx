@@ -73,7 +73,7 @@ export default function PayoutSummary(props: Props) {
 
       <p style={{ marginTop: 16 }}>
         Virement net : <strong>{props.montantNet.toFixed(2)} €</strong>.
-        Selon votre banque, comptez 1 à 3 jours ouvrés pour la réception.
+        Selon ta banque, compte 1 à 3 jours ouvrés pour la réception.
       </p>
     </EmailLayout>
   );

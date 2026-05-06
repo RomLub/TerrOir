@@ -45,20 +45,20 @@ export default function OrderRevivalBlocked(props: Props) {
         Commande non honorée
       </h1>
       <p>
-        Bonjour, votre commande <strong>{props.codeCommande}</strong> chez{" "}
+        Bonjour, ta commande <strong>{props.codeCommande}</strong> chez{" "}
         <strong>{props.exploitation}</strong> n&apos;a pas pu être confirmée :{" "}
-        {reasonText} entre votre tentative initiale de paiement et la validation
+        {reasonText} entre ta tentative initiale de paiement et la validation
         finale.
       </p>
       <p>
         Un remboursement intégral de{" "}
-        <strong>{props.amount.toFixed(2)} €</strong> a été initié sur votre
-        moyen de paiement. Comptez 3 à 5 jours ouvrés pour voir le crédit
+        <strong>{props.amount.toFixed(2)} €</strong> a été initié sur ton
+        moyen de paiement. Compte 3 à 5 jours ouvrés pour voir le crédit
         apparaître.
       </p>
       <p>
-        Vous pouvez {fixSuggestion} — TerrOir reste à votre disposition pour
-        votre prochaine commande.
+        Tu peux {fixSuggestion} — TerrOir reste à ta disposition pour
+        ta prochaine commande.
       </p>
     </EmailLayout>
   );

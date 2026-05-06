@@ -28,7 +28,7 @@ const BASE_PROPS = {
 describe("ReviewResponseNotification — subject", () => {
   it("nomme le producteur dans l'objet", () => {
     expect(subject(BASE_PROPS)).toBe(
-      "[TerrOir] Ferme du Foo a répondu à votre avis",
+      "[TerrOir] Ferme du Foo a répondu à ton avis",
     );
   });
 });
