@@ -1,12 +1,17 @@
-# Audit RLS table `public.producers` — 2026-05-06 (T-218)
+# Audit RLS table `public.producers` — 2026-05-06 (T-218 + T-218-bis)
 
 **Source live** : MCP Supabase `read-write` sur prod (Postgres 17.6).
-**Périmètre** : `public.producers` uniquement (5 policies + 42 colonnes).
+**Périmètre** : `public.producers` uniquement (5 policies + 43 colonnes).
 **Contexte** : audit complémentaire de l'audit RLS global du 2026-05-05
 (`docs/audits/audit-rls-2026-05-05.md`), focalisé sur la **projection de
 colonnes** par policy après cumul des migrations T-200 (3 enums score
 carbone), T-241 (3 colonnes déclaration véracité), T-292 (3 flags Stripe
 Connect), T-417 (3 scores badges) et T-413 (cleanup_pending).
+
+**Trigger T-218 / T-218-bis applied** : 25 colonnes admin-only / immuables
+/ onboarding-only / privacy bloquées en self-update authenticated owner.
+Voir sections [Trigger T-218](#b-policy-owner-update-autorise-self-update-sur-colonnes-admin-only)
+et [T-218-bis](#t-218-bis-2026-05-06--ajout-latitudelongitude) ci-dessous.
 
 ---
 
@@ -49,8 +54,8 @@ secrets).
 | 6 | adresse | text | privacy | owner (parametres) |
 | 7 | commune | text | public | owner |
 | 8 | code_postal | text | public | owner |
-| 9 | latitude | double | privacy | service_role (geocode) |
-| 10 | longitude | double | privacy | service_role (geocode) |
+| 9 | latitude | double | **admin-only (T-218-bis, privacy T-217)** | service_role (geocode) |
+| 10 | longitude | double | **admin-only (T-218-bis, privacy T-217)** | service_role (geocode) |
 | 11 | description | text | public | owner |
 | 12 | histoire | text | public | owner |
 | 13 | photo_principale | text | public | owner |
@@ -186,7 +191,8 @@ qui pose un trigger `BEFORE UPDATE` :
 - bypass `service_role` (`auth.role() = 'service_role'`) — webhooks, RPC, scripts
 - bypass admins authenticated (`is_admin()`) — gestion-producteurs page
 - sinon `RAISE EXCEPTION ERRCODE 42501` (insufficient_privilege) si une des
-  21 colonnes admin-only / immuables / onboarding-only est modifiée.
+  **25** colonnes admin-only / immuables / onboarding-only / privacy est
+  modifiée (23 initiales T-218 + 2 ajoutées T-218-bis pour lat/lng).
 
 **Pourquoi un trigger plutôt qu'une policy WITH CHECK** : Postgres ne donne
 pas accès à OLD dans une policy WITH CHECK (qui évalue NEW seulement). Le
@@ -195,10 +201,137 @@ mais devrait être maintenu en parallèle de chaque ajout de colonne au schema
 (forte dette). Le trigger centralise la liste des colonnes admin-only dans
 **un fichier unique**, lisible en revue.
 
-⚠️ **Migration NON appliquée par CC** — Romain l'applique manuellement via
-Supabase Studio (cf. `docs/METHODOLOGY.md`). Le code applicatif fonctionne
-identique avant/après l'apply (defense-in-depth pure, pas de changement de
-contrat fonctionnel).
+**Statut apply** : appliquée en prod via MCP Supabase le 2026-05-06
+(timestamp DB `20260506165934`). Tests de fumée OK : 5 colonnes admin-only
+testées (statut, declaration_indicateurs_snapshot, abonnement_niveau,
+badge_stock_score, slug) → ERROR 42501 levée. 2 colonnes owner-allowed
+testées (description, photos) → UPDATE OK. Bypass service_role + is_admin()
+testés → OK.
+
+---
+
+## T-218-bis (2026-05-06) — ajout latitude/longitude
+
+### Contexte risque privacy
+
+Post-apply T-218, latitude / longitude restaient owner-writable côté policy
+RLS. Un producteur malveillant pouvait PATCH direct via PostgREST
+`/rest/v1/producers?id=eq.<id>` avec body `{"latitude": 99.999, "longitude":
+-99.999}` pour fausser sa position géographique. Conséquences :
+
+- **Biaiser le `DistanceWidget` consumer** — le widget calcule la distance
+  client → ferme à partir de `producers.{latitude,longitude}` (cf. T-219
+  cache `/api/geocode`). Une coord trafiquée fausse le tri "près de chez
+  moi" et la carte interactive `/carte`.
+- **Concurrence déloyale** — apparaître dans une zone qui n'est pas la
+  sienne (Sarthe Sud alors qu'on est en Mayenne par exemple).
+- **Manipulation des résultats** `/producteurs?proche=...` (rayon de
+  recherche).
+- **Incohérence avec adresse / commune / code_postal** (qui restent
+  owner-writable mais publics, donc plus difficile à fausser sans
+  incohérence visible côté UI).
+
+### Décision
+
+**Protection trigger admin-only** : étendre la liste protégée du trigger
+`producers_block_owner_admin_columns()` pour inclure `latitude` et
+`longitude`. Les coords doivent être définies UNIQUEMENT par :
+
+1. Géocodage de l'adresse à l'onboarding (write `service-role` via
+   `/api/geocode` cache + persist sur `producers.latitude/longitude`).
+2. RPC dédiée admin si correction manuelle nécessaire (déménagement
+   producteur, géocodage initial faux). Pas de RPC à ce jour.
+
+### Implémentation
+
+`CREATE OR REPLACE FUNCTION` du trigger existant (pattern doctrine T-297
+idempotence migrations — pas de DROP + CREATE qui invaliderait
+temporairement le garde-fou). Le trigger lui-même reste tel quel (binding
+pg_trigger → pg_proc préservé après OR REPLACE).
+
+Total liste protégée : **23 → 25 colonnes**.
+
+Migration : `supabase/migrations/<timestamp>_t218_bis_lat_lng_admin_only.sql`.
+
+### Point d'attention futur
+
+Si une feature future doit laisser un owner ou un admin **corriger
+manuellement** lat/lng (via UI gestion-producteurs ou wizard), prévoir :
+
+- Soit une RPC `update_producer_coords(p_producer_id, p_latitude,
+  p_longitude)` `SECURITY DEFINER` avec garde `is_admin()` interne, appelée
+  via `service_role`. Pattern aligné avec `update_producer_onboarding`
+  (T-241).
+- Soit un re-déclenchement du géocodage côté `/api/geocode` qui invalide le
+  cache et recalcule depuis l'adresse mise à jour. Plus propre car
+  préserve la cohérence adresse ↔ coords.
+
+Pas urgent — ouvrir un T-XXX backlog si le besoin émerge en prod.
+
+---
+
+## Defense-in-depth FORCE RLS observée (post-apply T-218)
+
+**Constat** : pendant les tests de fumée T-218 via MCP Supabase, un UPDATE
+sur colonne admin-only depuis le contexte par défaut (superuser `postgres`,
+pas de `set role`, pas de JWT claim) **est bloqué par le trigger** —
+exactement comme un authenticated owner non-admin.
+
+```sql
+-- MCP par défaut : current_user = postgres, auth.role() = NULL
+update public.producers set statut = 'public' where id = '...';
+-- ERROR: 42501: producers.statut is admin-only (T-218)
+```
+
+### Pourquoi
+
+Le code de la fonction trigger filtre le bypass via :
+
+```sql
+if (select auth.role()) = 'service_role' then return new; end if;
+if (select public.is_admin()) then return new; end if;
+```
+
+- `auth.role()` lit `request.jwt.claims->>role`. Sans JWT context (cas
+  SQL Editor / MCP brut), retourne `NULL` ≠ `'service_role'`. Pas de bypass.
+- `public.is_admin()` interroge `EXISTS (SELECT 1 FROM admin_users WHERE id
+  = auth.uid())`. `auth.uid()` retourne NULL → `EXISTS` est false. Pas
+  de bypass.
+
+Conséquence : le superuser `postgres` direct doit **explicitement** :
+
+```sql
+begin;
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+update public.producers set statut = 'public' where id = '...';
+commit;
+```
+
+### Conséquence pratique pour Romain
+
+Tout UPDATE admin manuel via Supabase Studio SQL Editor (ou MCP en
+contexte par défaut) sur une des 25 colonnes admin-only **nécessite
+explicitement** :
+- `set local role service_role;` (donne le rôle Postgres)
+- `select set_config('request.jwt.claims', '{"role":"service_role"}', true);`
+  (donne le contexte JWT lu par `auth.role()`)
+
+Sinon le trigger bloque (cohérent avec la doctrine FORCE RLS de la
+migration `audit_rls_lot_7` du 2026-05-05). Documenté dans
+`METHODOLOGY.md` section "Apply migrations Supabase Studio" si besoin.
+
+### Bénéfice
+
+Un admin humain qui oublie le `SET ROLE` ne casse pas accidentellement les
+invariants admin-only. Ceinture + bretelles vs erreurs humaines au SQL
+Editor.
+
+⚠️ Pour les flows applicatifs réels (Next.js → PostgREST → Postgres), le
+bypass fonctionne nativement : le client `createSupabaseAdminClient()`
+s'authentifie via le service_role JWT, PostgREST set `role = service_role`
++ `request.jwt.claims->>role = 'service_role'`, le trigger bypass. Vérifié
+en tests de fumée T-218.
 
 ---
 
@@ -211,10 +344,9 @@ contrat fonctionnel).
   niveau de sensibilité** (public read OK ? owner write OK ?) puis ajuster
   le trigger `producers_block_owner_admin_columns()` si admin-only. Lister
   cette doctrine dans `docs/METHODOLOGY.md` (chantier suivant).
-- **À confirmer** : si T-218 est appliqué et qu'une feature future doit
-  laisser un owner write `latitude`/`longitude` (édition manuelle des coords
-  par exemple), ces colonnes ne sont **pas** dans le trigger T-218. Idem
-  `adresse` qui reste owner-writable. Attention aux ajouts.
+- **`adresse`** reste owner-writable (privacy à arbitrer plus tard si
+  l'adresse complète apparaît en public read — cf. finding A backlog
+  T-235). lat/lng désormais protégées via T-218-bis.
 
 ---
 
@@ -226,7 +358,10 @@ T-218 complète :
 
 - Findings A et B identifiés ci-dessus.
 - A → backlog T-235.
-- B → migration livrée 20260506200000_t218_*.
+- B → migration T-218 appliquée en prod (timestamp DB `20260506165934`).
+- B-bis → migration T-218-bis appliquée en prod (lat/lng).
 
 L'audit reste cohérent : pas de FORCE RLS sur producers (pas de secrets,
-align doctrine 2026-05-05).
+align doctrine 2026-05-05). Defense-in-depth FORCE RLS effective via le
+trigger T-218 / T-218-bis qui bloque les UPDATE depuis le contexte
+superuser `postgres` brut (cf. section dédiée ci-dessus).
