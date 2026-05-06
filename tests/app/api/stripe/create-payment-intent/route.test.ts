@@ -385,6 +385,57 @@ describe("C'. Audit Stripe M-1 — automatic_payment_methods config", () => {
   });
 });
 
+// --- C''. T-228 — verrou contractuel metadata Stripe : allowlist stricte, pas
+// de fuite des champs T-200 (mode_elevage, alimentation, densite_animale) ni
+// probatoire DGCCRF (declaration_indicateurs_*) chez le sous-traitant Stripe.
+// Doctrine : metadata Stripe = identifiants TerrOir uniquement.
+// cf. docs/security/audit-stripe-metadata-t200-2026-05-06.md
+
+describe("C''. T-228 — metadata Stripe : allowlist stricte (defense-in-depth)", () => {
+  it("metadata = exactement {order_id, producer_id, consumer_id} sur PaymentIntent.create", async () => {
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(200);
+    const [params] = mockPaymentIntentsCreate.mock.calls[0]! as [
+      Record<string, unknown>,
+      unknown,
+    ];
+    expect(params.metadata).toEqual({
+      order_id: ORDER_ID,
+      producer_id: PRODUCER_ID,
+      consumer_id: CONSUMER_ID,
+    });
+    const keys = Object.keys(params.metadata as Record<string, unknown>).sort();
+    expect(keys).toEqual(["consumer_id", "order_id", "producer_id"]);
+  });
+
+  it("metadata ne contient aucun champ T-200 (mode_elevage / alimentation / densite_animale)", async () => {
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(200);
+    const [params] = mockPaymentIntentsCreate.mock.calls[0]! as [
+      Record<string, unknown>,
+      unknown,
+    ];
+    const meta = params.metadata as Record<string, unknown>;
+    expect(meta.mode_elevage).toBeUndefined();
+    expect(meta.alimentation).toBeUndefined();
+    expect(meta.densite_animale).toBeUndefined();
+  });
+
+  it("metadata ne contient aucun champ probatoire DGCCRF (declaration_indicateurs_*)", async () => {
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(200);
+    const [params] = mockPaymentIntentsCreate.mock.calls[0]! as [
+      Record<string, unknown>,
+      unknown,
+    ];
+    const meta = params.metadata as Record<string, unknown>;
+    const probatoireKeys = Object.keys(meta).filter((k) =>
+      k.startsWith("declaration_indicateurs"),
+    );
+    expect(probatoireKeys).toEqual([]);
+  });
+});
+
 // --- D. T-405 verrou DB anti-race + rollback + catch idempotency reuse ---
 
 describe("D. T-405 — race protection + rollback compensation", () => {
