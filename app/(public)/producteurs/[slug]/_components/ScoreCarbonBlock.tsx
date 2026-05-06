@@ -27,15 +27,20 @@ export function ScoreCarbonBlock({
     modeElevage !== null || alimentation !== null || densiteAnimale !== null;
   const hasDistance = producerLat !== null && producerLng !== null;
 
-  if (!hasCategorical && !hasDistance) return null;
+  // T-240 : si rien à montrer (ni indicateurs catégoriels, ni coords pour la
+  // distance), afficher un placeholder neutre tutoyé plutôt que de masquer
+  // le bloc. Mitigation pré-bascule pour les producteurs créés avant T-241
+  // (`declaration_indicateurs_*` à NULL — cf. T-281). Wording validé lead.
+  // Cohérent avec le ton TerrOir : tutoiement consumer, troisième personne
+  // pour le producteur.
+  const isEmpty = !hasCategorical && !hasDistance;
 
   // Titre adaptatif : "Au plus près de l'éleveur" si on a des indicateurs
   // élevage à montrer, "Au plus près de chez toi" sinon (cas maraîcher,
   // boulanger, etc. — pas d'élevage mais le widget distance reste utile).
-  // Décision comité review T-200 round 1.
-  const heading = hasCategorical
-    ? "de l'éleveur."
-    : "de chez toi.";
+  // Décision comité review T-200 round 1. État vide = même headline neutre
+  // "de chez toi" pour ne pas pré-supposer une activité d'élevage.
+  const heading = hasCategorical ? "de l'éleveur." : "de chez toi.";
   const intro = hasCategorical
     ? "Trois marqueurs concrets sur la conduite du troupeau, et la distance réelle qui te sépare de la ferme."
     : "La distance réelle qui te sépare de la ferme, à vol d'oiseau.";
@@ -58,6 +63,16 @@ export function ScoreCarbonBlock({
             {intro}
           </p>
         </div>
+
+        {isEmpty && (
+          <div className="mx-auto mt-10 max-w-[720px]">
+            <div className="rounded-xl border border-dashed border-terroir-border bg-white px-5 py-6 text-center">
+              <p className="text-[14px] leading-[1.55] text-terroir-ink/[0.7]">
+                Ce producteur n&rsquo;a pas encore renseigné sa démarche.
+              </p>
+            </div>
+          </div>
+        )}
 
         {hasCategorical && (
           <div className="mt-10 grid gap-4 md:grid-cols-3">

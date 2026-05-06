@@ -37,9 +37,28 @@ const BASE_PROPS = {
 } as const;
 
 describe("ScoreCarbonBlock — cas limites de rendu", () => {
-  it("Cas A : 0 enum + 0 lat/lng → retourne null (pas de moignon)", () => {
-    const el = ScoreCarbonBlock({ ...BASE_PROPS });
-    expect(el).toBeNull();
+  it("Cas A (T-240) : 0 enum + 0 lat/lng → placeholder neutre tutoyé (pas null, pas de pills)", () => {
+    const html = render({ ...BASE_PROPS });
+    expect(html).not.toBeNull();
+    const out = html!;
+    // Wording validé lead T-240 — apostrophe `&rsquo;` côté JSX
+    // (cohérent doctrine ESLint anti-U+2019 dans le source) ; au runtime
+    // renderToStaticMarkup la rend en caractère brut U+2019 dans l'output.
+    // RegExp construit via string interpolant `’` pour respecter la
+    // règle ESLint no-restricted-syntax (T-255) qui interdit U+2019 dans
+    // toute Literal source.
+    expect(out).toMatch(
+      new RegExp(`Ce producteur n(\\u2019|&rsquo;|&#x2019;|')a pas encore renseigné sa démarche`),
+    );
+    // Cohérent avec maraîcher : titre version neutre "de chez toi" (pas
+    // "de l'éleveur" qui présupposerait une activité d'élevage).
+    expect(out).toContain("de chez toi");
+    expect(out).not.toMatch(/de l(&#x27;|')éleveur/);
+    // Aucun pill ni titre Distance — le placeholder occupe la place.
+    expect(out).not.toContain("Mode d&#x27;élevage");
+    expect(out).not.toContain("Alimentation");
+    expect(out).not.toContain("Densité animale");
+    expect(out).not.toContain("Distance ferme");
   });
 
   it("Cas B : 0 enum + lat/lng → titre 'chez toi', pas de pills, widget rendu", () => {
