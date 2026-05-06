@@ -318,15 +318,15 @@ export function ProductPageClient({
                   </div>
                   <Button size="lg" className="w-full" disabled={!canOrder} onClick={handleAdd}>
                     {isOwnProduct
-                      ? 'Votre produit'
+                      ? 'Ton produit'
                       : added
                         ? '✓ Ajouté au panier'
                         : !slot
-                          ? 'Choisissez un créneau'
+                          ? 'Choisis un créneau'
                           : `Ajouter au panier`}
                   </Button>
                   <p className="text-[11px] text-dark/50 text-center mt-2">
-                    Vous confirmez votre commande directement avec {producer.name.split(' ').slice(-2).join(' ')}.
+                    Tu confirmes ta commande directement avec {producer.name.split(' ').slice(-2).join(' ')}.
                   </p>
                 </>
               )}

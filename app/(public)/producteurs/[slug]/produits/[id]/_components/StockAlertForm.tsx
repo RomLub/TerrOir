@@ -76,11 +76,11 @@ export function StockAlertForm({ productId, productName }: Props) {
     return (
       <div className="rounded-2xl border border-green-700 bg-green-50 p-5">
         <p className="text-[14px] font-medium text-green-900">
-          Vérifiez votre boîte mail.
+          Vérifie ta boîte mail.
         </p>
         <p className="text-[13px] text-dark/70 mt-1 leading-relaxed">
           Un email de confirmation vient d&apos;être envoyé à <strong>{email}</strong>.
-          Cliquez le lien pour activer votre alerte — valable 7 jours.
+          Clique le lien pour activer ton alerte — valable 7 jours.
         </p>
       </div>
     );
@@ -90,10 +90,10 @@ export function StockAlertForm({ productId, productName }: Props) {
     return (
       <div className="rounded-2xl border border-dark/[0.08] bg-bg p-5">
         <p className="text-[14px] font-medium text-green-900">
-          Vous êtes déjà inscrit(e).
+          Tu es déjà inscrit(e).
         </p>
         <p className="text-[13px] text-dark/70 mt-1 leading-relaxed">
-          Vous serez prévenu(e) au retour en stock de {productName}.
+          Tu seras prévenu(e) au retour en stock de {productName}.
         </p>
       </div>
     );
@@ -112,7 +112,7 @@ export function StockAlertForm({ productId, productName }: Props) {
         Me prévenir au retour en stock
       </h3>
       <p className="text-[13px] text-dark/60 mt-1 leading-relaxed">
-        Saisissez votre email — vous recevrez un message dès que le producteur
+        Saisis ton email — tu recevras un message dès que le producteur
         réapprovisionne.
       </p>
 
@@ -120,7 +120,7 @@ export function StockAlertForm({ productId, productName }: Props) {
         htmlFor="stock-alert-email"
         className="block text-[12px] font-medium text-dark/70 mt-4 mb-1"
       >
-        Votre email
+        Ton email
       </label>
       <input
         id="stock-alert-email"
@@ -129,7 +129,7 @@ export function StockAlertForm({ productId, productName }: Props) {
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         disabled={submitting}
-        placeholder="vous@exemple.com"
+        placeholder="toi@exemple.com"
         className="w-full rounded-md border border-dark/15 px-3 py-2 text-[14px] focus:border-terra-700 focus:outline-none disabled:bg-dark/[0.04]"
         aria-describedby={errorMessage ? "stock-alert-error" : undefined}
       />
