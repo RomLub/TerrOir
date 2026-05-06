@@ -1,10 +1,12 @@
 # T-250 — Audit tutoiement parcours consumer + corrections
 
 Date : 2026-05-06
-Status : 7 clusters livrés. Zones grises 1+2 (devenir-producteur,
+Status : 8 clusters livrés. Zones grises 1+2 (devenir-producteur,
 a-propos éleveur) arbitrées TUTOYER par le lead et appliquées.
-Pages légales SKIP (cohérence avec T-041 avocat). Mails admin/
-producer en attente arbitrage Romain.
+Mails post-CGU producer + admin (Option C Romain) appliqués
+cluster 8. Pages légales SKIP (cohérence avec T-041 avocat).
+`producer-invitation` + `opt-out-link` MAINTENUS en vouvoiement
+(cibles pré-CGU).
 
 ## Doctrine TerrOir (CLAUDE.md)
 
@@ -17,7 +19,7 @@ fiche produit, panier, checkout, profil, mails Auth.
 
 ## Stratégie de segmentation
 
-Découpage en 7 commits atomiques par cluster pour respecter la doctrine
+Découpage en 8 commits atomiques par cluster pour respecter la doctrine
 git stricte (pas de mass commit fourre-tout) :
 
 | Commit | Cluster | Fichiers | Lignes touchées |
@@ -29,15 +31,20 @@ git stricte (pas de mass commit fourre-tout) :
 | `0197fc5` | Public consumer-facing (contact, carte, alertes-stock, auth pages, notre-demarche, producteurs) | 10 | 33/-33 |
 | `87b2fb6` | Mails Resend consumer (8 templates + 3 tests snapshot) | 11 | 49/-49 |
 | `5ed9ce1` | Zones grises arbitrées TUTOYER (devenir-producteur + a-propos éleveur) | 2 | 20/-20 |
+| `d5b826b` | Mails Resend post-CGU (3 producer + 3 consumer mal-classés + 1 admin Romain + 1 test) | 7 | 23/-23 |
 
-**Total : 54 fichiers modifiés en 7 commits, 254 substitutions
+**Total : 61 fichiers modifiés en 8 commits, 277 substitutions
 vouvoiement → tutoiement. Tests snapshot Resend mis à jour
 (29/29 passent). Build OK à chaque commit.**
 
 **Doctrine git renforcée mid-cycle (cf. décision lead 2026-05-06)** :
-clusters 5, 6 et 7 commités via `git commit -o <fichier1> <fichier2> ...`
+clusters 5, 6, 7 et 8 commités via `git commit -o <fichier1> <fichier2> ...`
 strict (index temporaire scopé aux fichiers nommés, immune aux race
 conditions multi-terminaux observées au commit T-241 r4 / T-243).
+Race confirmée empiriquement au cluster 8 : un autre teammate avait
+modifié `app/(public)/comment-ca-marche/page.tsx` pendant mon work,
+le `-o` strict l'a bien exclu de mon commit (vérifié post-push via
+`git show --stat HEAD`).
 
 ## Détail des clusters
 
@@ -120,15 +127,40 @@ Romain (décision relationnelle business) :
    maintenant créerait un mismatch quand l'avocat livrera ses pages
    en vouvoiement. Statu quo. Inclut `/cgu` ligne 681 (« Indiquez vos
    coordonnées pour suivi »).
-4. **Mails admin/back-office producer** (`producer-invitation`,
-   `payout-summary`, `order-confirmed-producer`,
-   `producer-page-approved`, `order-timeout-cancelled`,
-   `order-revival-blocked`, `contact-form-submission`,
-   `review-response-notification`, `admin-*`, `opt-out-link`) →
-   **EN ATTENTE Romain**. Décision relationnelle business : impact
-   pro avec Julien GAEC du Rheu en Live. Non tranchée par le lead
-   seul. Si feu vert Romain, traitement en commit dédié de fin (ou
-   backlog post-session).
+4. **Mails admin/back-office producer** → **Option C arbitrée par
+   Romain** (livré cluster 8) avec rationale verbatim à conserver
+   pour traçabilité décision en cas de feedback Julien post-Live :
+
+   > `producer-invitation` est le SEUL mail dont le destinataire n'a
+   > pas encore signé les CGU ni accepté la convention TerrOir.
+   > Tutoyer = imposer le ton plateforme avant acceptation.
+   > **Vouvoyer dans l'invitation = laisser le choix d'embarquer le
+   > ton TerrOir en signant**. Tous les autres mails producer sont
+   > post-onboarding (post-acceptation CGU = acceptation convention
+   > TerrOir = tutoiement standard appliqué).
+
+   Application :
+
+   | Mail | Décision | Audience réelle (post-inspection) |
+   |------|----------|-----------------------------------|
+   | `producer-invitation` | **VOUVOYER** maintenu | lead pré-CGU |
+   | `opt-out-link` | **VOUVOYER** maintenu | lead pré-CGU (base leads producteurs) |
+   | `payout-summary` | TUTOYER (cluster 8) | producer post-CGU |
+   | `order-confirmed-producer` | TUTOYER déjà OK (impératif) | producer post-CGU |
+   | `producer-page-approved` | TUTOYER (cluster 8) | producer post-CGU |
+   | `contact-form-submission` | TUTOYER (cluster 8) | admin Romain |
+   | `order-timeout-cancelled` | TUTOYER (cluster 8) | **consumer** (mal classé brief lead) |
+   | `order-revival-blocked` | TUTOYER (cluster 8) | **consumer** (mal classé brief lead) |
+   | `review-response-notification` | TUTOYER (cluster 8) | **consumer** (mal classé brief lead) |
+   | `admin-*` (8 templates) | aucun vouvoiement détecté | déjà conformes |
+
+   Note : 3 templates listés "producer" dans le brief lead se sont
+   révélés à l'inspection être des mails CONSUMER
+   (`order-timeout-cancelled`, `order-revival-blocked`,
+   `review-response-notification`) — auraient dû appartenir au
+   cluster 6. Traités selon leur audience réelle, pas selon le brief.
+   Cohérent avec décision lead "Si destinataire = Romain admin →
+   tutoiement absolu, sinon règle post-CGU".
 
 ### Cluster 5 — Public consumer-facing (commit `0197fc5`, 10 fichiers)
 
@@ -181,6 +213,40 @@ Suite à la décision lead 2026-05-06 (cf. section "Zones grises") :
   la première marketplace dédiée à la Sarthe".
 
 Cluster 7 commité avec doctrine `-o` strict.
+
+### Cluster 8 — Mails post-CGU (commit `d5b826b`, 7 fichiers)
+
+Application de l'arbitrage Romain "Option C" (cf. section "Zones
+grises", point 4). Mails producer post-CGU + admin Romain + 3 mails
+consumer mal-classés dans le brief lead :
+
+- `lib/resend/templates/payout-summary.tsx` — virement hebdo
+  ("Selon ta banque, compte 1 à 3 jours").
+- `lib/resend/templates/producer-page-approved.tsx` — subject "Ta
+  page X est en ligne", h1, partage clients/réseaux.
+- `lib/resend/templates/contact-form-submission.tsx` — admin Romain
+  (footer "utilise la fonction Répondre de ton client mail").
+- `lib/resend/templates/order-revival-blocked.tsx` — **consumer**
+  refund post-3DS race (re-classifié à l'inspection).
+- `lib/resend/templates/order-timeout-cancelled.tsx` — **consumer**
+  commande non confirmée 24h (re-classifié).
+- `lib/resend/templates/review-response-notification.tsx` —
+  **consumer** notif réponse producteur (re-classifié, le
+  `responseText` prop laissé tel quel car voix producer reportée).
+- `tests/lib/resend/templates/review-response-notification.test.tsx`
+  — assertion subject mise à jour ("a répondu à ton avis").
+
+`order-confirmed-producer` inspecté : pas de "vous/votre" — wording
+déjà à l'impératif neutre ("Merci de la confirmer sous 24h"), aucune
+modif requise.
+
+Mails `admin-*` (8 templates) inspectés via grep : aucun vouvoiement
+détecté, déjà conformes (style notification impersonnel).
+
+Race git multi-terminal détectée pendant le commit (un autre
+teammate avait modifié `app/(public)/comment-ca-marche/page.tsx`).
+Doctrine `-o` strict a bien exclu ce fichier — vérification
+post-push via `git show --stat HEAD`.
 
 ## Reliquat — items déjà non-touchés volontairement
 
