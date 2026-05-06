@@ -24,6 +24,14 @@ export default defineConfig({
   ],
   test: {
     include: ["tests/**/*.test.{ts,tsx}"],
+    // T-296 : tests d'intégration SQL contre Supabase local. Exclus du run
+    // standard (npm test) car requièrent Docker + `supabase start`. Run
+    // dédié via `npm run test:sql` (vitest.sql.config.ts).
+    exclude: [
+      "**/node_modules/**",
+      "**/dist/**",
+      "tests/sql-integration/**",
+    ],
     environment: "node",
     globals: false,
     reporters: "default",

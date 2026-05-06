@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
+    "test:sql": "vitest run --config vitest.sql.config.ts",
     "db:push": "supabase db push",
     "db:pull": "supabase db pull",
     "db:diff": "supabase db diff",
