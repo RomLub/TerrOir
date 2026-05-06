@@ -1,10 +1,10 @@
 # T-250 — Audit tutoiement parcours consumer + corrections
 
 Date : 2026-05-06
-Status : Reliquat consumer-facing + mails Resend consumer LIVRÉS
-(6 commits, suite cycle). Zones grises (cgu/cgv/légales,
-devenir-producteur, mails admin/producer Resend) en attente
-arbitrage lead.
+Status : 7 clusters livrés. Zones grises 1+2 (devenir-producteur,
+a-propos éleveur) arbitrées TUTOYER par le lead et appliquées.
+Pages légales SKIP (cohérence avec T-041 avocat). Mails admin/
+producer en attente arbitrage Romain.
 
 ## Doctrine TerrOir (CLAUDE.md)
 
@@ -17,7 +17,7 @@ fiche produit, panier, checkout, profil, mails Auth.
 
 ## Stratégie de segmentation
 
-Découpage en 6 commits atomiques par cluster pour respecter la doctrine
+Découpage en 7 commits atomiques par cluster pour respecter la doctrine
 git stricte (pas de mass commit fourre-tout) :
 
 | Commit | Cluster | Fichiers | Lignes touchées |
@@ -28,13 +28,14 @@ git stricte (pas de mass commit fourre-tout) :
 | `d8fb30c` | Funnel public (faq, comment-ca-marche, livraison) | 3 | 64/-64 |
 | `0197fc5` | Public consumer-facing (contact, carte, alertes-stock, auth pages, notre-demarche, producteurs) | 10 | 33/-33 |
 | `87b2fb6` | Mails Resend consumer (8 templates + 3 tests snapshot) | 11 | 49/-49 |
+| `5ed9ce1` | Zones grises arbitrées TUTOYER (devenir-producteur + a-propos éleveur) | 2 | 20/-20 |
 
-**Total : 52 fichiers modifiés en 6 commits, 234 substitutions
+**Total : 54 fichiers modifiés en 7 commits, 254 substitutions
 vouvoiement → tutoiement. Tests snapshot Resend mis à jour
 (29/29 passent). Build OK à chaque commit.**
 
 **Doctrine git renforcée mid-cycle (cf. décision lead 2026-05-06)** :
-clusters 5 et 6 commités via `git commit -o <fichier1> <fichier2> ...`
+clusters 5, 6 et 7 commités via `git commit -o <fichier1> <fichier2> ...`
 strict (index temporaire scopé aux fichiers nommés, immune aux race
 conditions multi-terminaux observées au commit T-241 r4 / T-243).
 
@@ -102,27 +103,32 @@ encore « TerrOir ne prend aucune commission sur le paiement » et
 « paiement en espèces ou par carte selon les moyens de l'éleveur » —
 contradictoire avec le modèle Stripe Connect 6 % commission.
 
-## Zones grises non touchées (arbitrage lead pendant)
+## Zones grises — décisions lead 2026-05-06
 
-Ping envoyé au team-lead pour décision sur :
+Le lead a tranché 3 zones (décision technique) et a remonté la 4e à
+Romain (décision relationnelle business) :
 
-1. **`/devenir-producteur`** — audience producteur potentiel.
-   Vouvoiement actuel (« Trois engagements, pour vous », « Parlez-nous
-   de votre exploitation »). Convention TerrOir tutoie partout, mais
-   l'audience est différente.
-2. **`/a-propos` section éleveur** — « Vous êtes éleveur ? »
-3. **Pages légales** : `/cgu`, `/cgv`, `/mentions-legales`,
-   `/politique-confidentialite`, `/charte-qualite`. Vouvoiement
-   habituel juridique. Non touchées par défaut.
-4. **Mails admin/back-office Resend** :
-   `lib/resend/templates/admin-*`, `producer-invitation`,
-   `producer-page-approved`, `payout-summary`,
-   `order-confirmed-producer`, `order-timeout-cancelled`,
+1. **`/devenir-producteur`** → **TUTOYER** (livré cluster 7).
+   Rationale lead : page web publique, com produit, doctrine CLAUDE.md
+   "TerrOir tutoie partout" s'applique. Cohérence > formalisme.
+2. **`/a-propos` section éleveur** → **TUTOYER** (livré cluster 7).
+   Même rationale — page web com produit.
+3. **Pages légales** (`/cgu`, `/cgv`, `/mentions-legales`,
+   `/politique-confidentialite`, `/charte-qualite`) → **NE PAS
+   TOUCHER**. Rationale lead : T-041 (rédaction + validation avocat)
+   est hors scope. Vouvoiement juridique habituel = standard. Tutoyer
+   maintenant créerait un mismatch quand l'avocat livrera ses pages
+   en vouvoiement. Statu quo. Inclut `/cgu` ligne 681 (« Indiquez vos
+   coordonnées pour suivi »).
+4. **Mails admin/back-office producer** (`producer-invitation`,
+   `payout-summary`, `order-confirmed-producer`,
+   `producer-page-approved`, `order-timeout-cancelled`,
    `order-revival-blocked`, `contact-form-submission`,
-   `review-response-notification`, `opt-out-link`. Audience
-   producer/admin. Non touchées par défaut.
-5. **`/cgu` ligne 681** — `<li>Indiquez vos coordonnées pour suivi</li>`
-   dans bloc support contact, ambigu (légal vs operational).
+   `review-response-notification`, `admin-*`, `opt-out-link`) →
+   **EN ATTENTE Romain**. Décision relationnelle business : impact
+   pro avec Julien GAEC du Rheu en Live. Non tranchée par le lead
+   seul. Si feu vert Romain, traitement en commit dédié de fin (ou
+   backlog post-session).
 
 ### Cluster 5 — Public consumer-facing (commit `0197fc5`, 10 fichiers)
 
@@ -162,6 +168,20 @@ Tests snapshot mis à jour : `email-change-otp-current.test.tsx`
 `stock-alert-confirm.test.tsx` (subject). Suite Resend complète
 **29/29 OK**.
 
+### Cluster 7 — Zones grises arbitrées TUTOYER (commit `5ed9ce1`, 2 fichiers)
+
+Suite à la décision lead 2026-05-06 (cf. section "Zones grises") :
+
+- `app/(public)/devenir-producteur/page.tsx` — héro, ADVANTAGES,
+  formulaire candidature, success state, CTA "Trois engagements
+  pour toi", "Parle-nous de ton exploitation", textarea "Ton
+  message", consent footer.
+- `app/(public)/a-propos/page.tsx` — section VALUES "Transparence"/
+  "Lien humain", CTA contact, bandeau "Tu es éleveur ?" + "Rejoins
+  la première marketplace dédiée à la Sarthe".
+
+Cluster 7 commité avec doctrine `-o` strict.
+
 ## Reliquat — items déjà non-touchés volontairement
 
 Tous les fichiers identifiés au reliquat initial ont été traités
@@ -193,9 +213,10 @@ sauf les zones grises explicites :
 - Suite test Resend templates **29/29 verts** après mise à jour des
   3 snapshots impactés par les nouveaux wordings.
 - Doctrine `git commit -o <fichier1> <fichier2> ...` strict appliquée
-  aux clusters 5+6 (immune aux race conditions multi-terminaux). Les
-  clusters 1-4 utilisaient `git add <fichier précis>` puis `git commit`
-  classique — fonctionnait ici car aucune race observée sur ces commits,
+  aux clusters 5, 6 et 7 (immune aux race conditions multi-terminaux).
+  Les clusters 1-4 utilisaient `git add <fichier précis>` puis
+  `git commit` classique — fonctionnait ici car aucune race observée
+  sur ces commits,
   mais doctrine `-o` désormais standard pour la suite.
 
 ## Garde-fou
