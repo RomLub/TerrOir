@@ -68,7 +68,7 @@ const ITEMS: Item[] = [
   {
     icon: <PeopleIcon />,
     title: "Circuit court, humain",
-    body: "Pas de centrale d’achat, pas de plateforme intermédiaire. Vous achetez à un éleveur, il vous remet votre commande lui-même.",
+    body: "Pas de centrale d'achat, pas de plateforme intermédiaire. Vous achetez à un éleveur, il vous remet votre commande lui-même.",
   },
   {
     icon: <BasketLockIcon />,

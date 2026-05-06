@@ -52,7 +52,7 @@ describe("ScoreCarbonBlock — cas limites de rendu", () => {
     const out = html!;
     // Titre adaptatif : version maraîcher (pas d'élevage à montrer).
     expect(out).toContain("de chez toi");
-    expect(out).not.toContain("de l’éleveur");
+    expect(out).not.toMatch(/de l(&#x27;|')éleveur/);
     // Aucune des 3 catégories ne doit apparaître en eyebrow.
     expect(out).not.toContain("Mode d&#x27;élevage");
     expect(out).not.toContain("Mode d'élevage");
@@ -70,7 +70,7 @@ describe("ScoreCarbonBlock — cas limites de rendu", () => {
     expect(html).not.toBeNull();
     const out = html!;
     // Titre version éleveur dès qu'un enum est saisi.
-    expect(out).toContain("de l’éleveur");
+    expect(out).toMatch(/de l(&#x27;|')éleveur/);
     // L'eyebrow Mode d'élevage est présent (HTML échappe l'apostrophe en &#x27;).
     expect(out).toMatch(/Mode d(&#x27;|')élevage/);
     // Les 2 autres catégories ne doivent PAS apparaître (pas de moignon).
@@ -90,7 +90,7 @@ describe("ScoreCarbonBlock — cas limites de rendu", () => {
     });
     expect(html).not.toBeNull();
     const out = html!;
-    expect(out).toContain("de l’éleveur");
+    expect(out).toMatch(/de l(&#x27;|')éleveur/);
     expect(out).toMatch(/Mode d(&#x27;|')élevage/);
     expect(out).toContain("Alimentation");
     // La 3e catégorie est absente.
@@ -111,7 +111,7 @@ describe("ScoreCarbonBlock — cas limites de rendu", () => {
     });
     expect(html).not.toBeNull();
     const out = html!;
-    expect(out).toContain("de l’éleveur");
+    expect(out).toMatch(/de l(&#x27;|')éleveur/);
     expect(out).toMatch(/Mode d(&#x27;|')élevage/);
     expect(out).toContain("Alimentation");
     expect(out).toContain("Densité animale");

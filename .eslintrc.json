@@ -1,3 +1,20 @@
 {
-  "extends": "next/core-web-vitals"
+  "extends": "next/core-web-vitals",
+  "rules": {
+    "no-restricted-syntax": [
+      "error",
+      {
+        "selector": "Literal[value=/\\u2019/]",
+        "message": "T-255: Apostrophe courbe U+2019 interdite. Utiliser apostrophe droite ASCII (') ou entité HTML &rsquo;/&apos; selon contexte JSX."
+      },
+      {
+        "selector": "TemplateElement[value.raw=/\\u2019/]",
+        "message": "T-255: Apostrophe courbe U+2019 interdite. Utiliser apostrophe droite ASCII (') ou entité HTML &rsquo;/&apos; selon contexte JSX."
+      },
+      {
+        "selector": "JSXText[raw=/\\u2019/]",
+        "message": "T-255: Apostrophe courbe U+2019 interdite en source JSX. Utiliser apostrophe droite ASCII (') ou entité HTML &rsquo; (rendu typographique courbe préservé) / &apos;."
+      }
+    ]
+  }
 }

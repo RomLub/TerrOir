@@ -34,11 +34,11 @@ export function ScoreCarbonBlock({
   // boulanger, etc. — pas d'élevage mais le widget distance reste utile).
   // Décision comité review T-200 round 1.
   const heading = hasCategorical
-    ? "de l’éleveur."
+    ? "de l'éleveur."
     : "de chez toi.";
   const intro = hasCategorical
     ? "Trois marqueurs concrets sur la conduite du troupeau, et la distance réelle qui te sépare de la ferme."
-    : "La distance réelle qui te sépare de la ferme, à vol d’oiseau.";
+    : "La distance réelle qui te sépare de la ferme, à vol d'oiseau.";
 
   return (
     <section

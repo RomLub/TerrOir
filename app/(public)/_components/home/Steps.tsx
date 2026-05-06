@@ -53,7 +53,7 @@ const STEPS: Step[] = [
     numLabel: "Choisir",
     icon: <BasketIcon />,
     title: "Composez votre panier",
-    body: "Parcourez les fermes près de chez vous, ajoutez les produits du moment. Chaque fiche indique le producteur, sa commune et son mode d’élevage.",
+    body: "Parcourez les fermes près de chez vous, ajoutez les produits du moment. Chaque fiche indique le producteur, sa commune et son mode d'élevage.",
   },
   {
     num: "2",
@@ -67,7 +67,7 @@ const STEPS: Step[] = [
     numLabel: "Récupérer",
     icon: <PinIcon />,
     title: "Récupérez chez le producteur",
-    body: "Choisissez votre créneau de retrait à la ferme ou en point relais sarthois. On vous guide jusqu’à l’éleveur, vous repartez avec votre commande.",
+    body: "Choisissez votre créneau de retrait à la ferme ou en point relais sarthois. On vous guide jusqu'à l'éleveur, vous repartez avec votre commande.",
   },
 ];
 

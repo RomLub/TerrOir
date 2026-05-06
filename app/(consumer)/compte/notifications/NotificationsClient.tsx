@@ -17,7 +17,7 @@ const PREFS: Array<{
 }> = [
   {
     key: 'email_review_response',
-    label: 'Réponse d’un producteur à mon avis',
+    label: "Réponse d'un producteur à mon avis",
     description:
       'Recevoir un email quand un producteur publie une réponse à un avis que vous avez laissé.',
   },

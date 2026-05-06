@@ -51,7 +51,7 @@ export function SarthemapPostit({
           {/* Col 2 : intro post-it + post-it */}
           <div className="md:pt-6">
             <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-terroir-muted">
-              Le conseil de l’éleveur
+              Le conseil de l&rsquo;éleveur
             </span>
             <h2 className="mt-3 font-serif text-[26px] font-medium leading-[1.2] text-green-900 md:text-[32px]">
               Avec chaque commande,
@@ -61,13 +61,13 @@ export function SarthemapPostit({
             <p className="mt-4 text-[15px] leading-[1.6] text-terroir-ink/[0.7]">
               Marie, Julien, Claire et les autres glissent un conseil de
               cuisson, une recette de saison ou simplement un mot de la
-              semaine à côté de votre commande. Le geste qu’aucune grande
+              semaine à côté de votre commande. Le geste qu&rsquo;aucune grande
               surface ne fait.
             </p>
             <div className="mt-8">
               <PostIt
                 eyebrow="Le conseil de Marie"
-                quote="Faites cuire à basse température, 1h30 à 150°C, puis 10 min à 200°C pour la peau croustillante. Servez avec mes pommes de terre grenaille — vous m’en direz des nouvelles."
+                quote="Faites cuire à basse température, 1h30 à 150°C, puis 10 min à 200°C pour la peau croustillante. Servez avec mes pommes de terre grenaille — vous m'en direz des nouvelles."
                 signature="Marie"
                 meta="Ferme des Tilleuls · Coulaines"
               />
