@@ -156,14 +156,18 @@ T-295 est **clôturé sans migration corrective** :
 - Smoke tests confirment le verrou (authenticated + anon → 42501).
 - Cas A (tout conforme) du brief.
 
-**Backlog T-295-bis** ouvert pour traiter les findings annexes :
-- Révoquer PUBLIC EXECUTE sur `invalidate_active_invitations_for_email`
-  et `producers_block_owner_admin_columns` (defense-in-depth).
-- Arbitrer ACL des 2 RPC géocodage T-219 (révoquer authenticated/anon
-  ou laisser).
+**Backlog T-295-bis** : ✅ **livré + applied 2026-05-06**. Voir
+`docs/security/audit-rpc-acl-hardening-t295-bis-2026-05-06.md`.
 
-Pas urgent — pas un bloquant Live strict. À traiter au prochain audit
-RLS transverse (post-T-003 audit externe).
+Les 4 findings annexes ont été traités :
+- `invalidate_active_invitations_for_email` + `producers_block_owner_
+  admin_columns` : REVOKE EXECUTE FROM PUBLIC, anon, authenticated.
+- `bump_geocode_cache` + `upsert_geocode_cache` : REVOKE EXECUTE FROM
+  PUBLIC, anon, authenticated + GRANT EXECUTE TO service_role.
+
+Post-T-295-bis, aucune RPC `SECURITY DEFINER` n'a plus `=X/postgres`
+standalone (PUBLIC EXECUTE) dans son ACL. Audit transverse pré-Live
+clôturé.
 
 ---
 

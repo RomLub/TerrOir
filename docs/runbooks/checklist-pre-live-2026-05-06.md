@@ -105,6 +105,12 @@ Items déjà livrés ce cycle (2026-05-06 — traçabilité audit T-003) :
   T-218-bis lat/lng admin-only — protection RLS au niveau DB).
 - ✅ **T-238** Scan auto anti-fuite sur routes API publiques (livré
   2026-05-06, commit `6e2aa40`).
+- ✅ **T-295-bis** Durcissement ACL RPC `SECURITY DEFINER` findings
+  annexes T-295 (livré + applied 2026-05-06). 4 RPC verrouillées
+  service_role only (`bump_geocode_cache`, `upsert_geocode_cache`,
+  `invalidate_active_invitations_for_email`, `producers_block_owner_
+  admin_columns`). Cache poisoning géocodage bloqué (cluster T-227).
+  Cf. `docs/security/audit-rpc-acl-hardening-t295-bis-2026-05-06.md`.
 - 🔲 **T-236** Rate-limit `/api/producers/search` anti-trilatération
   (livré 2026-05-06 commit `11a8bc9` — vérifier déploiement prod).
 - 🔲 **T-227** Étude ré-identification adresse producteur par
