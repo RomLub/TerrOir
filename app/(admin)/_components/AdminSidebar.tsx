@@ -127,6 +127,22 @@ const GmsPricesIcon = (
   </svg>
 );
 
+const ComplianceIcon = (
+  <svg
+    aria-hidden="true"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="h-4 w-4"
+  >
+    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    <path d="m9 12 2 2 4-4" />
+  </svg>
+);
+
 const NAV: NavItem[] = [
   { href: "/tableau-de-bord", label: "Tableau de bord", icon: DashboardIcon },
   { href: "/producer-interests", label: "Leads producteurs", icon: LeadsIcon },
@@ -134,6 +150,7 @@ const NAV: NavItem[] = [
   { href: "/suivi-commandes", label: "Suivi commandes", icon: OrdersIcon },
   { href: "/audit-logs", label: "Journal d'audit", icon: AuditLogsIcon },
   { href: "/avis", label: "Avis", icon: ReviewsIcon },
+  { href: "/legal-compliance", label: "Conformité légale", icon: ComplianceIcon },
   { href: "/gms-prices", label: "Prix GMS", icon: GmsPricesIcon },
 ];
 
