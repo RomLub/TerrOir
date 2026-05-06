@@ -14,6 +14,7 @@ const NAV = [
   { href: '/ma-page', label: 'Ma page', icon: '◉' },
   { href: '/mes-avis', label: 'Avis', icon: '★' },
   { href: '/revenus', label: 'Revenus', icon: '€' },
+  { href: '/comptabilite', label: 'Comptabilité', icon: '⊟' },
   { href: '/parametres', label: 'Paramètres', icon: '⚙' },
 ];
 

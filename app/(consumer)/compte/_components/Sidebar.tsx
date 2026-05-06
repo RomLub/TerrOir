@@ -7,6 +7,7 @@ import { RoleSwitcher } from "@/components/ui";
 const NAV: { href: string; label: string }[] = [
   { href: "/compte", label: "Tableau de bord" },
   { href: "/compte/commandes", label: "Mes commandes" },
+  { href: "/compte/factures", label: "Factures & compta" },
   { href: "/compte/profil", label: "Mon profil" },
   { href: "/compte/paiements", label: "Moyens de paiement" },
   { href: "/compte/password", label: "Mot de passe" },

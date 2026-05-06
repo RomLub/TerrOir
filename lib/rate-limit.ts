@@ -156,6 +156,13 @@ let _producersSearchLimiter: Ratelimit | null | undefined;
 // 'pickup_attempt_rate_limited' côté caller pour détection forensique.
 let _pickupValidationLimiter: Ratelimit | null | undefined;
 
+// Export comptable (consumer/producer). Cap 5/min keying par userId : un
+// utilisateur consulte son historique 1-2 fois par session, max 3-5/min en
+// pratique (changement de période, retry réseau). Au-delà = scripting,
+// extraction massive. Keying userId pour éviter NAT-collision et garantir
+// l'isolation par compte (cohérent caps Stripe write keying userId).
+let _exportComptaLimiter: Ratelimit | null | undefined;
+
 export function getSignupRateLimit(): Ratelimit | null {
   if (_signupLimiter === undefined) {
     _signupLimiter = createRateLimiter(5, "60 s", "signup");
@@ -258,4 +265,11 @@ export function getPickupValidationRateLimit(): Ratelimit | null {
     );
   }
   return _pickupValidationLimiter;
+}
+
+export function getExportComptaRateLimit(): Ratelimit | null {
+  if (_exportComptaLimiter === undefined) {
+    _exportComptaLimiter = createRateLimiter(5, "60 s", "export_compta");
+  }
+  return _exportComptaLimiter;
 }
