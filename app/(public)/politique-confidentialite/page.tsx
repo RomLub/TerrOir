@@ -260,12 +260,18 @@ export default function PolitiqueConfidentialitePage() {
           </p>
         </section>
 
-        <div className="pt-6 border-t border-dark/[0.06]">
+        <div className="pt-6 border-t border-dark/[0.06] flex flex-wrap items-center justify-between gap-4">
           <Link
             href="/contact"
             className="inline-flex items-center gap-2 text-[14px] text-green-900 hover:text-terra-700"
           >
             <span aria-hidden>←</span> Retour au formulaire de contact
+          </Link>
+          <Link
+            href="/mentions-legales"
+            className="text-[13px] text-dark/60 underline decoration-dotted underline-offset-4 hover:text-terra-700"
+          >
+            Voir aussi nos mentions légales
           </Link>
         </div>
       </section>

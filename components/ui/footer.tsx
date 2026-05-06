@@ -96,9 +96,10 @@ export function Footer({
             </div>
           ))}
 
-          {/* Aide : contact + livraison + politique de confidentialité (P0
-              légales 2026-05-06). Mentions légales · CGU · CGV restent à
-              créer. */}
+          {/* Aide : contact + FAQ + livraison + politique. La ligne
+              juridique de pied (Mentions légales · CGU · CGV) est rendue
+              dans le footer bottom — pages existantes en placeholder
+              (P0 légales 2026-05-06). */}
           <div>
             <h4 className="mb-4 text-xs font-semibold uppercase tracking-[0.14em] text-white/45">
               Aide
@@ -136,19 +137,43 @@ export function Footer({
                   Politique de confidentialité
                 </Link>
               </li>
-              <li className="text-xs italic leading-relaxed text-white/40">
-                Mentions légales · CGU · CGV{" "}
-                <span className="not-italic">— à venir</span>
-              </li>
             </ul>
           </div>
         </div>
 
-        {/* Footer bottom */}
-        <div className="mt-12 border-t border-white/10 pt-6">
+        {/* Footer bottom : copyright + ligne juridique active. */}
+        <div className="mt-12 border-t border-white/10 pt-6 flex flex-wrap items-center justify-between gap-4">
           <p className="text-xs text-white/45">
             © {year} TerrOir · Sarthe
           </p>
+          <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-white/55">
+            <li>
+              <Link
+                href="/mentions-legales"
+                className="transition-colors hover:text-white"
+              >
+                Mentions légales
+              </Link>
+            </li>
+            <li aria-hidden className="text-white/25">·</li>
+            <li>
+              <Link
+                href="/cgu"
+                className="transition-colors hover:text-white"
+              >
+                CGU
+              </Link>
+            </li>
+            <li aria-hidden className="text-white/25">·</li>
+            <li>
+              <Link
+                href="/cgv"
+                className="transition-colors hover:text-white"
+              >
+                CGV
+              </Link>
+            </li>
+          </ul>
         </div>
       </div>
     </footer>
