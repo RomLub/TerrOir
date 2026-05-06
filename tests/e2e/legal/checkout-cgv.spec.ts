@@ -13,7 +13,7 @@
  *     pour vitesse, pas de mail Resend gaspillé.
  *   - Producer activé stripe_charges_enabled=true côté DB (équivalent post-KYC),
  *     bypass guard M-6 dans /api/stripe/create-payment-intent.
- *   - Panier injecté via localStorage (store Zustand 'terroir-cart').
+ *   - Panier injecté via localStorage (store Zustand 'terroir_cart').
  *   - Pas de complétion challenge 3DS UI (driver iframe Stripe headless = instable,
  *     cf. stripe-3ds-matrix.spec.ts trade-off documenté). On valide la persistance
  *     CGV au moment où l'order est créée (avant le challenge) — le flow 3DS lui-même
@@ -145,7 +145,7 @@ async function injectCart(
   page: import("@playwright/test").Page,
   setup: CheckoutSetup,
 ): Promise<void> {
-  // Format Zustand persist 'terroir-cart' v1 (cf lib/store/cart.ts).
+  // Format Zustand persist 'terroir_cart' v1 (cf lib/store/cart.ts).
   const cartPayload = {
     state: {
       items: [
@@ -171,7 +171,7 @@ async function injectCart(
   // useCartStore au mount et hydrate depuis ce key.
   await page.goto("/compte"); // page valide pour avoir un origin
   await page.evaluate((payload) => {
-    window.localStorage.setItem("terroir-cart", JSON.stringify(payload));
+    window.localStorage.setItem("terroir_cart", JSON.stringify(payload));
   }, cartPayload);
 }
 

@@ -1,5 +1,29 @@
 # Migration progressive clés `terroir-` → `terroir_` — 2026-05-06 (T-266-bis)
 
+> **Statut : ARCHIVÉ — migration finalisée par T-266-tris le 2026-05-06.**
+>
+> Ce document décrit la **stratégie ancien+nouveau 30j** mise en place par
+> T-266-bis. Cette stratégie n'est **plus active** : T-266-tris a clôturé la
+> migration le jour même (J+0 au lieu de J+30) en exploitant le contexte
+> pre-launch TerrOir (aucun consumer payant, "users actifs" = Romain +
+> producteurs early-test, pas de risque de perte de panier critique).
+>
+> État actuel post-T-266-tris :
+> - Helper `lib/storage/migrated-storage.ts` **supprimé**.
+> - `lib/storage/local-preferences.ts` utilise directement `terroir_saved_email`.
+> - `StaleItemsBanner.tsx` utilise directement `terroir_cart_banner_dismissed`.
+> - `lib/store/cart.ts` utilise directement `terroir_cart` (zustand persist
+>   sans storage adapter custom).
+> - Règle ESLint T-266 bascule en regex strict `/^terroir_/` (préfixe `terroir-`
+>   plus toléré).
+> - E2E Playwright migrés vers `terroir_cart`.
+>
+> Le document est conservé pour trace historique du raisonnement
+> ancien+nouveau initial. Cf. T-266-tris dans le git log pour la
+> finalisation.
+
+---
+
 ## Contexte
 
 T-266 (commit `2839b34`) a posé la règle ESLint qui force le préfixe

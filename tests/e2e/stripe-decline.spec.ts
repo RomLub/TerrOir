@@ -21,7 +21,7 @@
  *       chain + audit log forensique.
  *
  *  2. UI-level (`Drive Stripe Element`) :
- *     - Cart hydration via localStorage (zustand persist 'terroir-cart').
+ *     - Cart hydration via localStorage (zustand persist 'terroir_cart').
  *     - Navigation /compte/checkout, attente du PaymentElement monté.
  *     - Saisie raw dans l'iframe Stripe Elements (frame-locator par
  *       title FR 'Champ de saisie sécurisé pour le paiement').
@@ -419,7 +419,7 @@ test('Decline UI (4000 0000 0000 0002) → page erreur compréhensible affichée
   await page.context().clearCookies();
   await loginAs(page, consumer);
 
-  // Hydrate panier zustand côté localStorage (clé persist 'terroir-cart').
+  // Hydrate panier zustand côté localStorage (clé persist 'terroir_cart').
   // Charge d'abord une page same-origin pour que window.localStorage soit
   // accessible (about:blank n'expose pas localStorage).
   await page.goto('/');
@@ -438,7 +438,7 @@ test('Decline UI (4000 0000 0000 0002) → page erreur compréhensible affichée
   };
   await page.evaluate((item) => {
     window.localStorage.setItem(
-      'terroir-cart',
+      'terroir_cart',
       JSON.stringify({ state: { items: [item] }, version: 1 }),
     );
   }, cartItem);

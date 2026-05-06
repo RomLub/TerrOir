@@ -16,12 +16,12 @@
         "message": "T-255: Apostrophe courbe U+2019 interdite en source JSX. Utiliser apostrophe droite ASCII (') ou entité HTML &rsquo; (rendu typographique courbe préservé) / &apos;."
       },
       {
-        "selector": "CallExpression[callee.object.name=/^(local|session)Storage$/][callee.property.name=/^(set|get|remove)Item$/][arguments.0.type='Literal'][arguments.0.value!=/^terroir[_-]/]",
-        "message": "T-266: clé sessionStorage/localStorage non préfixée terroir_ interdite. Utiliser terroir_<scope>_<key> (ex. terroir_geo_session). Préfixe terroir- (tiret) toléré pour les clés legacy en transition (cf. docs/conventions/lint-storage-namespace-2026-05-06.md)."
+        "selector": "CallExpression[callee.object.name=/^(local|session)Storage$/][callee.property.name=/^(set|get|remove)Item$/][arguments.0.type='Literal'][arguments.0.value!=/^terroir_/]",
+        "message": "T-266: clé sessionStorage/localStorage non préfixée terroir_ interdite. Utiliser terroir_<scope>_<key> (ex. terroir_geo_session). Plus de tolérance terroir- legacy depuis T-266-tris (migration finalisée)."
       },
       {
-        "selector": "CallExpression[callee.object.property.name=/^(local|session)Storage$/][callee.object.object.name='window'][callee.property.name=/^(set|get|remove)Item$/][arguments.0.type='Literal'][arguments.0.value!=/^terroir[_-]/]",
-        "message": "T-266: clé sessionStorage/localStorage non préfixée terroir_ interdite. Utiliser terroir_<scope>_<key> (ex. terroir_geo_session). Préfixe terroir- (tiret) toléré pour les clés legacy en transition (cf. docs/conventions/lint-storage-namespace-2026-05-06.md)."
+        "selector": "CallExpression[callee.object.property.name=/^(local|session)Storage$/][callee.object.object.name='window'][callee.property.name=/^(set|get|remove)Item$/][arguments.0.type='Literal'][arguments.0.value!=/^terroir_/]",
+        "message": "T-266: clé sessionStorage/localStorage non préfixée terroir_ interdite. Utiliser terroir_<scope>_<key> (ex. terroir_geo_session). Plus de tolérance terroir- legacy depuis T-266-tris (migration finalisée)."
       }
     ]
   }
