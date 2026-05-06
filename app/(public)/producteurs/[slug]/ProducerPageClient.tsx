@@ -70,6 +70,11 @@ export type ReviewData = {
   date: string;
   rating: number;
   text: string;
+  // Réponse producer (CGU 6.4). Affichée si présente et status=published.
+  // Si removed_admin/removed_producer, on n'affiche rien (la colonne
+  // producer_response est NULL dans ces cas — cf. migration).
+  producerResponse: string | null;
+  producerResponseDate: string | null;
 };
 
 const REVIEWS_PER_PAGE = 10;
@@ -263,6 +268,19 @@ export function ProducerPageClient({
                   <StarRating value={r.rating} readOnly size="sm" />
                 </div>
                 <p className="text-[14px] text-dark/80 leading-relaxed">{r.text}</p>
+                {r.producerResponse && (
+                  <div className="mt-4 ml-4 border-l-4 border-terroir-terracotta-500 pl-4 py-2 bg-terroir-bg/50 rounded-r">
+                    <div className="text-[11px] uppercase tracking-wider font-semibold text-terroir-green-700 mb-1">
+                      Réponse du producteur
+                      {r.producerResponseDate && (
+                        <span className="ml-2 font-normal normal-case tracking-normal text-dark/50">
+                          · {r.producerResponseDate}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[14px] text-dark/80 leading-relaxed">{r.producerResponse}</p>
+                  </div>
+                )}
               </article>
             ))}
             {canLoadMore && (

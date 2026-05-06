@@ -10,6 +10,7 @@ const NAV: { href: string; label: string }[] = [
   { href: "/compte/profil", label: "Mon profil" },
   { href: "/compte/paiements", label: "Moyens de paiement" },
   { href: "/compte/password", label: "Mot de passe" },
+  { href: "/compte/notifications", label: "Notifications" },
 ];
 
 function isActive(pathname: string | null, href: string): boolean {

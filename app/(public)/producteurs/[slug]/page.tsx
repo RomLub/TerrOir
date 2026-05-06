@@ -79,7 +79,9 @@ export default async function ProducteurPage({ params }: { params: { slug: strin
       .order('created_at', { ascending: false }),
     admin
       .from('reviews')
-      .select('note, commentaire, created_at, users:consumer_id ( prenom, nom )')
+      .select(
+        'note, commentaire, created_at, producer_response, producer_response_at, users:consumer_id ( prenom, nom )',
+      )
       .eq('producer_id', producer.id)
       .eq('statut', 'published')
       .order('published_at', { ascending: false, nullsFirst: false })
@@ -135,6 +137,10 @@ export default async function ProducteurPage({ params }: { params: { slug: strin
       date: formatDateFr(r.created_at as string),
       rating: r.note ?? 0,
       text: r.commentaire ?? '',
+      producerResponse: (r as { producer_response: string | null }).producer_response ?? null,
+      producerResponseDate: (r as { producer_response_at: string | null }).producer_response_at
+        ? formatDateFr((r as { producer_response_at: string }).producer_response_at)
+        : null,
     };
   });
 

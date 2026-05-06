@@ -12,6 +12,7 @@ const NAV = [
   { href: '/alertes-stock', label: 'Alertes stock', icon: '◐' },
   { href: '/creneaux', label: 'Créneaux', icon: '◷' },
   { href: '/ma-page', label: 'Ma page', icon: '◉' },
+  { href: '/mes-avis', label: 'Avis', icon: '★' },
   { href: '/revenus', label: 'Revenus', icon: '€' },
   { href: '/parametres', label: 'Paramètres', icon: '⚙' },
 ];
