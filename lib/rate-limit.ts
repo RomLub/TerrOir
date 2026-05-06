@@ -147,6 +147,14 @@ let _geocodeLimiter: Ratelimit | null | undefined;
 // rend économiquement non rentable l'attaque (au plus 30 mesures/min/IP,
 // chacune bruitée par l'arrondi). Identifier IP éphémère, pas de log par-IP.
 let _producersSearchLimiter: Ratelimit | null | undefined;
+// Pickup validation (saisie code retrait producer). Cap 10/min keying par
+// producerId : un producer en marché peut valider plusieurs commandes à la
+// suite (10/min absorbe la cadence "queue de clients" sans bloquer le
+// flow nominal), au-delà = soit script qui énumère des codes, soit double-
+// clic réseau flaky. Keying producerId (et non IP) car plusieurs producers
+// peuvent partager un NAT en marché. Defense in depth + audit log
+// 'pickup_attempt_rate_limited' côté caller pour détection forensique.
+let _pickupValidationLimiter: Ratelimit | null | undefined;
 
 export function getSignupRateLimit(): Ratelimit | null {
   if (_signupLimiter === undefined) {
@@ -239,4 +247,15 @@ export function getProducersSearchRateLimit(): Ratelimit | null {
     );
   }
   return _producersSearchLimiter;
+}
+
+export function getPickupValidationRateLimit(): Ratelimit | null {
+  if (_pickupValidationLimiter === undefined) {
+    _pickupValidationLimiter = createRateLimiter(
+      10,
+      "60 s",
+      "pickup_validation",
+    );
+  }
+  return _pickupValidationLimiter;
 }

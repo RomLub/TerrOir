@@ -38,6 +38,9 @@ export function categorizeEventType(eventType: AuditEventType): EventCategory {
   )
     return "catalog";
   if (eventType.startsWith("stripe_")) return "stripe";
+  // Pickup commande (validation retrait code producer) : sous-flow d'une
+  // commande, regroupé visuellement avec les autres events 'order_*'.
+  if (eventType.startsWith("pickup_")) return "order";
   if (eventType.startsWith("order_")) return "order";
   if (eventType.startsWith("producer_response_")) return "review";
   if (eventType.startsWith("notification_")) return "notification";

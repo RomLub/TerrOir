@@ -93,6 +93,13 @@ export const AUDIT_EVENT_LABELS: Record<string, string> = {
   admin_legal_compliance_exported: "Export conformité CGU",
   admin_audit_logs_email_lookup: "Recherche email (audit-logs)",
 
+  // ─── Pickup commande (validation retrait par code producer) ──────────
+  pickup_preview_ok: "Aperçu retrait validé",
+  pickup_preview_invalid: "Aperçu retrait : code invalide",
+  pickup_validated: "Retrait validé (commande remise)",
+  pickup_attempt_invalid: "Tentative validation retrait : code invalide",
+  pickup_attempt_rate_limited: "Validation retrait : rate-limit dépassé",
+
   // ─── Catalogue / catégorisation produit (T-130) ─────────────────────
   admin_category_created: "Catégorie créée",
   admin_category_updated: "Catégorie modifiée",

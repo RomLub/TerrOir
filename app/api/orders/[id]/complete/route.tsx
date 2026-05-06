@@ -8,11 +8,7 @@ import {
   assertTransition,
   type OrderStatus,
 } from "@/lib/orders/stateMachine";
-import { sendTemplate } from "@/lib/resend/send";
-import ReviewRequest, {
-  subject as reviewSubject,
-} from "@/lib/resend/templates/review-request";
-import { NEXT_PUBLIC_APP_URL } from "@/lib/env/urls";
+import { sendPickupReviewEmail } from "@/lib/orders/send-pickup-review-email";
 
 const bodySchema = z.object({
   code_commande: z.string().trim().min(1),
@@ -82,34 +78,15 @@ export async function POST(request: Request, { params }: RouteContext) {
     return NextResponse.json({ error: updateError.message }, { status: 500 });
   }
 
-  // Email review-request (J0). Les relances J+2 / J+7 sont gérées par le cron.
-  const { data: consumer } = await admin
-    .from("users")
-    .select("email")
-    .eq("id", order.consumer_id)
-    .maybeSingle();
-  const { data: producer } = await admin
-    .from("producers")
-    .select("nom_exploitation")
-    .eq("id", order.producer_id)
-    .maybeSingle();
-
-  if (consumer?.email && producer) {
-    const props = {
-      codeCommande: order.code_commande,
-      exploitation: producer.nom_exploitation,
-      reviewUrl: `${NEXT_PUBLIC_APP_URL}/compte/commandes/${order.id}/avis`,
-      dayOffset: 0 as const,
-    };
-    await sendTemplate({
-      to: consumer.email,
-      userId: order.consumer_id,
-      template: "review_request_j0",
-      subject: reviewSubject(props),
-      element: <ReviewRequest {...props} />,
-      metadata: { order_id: order.id, code_commande: order.code_commande },
-    });
-  }
+  // Email review-request (J0). Les relances J+2 / J+7 sont gérées par le cron
+  // /api/cron/review-followup. Helper partagé avec
+  // /api/producer/orders/validate-pickup (LOT 3 chantier pickup-validation).
+  await sendPickupReviewEmail(admin, {
+    orderId: order.id,
+    consumerId: order.consumer_id,
+    producerId: order.producer_id,
+    codeCommande: order.code_commande,
+  });
 
   // L'inclusion dans le prochain payout est automatique : /api/cron/weekly-payout
   // filtre sur statut='completed' + completed_at dans la plage du lundi précédent.
