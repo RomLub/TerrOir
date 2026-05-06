@@ -296,3 +296,136 @@ describe("DistanceWidget — disclosure 3 états (T-240)", () => {
     expect(container.textContent).toContain("Saisie facultative");
   });
 });
+
+describe("DistanceWidget — bascule hors zone circuit court (T-230)", () => {
+  // Cas DOM-TOM : visiteur Saint-Denis (Réunion, CP 97400) sur la fiche d'un
+  // producteur métropolitain (Le Mans). Distance Haversine ≈ 9300 km — bien
+  // au-delà du seuil DISTANCE_OUT_OF_REACH_KM (500 km).
+  const REUNION_SESSION = {
+    lat: -20.88,
+    lng: 55.45,
+    source: "postal" as const,
+  };
+  const LE_MANS_LAT = 48.0;
+  const LE_MANS_LNG = 0.2;
+
+  it("distance > seuil : compact affiche 'Hors zone circuit court' (pas de km)", () => {
+    window.sessionStorage.setItem(
+      SESSION_KEY,
+      JSON.stringify(REUNION_SESSION),
+    );
+    render(
+      <DistanceWidget
+        producerLat={LE_MANS_LAT}
+        producerLng={LE_MANS_LNG}
+        producerName="Ferme Test"
+      />,
+    );
+    const buttons = Array.from(container.querySelectorAll("button"));
+    expect(buttons.length).toBe(1);
+    const compact = buttons[0]!;
+    expect(compact.textContent).toContain("Hors zone circuit court");
+    // Verrou anti-régression : aucune valeur kilométrique brute ne doit fuir
+    // dans le label compact (pas de "9300 km", pas de "X km à vol d'oiseau").
+    expect(compact.textContent).not.toMatch(/\d+\s*km/);
+    expect(compact.textContent).not.toContain("à vol d'oiseau");
+  });
+
+  it("distance > seuil : déployé affiche message dédié, pas de comparaison GMS", () => {
+    window.sessionStorage.setItem(
+      SESSION_KEY,
+      JSON.stringify(REUNION_SESSION),
+    );
+    render(
+      <DistanceWidget
+        producerLat={LE_MANS_LAT}
+        producerLng={LE_MANS_LNG}
+        producerName="Ferme Test"
+      />,
+    );
+    const expandBtn = container.querySelector("button");
+    act(() => {
+      expandBtn!.click();
+    });
+    // Wording dédié (factuel, pas culpabilisant).
+    expect(container.textContent).toContain("Hors zone");
+    expect(container.textContent).toContain(
+      "en dehors de notre zone de circuit court",
+    );
+    expect(container.textContent).toContain("Ferme Test");
+    // La comparaison ~1500 km circuit long DOIT être retirée : le ratio
+    // s'écrase pour ces distances et l'argument se retourne contre nous.
+    expect(container.textContent).not.toContain("En circuit long");
+    expect(container.textContent).not.toContain("~1500 km");
+    expect(container.textContent).not.toContain("Estimation indicative");
+    // Pas de barre de comparaison non plus (verrou : si DistanceResult était
+    // rendu malgré la bascule, la barre apparaîtrait avec son aria-hidden).
+    expect(
+      container.querySelector('div[aria-hidden="true"][style*="width"]'),
+    ).toBeNull();
+    // Aucune valeur kilométrique brute affichée (le composant ne doit pas
+    // laisser fuir "9300 km" même en dehors du gros chiffre principal).
+    expect(container.textContent).not.toMatch(/\d+\s*km/);
+    // Action de reset toujours disponible — l'utilisateur doit pouvoir
+    // changer sa position immédiatement.
+    const resetBtn = Array.from(container.querySelectorAll("button")).find(
+      (b) => b.textContent?.trim() === "Changer ma position",
+    ) as HTMLButtonElement | undefined;
+    expect(resetBtn).not.toBeUndefined();
+    expect(resetBtn!.disabled).toBe(false);
+    // Mention RGPD préservée (PrivacyNote partagé entre tous les écrans).
+    expect(container.textContent).toContain("Saisie facultative");
+  });
+
+  it("boundary : distance == seuil reste dans le comportement existant (>, pas >=)", () => {
+    // La bascule utilise `distance > DISTANCE_OUT_OF_REACH_KM` (500 km strict
+    // exclusif). Une distance pile sur le seuil tombe donc dans le rendu km
+    // classique. Verrou explicite contre une dérive future à >=.
+    // Pour cibler ~500 km à vol d'oiseau depuis Le Mans (48.0, 0.2), on prend
+    // la latitude équivalente à ~500 km plus au sud (≈ 4.5° de latitude).
+    const FAR_BUT_IN_REACH = {
+      lat: 48.0 - 4.4, // ≈ 489 km de Le Mans, juste sous le seuil 500
+      lng: 0.2,
+      source: "postal" as const,
+    };
+    window.sessionStorage.setItem(
+      SESSION_KEY,
+      JSON.stringify(FAR_BUT_IN_REACH),
+    );
+    render(
+      <DistanceWidget
+        producerLat={LE_MANS_LAT}
+        producerLng={LE_MANS_LNG}
+        producerName="Ferme Test"
+      />,
+    );
+    const compact = container.querySelector("button")!;
+    // Comportement km classique restitué tant qu'on est <= 500 km.
+    expect(compact.textContent).toMatch(/\d+(?:\.\d+)?\s+km à vol d'oiseau/);
+    expect(compact.textContent).not.toContain("Hors zone");
+  });
+
+  it("distance < seuil : comportement existant inchangé (verrou non-régression)", () => {
+    // Verrou : Paris↔Sarthe (~165 km, bien sous le seuil) DOIT garder le
+    // rendu km classique avec comparaison GMS au déploiement.
+    window.sessionStorage.setItem(
+      SESSION_KEY,
+      JSON.stringify(CONSUMER_SESSION),
+    );
+    render(
+      <DistanceWidget
+        producerLat={PRODUCER_LAT}
+        producerLng={PRODUCER_LNG}
+        producerName="Ferme Test"
+      />,
+    );
+    const compact = container.querySelector("button")!;
+    expect(compact.textContent).toContain("à vol d'oiseau");
+    expect(compact.textContent).not.toContain("Hors zone");
+    act(() => {
+      compact.click();
+    });
+    expect(container.textContent).toContain("En circuit long");
+    expect(container.textContent).toContain("~1500 km");
+  });
+});

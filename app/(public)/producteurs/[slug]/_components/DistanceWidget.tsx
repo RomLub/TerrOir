@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { haversineKm } from "@/lib/geo/haversine";
+import { DISTANCE_OUT_OF_REACH_KM, haversineKm } from "@/lib/geo/haversine";
 import {
   geocodePostalCode,
   GEOCODE_POSTAL_ERROR_MESSAGES,
@@ -186,12 +186,20 @@ export function DistanceWidget({
     setError(null);
   };
 
+  // Bascule "hors zone circuit court" (T-230) : au-delà de
+  // DISTANCE_OUT_OF_REACH_KM, on n'affiche plus la distance brute ni la
+  // comparaison ~1500 km (le ratio s'écrase et l'argument se retourne :
+  // "Plus loin que le supermarché"). Cas typique : visiteur DOM-TOM saisissant
+  // son CP outre-mer sur la fiche d'un producteur métropolitain.
+  const outOfReach = distance !== null && distance > DISTANCE_OUT_OF_REACH_KM;
+
   // État replié : bouton compact 1 ligne. Le label porte la distance si on
   // a déjà une session valide, l'invite générique sinon. Le clic bascule
   // vers l'état déployé.
   if (!expanded) {
-    const label =
-      distance !== null
+    const label = outOfReach
+      ? "Hors zone circuit court"
+      : distance !== null
         ? `${distance} km à vol d'oiseau`
         : "Voir la distance jusqu'à toi";
     return (
@@ -199,9 +207,19 @@ export function DistanceWidget({
     );
   }
 
-  // État déployé avec session valide : on affiche le résultat complet
-  // (comparaison circuit long + barre + RGPD + bouton "Changer ma position").
+  // État déployé avec session valide :
+  //  - hors zone : message dédié sans distance brute ni comparaison GMS.
+  //  - sinon : résultat complet (barre + comparaison + RGPD).
   if (session && distance !== null) {
+    if (outOfReach) {
+      return (
+        <DistanceOutOfReach
+          producerName={producerName}
+          onReset={handleReset}
+          onCollapse={() => setExpanded(false)}
+        />
+      );
+    }
     return (
       <DistanceResult
         distance={distance}
@@ -410,6 +428,49 @@ function DistanceResult({
         onClick={onReset}
         // h-9 = 36px : action secondaire textuelle, pas de tap target
         // critique. Le bouton primaire (Utiliser ma position) reste à 44px.
+        className="mt-4 inline-flex h-9 items-center text-[12px] text-terroir-ink/[0.55] underline-offset-2 hover:text-green-900 hover:underline"
+      >
+        Changer ma position
+      </button>
+
+      <PrivacyNote />
+    </div>
+  );
+}
+
+function DistanceOutOfReach({
+  producerName,
+  onReset,
+  onCollapse,
+}: {
+  producerName: string;
+  onReset: () => void;
+  onCollapse: () => void;
+}) {
+  // Variante du DistanceResult quand la distance dépasse
+  // DISTANCE_OUT_OF_REACH_KM (T-230) : on garde la mise en page (carte + RGPD
+  // + reset) pour que le visiteur sente que sa position a été prise en compte,
+  // mais on retire la distance chiffrée et la comparaison ~1500 km. Ton
+  // factuel et neutre — pas de rouge ni de wording culpabilisant.
+  return (
+    <div className="rounded-xl border border-terroir-border bg-white p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-terra-700">
+            Hors zone
+          </div>
+          <p className="mt-2 text-[14px] leading-[1.55] text-terroir-ink/[0.78]">
+            Depuis ta position, {producerName} se trouve en dehors de notre
+            zone de circuit court. La comparaison à vol d&apos;oiseau ne
+            reflète plus une logique de proximité pertinente.
+          </p>
+        </div>
+        <CollapseLink onClick={onCollapse} />
+      </div>
+
+      <button
+        type="button"
+        onClick={onReset}
         className="mt-4 inline-flex h-9 items-center text-[12px] text-terroir-ink/[0.55] underline-offset-2 hover:text-green-900 hover:underline"
       >
         Changer ma position
