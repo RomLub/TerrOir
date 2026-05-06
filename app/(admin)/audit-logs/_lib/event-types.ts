@@ -22,6 +22,10 @@ import {
   PICKUP_EVENT_TYPES,
   type PickupEventType,
 } from "@/lib/audit-logs/log-pickup-event";
+import {
+  REVIEW_FOLLOWUP_EVENT_TYPES,
+  type ReviewFollowupEventType,
+} from "@/lib/audit-logs/log-review-followup-event";
 
 // Source unique consolidée pour la page admin /audit-logs : concaténation
 // des clusters helpers sans duplication. L'ordre suit l'ordre d'apparition
@@ -34,6 +38,7 @@ export const ALL_EVENT_TYPES = [
   ...LEGAL_COMPLIANCE_EVENT_TYPES,
   ...CATEGORISATION_EVENT_TYPES,
   ...PICKUP_EVENT_TYPES,
+  ...REVIEW_FOLLOWUP_EVENT_TYPES,
 ] as const;
 
 export type AuditEventType =
@@ -42,4 +47,5 @@ export type AuditEventType =
   | ReviewEventType
   | LegalComplianceEventType
   | CategorisationEventType
-  | PickupEventType;
+  | PickupEventType
+  | ReviewFollowupEventType;

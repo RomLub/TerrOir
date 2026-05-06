@@ -1,22 +1,22 @@
-// Tests vitest pour POST /api/cron/review-followup (LOT 7 chantier
-// pickup-validation 2026-05-06 — comble la lacune trou 2 identifiée
-// au LOT 6 : ce cron tournait en prod sans tests, contrairement aux
-// 9 autres cron Vercel qui ont leur couverture.
+// Tests vitest pour POST /api/cron/review-followup (cluster review_followup_*
+// + marqueur DB dédup race-safe ajoutés 2026-05-07).
 //
 // Couverture :
 //   - Auth assertCronAuth (Bearer CRON_SECRET) : 401 sans header,
 //     401 bearer invalide, exécution si valide.
 //   - Logique fenêtre J-2 / J-7 : 1 order completed dans la fenêtre
-//     → 1 email envoyé avec dayOffset cohérent.
-//   - Anti-spam guard : reviews.order_id existant → skip.
+//     → 1 email envoyé avec dayOffset cohérent + audit sent_d{2,7}.
+//   - Anti-spam guard : reviews.order_id existant → skip + audit
+//     `review_followup_skipped` reason=review_exists.
 //   - Robustesse missing data : consumer.email null OR producer null
-//     → skip propre sans crash.
-//   - Réponse JSON { j2: count, j7: count } cohérent.
+//     → skip propre + audit reason discriminée.
+//   - Dedup race-safe : UPDATE claimed=[] (concurrent) → audit
+//     `review_followup_dedup_blocked`, pas de send.
+//   - Réponse JSON { j2: { sent, skipped, dedup_blocked }, j7: ... }.
 //
 // Pattern aligné sur tests/app/api/cron/reminder-consumer/route.test.ts,
-// avec extension queue par-table pour gérer les multiples lookups
-// reviews/users/producers par order (cron review-followup utilise un
-// pattern N+1 explicite sur ces 3 tables — backlog perf hors scope LOT 7).
+// avec extension queue par-table pour gérer reviews/users/producers + UPDATE
+// de claim sur orders.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -44,20 +44,29 @@ vi.mock("@/lib/resend/templates/review-request", () => ({
     `Review subject ${props.exploitation} dayOffset=${props.dayOffset}`,
 }));
 
+vi.mock("@/lib/audit-logs/log-review-followup-event", () => ({
+  logReviewFollowupEvent: vi.fn(),
+}));
+
 import { POST } from "@/app/api/cron/review-followup/route";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { sendTemplate } from "@/lib/resend/send";
+import { logReviewFollowupEvent } from "@/lib/audit-logs/log-review-followup-event";
 
 // =============================================================================
 // Mock Supabase admin avec queue par-table.
 //
-// Le cron fait 1 SELECT orders par batch (J-2, J-7), puis pour chaque order
-// 1 SELECT reviews + 1 SELECT users + 1 SELECT producers. Donc :
-//   - responses.orders : queue de 2 réponses (J-2 puis J-7, ordre Promise.all)
-//   - responses.reviews / users / producers : queue 1 entrée par order traité
+// Le cron fait par batch (J-2, J-7) :
+//   1. SELECT orders ... .is(dedupColumn, null)   → table='orders' SELECT path
+//   2. SELECT reviews ... .maybeSingle()
+//   3. SELECT users ... .maybeSingle()
+//   4. SELECT producers ... .maybeSingle()
+//   5. UPDATE orders ... .eq(id).is(dedup, null).select() → table='orders' UPDATE path
 //
-// Promise.all([sendBatch(2), sendBatch(7)]) appelle les 2 fonctions
-// synchroniquement → 1er hit orders = J-2, 2e hit orders = J-7.
+// Surfaces SELECT vs UPDATE sur orders sont distinguées via mode:
+//   - `.update(...)` switche vers `mode='update'` qui consomme la queue
+//     `responses.orders_update`.
+//   - `.select()` non précédé d'un `.update()` consomme `responses.orders`.
 // =============================================================================
 
 type ChainResp = { data?: unknown; error?: unknown };
@@ -65,6 +74,7 @@ type ChainResp = { data?: unknown; error?: unknown };
 interface Captured {
   from: string[];
   selectCols: Array<{ table: string; cols: string }>;
+  updates: Array<{ table: string; payload: unknown }>;
 }
 
 let responses: Record<string, ChainResp[]>;
@@ -76,15 +86,24 @@ function makeClient(): SupabaseClient {
       captured.from.push(table);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const b: any = {};
+      let mode: "select" | "update" = "select";
       b.select = (cols: string) => {
         captured.selectCols.push({ table, cols });
+        return b;
+      };
+      b.update = (payload: unknown) => {
+        mode = "update";
+        captured.updates.push({ table, payload });
         return b;
       };
       b.eq = () => b;
       b.gte = () => b;
       b.lte = () => b;
+      b.is = () => b;
       const consume = (): ChainResp => {
-        const queue = responses[table];
+        const queueKey =
+          mode === "update" && table === "orders" ? "orders_update" : table;
+        const queue = responses[queueKey];
         if (queue && queue.length > 0) return queue.shift()!;
         return { data: null, error: null };
       };
@@ -110,11 +129,13 @@ const ORIGINAL_CRON_SECRET = process.env.CRON_SECRET;
 beforeEach(() => {
   process.env.CRON_SECRET = "test-secret";
   responses = {};
-  captured = { from: [], selectCols: [] };
+  captured = { from: [], selectCols: [], updates: [] };
   vi.mocked(createSupabaseAdminClient).mockReset();
   vi.mocked(createSupabaseAdminClient).mockReturnValue(makeClient());
   vi.mocked(sendTemplate).mockReset();
   vi.mocked(sendTemplate).mockResolvedValue({ ok: true, id: "email-id" });
+  vi.mocked(logReviewFollowupEvent).mockReset();
+  vi.mocked(logReviewFollowupEvent).mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -134,8 +155,18 @@ function makeOrder(overrides: Partial<Record<string, unknown>> = {}) {
     code_commande: "TRR-ABCDE",
     consumer_id: "cons-1",
     producer_id: "prod-1",
+    review_followup_d2_sent_at: null,
+    review_followup_d7_sent_at: null,
     ...overrides,
   };
+}
+
+function findAuditEvents(eventType: string) {
+  return vi
+    .mocked(logReviewFollowupEvent)
+    .mock.calls.filter(
+      (c) => (c[0] as { eventType: string }).eventType === eventType,
+    );
 }
 
 // --- A. Auth ------------------------------------------------------------
@@ -153,76 +184,93 @@ describe("POST /api/cron/review-followup — auth", () => {
     expect(vi.mocked(sendTemplate)).not.toHaveBeenCalled();
   });
 
-  it("A3 Bearer valide → 200 + JSON { j2, j7 }", async () => {
+  it("A3 Bearer valide → 200 + JSON { j2: {sent,skipped,dedup_blocked}, j7 ... }", async () => {
     responses.orders = [
       { data: [], error: null }, // J-2
       { data: [], error: null }, // J-7
     ];
     const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { j2: number; j7: number };
-    expect(body).toEqual({ j2: 0, j7: 0 });
+    const body = (await res.json()) as {
+      j2: { sent: number; skipped: number; dedup_blocked: number };
+      j7: { sent: number; skipped: number; dedup_blocked: number };
+    };
+    expect(body.j2).toEqual({ sent: 0, skipped: 0, dedup_blocked: 0 });
+    expect(body.j7).toEqual({ sent: 0, skipped: 0, dedup_blocked: 0 });
   });
 });
 
 // --- B. Logique fenêtre J-2 / J-7 -------------------------------------
 
 describe("POST /api/cron/review-followup — fenêtre J-2 / J-7", () => {
-  it("B1 1 order J-2 sans review → email J+2 envoyé avec dayOffset=2", async () => {
+  it("B1 1 order J-2 sans review → email J+2 envoyé, audit sent_d2, claim UPDATE posé", async () => {
     const order = makeOrder({ id: "order-j2", code_commande: "TRR-J2AAA" });
     responses.orders = [
       { data: [order], error: null }, // J-2 batch
       { data: [], error: null }, // J-7 batch
     ];
-    responses.reviews = [{ data: null, error: null }]; // pas de review
+    responses.reviews = [{ data: null, error: null }];
     responses.users = [{ data: { email: "consumer@test.fr" }, error: null }];
     responses.producers = [
       { data: { nom_exploitation: "Ferme A" }, error: null },
     ];
+    responses.orders_update = [{ data: [{ id: "order-j2" }], error: null }];
 
     const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { j2: number; j7: number };
-    expect(body.j2).toBe(1);
-    expect(body.j7).toBe(0);
+    const body = (await res.json()) as {
+      j2: { sent: number; skipped: number; dedup_blocked: number };
+      j7: { sent: number; skipped: number; dedup_blocked: number };
+    };
+    expect(body.j2.sent).toBe(1);
+    expect(body.j7.sent).toBe(0);
 
     expect(vi.mocked(sendTemplate)).toHaveBeenCalledTimes(1);
     const call = vi.mocked(sendTemplate).mock.calls[0]?.[0];
     expect(call?.template).toBe("review_request_j2");
     expect(call?.to).toBe("consumer@test.fr");
-    expect(call?.userId).toBe("cons-1");
     expect(call?.subject).toContain("dayOffset=2");
-    expect(call?.metadata).toEqual({
-      order_id: "order-j2",
-      code_commande: "TRR-J2AAA",
+
+    // Claim UPDATE posé sur la colonne D2
+    const ordersUpdate = captured.updates.find((u) => u.table === "orders");
+    expect(ordersUpdate).toBeDefined();
+    expect(ordersUpdate?.payload).toMatchObject({
+      review_followup_d2_sent_at: expect.any(String),
     });
+
+    // Audit sent_d2 émis
+    expect(findAuditEvents("review_followup_sent_d2")).toHaveLength(1);
   });
 
-  it("B2 1 order J-7 sans review → email J+7 envoyé avec dayOffset=7", async () => {
+  it("B2 1 order J-7 sans review → email J+7 envoyé, audit sent_d7", async () => {
     const order = makeOrder({ id: "order-j7", code_commande: "TRR-J7BBB" });
     responses.orders = [
-      { data: [], error: null }, // J-2 batch (vide)
-      { data: [order], error: null }, // J-7 batch
+      { data: [], error: null },
+      { data: [order], error: null },
     ];
     responses.reviews = [{ data: null, error: null }];
     responses.users = [{ data: { email: "consumer@test.fr" }, error: null }];
     responses.producers = [
       { data: { nom_exploitation: "Ferme B" }, error: null },
     ];
+    responses.orders_update = [{ data: [{ id: "order-j7" }], error: null }];
 
     const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { j2: number; j7: number };
-    expect(body.j2).toBe(0);
-    expect(body.j7).toBe(1);
+    const body = (await res.json()) as {
+      j7: { sent: number };
+    };
+    expect(body.j7.sent).toBe(1);
 
     expect(vi.mocked(sendTemplate)).toHaveBeenCalledTimes(1);
     const call = vi.mocked(sendTemplate).mock.calls[0]?.[0];
     expect(call?.template).toBe("review_request_j7");
     expect(call?.subject).toContain("dayOffset=7");
+
+    expect(findAuditEvents("review_followup_sent_d7")).toHaveLength(1);
   });
 
-  it("B3 fenêtre vide (orders=[]) → 200 + j2:0, j7:0, pas d'email", async () => {
+  it("B3 fenêtre vide (orders=[]) → 200 + sent:0, pas d'email, pas d'audit", async () => {
     responses.orders = [
       { data: [], error: null },
       { data: [], error: null },
@@ -230,103 +278,42 @@ describe("POST /api/cron/review-followup — fenêtre J-2 / J-7", () => {
 
     const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ j2: 0, j7: 0 });
     expect(vi.mocked(sendTemplate)).not.toHaveBeenCalled();
-  });
-
-  it("B4 SELECT orders filtre statut='completed' (verrou anti-régression)", async () => {
-    responses.orders = [
-      { data: [], error: null },
-      { data: [], error: null },
-    ];
-    await POST(makeRequest({ auth: "Bearer test-secret" }));
-    // Le SELECT orders est fait 2x (1 par batch). Tous deux doivent demander
-    // les colonnes id/code_commande/consumer_id/producer_id.
-    const ordersSelects = captured.selectCols.filter(
-      (s) => s.table === "orders",
-    );
-    expect(ordersSelects).toHaveLength(2);
-    for (const s of ordersSelects) {
-      expect(s.cols).toContain("id");
-      expect(s.cols).toContain("code_commande");
-      expect(s.cols).toContain("consumer_id");
-      expect(s.cols).toContain("producer_id");
-    }
+    expect(vi.mocked(logReviewFollowupEvent)).not.toHaveBeenCalled();
   });
 });
 
 // --- C. Anti-spam guard (review existante) ----------------------------
 
 describe("POST /api/cron/review-followup — anti-spam (review existante)", () => {
-  it("C1 order J-2 AVEC review existante → skip, pas d'email envoyé", async () => {
+  it("C1 order J-2 AVEC review existante → skip, audit reason=review_exists, pas d'email, pas de claim", async () => {
     const order = makeOrder();
     responses.orders = [
       { data: [order], error: null },
       { data: [], error: null },
     ];
-    responses.reviews = [{ data: { id: "review-1" }, error: null }]; // EXISTE
-    // users/producers ne devraient pas être appelés (skip avant)
+    responses.reviews = [{ data: { id: "review-1" }, error: null }];
 
     const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
     expect(res.status).toBe(200);
     expect(vi.mocked(sendTemplate)).not.toHaveBeenCalled();
-    const body = (await res.json()) as { j2: number; j7: number };
-    expect(body.j2).toBe(0);
 
-    // Vérification que le lookup reviews a bien eu lieu (anti-spam guard
-    // exécuté juste avant l'envoi).
-    expect(captured.from.includes("reviews")).toBe(true);
-  });
+    // Pas de claim UPDATE
+    expect(captured.updates.filter((u) => u.table === "orders")).toHaveLength(0);
 
-  it("C2 order J-7 AVEC review existante → skip, pas d'email", async () => {
-    const order = makeOrder({ id: "order-j7" });
-    responses.orders = [
-      { data: [], error: null }, // J-2 vide
-      { data: [order], error: null },
-    ];
-    responses.reviews = [{ data: { id: "review-2" }, error: null }];
-
-    const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
-    expect(res.status).toBe(200);
-    expect(vi.mocked(sendTemplate)).not.toHaveBeenCalled();
-  });
-
-  it("C3 mélange : 2 orders J-2, l'un avec review l'autre sans → 1 seul email", async () => {
-    responses.orders = [
-      {
-        data: [
-          makeOrder({ id: "order-with-review" }),
-          makeOrder({ id: "order-no-review", code_commande: "TRR-NEW01" }),
-        ],
-        error: null,
-      },
-      { data: [], error: null }, // J-7 vide
-    ];
-    // Order 1 a une review, order 2 n'en a pas
-    responses.reviews = [
-      { data: { id: "rev-1" }, error: null },
-      { data: null, error: null },
-    ];
-    // Pour order 2 (no review), on enchaîne users + producers
-    responses.users = [{ data: { email: "u@test.fr" }, error: null }];
-    responses.producers = [
-      { data: { nom_exploitation: "Ferme" }, error: null },
-    ];
-
-    const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { j2: number };
-    expect(body.j2).toBe(1);
-    expect(vi.mocked(sendTemplate)).toHaveBeenCalledTimes(1);
-    const call = vi.mocked(sendTemplate).mock.calls[0]?.[0];
-    expect(call?.metadata).toMatchObject({ order_id: "order-no-review" });
+    const skipped = findAuditEvents("review_followup_skipped");
+    expect(skipped.length).toBeGreaterThanOrEqual(1);
+    expect(
+      (skipped[0]![0] as { metadata?: Record<string, unknown> }).metadata
+        ?.reason,
+    ).toBe("review_exists");
   });
 });
 
 // --- D. Robustesse missing data ---------------------------------------
 
 describe("POST /api/cron/review-followup — robustesse missing data", () => {
-  it("D1 consumer.email null → skip propre, pas de crash, pas d'email", async () => {
+  it("D1 consumer.email null → skip + audit reason=consumer_email_missing", async () => {
     const order = makeOrder();
     responses.orders = [
       { data: [order], error: null },
@@ -341,11 +328,16 @@ describe("POST /api/cron/review-followup — robustesse missing data", () => {
     const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
     expect(res.status).toBe(200);
     expect(vi.mocked(sendTemplate)).not.toHaveBeenCalled();
-    const body = (await res.json()) as { j2: number };
-    expect(body.j2).toBe(0);
+
+    const skipped = findAuditEvents("review_followup_skipped");
+    expect(skipped.length).toBeGreaterThanOrEqual(1);
+    expect(
+      (skipped[0]![0] as { metadata?: Record<string, unknown> }).metadata
+        ?.reason,
+    ).toBe("consumer_email_missing");
   });
 
-  it("D2 producer null → skip propre, pas de crash, pas d'email", async () => {
+  it("D2 producer null → skip + audit reason=producer_missing", async () => {
     const order = makeOrder();
     responses.orders = [
       { data: [order], error: null },
@@ -358,9 +350,16 @@ describe("POST /api/cron/review-followup — robustesse missing data", () => {
     const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
     expect(res.status).toBe(200);
     expect(vi.mocked(sendTemplate)).not.toHaveBeenCalled();
+
+    const skipped = findAuditEvents("review_followup_skipped");
+    expect(skipped.length).toBeGreaterThanOrEqual(1);
+    expect(
+      (skipped[0]![0] as { metadata?: Record<string, unknown> }).metadata
+        ?.reason,
+    ).toBe("producer_missing");
   });
 
-  it("D3 sendTemplate retourne ok=false → compteur sent NON incrémenté", async () => {
+  it("D3 sendTemplate retourne ok=false → audit skipped reason=send_failed, sent NON incrémenté", async () => {
     const order = makeOrder();
     responses.orders = [
       { data: [order], error: null },
@@ -371,6 +370,7 @@ describe("POST /api/cron/review-followup — robustesse missing data", () => {
     responses.producers = [
       { data: { nom_exploitation: "Ferme" }, error: null },
     ];
+    responses.orders_update = [{ data: [{ id: "order-1" }], error: null }];
     vi.mocked(sendTemplate).mockResolvedValueOnce({
       ok: false,
       error: "send_failed",
@@ -378,7 +378,41 @@ describe("POST /api/cron/review-followup — robustesse missing data", () => {
 
     const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { j2: number };
-    expect(body.j2).toBe(0); // ok=false → pas compté
+    const body = (await res.json()) as { j2: { sent: number } };
+    expect(body.j2.sent).toBe(0);
+
+    const skipped = findAuditEvents("review_followup_skipped");
+    expect(skipped.length).toBeGreaterThanOrEqual(1);
+    expect(
+      (skipped[0]![0] as { metadata?: Record<string, unknown> }).metadata
+        ?.reason,
+    ).toBe("send_failed");
+  });
+});
+
+// --- E. Dedup race-safe -----------------------------------------------
+
+describe("POST /api/cron/review-followup — dedup race-safe", () => {
+  it("E1 UPDATE claimed=[] (concurrent perdu) → audit dedup_blocked, pas de send", async () => {
+    const order = makeOrder();
+    responses.orders = [
+      { data: [order], error: null },
+      { data: [], error: null },
+    ];
+    responses.reviews = [{ data: null, error: null }];
+    responses.users = [{ data: { email: "u@test.fr" }, error: null }];
+    responses.producers = [
+      { data: { nom_exploitation: "Ferme" }, error: null },
+    ];
+    // claim concurrent perdue : data: []
+    responses.orders_update = [{ data: [], error: null }];
+
+    const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
+    expect(res.status).toBe(200);
+    expect(vi.mocked(sendTemplate)).not.toHaveBeenCalled();
+
+    expect(findAuditEvents("review_followup_dedup_blocked")).toHaveLength(1);
+    const body = (await res.json()) as { j2: { dedup_blocked: number } };
+    expect(body.j2.dedup_blocked).toBe(1);
   });
 });

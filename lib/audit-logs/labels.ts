@@ -100,6 +100,12 @@ export const AUDIT_EVENT_LABELS: Record<string, string> = {
   pickup_attempt_invalid: "Tentative validation retrait : code invalide",
   pickup_attempt_rate_limited: "Validation retrait : rate-limit dépassé",
 
+  // ─── Review followup (cron J+2 / J+7) ────────────────────────────────
+  review_followup_sent_d2: "Relance avis J+2 envoyée",
+  review_followup_sent_d7: "Relance avis J+7 envoyée",
+  review_followup_skipped: "Relance avis ignorée",
+  review_followup_dedup_blocked: "Relance avis bloquée (déjà envoyée)",
+
   // ─── Catalogue / catégorisation produit (T-130) ─────────────────────
   admin_category_created: "Catégorie créée",
   admin_category_updated: "Catégorie modifiée",

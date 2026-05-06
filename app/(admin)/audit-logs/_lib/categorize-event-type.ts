@@ -43,6 +43,10 @@ export function categorizeEventType(eventType: AuditEventType): EventCategory {
   if (eventType.startsWith("pickup_")) return "order";
   if (eventType.startsWith("order_")) return "order";
   if (eventType.startsWith("producer_response_")) return "review";
+  // Cluster cron review-followup (J+2 / J+7 + dedup + skipped). Regroupé
+  // visuellement avec les events de modération avis producer (cluster
+  // "review") — c'est la même surface fonctionnelle "avis & modération".
+  if (eventType.startsWith("review_followup_")) return "review";
   if (eventType.startsWith("notification_")) return "notification";
   // Email delivery webhooks (Resend) — préfixes spécifiques pour ne PAS
   // capturer 'email_change' qui est un event auth (changement d'adresse
