@@ -11,6 +11,20 @@ import {
 
 // Persistance volontairement réduite à sessionStorage : aucune donnée
 // ne survit à la fermeture de l'onglet (RGPD light, pas de cookie ni DB).
+//
+// WHY clé GLOBALE (non scopée par producerId) — décision T-240 r2 :
+// la clé stocke uniquement les coordonnées du CONSUMER (lat/lng + source),
+// jamais une distance pré-calculée. La distance par fiche producteur est
+// recalculée à chaque mount via Haversine (useMemo, cf. ligne 111). Effet
+// produit voulu : un visiteur qui a saisi son CP sur la fiche A retrouve
+// directement "12 km" sur la fiche B sans re-saisir.
+//
+// ⚠️ Régression à prévenir : si un futur dev voulait "optimiser" en stockant
+// la distance pré-calculée (ex. { lat, lng, distanceKm: 12, source }), le
+// même chiffre s'afficherait sur toutes les fiches du même onglet (toutes
+// les fiches afficheraient "12 km" même celles à 250 km). Garder le stockage
+// strictement aux INPUTS du calcul (coords consumer), jamais aux OUTPUTS
+// (distance par producteur). T-267.
 const SESSION_KEY = "terroir_geo_session";
 
 // Validation regex code postal côté composant : defense in depth en plus
