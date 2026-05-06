@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { Button, CodeCommande, OrderStatusBadge, type OrderStatus, StarRating, Textarea } from '@/components/ui';
+import { OrderProvenance } from '@/components/consumer/OrderProvenance';
 
 export type OrderDetailData = {
   id: string;
@@ -147,6 +148,14 @@ export function OrderDetailClient({ data }: { data: OrderDetailData }) {
               </a>
             </div>
           </section>
+        </div>
+
+        <div className="mt-8">
+          <OrderProvenance
+            producerName={o.producer.name}
+            producerLat={o.producer.lat}
+            producerLng={o.producer.lng}
+          />
         </div>
 
         {showReview && (

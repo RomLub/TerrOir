@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { Button, CodeCommande } from '@/components/ui';
+import { OrderProvenance } from '@/components/consumer/OrderProvenance';
 
 export type ConfirmationProps = {
   orderId: string;
@@ -10,7 +11,7 @@ export type ConfirmationProps = {
   statut: string;
   closureReason: string | null;
   items: { name: string; qty: string; price: number }[];
-  producer: { name: string; address: string };
+  producer: { name: string; address: string; lat: number | null; lng: number | null };
   slot: { dateLabel: string; timeLabel: string; dateISO: string; startISO: string; endISO: string };
   total: number;
 };
@@ -190,6 +191,14 @@ export function ConfirmationClient({ orderId, codeCommande, statut, closureReaso
             <Button variant="secondary" size="lg">📅 Ajouter au calendrier</Button>
           </a>
           <Link href={`/compte/commandes/${orderId}`}><Button size="lg">Voir ma commande →</Button></Link>
+        </div>
+
+        <div className="mt-12 text-left">
+          <OrderProvenance
+            producerName={producer.name}
+            producerLat={producer.lat}
+            producerLng={producer.lng}
+          />
         </div>
     </section>
   );

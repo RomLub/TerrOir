@@ -6,6 +6,7 @@ import {
   formatLegacyTimeHHMM,
   extractHeureRetrait,
 } from '@/lib/slots/format-slot-time';
+import { roundCoord } from '@/lib/producers/coords';
 import { ConfirmationClient } from './ConfirmationClient';
 
 function formatDateLabel(iso: string): string {
@@ -36,7 +37,7 @@ export default async function ConfirmationPage({ params }: { params: { id: strin
     .select(`
       id, code_commande, consumer_id, producer_id, slot_id,
       date_retrait, heure_retrait, montant_total, statut, closure_reason,
-      producers:producer_id ( nom_exploitation, adresse, commune, code_postal ),
+      producers:producer_id ( nom_exploitation, adresse, commune, code_postal, latitude, longitude ),
       slots:slot_id ( starts_at, ends_at ),
       order_items ( quantite, prix_unitaire, sous_total, products:product_id ( nom, unite ) )
     `)
@@ -84,7 +85,14 @@ export default async function ConfirmationPage({ params }: { params: { id: strin
       statut={order.statut as string}
       closureReason={(order.closure_reason as string | null) ?? null}
       items={items}
-      producer={{ name: producerRow?.nom_exploitation ?? 'Producteur', address: address || '—' }}
+      producer={{
+        name: producerRow?.nom_exploitation ?? 'Producteur',
+        address: address || '—',
+        // Sécurité (T-200 r3) : floutage ~1 km via roundCoord avant exposition
+        // au client, cohérent avec /compte/commandes/[id] et fetchPublicProducerBySlug.
+        lat: roundCoord(producerRow?.latitude ?? null),
+        lng: roundCoord(producerRow?.longitude ?? null),
+      }}
       slot={{
         dateLabel: order.date_retrait ? formatDateLabel(order.date_retrait) : '—',
         timeLabel,
