@@ -17,6 +17,7 @@ import type { ReactNode } from "react";
 
 export type TableActionButtonVariant =
   | "primary"
+  | "success"
   | "ghost"
   | "ghost-danger"
   | "ghost-neutral";
@@ -42,6 +43,8 @@ const SIZE_CLASS: Record<TableActionButtonSize, string> = {
 const VARIANT_CLASS: Record<TableActionButtonVariant, string> = {
   primary:
     "bg-terroir-green-700 font-semibold text-white hover:bg-terroir-green-700/90",
+  success:
+    "bg-green-700 font-semibold text-white hover:bg-green-800",
   ghost:
     "font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-900",
   "ghost-danger": "font-medium text-red-700 hover:bg-red-50",
