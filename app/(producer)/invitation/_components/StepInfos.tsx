@@ -22,6 +22,7 @@ import {
 } from "@/lib/producers/score-carbone-enums";
 import { getDeclarationVeraciteText } from "@/lib/producers/declaration-veracite";
 import { ScoreCarbonPreview } from "@/components/producer/ScoreCarbonPreview";
+import { HelpTooltip } from "./HelpTooltip";
 
 const FORMES = [
   { value: "gaec", label: "GAEC" },
@@ -318,8 +319,20 @@ export function StepInfos({
         <div className="grid gap-6 md:grid-cols-[1fr_320px]">
           <div className="space-y-4">
             <fieldset className="space-y-2">
-              <legend className="mb-1 block text-sm font-medium text-gray-800">
+              <legend className="mb-1 flex items-center text-sm font-medium text-gray-800">
                 Mode d&apos;élevage
+                <HelpTooltip
+                  id="tip-mode-elevage"
+                  ariaLabel="Aide : mode d'élevage"
+                >
+                  <strong className="block font-semibold text-gray-900">
+                    Comment situer ton élevage ?
+                  </strong>
+                  Choisis l&rsquo;option qui décrit le mieux la conduite
+                  habituelle de tes animaux : où ils passent la majeure
+                  partie de leur temps (extérieur, pâture saisonnière,
+                  bâtiment avec ou sans accès libre au parcours).
+                </HelpTooltip>
               </legend>
               {MODE_ELEVAGE_VALUES.map((v) => (
                 <label
@@ -347,8 +360,20 @@ export function StepInfos({
             </fieldset>
 
             <fieldset className="space-y-2">
-              <legend className="mb-1 block text-sm font-medium text-gray-800">
+              <legend className="mb-1 flex items-center text-sm font-medium text-gray-800">
                 Alimentation
+                <HelpTooltip
+                  id="tip-alimentation"
+                  ariaLabel="Aide : alimentation"
+                >
+                  <strong className="block font-semibold text-gray-900">
+                    D&rsquo;où vient l&rsquo;alimentation ?
+                  </strong>
+                  Choisis l&rsquo;option qui reflète la part dominante de
+                  l&rsquo;alimentation de tes animaux sur l&rsquo;année :
+                  pâture/fourrage de la ferme, mix avec compléments
+                  achetés, ou alimentation principalement achetée.
+                </HelpTooltip>
               </legend>
               {ALIMENTATION_VALUES.map((v) => (
                 <label
@@ -376,8 +401,21 @@ export function StepInfos({
             </fieldset>
 
             <fieldset className="space-y-2">
-              <legend className="mb-1 block text-sm font-medium text-gray-800">
+              <legend className="mb-1 flex items-center text-sm font-medium text-gray-800">
                 Densité animale
+                <HelpTooltip
+                  id="tip-densite-animale"
+                  ariaLabel="Aide : densité animale"
+                >
+                  <strong className="block font-semibold text-gray-900">
+                    Combien d&rsquo;espace par animal ?
+                  </strong>
+                  Estimation qualitative de la place dont disposent tes
+                  animaux : extensive si beaucoup d&rsquo;espace par tête
+                  (faible chargement à l&rsquo;hectare), standard pour la
+                  densité usuelle en élevage fermier, intensive pour une
+                  conduite avec infrastructure d&rsquo;élevage adaptée.
+                </HelpTooltip>
               </legend>
               {DENSITE_ANIMALE_VALUES.map((v) => (
                 <label

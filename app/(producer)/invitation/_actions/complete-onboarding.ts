@@ -10,6 +10,7 @@ import { maskEmail } from "@/lib/rgpd/mask-email";
 import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 import { logAdminInviteEvent } from "@/lib/audit-logs/log-admin-invite-event";
 import { DECLARATION_VERACITE_WORDING_VERSION } from "@/lib/producers/declaration-veracite";
+import { SCORE_CARBONE_ENUMS_VERSION } from "@/lib/producers/score-carbone-enums-versions";
 
 // errorField : path Zod du premier issue, exposé pour permettre à l'UI
 // d'ancrer le message à côté du champ fautif (cf. T-200 r6 — case
@@ -162,6 +163,7 @@ export async function completeOnboardingAction(
     p_densite_animale: parsed.data.densite_animale ?? null,
     p_declaration_cochee: parsed.data.declaration_indicateurs_veracite,
     p_wording_version: DECLARATION_VERACITE_WORDING_VERSION,
+    p_enums_version: SCORE_CARBONE_ENUMS_VERSION,
   });
 
   if (producerError) {
