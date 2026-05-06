@@ -16,7 +16,6 @@ export type WizardProps = {
     prenom: string;
     nom: string;
     telephone: string;
-    prenom_affichage: string;
     nom_exploitation: string;
     forme_juridique: string;
     siret: string;

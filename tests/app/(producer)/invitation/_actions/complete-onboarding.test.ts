@@ -131,7 +131,6 @@ function makeFormData(overrides: Record<string, string> = {}): FormData {
   fd.set("prenom", "Jean");
   fd.set("nom", "Dupont");
   fd.set("telephone", "0612345678");
-  fd.set("prenom_affichage", "Jean");
   fd.set("nom_exploitation", "Ferme du Test");
   fd.set("forme_juridique", "ei");
   fd.set("siret", "12345678901234");

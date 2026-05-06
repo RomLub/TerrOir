@@ -111,12 +111,9 @@ export async function createAccountAction(
     return { error: "Création du compte impossible. Réessayez plus tard." };
   }
 
-  // TODO Phase 3 finale : retirer prenom_affichage de cet INSERT après le
-  // DROP COLUMN producers.prenom_affichage.
   const { error: producerError } = await admin.from("producers").insert({
     user_id: userId,
     slug: slugFromEmail(invitation.email),
-    prenom_affichage: "À compléter",
     nom_exploitation: "À compléter",
     statut: "draft",
   });

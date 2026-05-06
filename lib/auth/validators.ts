@@ -134,11 +134,6 @@ export const invitationBusinessInfoSchema = z
     prenom: z.string().trim().min(1, "Prénom requis"),
     nom: z.string().trim().min(1, "Nom requis"),
     telephone: z.string().trim().min(1, "Téléphone requis"),
-    prenom_affichage: z
-      .string()
-      .trim()
-      .min(1, "Prénom d'affichage requis")
-      .max(50, "50 caractères maximum"),
     nom_exploitation: z.string().trim().min(1, "Nom de l'exploitation requis"),
     forme_juridique: formeJuridiqueEnum,
     siret: z.string().trim().regex(/^\d{14}$/, "SIRET : 14 chiffres requis"),

@@ -79,7 +79,6 @@ export function StepInfos({
     prenom: string;
     nom: string;
     telephone: string;
-    prenom_affichage: string;
     nom_exploitation: string;
     forme_juridique: string;
     siret: string;
@@ -150,24 +149,6 @@ export function StepInfos({
           placeholder="06 12 34 56 78"
           className={inputClass}
         />
-      </div>
-
-      <div>
-        <label className="mb-1 block text-sm font-medium text-gray-800">
-          Prénom d&apos;affichage
-        </label>
-        <input
-          name="prenom_affichage"
-          type="text"
-          required
-          maxLength={50}
-          defaultValue={initialValues.prenom_affichage}
-          placeholder="Julien, Julien et Marie, La famille Durand…"
-          className={inputClass}
-        />
-        <p className="mt-1 text-xs text-gray-500">
-          Visible sur vos produits. Ce prénom signera vos conseils aux clients.
-        </p>
       </div>
 
       <div>

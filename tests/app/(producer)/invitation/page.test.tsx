@@ -43,7 +43,6 @@ vi.mock("@/lib/producers/pick-initial-infos", () => ({
     prenom: "",
     nom: "",
     telephone: "",
-    prenom_affichage: "",
     nom_exploitation: "",
     forme_juridique: "",
     siret: "",

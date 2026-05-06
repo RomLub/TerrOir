@@ -30,7 +30,6 @@ export async function completeOnboardingAction(
     prenom: formData.get("prenom"),
     nom: formData.get("nom"),
     telephone: formData.get("telephone"),
-    prenom_affichage: formData.get("prenom_affichage"),
     nom_exploitation: formData.get("nom_exploitation"),
     forme_juridique: formData.get("forme_juridique"),
     siret: formData.get("siret"),
@@ -146,7 +145,6 @@ export async function completeOnboardingAction(
   // « soigner l'atomicité des RPC »).
   const { error: producerError } = await admin.rpc("update_producer_onboarding", {
     p_user_id: session.id,
-    p_prenom_affichage: parsed.data.prenom_affichage,
     p_nom_exploitation: parsed.data.nom_exploitation,
     p_forme_juridique: parsed.data.forme_juridique,
     p_siret: parsed.data.siret,

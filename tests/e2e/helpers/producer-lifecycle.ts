@@ -54,7 +54,6 @@ export async function createTestProducer(
     .insert({
       user_id: user.id,
       slug,
-      prenom_affichage: 'Test',
       nom_exploitation: nomExploitation,
       statut: options.statut ?? 'draft',
     })
