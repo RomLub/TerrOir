@@ -127,7 +127,7 @@ describe("ScoreCarbonPreview — rendu complet (3 enums)", () => {
   });
 });
 
-describe("ScoreCarbonPreview — a11y (anticipation T-215)", () => {
+describe("ScoreCarbonPreview — a11y (T-215 livré)", () => {
   it("aria-live='polite' sur le conteneur : annoncer maj aux lecteurs d'écran", () => {
     const html = render(EMPTY);
     expect(html).toContain('aria-live="polite"');
@@ -144,6 +144,43 @@ describe("ScoreCarbonPreview — a11y (anticipation T-215)", () => {
     for (const span of pillSpans) {
       expect(span).not.toMatch(/\btitle=/);
     }
+  });
+
+  it("aria-label enrichi sur chaque pill : '<eyebrow> : <label>' (T-215)", () => {
+    const html = render({
+      modeElevage: "plein_air",
+      alimentation: "pature_dominante",
+      densiteAnimale: "extensive",
+    });
+    // 1 aria-label par pill (3 pills) — vérifie la présence des 3 paires
+    // eyebrow:label sans dépendre de l'ordre exact des attributs HTML.
+    expect(html).toMatch(/aria-label="Mode d(&#x27;|')élevage : Plein air"/);
+    expect(html).toContain(
+      'aria-label="Alimentation : Surtout à l&#x27;herbe"',
+    );
+    expect(html).toContain(
+      'aria-label="Densité animale : Beaucoup d&#x27;espace"',
+    );
+  });
+
+  it("DENSITE intensive a un picto SVG non-couleur (T-215)", () => {
+    const html = render({
+      modeElevage: null,
+      alimentation: null,
+      densiteAnimale: "intensive",
+    });
+    // Picto SVG aria-hidden inline dans la pill DENSITE.
+    expect(html).toMatch(/<svg\b[^>]*aria-hidden="true"/);
+  });
+
+  it("MODE_ELEVAGE et ALIMENTATION n'ont PAS de picto SVG (T-215 — couleur uniforme = pas d'enjeu)", () => {
+    const html = render({
+      modeElevage: "plein_air",
+      alimentation: "pature_dominante",
+      densiteAnimale: null,
+    });
+    // Aucun SVG car DENSITE est null et seule DENSITE porte un picto.
+    expect(html).not.toMatch(/<svg/);
   });
 });
 
