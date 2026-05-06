@@ -53,9 +53,9 @@ export async function getCachedGeocode(
   });
 
   if (error) {
-    console.error(
-      `[GEOCODE_CACHE_HIT_ERROR] cp=${parsed.data} error=${error.message}`,
-    );
+    // T-249 R1 : pas de CP dans le log (corrélation IP↔CP via timestamp
+    // Vercel Logs interdite par doctrine T-200 r1, defense in depth).
+    console.error(`[GEOCODE_CACHE_HIT_ERROR] error=${error.message}`);
     return null;
   }
   if (!data || (Array.isArray(data) && data.length === 0)) return null;
@@ -95,9 +95,8 @@ export async function setCachedGeocode(
   });
 
   if (error) {
-    console.error(
-      `[GEOCODE_CACHE_WRITE_ERROR] cp=${parsed.data} error=${error.message}`,
-    );
+    // T-249 R1 : pas de CP dans le log (cf. getCachedGeocode ci-dessus).
+    console.error(`[GEOCODE_CACHE_WRITE_ERROR] error=${error.message}`);
     return false;
   }
   return true;
@@ -114,8 +113,9 @@ export async function setCachedGeocode(
 //    propagées au caller pour UX précise. Erreur DB → "db_error" propagé
 //    seul (cas helper hit retourne null + setCached échoue).
 //
-// Pas de log par-IP / par-User. Le seul log applicatif est `[GEOCODE_*]` côté
-// helpers ci-dessus, qui n'inclut que le CP saisi (donnée publique).
+// Pas de log par-IP / par-User. Les logs `[GEOCODE_CACHE_*_ERROR]` côté
+// helpers ci-dessus n'incluent que le message d'erreur DB, jamais le CP
+// saisi (T-249 R1, defense in depth doctrine T-200 r1).
 export async function resolvePostalCode(
   cp: string,
   options: { fetchImpl?: typeof fetch; timeoutMs?: number } = {},
