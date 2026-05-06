@@ -76,10 +76,13 @@ export async function lookupUserIdByEmail(
   // auth.admin.listUsers ne filtre pas par email — on passe par la table
   // public.users qui mirror auth.users(id, email) via trigger applicatif
   // (cf. migrations users — colonne email maintenue côté projet TerrOir).
+  // T-110 : .ilike() pour case-insensitive defense-in-depth. `normalized` est
+  // déjà lowercase via normalizeEmail(), mais la table peut contenir des emails
+  // en casse mixte (legacy avant doctrine T-110, mirror auth.users non normalisé).
   const { data, error } = await admin
     .from("users")
     .select("id")
-    .eq("email", normalized)
+    .ilike("email", normalized)
     .maybeSingle();
   if (error || !data?.id) {
     return { userId: SENTINEL_NOT_FOUND_USER_ID, found: false };

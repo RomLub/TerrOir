@@ -212,7 +212,7 @@ async function findUserIdByEmail(email: string): Promise<string | null> {
   const { data } = await admin
     .from("users")
     .select("id")
-    .eq("email", email)
+    .ilike("email", email)
     .maybeSingle();
   return (data?.id as string | undefined) ?? null;
 }

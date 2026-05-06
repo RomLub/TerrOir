@@ -65,10 +65,12 @@ export async function canSendTo(email: string): Promise<boolean> {
 
   try {
     const admin = createSupabaseAdminClient();
+    // T-110 : .ilike() pour case-insensitive defense-in-depth (cf. doctrine
+    // docs/fixes/email-lookup-ilike-2026-05-06.md).
     const { data, error } = await admin
       .from("email_suppressions")
       .select("reason")
-      .eq("email", normalized)
+      .ilike("email", normalized)
       .maybeSingle();
 
     if (error) {
@@ -124,10 +126,11 @@ export async function incrementSoftBounce(
 
   const admin = createSupabaseAdminClient();
 
+  // T-110 : .ilike() pour case-insensitive defense-in-depth.
   const { data: existing, error: readErr } = await admin
     .from("email_suppressions")
     .select("email, reason, soft_bounce_count")
-    .eq("email", normalized)
+    .ilike("email", normalized)
     .maybeSingle();
 
   if (readErr) {

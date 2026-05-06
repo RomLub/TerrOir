@@ -35,7 +35,10 @@ vi.mock("@/lib/supabase/admin", () => ({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const builder: any = {};
       builder.select = () => builder;
+      // T-110 : .ilike() est utilisé côté src pour case-insensitive lookups.
+      // .eq() laissé en alias mock pour des tests existants éventuels.
       builder.eq = () => builder;
+      builder.ilike = () => builder;
       builder.maybeSingle = () => Promise.resolve(lookupResult);
       builder.upsert = (
         payload: unknown,
@@ -144,12 +147,13 @@ describe("canSendTo", () => {
   });
 
   it("normalise case + trim avant lookup (User@Example.com → user@example.com)", async () => {
-    // Capture l'argument .eq(email, value) pour vérifier la normalisation
+    // Capture l'argument .ilike(email, value) pour vérifier la normalisation.
+    // T-110 : lookup case-insensitive via .ilike().
     let capturedEmail: string | null = null;
     const mockSupabase = {
       from: () => ({
         select: () => ({
-          eq: (_col: string, value: string) => {
+          ilike: (_col: string, value: string) => {
             capturedEmail = value;
             return { maybeSingle: () => Promise.resolve(lookupResult) };
           },

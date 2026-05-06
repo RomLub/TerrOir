@@ -89,7 +89,7 @@ test('H-3 email.bounced (Permanent) → addSuppression hard_bounce + audit log',
 
   // Cleanup pré-test (au cas où un test précédent aurait laissé des restes
   // sur la même prod-DB).
-  await admin.from('email_suppressions').delete().eq('email', recipient);
+  await admin.from('email_suppressions').delete().ilike('email', recipient);
 
   const { rawBody, headers } = makeSignedRequest(
     {
@@ -117,7 +117,7 @@ test('H-3 email.bounced (Permanent) → addSuppression hard_bounce + audit log',
   const { data: row, error: readErr } = await admin
     .from('email_suppressions')
     .select('email, reason, source_resend_id')
-    .eq('email', recipient)
+    .ilike('email', recipient)
     .maybeSingle();
   expect(readErr?.message ?? '').toBe('');
   expect(row).not.toBeNull();
@@ -147,7 +147,7 @@ test('H-3 email.bounced (Permanent) → addSuppression hard_bounce + audit log',
   expect(replayBody.deduped).toBe(true);
 
   // Cleanup
-  await admin.from('email_suppressions').delete().eq('email', recipient);
+  await admin.from('email_suppressions').delete().ilike('email', recipient);
   await admin
     .from('webhook_events_processed')
     .delete()
@@ -169,7 +169,7 @@ test('H-3 email.complained → addSuppression complained + audit log légal', as
   const svixId = `msg_h3_complaint_${Date.now()}`;
   const emailId = `em_h3_complaint_${Date.now()}`;
 
-  await admin.from('email_suppressions').delete().eq('email', recipient);
+  await admin.from('email_suppressions').delete().ilike('email', recipient);
 
   const { rawBody, headers } = makeSignedRequest(
     {
@@ -195,7 +195,7 @@ test('H-3 email.complained → addSuppression complained + audit log légal', as
   const { data: row } = await admin
     .from('email_suppressions')
     .select('email, reason, source_resend_id')
-    .eq('email', recipient)
+    .ilike('email', recipient)
     .maybeSingle();
   expect(row).not.toBeNull();
   expect(row?.reason).toBe('complained');
@@ -213,7 +213,7 @@ test('H-3 email.complained → addSuppression complained + audit log légal', as
   expect(matching, 'audit_log email_complaint_received').toBeTruthy();
 
   // Cleanup
-  await admin.from('email_suppressions').delete().eq('email', recipient);
+  await admin.from('email_suppressions').delete().ilike('email', recipient);
   await admin
     .from('webhook_events_processed')
     .delete()
@@ -255,7 +255,7 @@ test('H-3 signature invalide → 401, pas de side-effect DB', async ({ page }) =
   const { data: row } = await admin
     .from('email_suppressions')
     .select('email')
-    .eq('email', recipient)
+    .ilike('email', recipient)
     .maybeSingle();
   expect(row).toBeNull();
 });

@@ -130,7 +130,7 @@ test.describe("Inscription CGU (opposabilité juridique)", () => {
     const { data: userRow, error } = await admin
       .from("users")
       .select("id, email, cgu_accepted_at, cgu_version")
-      .eq("email", email)
+      .ilike("email", email)
       .maybeSingle();
 
     expect(error, `users SELECT: ${error?.message}`).toBeNull();

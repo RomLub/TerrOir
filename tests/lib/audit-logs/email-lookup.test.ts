@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { mockMaybeSingle, mockEq, mockSelect, mockFrom } = vi.hoisted(() => {
+// T-110 : .ilike() pour case-insensitive lookup côté src.
+const { mockMaybeSingle, mockIlike, mockSelect, mockFrom } = vi.hoisted(() => {
   const mockMaybeSingle = vi.fn();
-  const mockEq = vi.fn(() => ({ maybeSingle: mockMaybeSingle }));
-  const mockSelect = vi.fn(() => ({ eq: mockEq }));
+  const mockIlike = vi.fn(() => ({ maybeSingle: mockMaybeSingle }));
+  const mockSelect = vi.fn(() => ({ ilike: mockIlike }));
   const mockFrom = vi.fn(() => ({ select: mockSelect }));
-  return { mockMaybeSingle, mockEq, mockSelect, mockFrom };
+  return { mockMaybeSingle, mockIlike, mockSelect, mockFrom };
 });
 
 vi.mock("@/lib/supabase/admin", () => ({
@@ -66,7 +67,7 @@ describe("maskEmail", () => {
 describe("lookupUserIdByEmail", () => {
   beforeEach(() => {
     mockMaybeSingle.mockReset();
-    mockEq.mockClear();
+    mockIlike.mockClear();
     mockSelect.mockClear();
     mockFrom.mockClear();
   });
@@ -81,7 +82,7 @@ describe("lookupUserIdByEmail", () => {
       userId: "11111111-1111-1111-1111-111111111111",
       found: true,
     });
-    expect(mockEq).toHaveBeenCalledWith("email", "lubin.rom@gmail.com");
+    expect(mockIlike).toHaveBeenCalledWith("email", "lubin.rom@gmail.com");
   });
 
   it("user non trouvé → renvoie sentinel avec found=false", async () => {
