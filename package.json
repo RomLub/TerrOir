@@ -23,7 +23,9 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug",
     "test:e2e:headed": "playwright test --headed",
-    "test:e2e:report": "playwright show-report"
+    "test:e2e:report": "playwright show-report",
+    "codegen:enums": "tsx scripts/codegen-enums.ts",
+    "codegen:enums:check": "tsx scripts/codegen-enums.ts --check"
   },
   "dependencies": {
     "@date-fns/tz": "^1.4.1",

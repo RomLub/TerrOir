@@ -1,9 +1,12 @@
 // Source unique des 3 indicateurs catégoriels du chantier T-200
 // (score carbone & bien-être animal, fiche producteur publique).
 // Importé par : Zod validator (onboarding), UI StepInfos, ScoreCarbonBlock
-// (fiche publique), DistanceWidget. La migration SQL applique des CHECK
-// constraints alignés sur ces mêmes valeurs — un test Vitest asserte la
-// parité TS ↔ SQL pour bloquer toute dérive future.
+// (fiche publique), DistanceWidget.
+//
+// T-220 : les VALUES + types union sont désormais réexportés depuis
+// `lib/types/generated/enums.ts` (codegen depuis migrations SQL). Les
+// LABELS / PUBLIC_LABELS / HINTS restent ici car ils sont curated côté
+// applicatif (langage produit) et n'ont pas leur place dans la DB.
 //
 // Convention des labels :
 //   - LABELS = libellé technique précis, utilisé dans l'onboarding producteur
@@ -15,14 +18,17 @@
 //     en clair sous la pill (pas en tooltip natif `title`, qui se comporte
 //     mal sur mobile — décision comité review T-200 round 2).
 
-export const MODE_ELEVAGE_VALUES = [
-  "plein_air",
-  "semi_plein_air",
-  "batiment_ouvert",
-  "batiment_ferme",
-] as const;
+import {
+  PRODUCERS_MODE_ELEVAGE_VALUES,
+  PRODUCERS_ALIMENTATION_VALUES,
+  PRODUCERS_DENSITE_ANIMALE_VALUES,
+  type ProducersModeElevage,
+  type ProducersAlimentation,
+  type ProducersDensiteAnimale,
+} from "@/lib/types/generated/enums";
 
-export type ModeElevage = (typeof MODE_ELEVAGE_VALUES)[number];
+export const MODE_ELEVAGE_VALUES = PRODUCERS_MODE_ELEVAGE_VALUES;
+export type ModeElevage = ProducersModeElevage;
 
 export const MODE_ELEVAGE_LABELS: Record<ModeElevage, string> = {
   plein_air: "Plein air",
@@ -44,13 +50,8 @@ export const MODE_ELEVAGE_HINTS: Record<ModeElevage, string> = {
   batiment_ferme: "Élevage en bâtiment toute l'année",
 };
 
-export const ALIMENTATION_VALUES = [
-  "pature_dominante",
-  "mixte",
-  "aliments_achetes",
-] as const;
-
-export type Alimentation = (typeof ALIMENTATION_VALUES)[number];
+export const ALIMENTATION_VALUES = PRODUCERS_ALIMENTATION_VALUES;
+export type Alimentation = ProducersAlimentation;
 
 export const ALIMENTATION_LABELS: Record<Alimentation, string> = {
   pature_dominante: "Pâture dominante",
@@ -75,13 +76,8 @@ export const ALIMENTATION_HINTS: Record<Alimentation, string> = {
     "Alimentation principalement à base d'aliments concentrés achetés",
 };
 
-export const DENSITE_ANIMALE_VALUES = [
-  "extensive",
-  "standard",
-  "intensive",
-] as const;
-
-export type DensiteAnimale = (typeof DENSITE_ANIMALE_VALUES)[number];
+export const DENSITE_ANIMALE_VALUES = PRODUCERS_DENSITE_ANIMALE_VALUES;
+export type DensiteAnimale = ProducersDensiteAnimale;
 
 export const DENSITE_ANIMALE_LABELS: Record<DensiteAnimale, string> = {
   extensive: "Extensive",
