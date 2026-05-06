@@ -4,6 +4,7 @@ import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { extractHeureRetrait } from "@/lib/slots/format-slot-time";
 import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
+import { LEGAL_VERSIONS } from "@/lib/legal/versions";
 
 const bodySchema = z.object({
   producer_id: z.string().uuid(),
@@ -18,6 +19,15 @@ const bodySchema = z.object({
       }),
     )
     .min(1),
+  // Acceptation CGV obligatoire pour opposabilité juridique. Persistée en
+  // colonne orders.cgv_accepted_at + orders.cgv_version après création de
+  // l'order via UPDATE post-RPC. Refus serveur si manquant ou false (cas
+  // client trafiqué, double-couche défense vs front).
+  cgv_accepted: z.literal(true, {
+    errorMap: () => ({
+      message: "Vous devez accepter les conditions générales de vente",
+    }),
+  }),
 });
 
 // Mappe les SQLSTATE levés par create_order_with_items vers HTTP.
@@ -160,6 +170,25 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { error: "RPC returned no order_id" },
       { status: 500 },
+    );
+  }
+
+  // Persistance acceptation CGV : opposabilité juridique. UPDATE best-effort
+  // post-RPC : si cet UPDATE échoue (RLS bug, lock, ...) on ne casse pas le
+  // flow paiement (l'order existe, le user va payer). Log greppable
+  // [ORDER_CGV_PERSIST_FAIL] pour détection forensique. Le check zod en
+  // amont (cgv_accepted=true) suffit déjà à matérialiser le consentement —
+  // les colonnes DB sont la trace forensique stable.
+  const { error: cgvError } = await supabase
+    .from("orders")
+    .update({
+      cgv_accepted_at: new Date().toISOString(),
+      cgv_version: LEGAL_VERSIONS.CGV,
+    })
+    .eq("id", orderId as string);
+  if (cgvError) {
+    console.warn(
+      `[ORDER_CGV_PERSIST_FAIL] order_id=${orderId} error=${cgvError.message}`,
     );
   }
 

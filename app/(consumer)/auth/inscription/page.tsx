@@ -1,19 +1,20 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import { signupAction, type SignupState } from "./actions";
 import { PasswordInput } from "@/components/ui";
 
 const initialState: SignupState = {};
 
-function SubmitButton() {
+function SubmitButton({ disabled }: { disabled: boolean }) {
   const { pending } = useFormStatus();
   return (
     <button
       type="submit"
-      disabled={pending}
-      className="w-full rounded-md bg-terroir-green px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-terroir-green/90 disabled:opacity-60"
+      disabled={pending || disabled}
+      className="w-full rounded-md bg-terroir-green px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-terroir-green/90 disabled:opacity-60 disabled:cursor-not-allowed"
     >
       {pending ? "Création..." : "Créer mon compte"}
     </button>
@@ -22,6 +23,7 @@ function SubmitButton() {
 
 export default function InscriptionPage() {
   const [state, formAction] = useFormState(signupAction, initialState);
+  const [cguAccepted, setCguAccepted] = useState(false);
 
   if (state.success) {
     return (
@@ -118,13 +120,44 @@ export default function InscriptionPage() {
           <span className="text-sm">Recevoir les rappels par SMS</span>
         </label>
 
+        <label className="flex items-start gap-2">
+          <input
+            name="cgu_accepted"
+            type="checkbox"
+            required
+            checked={cguAccepted}
+            onChange={(e) => setCguAccepted(e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-gray-300"
+          />
+          <span className="text-sm leading-relaxed">
+            J&rsquo;ai lu et j&rsquo;accepte les{" "}
+            <Link
+              href="/cgu"
+              target="_blank"
+              rel="noopener"
+              className="text-terroir-green underline hover:opacity-80"
+            >
+              Conditions générales d&rsquo;utilisation
+            </Link>{" "}
+            et la{" "}
+            <Link
+              href="/politique-confidentialite"
+              target="_blank"
+              rel="noopener"
+              className="text-terroir-green underline hover:opacity-80"
+            >
+              Politique de confidentialité
+            </Link>
+          </span>
+        </label>
+
         {state.error ? (
           <p className="rounded-md bg-red-50 p-2 text-sm text-red-700">
             {state.error}
           </p>
         ) : null}
 
-        <SubmitButton />
+        <SubmitButton disabled={!cguAccepted} />
       </form>
     </main>
   );

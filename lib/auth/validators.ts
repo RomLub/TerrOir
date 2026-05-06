@@ -34,6 +34,18 @@ export const signupSchema = z.object({
     .union([z.literal("on"), z.literal("true"), z.boolean()])
     .optional()
     .transform((v) => v === true || v === "on" || v === "true"),
+  // Acceptation CGU obligatoire pour opposabilité juridique. Refus
+  // serveur si manquant ou false (cas client trafiqué). La checkbox HTML
+  // envoie "on" quand cochée, rien sinon — on accepte boolean ou string,
+  // on dérive le booléen via transform, et on rejette tout sauf "vrai"
+  // via refine pour que le message d'erreur custom soit visible (et pas
+  // "Invalid input" générique du union strict).
+  cgu_accepted: z
+    .union([z.boolean(), z.string()])
+    .transform((v) => v === true || v === "on" || v === "true")
+    .refine((v) => v === true, {
+      message: "Vous devez accepter les conditions d'utilisation",
+    }),
 });
 
 export const loginSchema = z.object({

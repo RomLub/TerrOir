@@ -109,13 +109,18 @@ export default function CheckoutPage() {
     null,
   );
   const [preparing, setPreparing] = useState(false);
+  // Acceptation CGV obligatoire avant init order/PI. Tant que false, le
+  // useEffect d'init reste gardé : pas d'order créée en DB, pas de PI Stripe.
+  // Garantit l'invariant "cgv_accepted_at toujours peuplé pour les orders
+  // créées via le flow checkout standard".
+  const [cgvAccepted, setCgvAccepted] = useState(false);
 
   const subtotal = group ? group.items.reduce((s, i) => s + i.prix * i.quantite, 0) : 0;
 
   const router = useRouter();
 
   useEffect(() => {
-    if (!hydrated || !group || order || preparing) return;
+    if (!hydrated || !group || order || preparing || !cgvAccepted) return;
     setPreparing(true);
     setInitError(null);
 
@@ -167,6 +172,7 @@ export default function CheckoutPage() {
               product_id: it.productId,
               quantite: it.quantite,
             })),
+            cgv_accepted: true,
           }),
         });
         const orderData = await orderRes.json();
@@ -252,7 +258,7 @@ export default function CheckoutPage() {
         setPreparing(false);
       }
     })();
-  }, [hydrated, group, order, preparing, router]);
+  }, [hydrated, group, order, preparing, router, cgvAccepted]);
 
   if (!hydrated) {
     return (
@@ -315,6 +321,37 @@ export default function CheckoutPage() {
                 <span className="text-[11px] mono text-dark/50">🔒 Stripe · SSL</span>
               </div>
 
+              {/* CGV obligatoire — checkbox gate l'init order/PI. Désactivée
+                  une fois cochée (l'order est créée DB avec cgv_accepted_at,
+                  décocher n'aurait aucun effet sur la trace persistée). */}
+              <label className="mb-4 flex items-start gap-3 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={cgvAccepted}
+                  onChange={(e) => setCgvAccepted(e.target.checked)}
+                  disabled={cgvAccepted}
+                  className="mt-1 h-4 w-4 accent-green-900"
+                />
+                <span className="text-[13px] text-dark/80 leading-relaxed">
+                  J&rsquo;ai lu et j&rsquo;accepte les{' '}
+                  <Link
+                    href="/cgv"
+                    target="_blank"
+                    rel="noopener"
+                    className="text-green-900 underline hover:opacity-80"
+                  >
+                    Conditions générales de vente
+                  </Link>{' '}
+                  et confirme ma commande.
+                </span>
+              </label>
+
+              {!cgvAccepted && (
+                <p className="text-[13px] text-dark/60">
+                  Pour finaliser votre commande, acceptez les conditions générales de vente.
+                </p>
+              )}
+
               {technicalError ? (
                 // T-443 product_producer_mismatch : anomalie technique rare
                 // (item du panier appartient à un autre producer). Pas de retry
@@ -366,7 +403,7 @@ export default function CheckoutPage() {
                 <div className="p-4 rounded-xl bg-terra-100/60 border border-terra-300/40 text-[13px] text-terra-900">{initError.message}</div>
               ) : null}
 
-              {!initError && !technicalError && !clientSecret && (
+              {cgvAccepted && !initError && !technicalError && !clientSecret && (
                 <p className="text-[13px] text-dark/60">Initialisation du paiement…</p>
               )}
 

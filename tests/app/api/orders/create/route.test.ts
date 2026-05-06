@@ -37,7 +37,7 @@ vi.mock("@/lib/auth/session", () => ({
 // défaut {data: null, error: null}.
 
 type Resp = { data?: unknown; error?: unknown };
-type Op = "select" | "pending";
+type Op = "select" | "update" | "pending";
 
 type Captured = {
   fromCalls: string[];
@@ -45,19 +45,24 @@ type Captured = {
   eqCalls: Array<{ table: string; col: string; val: unknown }>;
   gtCalls: Array<{ table: string; col: string; val: unknown }>;
   limitCalls: Array<{ table: string; n: number }>;
+  updateCalls: Array<{ table: string; payload: Record<string, unknown> }>;
   rpcCalls: Array<{ name: string; args: unknown }>;
 };
 
 let captured: Captured;
 let responses: {
-  slots?: { select?: Resp[] };
-  orders?: { select?: Resp[] };
+  slots?: { select?: Resp[]; update?: Resp[] };
+  orders?: { select?: Resp[]; update?: Resp[] };
   rpc?: Record<string, Resp[]>;
 };
 
 function consumeFrom(table: "slots" | "orders", op: Op): Resp {
   if (op === "select") {
     const queue = responses[table]?.select;
+    if (queue && queue.length > 0) return queue.shift()!;
+  }
+  if (op === "update") {
+    const queue = responses[table]?.update;
     if (queue && queue.length > 0) return queue.shift()!;
   }
   return { data: null, error: null };
@@ -80,8 +85,18 @@ vi.mock("@/lib/supabase/server", () => ({
         builder._op = "select";
         return builder;
       };
+      builder.update = (payload: Record<string, unknown>) => {
+        captured.updateCalls.push({ table, payload });
+        builder._op = "update";
+        return builder;
+      };
       builder.eq = (col: string, val: unknown) => {
         captured.eqCalls.push({ table, col, val });
+        // Pour les UPDATE, .eq() est terminal et résout directement
+        // (pas de .maybeSingle()/.single() après). Le builder reste
+        // thenable pour await direct. On ne consomme la réponse qu'au
+        // moment du await pour ne pas la consommer 2x si une chaîne
+        // appelle .eq() plusieurs fois.
         return builder;
       };
       builder.gt = (col: string, val: unknown) => {
@@ -94,6 +109,11 @@ vi.mock("@/lib/supabase/server", () => ({
       };
       builder.maybeSingle = () => Promise.resolve(consumeFrom(t, builder._op));
       builder.single = () => Promise.resolve(consumeFrom(t, builder._op));
+      // Thenable : le UPDATE final (sans maybeSingle/single) est await
+      // direct. PromiseLike consume la queue du _op courant à ce moment.
+      builder.then = (resolve: (r: Resp) => unknown) => {
+        return Promise.resolve(consumeFrom(t, builder._op)).then(resolve);
+      };
       return builder;
     },
     rpc: (name: string, args: unknown) => {
@@ -137,6 +157,7 @@ const VALID_BODY = {
   date_retrait: "2026-05-15",
   notes_client: "Pickup à 18h",
   items: [{ product_id: PRODUCT_ID, quantite: 2 }],
+  cgv_accepted: true,
 };
 
 const DEFAULT_ORDER = {
@@ -162,6 +183,11 @@ function pushOrderSelect(...resps: Resp[]) {
   responses.orders.select = [...(responses.orders.select ?? []), ...resps];
 }
 
+function pushOrderUpdate(...resps: Resp[]) {
+  responses.orders = responses.orders ?? {};
+  responses.orders.update = [...(responses.orders.update ?? []), ...resps];
+}
+
 function pushRpc(name: string, ...resps: Resp[]) {
   responses.rpc = responses.rpc ?? {};
   responses.rpc[name] = [...(responses.rpc[name] ?? []), ...resps];
@@ -178,6 +204,7 @@ beforeEach(() => {
     eqCalls: [],
     gtCalls: [],
     limitCalls: [],
+    updateCalls: [],
     rpcCalls: [],
   };
   responses = {};
@@ -188,7 +215,8 @@ beforeEach(() => {
     isAdmin: false,
   };
   // Defaults flow nominal : slot existe, dedup T-428 miss (pas d'order
-  // pending récente), RPC retourne ORDER_ID, post-fetch enrich OK.
+  // pending récente), RPC retourne ORDER_ID, UPDATE CGV OK, post-fetch
+  // enrich OK.
   pushSlotSelect({ data: { starts_at: SLOT_STARTS_AT }, error: null });
   pushOrderSelect(
     // 1er consume : dedup pré-RPC T-428 → miss (pas d'order existante)
@@ -196,6 +224,9 @@ beforeEach(() => {
     // 2ème consume : enrich post-RPC → DEFAULT_ORDER
     { data: DEFAULT_ORDER, error: null },
   );
+  // UPDATE post-RPC pour persister cgv_accepted_at + cgv_version (no-op
+  // success par défaut, surchargeable pour tests d'erreur).
+  pushOrderUpdate({ data: null, error: null });
   pushRpc("create_order_with_items", { data: ORDER_ID, error: null });
   // T-429 : reset le compteur d'appels audit log entre chaque test.
   vi.mocked(logPaymentEvent).mockClear();
@@ -243,6 +274,28 @@ describe("B. Validation Zod", () => {
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: string };
     expect(body.error).toBeTruthy();
+    expect(captured.fromCalls).toEqual([]);
+    expect(captured.rpcCalls).toEqual([]);
+  });
+
+  it("B3 — cgv_accepted manquant → 400, aucun I/O", async () => {
+    // Body sans cgv_accepted (cas client trafiqué supprimant le champ).
+    const { cgv_accepted: _, ...bodyWithoutCgv } = VALID_BODY;
+    const res = await POST(makeRequest(bodyWithoutCgv));
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/conditions générales de vente/i);
+    expect(captured.fromCalls).toEqual([]);
+    expect(captured.rpcCalls).toEqual([]);
+  });
+
+  it("B4 — cgv_accepted=false → 400, aucun I/O", async () => {
+    const res = await POST(
+      makeRequest({ ...VALID_BODY, cgv_accepted: false }),
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/conditions générales de vente/i);
     expect(captured.fromCalls).toEqual([]);
     expect(captured.rpcCalls).toEqual([]);
   });
@@ -498,11 +551,23 @@ describe("E. Happy path", () => {
       ],
     });
 
-    // Pré-check slot + dedup T-428 (orders) + post-fetch enrich (orders) : 3 SELECTs.
-    expect(captured.fromCalls).toEqual(["slots", "orders", "orders"]);
+    // Pré-check slot + dedup T-428 (orders) + UPDATE CGV (orders) + post-fetch
+    // enrich (orders) : 1 select slots + 3 from orders.
+    expect(captured.fromCalls).toEqual(["slots", "orders", "orders", "orders"]);
     expect(
       captured.eqCalls.find((e) => e.table === "orders" && e.col === "id"),
     ).toEqual({ table: "orders", col: "id", val: ORDER_ID });
+
+    // CGV : UPDATE post-RPC pose cgv_accepted_at + cgv_version.
+    expect(captured.updateCalls).toHaveLength(1);
+    const cgvUpdate = captured.updateCalls[0]!;
+    expect(cgvUpdate.table).toBe("orders");
+    expect(cgvUpdate.payload).toEqual({
+      cgv_accepted_at: expect.stringMatching(
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+      ),
+      cgv_version: "1.0",
+    });
 
     // T-429 : audit_log forensique posé après SELECT enrich, avant ack
     // HTTP. userId = session.id (consumer), metadata aligne 8 champs DB.
@@ -708,8 +773,9 @@ describe("G. Idempotence T-428 (dedup pre-RPC)", () => {
     expect(res.status).toBe(200);
     expect(captured.rpcCalls).toHaveLength(1);
     expect(logPaymentEvent).toHaveBeenCalledTimes(1);
-    // 3 from au total : slots (pré-check) + orders (dedup miss) + orders (enrich post-RPC).
-    expect(captured.fromCalls).toEqual(["slots", "orders", "orders"]);
+    // 4 from au total : slots (pré-check) + orders (dedup miss) + orders
+    // (UPDATE CGV) + orders (enrich post-RPC).
+    expect(captured.fromCalls).toEqual(["slots", "orders", "orders", "orders"]);
   });
 
   it("G3 — dedup query : cutoff ISO = now() - 5min (fenêtre temporelle)", async () => {
@@ -765,5 +831,85 @@ describe("G. Idempotence T-428 (dedup pre-RPC)", () => {
     expect(captured.rpcCalls).toHaveLength(1);
     // Audit log T-429 posé (path nominal, pas dedup hit).
     expect(logPaymentEvent).toHaveBeenCalledTimes(1);
+  });
+});
+
+// --- H. CGV persistance (UPDATE post-RPC) -------------------------------
+
+describe("H. CGV persistance", () => {
+  it("H1 — UPDATE post-RPC échoue (RLS / lock) → 200, log warn forensique, flow non cassé", async () => {
+    // Override : UPDATE CGV retourne une error. Le flow doit continuer
+    // (l'order est déjà créée via RPC, l'user doit pouvoir payer).
+    responses.orders = {
+      select: [
+        { data: null, error: null }, // dedup miss
+        { data: DEFAULT_ORDER, error: null }, // enrich
+      ],
+      update: [
+        {
+          data: null,
+          error: { message: "row-level security policy violation" },
+        },
+      ],
+    };
+
+    const res = await POST(makeRequest());
+
+    expect(res.status).toBe(200);
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /^\[ORDER_CGV_PERSIST_FAIL\] order_id=.+ error=row-level security policy violation$/,
+      ),
+    );
+    // Audit log T-429 posé (mutation principale RPC effective).
+    expect(logPaymentEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("H2 — UPDATE CGV pose les bonnes valeurs (eq sur order_id RPC + payload version + timestamp)", async () => {
+    await POST(makeRequest());
+
+    expect(captured.updateCalls).toHaveLength(1);
+    const cgvUpdate = captured.updateCalls[0]!;
+    expect(cgvUpdate.table).toBe("orders");
+    expect(cgvUpdate.payload.cgv_version).toBe("1.0");
+    expect(cgvUpdate.payload.cgv_accepted_at).toMatch(
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+    );
+
+    // Le UPDATE est filtré sur l'order_id retourné par la RPC.
+    const updateEqs = captured.eqCalls.filter(
+      (e) => e.table === "orders" && e.col === "id" && e.val === ORDER_ID,
+    );
+    expect(updateEqs.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("H3 — RPC échoue → pas d'UPDATE CGV (early return avant)", async () => {
+    responses.rpc = {
+      create_order_with_items: [
+        { data: null, error: { message: "RPC fail", code: "23514" } },
+      ],
+    };
+
+    await POST(makeRequest());
+
+    expect(captured.updateCalls).toEqual([]);
+  });
+
+  it("H4 — dedup hit → pas d'UPDATE CGV (path court-circuit)", async () => {
+    const EXISTING = {
+      id: "66666666-6666-4666-8666-666666666666",
+      code_commande: "EXIST-007",
+      montant_total: 18.4,
+      commission_terroir: 1.1,
+      montant_net_producteur: 17.3,
+    };
+    responses.orders = { select: [{ data: EXISTING, error: null }] };
+
+    await POST(makeRequest());
+
+    // Dedup hit : la 1ère création a déjà persisté la CGV. Pas de
+    // re-UPDATE sur ce path (idempotent : décision YAGNI, edge case
+    // double-clic 5 min).
+    expect(captured.updateCalls).toEqual([]);
   });
 });

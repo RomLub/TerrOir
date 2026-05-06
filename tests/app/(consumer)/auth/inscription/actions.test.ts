@@ -86,6 +86,9 @@ function makeFormData(overrides: Record<string, string> = {}): FormData {
   fd.set("email", VALID_EMAIL);
   fd.set("password", VALID_PASSWORD);
   fd.set("telephone", "");
+  // CGU acceptée par défaut dans les fixtures (happy path) — overridable
+  // pour les tests négatifs (cgu_accepted manquant ou explicitement faux).
+  fd.set("cgu_accepted", "on");
   for (const [k, v] of Object.entries(overrides)) fd.set(k, v);
   return fd;
 }
@@ -138,15 +141,24 @@ describe("signupAction", () => {
           "https://www.test.local/auth/callback?next=/compte/commandes",
       },
     });
-    expect(adminInsertMock).toHaveBeenCalledWith({
-      id: "user-1",
-      email: VALID_EMAIL,
-      roles: ["consumer"],
-      prenom: "Alice",
-      nom: "Martin",
-      telephone: null,
-      sms_optin: false,
-    });
+    // CGU : timestamp ISO + version "1.0" persistés à l'INSERT users.
+    // On vérifie le shape (pas la valeur exacte du timestamp) puisque
+    // new Date().toISOString() n'est pas mockable sans freezing time.
+    expect(adminInsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "user-1",
+        email: VALID_EMAIL,
+        roles: ["consumer"],
+        prenom: "Alice",
+        nom: "Martin",
+        telephone: null,
+        sms_optin: false,
+        cgu_accepted_at: expect.stringMatching(
+          /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+        ),
+        cgu_version: "1.0",
+      }),
+    );
     expect(adminDeleteUserMock).not.toHaveBeenCalled();
   });
 
@@ -277,5 +289,32 @@ describe("signupAction", () => {
     );
     expect(supabaseSignUpMock).toHaveBeenCalled();
     expect(logAuthEventMock).not.toHaveBeenCalled();
+  });
+
+  // --- CGU obligatoire (opposabilité juridique) ---------------------------
+
+  it("CGU manquante → error Zod, aucun appel Supabase", async () => {
+    const fd = makeFormData();
+    fd.delete("cgu_accepted");
+
+    const res = await signupAction({}, fd);
+
+    expect(res.error).toMatch(/conditions d'utilisation/);
+    expect(supabaseSignUpMock).not.toHaveBeenCalled();
+    expect(adminInsertMock).not.toHaveBeenCalled();
+  });
+
+  it("CGU explicitement false → error Zod, aucun appel Supabase", async () => {
+    const fd = makeFormData();
+    // Le navigateur n'envoie pas la valeur d'une checkbox non cochée — un
+    // client trafiqué pourrait envoyer "false" ou autre. On vérifie que le
+    // refine bloque toute valeur ≠ true sérialisé.
+    fd.set("cgu_accepted", "false");
+
+    const res = await signupAction({}, fd);
+
+    expect(res.error).toMatch(/conditions d'utilisation/);
+    expect(supabaseSignUpMock).not.toHaveBeenCalled();
+    expect(adminInsertMock).not.toHaveBeenCalled();
   });
 });

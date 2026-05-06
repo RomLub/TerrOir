@@ -10,6 +10,7 @@ import {
   extractRequestContext,
   logAuthEvent,
 } from "@/lib/audit-logs/log-auth-event";
+import { LEGAL_VERSIONS } from "@/lib/legal/versions";
 
 export type SignupState = {
   error?: string;
@@ -27,6 +28,7 @@ export async function signupAction(
     password: formData.get("password"),
     telephone: formData.get("telephone") ?? "",
     sms_optin: formData.get("sms_optin") ?? false,
+    cgu_accepted: formData.get("cgu_accepted") ?? false,
   });
 
   if (!parsed.success) {
@@ -107,6 +109,8 @@ export async function signupAction(
     nom,
     telephone: telephone ?? null,
     sms_optin: Boolean(sms_optin),
+    cgu_accepted_at: new Date().toISOString(),
+    cgu_version: LEGAL_VERSIONS.CGU,
   });
 
   if (profileError) {
