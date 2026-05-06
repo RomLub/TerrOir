@@ -44,7 +44,7 @@ const COMMITMENTS = [
   {
     n: '✓',
     title: 'Paiement garanti',
-    text: "Le client paie au retrait. Pas d'impayés, pas de relances : la commande est validée avant le passage à la ferme.",
+    text: "Le client paie en ligne au moment de la commande. Pas d'impayés, pas de relances : vous préparez la commande en toute sérénité.",
   },
 ];
 

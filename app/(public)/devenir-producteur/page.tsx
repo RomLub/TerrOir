@@ -7,7 +7,7 @@ import { Button, Input, Textarea } from '@/components/ui';
 const ADVANTAGES = [
   { n: '6%', title: 'Commission unique', text: "Pas d'abonnement, pas de frais cachés. Tu payes 6% uniquement sur les commandes finalisées." },
   { n: '01', title: 'Une page dédiée à ta ferme', text: "Raconte ton histoire, mets en avant tes labels et tes pratiques. Une vitrine que tu contrôles." },
-  { n: '✓', title: 'Paiement garanti', text: "Le client paie au retrait. Pas d'impayés, pas de relances : la commande est validée avant le passage à la ferme." },
+  { n: '✓', title: 'Paiement garanti', text: "Le client paie en ligne au moment de la commande. Pas d'impayés, pas de relances : tu prépares la commande en toute sérénité." },
 ];
 
 type SubmitStatus = 'created' | 'updated';

@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { escapeIlikeEmail } from "@/lib/supabase/escape-ilike";
+import { maskEmail } from "@/lib/rgpd/mask-email";
 
 // Helper UPSERT pour producer_interests (création initiale + mise à jour
 // sur conflit email).
@@ -92,8 +93,9 @@ export async function upsertProducerInterest(
   // Sinon erreur DB générique.
   const errCode = (insertError as { code?: string } | null)?.code;
   if (errCode !== PG_UNIQUE_VIOLATION) {
+    // T-249-bis : email masqué en log (defense in depth doctrine T-200 r1).
     console.error(
-      `[PRODUCER_INTEREST_UPSERT_INSERT_ERROR] email=${email} error=${insertError?.message ?? "unknown"}`,
+      `[PRODUCER_INTEREST_UPSERT_INSERT_ERROR] email=${maskEmail(email)} error=${insertError?.message ?? "unknown"}`,
     );
     return { ok: false, error: insertError?.message ?? "Insert failed" };
   }
@@ -115,8 +117,9 @@ export async function upsertProducerInterest(
     .single();
 
   if (updateError || !updated) {
+    // T-249-bis : email masqué en log (defense in depth doctrine T-200 r1).
     console.error(
-      `[PRODUCER_INTEREST_UPSERT_UPDATE_ERROR] email=${email} error=${updateError?.message ?? "no data"}`,
+      `[PRODUCER_INTEREST_UPSERT_UPDATE_ERROR] email=${maskEmail(email)} error=${updateError?.message ?? "no data"}`,
     );
     return {
       ok: false,

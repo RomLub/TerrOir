@@ -28,8 +28,8 @@ export default function OrderConfirmedConsumer(props: Props) {
         Commande confirmée
       </h1>
       <p>
-        Ton producteur a confirmé ta commande. À retirer sur place, frais
-        du jour.
+        Ton producteur a confirmé ta commande. Paiement déjà effectué en
+        ligne, il ne te reste qu&rsquo;à venir la retirer.
       </p>
 
       <div
