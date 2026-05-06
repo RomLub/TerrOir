@@ -184,20 +184,30 @@ describe("InvitationPage — ErrorCard CTAs", () => {
     expect(card!.props.message).toMatch(/expirée/i);
   });
 
-  it("email = admin existant → ErrorCard avec CTA /connexion", async () => {
+  it("email = admin existant → T-105 ErrorCard avec CTA /contact + message dédié", async () => {
     responses.producer_invitations = [validInvitation("admin@example.com")];
     responses.admin_users = [{ data: { id: "admin-1" }, error: null }];
 
     const result = await runPage(VALID_TOKEN);
     const card = findByName(result, "ErrorCard");
     expect(card!.props).toMatchObject({
-      ctaLabel: "Se connecter",
-      ctaHref: "/connexion",
+      ctaLabel: "Nous contacter",
+      ctaHref: "/contact",
     });
-    expect(card!.props.message).toMatch(/administrateur/i);
+    expect(card!.props.message).toMatch(/admin TerrOir/i);
+    expect(card!.props.message).toMatch(/Contacte-nous/i);
+
+    // T-105 : audit log admin_invite_blocked_admin
+    const auditInsert = captured.inserts.find(
+      (i) => i.table === "audit_logs",
+    );
+    expect(auditInsert).toBeTruthy();
+    expect(
+      (auditInsert!.payload as { event_type: string }).event_type,
+    ).toBe("admin_invite_blocked_admin");
   });
 
-  it("producer déjà inscrit (statut != draft) → ErrorCard avec CTA /connexion", async () => {
+  it("producer déjà inscrit (statut != draft) → T-105 ErrorCard message clair + CTA producer", async () => {
     responses.producer_invitations = [validInvitation("prod@example.com")];
     responses.admin_users = [{ data: null, error: null }];
     responses.users = [
@@ -210,10 +220,51 @@ describe("InvitationPage — ErrorCard CTAs", () => {
     const result = await runPage(VALID_TOKEN);
     const card = findByName(result, "ErrorCard");
     expect(card!.props).toMatchObject({
-      ctaLabel: "Se connecter à mon espace",
+      ctaLabel: "Se connecter à mon espace producteur",
       ctaHref: "/connexion",
     });
-    expect(card!.props.message).toMatch(/déjà inscrit/i);
+    expect(card!.props.message).toMatch(/déjà associé à un compte producteur/i);
+    expect(card!.props.message).toMatch(/pro\.terroir-local\.fr/i);
+
+    // T-105 : audit log admin_invite_blocked_producer
+    const auditInsert = captured.inserts.find(
+      (i) => i.table === "audit_logs",
+    );
+    expect(auditInsert).toBeTruthy();
+    expect(
+      (auditInsert!.payload as { event_type: string }).event_type,
+    ).toBe("admin_invite_blocked_producer");
+  });
+});
+
+describe("InvitationPage — T-105 consumer-upgrade notice", () => {
+  it("consumer existant non-loggé → wizard avec ConsumerUpgradeNotice affichée", async () => {
+    responses.producer_invitations = [validInvitation("c@example.com")];
+    responses.admin_users = [{ data: null, error: null }];
+    responses.users = [
+      { data: { id: "user-1", roles: ["consumer"] }, error: null },
+    ];
+    responses.producers = [{ data: null, error: null }];
+    responses.producer_interests = [{ data: null, error: null }];
+
+    const result = await runPage(VALID_TOKEN);
+    const notice = findByName(result, "ConsumerUpgradeNotice");
+    expect(notice).not.toBeNull();
+    const wizard = findByName(result, "OnboardingWizard");
+    expect(wizard!.props.caseKind).toBe("consumer-login");
+  });
+
+  it("nouveau utilisateur (pas d'user en DB) → pas de ConsumerUpgradeNotice", async () => {
+    responses.producer_invitations = [validInvitation()];
+    responses.admin_users = [{ data: null, error: null }];
+    responses.users = [{ data: null, error: null }];
+    responses.producer_interests = [{ data: null, error: null }];
+
+    const result = await runPage(VALID_TOKEN);
+    const notice = findByName(result, "ConsumerUpgradeNotice");
+    expect(notice).toBeNull();
+    const wizard = findByName(result, "OnboardingWizard");
+    expect(wizard!.props.caseKind).toBe("new");
   });
 });
 

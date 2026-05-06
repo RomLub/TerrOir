@@ -4,8 +4,10 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { escapeIlikeEmail } from "@/lib/supabase/escape-ilike";
 import { getSessionUser } from "@/lib/auth/session";
 import { pickInitialInfos } from "@/lib/producers/pick-initial-infos";
+import { logAdminInviteEvent } from "@/lib/audit-logs/log-admin-invite-event";
 import { OnboardingWizard, type WizardCase } from "./_components/OnboardingWizard";
 import { InvitationConfirmCard } from "./_components/InvitationConfirmCard";
+import { ConsumerUpgradeNotice } from "./_components/ConsumerUpgradeNotice";
 
 interface PageProps {
   searchParams: { token?: string };
@@ -90,20 +92,27 @@ export default async function InvitationPage({ searchParams }: PageProps) {
 
   const email = invitation.email as string;
 
-  // Défense en profondeur : Phase 2 bloque déjà ces cas côté envoi d'invitation,
-  // mais une invitation antérieure à Phase 2 pourrait encore exister.
+  // T-105 + Défense en profondeur : Phase 2 bloque déjà ces cas côté envoi
+  // d'invitation, mais une invitation antérieure à Phase 2 pourrait encore
+  // exister. Pour les 3 cas conflictuels (admin existant / producer déjà
+  // inscrit / consumer à upgrader), on affiche un message UX dédié et on
+  // instrumente avec le cluster `admin_invite_blocked_*`.
   const { data: adminRow } = await admin
     .from("admin_users")
     .select("id")
     .ilike("email", escapeIlikeEmail(email))
     .maybeSingle();
   if (adminRow) {
+    await logAdminInviteEvent(null, {
+      type: "admin_invite_blocked_admin",
+      invitation_email: email,
+    });
     return (
       <ErrorCard
-        title="Invitation invalide"
-        message="Cet email est associé à un compte administrateur."
-        ctaLabel="Se connecter"
-        ctaHref="/connexion"
+        title="Email déjà associé à un compte admin"
+        message="Cet email est déjà associé à un compte admin TerrOir. Tu ne peux pas l'utiliser pour rejoindre comme producteur. Contacte-nous pour résoudre cette situation."
+        ctaLabel="Nous contacter"
+        ctaHref="/contact"
       />
     );
   }
@@ -142,11 +151,16 @@ export default async function InvitationPage({ searchParams }: PageProps) {
     existingProducer &&
     existingProducer.statut !== "draft"
   ) {
+    await logAdminInviteEvent(null, {
+      type: "admin_invite_blocked_producer",
+      invitation_email: email,
+      statut: (existingProducer.statut as string | null) ?? null,
+    });
     return (
       <ErrorCard
-        title="Invitation invalide"
-        message="Ce producteur est déjà inscrit."
-        ctaLabel="Se connecter à mon espace"
+        title="Compte producteur déjà existant"
+        message="Cet email est déjà associé à un compte producteur. Connecte-toi directement depuis pro.terroir-local.fr/connexion."
+        ctaLabel="Se connecter à mon espace producteur"
         ctaHref="/connexion"
       />
     );
@@ -224,13 +238,16 @@ export default async function InvitationPage({ searchParams }: PageProps) {
 
   return (
     <main className="flex min-h-screen items-center justify-center p-8">
-      <OnboardingWizard
-        token={token}
-        email={email}
-        caseKind={caseKind}
-        startStep={1}
-        initialInfos={initialInfos}
-      />
+      <div className="w-full max-w-xl">
+        {caseKind === "consumer-login" && <ConsumerUpgradeNotice />}
+        <OnboardingWizard
+          token={token}
+          email={email}
+          caseKind={caseKind}
+          startStep={1}
+          initialInfos={initialInfos}
+        />
+      </div>
     </main>
   );
 }
