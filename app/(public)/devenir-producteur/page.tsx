@@ -5,8 +5,8 @@ import { useState } from 'react';
 import { Button, Input, Textarea } from '@/components/ui';
 
 const ADVANTAGES = [
-  { n: '6%', title: 'Commission unique', text: "Pas d'abonnement, pas de frais cachés. Vous payez 6% uniquement sur les commandes finalisées." },
-  { n: '01', title: 'Une page dédiée à votre ferme', text: "Racontez votre histoire, mettez en avant vos labels et vos pratiques. Une vitrine que vous contrôlez." },
+  { n: '6%', title: 'Commission unique', text: "Pas d'abonnement, pas de frais cachés. Tu payes 6% uniquement sur les commandes finalisées." },
+  { n: '01', title: 'Une page dédiée à ta ferme', text: "Raconte ton histoire, mets en avant tes labels et tes pratiques. Une vitrine que tu contrôles." },
   { n: '✓', title: 'Paiement garanti', text: "Le client paie au retrait. Pas d'impayés, pas de relances : la commande est validée avant le passage à la ferme." },
 ];
 
@@ -46,7 +46,7 @@ export default function DevenirProducteurPage() {
 
     setSubmitting(false);
     if (!res.ok) {
-      setError('Impossible d\'envoyer votre candidature. Merci de réessayer.');
+      setError('Impossible d\'envoyer ta candidature. Merci de réessayer.');
       return;
     }
     const data = (await res.json().catch(() => null)) as { status?: SubmitStatus } | null;
@@ -55,7 +55,7 @@ export default function DevenirProducteurPage() {
 
   if (sent) {
     const heading = sent === 'updated'
-      ? 'Merci, votre demande a bien été mise à jour.'
+      ? 'Merci, ta demande a bien été mise à jour.'
       : 'Merci, c\'est noté.';
     return (
       <div className="bg-bg">
@@ -63,7 +63,7 @@ export default function DevenirProducteurPage() {
           <div className="w-20 h-20 mx-auto rounded-full bg-green-100 border-2 border-green-700 flex items-center justify-center text-green-700 text-4xl">✓</div>
           <h1 className="mt-6 font-serif text-[44px] text-green-900 leading-tight">{heading}</h1>
           <p className="mt-4 text-[16px] text-dark/70 leading-relaxed">
-            Nous avons bien reçu votre demande. Un membre de l&apos;équipe TerrOir va vous appeler dans les 48 heures pour échanger sur votre exploitation et vous présenter la plateforme.
+            Nous avons bien reçu ta demande. Un membre de l&apos;équipe TerrOir va t&apos;appeler dans les 48 heures pour échanger sur ton exploitation et te présenter la plateforme.
           </p>
         </section>
       </div>
@@ -77,10 +77,10 @@ export default function DevenirProducteurPage() {
           <div>
             <span className="text-[11px] uppercase tracking-[0.2em] text-terra-100 font-semibold">Pour les éleveurs sarthois</span>
             <h1 className="mt-3 font-serif text-[44px] md:text-[68px] leading-[1.02] tracking-tight">
-              Reprenez la main<br/>sur votre prix.
+              Reprends la main<br/>sur ton prix.
             </h1>
             <p className="mt-6 text-[17px] text-terra-100/90 max-w-lg leading-relaxed">
-              TerrOir vous met en contact direct avec les consommateurs sarthois. Vous fixez vos prix, vos créneaux, vos quantités. Nous nous occupons du reste.
+              TerrOir te met en contact direct avec les consommateurs sarthois. Tu fixes tes prix, tes créneaux, tes quantités. Nous nous occupons du reste.
             </p>
             <div className="mt-8 flex items-center gap-6 flex-wrap">
               <a href="#formulaire">
@@ -99,7 +99,7 @@ export default function DevenirProducteurPage() {
       <section className="max-w-7xl mx-auto px-6 py-20 md:py-24">
         <div className="text-center mb-12">
           <span className="text-[11px] uppercase tracking-[0.18em] text-terra-700 font-semibold">Pourquoi TerrOir</span>
-          <h2 className="mt-2 font-serif text-[36px] md:text-[44px] text-green-900 leading-tight">Trois engagements, pour vous.</h2>
+          <h2 className="mt-2 font-serif text-[36px] md:text-[44px] text-green-900 leading-tight">Trois engagements, pour toi.</h2>
         </div>
         <div className="grid md:grid-cols-3 gap-6">
           {ADVANTAGES.map((a) => (
@@ -118,7 +118,7 @@ export default function DevenirProducteurPage() {
             Une question avant de candidater ?
           </p>
           <p className="mt-2 text-[14px] text-dark/65 max-w-md mx-auto leading-relaxed">
-            L&apos;équipe TerrOir vous répond sous 24 heures ouvrées.
+            L&apos;équipe TerrOir te répond sous 24 heures ouvrées.
           </p>
           <div className="mt-5">
             <Link href="/contact">
@@ -132,8 +132,8 @@ export default function DevenirProducteurPage() {
         <div className="max-w-3xl mx-auto px-6 py-20 md:py-24">
           <div className="text-center mb-10">
             <span className="text-[11px] uppercase tracking-[0.18em] text-terra-700 font-semibold">Candidature</span>
-            <h2 className="mt-2 font-serif text-[36px] md:text-[44px] text-green-900 leading-tight">Parlez-nous de votre exploitation.</h2>
-            <p className="mt-3 text-[15px] text-dark/70">Nous vous rappelons sous 48h pour faire connaissance.</p>
+            <h2 className="mt-2 font-serif text-[36px] md:text-[44px] text-green-900 leading-tight">Parle-nous de ton exploitation.</h2>
+            <p className="mt-3 text-[15px] text-dark/70">Nous te rappelons sous 48h pour faire connaissance.</p>
           </div>
 
           <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-6 md:p-10 border border-dark/[0.06] shadow-soft space-y-5">
@@ -149,8 +149,8 @@ export default function DevenirProducteurPage() {
               <Input label="Nom de l'exploitation" value={form.exploitation} onChange={update('exploitation')} required />
               <Input label="Commune" value={form.commune} onChange={update('commune')} autoComplete="address-level2" required />
             </div>
-            <Textarea label="Votre message (optionnel)" rows={5} value={form.message} onChange={update('message')}
-                      placeholder="Parlez-nous de votre activité, vos labels, vos volumes…" />
+            <Textarea label="Ton message (optionnel)" rows={5} value={form.message} onChange={update('message')}
+                      placeholder="Parle-nous de ton activité, tes labels, tes volumes…" />
 
             <div className="pt-2">
               <Button type="submit" size="lg" className="w-full" disabled={!valid || submitting}>
@@ -160,7 +160,7 @@ export default function DevenirProducteurPage() {
                 <p className="text-[13px] text-terra-700 text-center mt-3">{error}</p>
               )}
               <p className="text-[12px] text-dark/55 text-center mt-3">
-                En envoyant ce formulaire, vous acceptez d&apos;être recontacté par l&apos;équipe TerrOir.
+                En envoyant ce formulaire, tu acceptes d&apos;être recontacté par l&apos;équipe TerrOir.
               </p>
             </div>
           </form>

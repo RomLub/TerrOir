@@ -4,9 +4,9 @@ import Link from 'next/link';
 import { Button } from '@/components/ui';
 
 const VALUES = [
-  { title: 'Transparence', text: "Chaque éleveur affiche son nom, son adresse, ses pratiques. Vous savez exactement d'où vient votre viande, et qui l'a produite." },
+  { title: 'Transparence', text: "Chaque éleveur affiche son nom, son adresse, ses pratiques. Tu sais exactement d'où vient ta viande, et qui l'a produite." },
   { title: 'Qualité', text: "Pas de centrale d'achat, pas de mois en chambre froide. Des bêtes élevées dans le respect, des morceaux préparés à la demande." },
-  { title: 'Lien humain', text: "Le retrait à la ferme n'est pas une contrainte, c'est le cœur du projet. Rencontrez l'éleveur, voyez le pré, posez vos questions." },
+  { title: 'Lien humain', text: "Le retrait à la ferme n'est pas une contrainte, c'est le cœur du projet. Rencontre l'éleveur, vois le pré, pose tes questions." },
 ];
 
 export default function AProposPage() {
@@ -79,7 +79,7 @@ export default function AProposPage() {
             Une question ?
           </p>
           <p className="mt-2 text-[14px] text-dark/65 max-w-md mx-auto leading-relaxed">
-            L&apos;équipe TerrOir vous répond sous 24 heures ouvrées.
+            L&apos;équipe TerrOir te répond sous 24 heures ouvrées.
           </p>
           <div className="mt-5">
             <Link href="/contact">
@@ -91,9 +91,9 @@ export default function AProposPage() {
 
       <section className="max-w-5xl mx-auto px-6 pb-20">
         <div className="bg-terra-700 text-white rounded-3xl p-10 md:p-16 text-center">
-          <span className="text-[11px] uppercase tracking-[0.2em] text-terra-100 font-semibold">Vous êtes éleveur ?</span>
-          <h2 className="mt-3 font-serif text-[36px] md:text-[48px] leading-tight">Rejoignez la première marketplace dédiée à la Sarthe.</h2>
-          <p className="mt-4 text-[16px] text-terra-100/90 max-w-xl mx-auto">6% de commission. Une page dédiée. Le contrôle total sur vos prix et vos créneaux.</p>
+          <span className="text-[11px] uppercase tracking-[0.2em] text-terra-100 font-semibold">Tu es éleveur ?</span>
+          <h2 className="mt-3 font-serif text-[36px] md:text-[48px] leading-tight">Rejoins la première marketplace dédiée à la Sarthe.</h2>
+          <p className="mt-4 text-[16px] text-terra-100/90 max-w-xl mx-auto">6% de commission. Une page dédiée. Le contrôle total sur tes prix et tes créneaux.</p>
           <div className="mt-7">
             <Link href="/devenir-producteur">
               <Button size="lg" className="bg-white text-terra-700 hover:bg-terra-100">Devenir producteur →</Button>
