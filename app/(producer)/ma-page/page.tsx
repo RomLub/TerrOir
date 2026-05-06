@@ -8,21 +8,12 @@ import { uploadProducerPhoto } from '@/lib/producers/upload';
 import { labelEspece, labelLabel } from '@/lib/producers/labels';
 import { revalidateProducerCard } from '@/lib/stats/revalidate';
 import {
-  ALIMENTATION_HINTS,
-  ALIMENTATION_LABELS,
-  ALIMENTATION_VALUES,
-  DENSITE_ANIMALE_HINTS,
-  DENSITE_ANIMALE_LABELS,
-  DENSITE_ANIMALE_VALUES,
-  MODE_ELEVAGE_HINTS,
-  MODE_ELEVAGE_LABELS,
-  MODE_ELEVAGE_VALUES,
   type Alimentation,
   type DensiteAnimale,
   type ModeElevage,
 } from '@/lib/producers/score-carbone-enums';
-import { ScoreCarbonPreview } from '@/components/producer/ScoreCarbonPreview';
 import { ProducerLayout } from '../_components/ProducerLayout';
+import { IndicateursSection } from './_components/IndicateursSection';
 
 function OnboardedBanner() {
   const searchParams = useSearchParams();
@@ -76,11 +67,12 @@ type Form = {
   labels: string[];
   commune: string;
   code_postal: string;
-  // T-212 : 3 enums score carbone éditables avec aperçu live (ScoreCarbonPreview).
-  mode_elevage: ModeElevage | null;
-  alimentation: Alimentation | null;
-  densite_animale: DensiteAnimale | null;
 };
+
+// T-232 : les 3 enums score-carbone (mode_elevage, alimentation,
+// densite_animale) ne sont PLUS dans le formulaire principal — ils sont
+// gérés par IndicateursSection via la RPC update_producer_indicateurs
+// pour préserver la sémantique DGCCRF de re-dating snapshot.
 
 const EMPTY: Form = {
   nom_exploitation: '',
@@ -92,9 +84,6 @@ const EMPTY: Form = {
   labels: [],
   commune: '',
   code_postal: '',
-  mode_elevage: null,
-  alimentation: null,
-  densite_animale: null,
 };
 
 export default function MaPagePage() {
@@ -104,6 +93,14 @@ export default function MaPagePage() {
   // C-5 — bloc producer cached 60s sur fiche publique).
   const [producerSlug, setProducerSlug] = useState<string | null>(null);
   const [form, setForm] = useState<Form>(EMPTY);
+  // T-232 : indicateurs gérés séparément via IndicateursSection. État
+  // local ici uniquement pour passer initial values + recevoir update
+  // après save (callback onSaveSuccess).
+  const [indicateurs, setIndicateurs] = useState<{
+    mode_elevage: ModeElevage | null;
+    alimentation: Alimentation | null;
+    densite_animale: DensiteAnimale | null;
+  }>({ mode_elevage: null, alimentation: null, densite_animale: null });
   const [heroPhoto, setHeroPhoto] = useState<string | null>(null);
   const [gallery, setGallery] = useState<string[]>([]);
   const [scores, setScores] = useState({ stock: 0, response: 0, reliability: 0 });
@@ -148,6 +145,8 @@ export default function MaPagePage() {
         labels: Array.isArray(prod.labels) ? prod.labels : [],
         commune: prod.commune ?? '',
         code_postal: prod.code_postal ?? '',
+      });
+      setIndicateurs({
         mode_elevage: (prod.mode_elevage ?? null) as ModeElevage | null,
         alimentation: (prod.alimentation ?? null) as Alimentation | null,
         densite_animale: (prod.densite_animale ?? null) as DensiteAnimale | null,
@@ -249,9 +248,9 @@ export default function MaPagePage() {
           code_postal: form.code_postal.trim() || null,
           photo_principale: heroUrl,
           photos: galleryUrls.length ? galleryUrls : null,
-          mode_elevage: form.mode_elevage,
-          alimentation: form.alimentation,
-          densite_animale: form.densite_animale,
+          // T-232 : mode_elevage / alimentation / densite_animale ne sont
+          // plus dans ce UPDATE — ils passent par IndicateursSection +
+          // RPC update_producer_indicateurs (atomique, re-dating DGCCRF).
         })
         .eq('id', producerId);
 
@@ -450,100 +449,12 @@ export default function MaPagePage() {
                 </div>
               </section>
 
-              <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
-                <h2 className="font-serif text-[22px] text-green-900 mb-1">Score carbone & bien-être animal</h2>
-                <p className="text-[13px] text-dark/60 mb-4">
-                  Facultatif — ces 3 marqueurs s&apos;affichent sur votre fiche publique. Choisissez en regardant l&apos;aperçu à droite.
-                </p>
-                {/* T-212 — Layout 2 col desktop : sélecteurs / preview sticky.
-                    Mobile : pile vertical (preview au-dessous des selects). */}
-                <div className="grid gap-6 md:grid-cols-[1fr_320px]">
-                  <div className="space-y-4">
-                    <fieldset className="space-y-2">
-                      <legend className="mb-1 block text-[13px] font-medium text-dark/80">
-                        Mode d&apos;élevage
-                      </legend>
-                      {MODE_ELEVAGE_VALUES.map((v) => (
-                        <label
-                          key={v}
-                          className="flex cursor-pointer select-none items-start gap-3 rounded-md border border-dark/10 bg-white p-3 hover:border-green-500"
-                        >
-                          <input
-                            type="radio"
-                            name="ma_page_mode_elevage"
-                            value={v}
-                            checked={form.mode_elevage === v}
-                            onChange={() => { setForm({ ...form, mode_elevage: v }); setSaved(false); }}
-                            className="mt-1 h-4 w-4 accent-green-700"
-                          />
-                          <span className="flex flex-col">
-                            <span className="text-[13px] font-medium text-dark/85">{MODE_ELEVAGE_LABELS[v]}</span>
-                            <span className="text-[11px] text-dark/55">{MODE_ELEVAGE_HINTS[v]}</span>
-                          </span>
-                        </label>
-                      ))}
-                    </fieldset>
+              <IndicateursSection
+                initial={indicateurs}
+                producerSlug={producerSlug}
+                onSaveSuccess={(next) => setIndicateurs(next)}
+              />
 
-                    <fieldset className="space-y-2">
-                      <legend className="mb-1 block text-[13px] font-medium text-dark/80">
-                        Alimentation
-                      </legend>
-                      {ALIMENTATION_VALUES.map((v) => (
-                        <label
-                          key={v}
-                          className="flex cursor-pointer select-none items-start gap-3 rounded-md border border-dark/10 bg-white p-3 hover:border-green-500"
-                        >
-                          <input
-                            type="radio"
-                            name="ma_page_alimentation"
-                            value={v}
-                            checked={form.alimentation === v}
-                            onChange={() => { setForm({ ...form, alimentation: v }); setSaved(false); }}
-                            className="mt-1 h-4 w-4 accent-green-700"
-                          />
-                          <span className="flex flex-col">
-                            <span className="text-[13px] font-medium text-dark/85">{ALIMENTATION_LABELS[v]}</span>
-                            <span className="text-[11px] text-dark/55">{ALIMENTATION_HINTS[v]}</span>
-                          </span>
-                        </label>
-                      ))}
-                    </fieldset>
-
-                    <fieldset className="space-y-2">
-                      <legend className="mb-1 block text-[13px] font-medium text-dark/80">
-                        Densité animale
-                      </legend>
-                      {DENSITE_ANIMALE_VALUES.map((v) => (
-                        <label
-                          key={v}
-                          className="flex cursor-pointer select-none items-start gap-3 rounded-md border border-dark/10 bg-white p-3 hover:border-green-500"
-                        >
-                          <input
-                            type="radio"
-                            name="ma_page_densite_animale"
-                            value={v}
-                            checked={form.densite_animale === v}
-                            onChange={() => { setForm({ ...form, densite_animale: v }); setSaved(false); }}
-                            className="mt-1 h-4 w-4 accent-green-700"
-                          />
-                          <span className="flex flex-col">
-                            <span className="text-[13px] font-medium text-dark/85">{DENSITE_ANIMALE_LABELS[v]}</span>
-                            <span className="text-[11px] text-dark/55">{DENSITE_ANIMALE_HINTS[v]}</span>
-                          </span>
-                        </label>
-                      ))}
-                    </fieldset>
-                  </div>
-
-                  <div className="md:sticky md:top-4 md:self-start">
-                    <ScoreCarbonPreview
-                      modeElevage={form.mode_elevage}
-                      alimentation={form.alimentation}
-                      densiteAnimale={form.densite_animale}
-                    />
-                  </div>
-                </div>
-              </section>
 
               <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
                 <div className="grid sm:grid-cols-2 gap-4">
