@@ -190,7 +190,7 @@ export default function AdminCutsPage() {
         error={error}
         right={
           <Button
-            variant="accent"
+            variant="primary"
             size="lg"
             onClick={() => setCreating(true)}
             disabled={animals.length === 0}

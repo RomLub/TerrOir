@@ -132,7 +132,7 @@ export default function AdminAnimalsPage() {
         error={error}
         right={
           <Button
-            variant="accent"
+            variant="primary"
             size="lg"
             onClick={() => setCreating(true)}
           >
