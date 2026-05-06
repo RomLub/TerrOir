@@ -22,6 +22,13 @@ export const LEGAL_COMPLIANCE_EVENT_TYPES = [
   // admin.id, metadata embarque status (filtre courant), search, count
   // (lignes exportées), truncated (true si capped à EXPORT_LIMIT).
   "admin_legal_compliance_exported",
+  // T-083 — admin a lancé un lookup email sur /admin/audit-logs.
+  // userId = admin.id, metadata { email_present: bool, masked_email,
+  // user_resolved: bool, rate_limited: bool }. masked_email = "a***@b.fr"
+  // pour traçabilité forensique sans tout déballer en clair dans le
+  // metadata JSONB consultable côté admin (defense-in-depth contre admin
+  // junior + leak de la table audit elle-même via dump SQL).
+  "admin_audit_logs_email_lookup",
 ] as const;
 
 export type LegalComplianceEventType =

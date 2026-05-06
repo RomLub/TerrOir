@@ -6,6 +6,7 @@ import {
 } from "../_lib/categorize-event-type";
 import type { AuditEventType } from "../_lib/event-types";
 import { buildProducerHref } from "../_lib/build-producer-href";
+import { getEventLabel } from "@/lib/audit-logs/labels";
 
 export type AuditLogRow = {
   id: string;
@@ -84,11 +85,17 @@ export function AuditLogsTable({ rows, producerUserIds }: Props) {
                   </td>
                   <td className="px-4 py-3 align-top">
                     <StatusDotBadge
-                      label={row.event_type}
+                      label={getEventLabel(row.event_type)}
                       bg={palette.bg}
                       text={palette.text}
                       dot={palette.dot}
                     />
+                    <span
+                      className="mt-1 block font-mono text-[10px] text-gray-400"
+                      title="Identifiant technique de l'event"
+                    >
+                      {row.event_type}
+                    </span>
                   </td>
                   <td className="px-4 py-3 align-top">
                     {row.user_id ? (

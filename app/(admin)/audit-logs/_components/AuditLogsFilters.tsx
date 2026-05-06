@@ -4,6 +4,7 @@ import {
   categorizeEventType,
   CATEGORY_PALETTE,
 } from "../_lib/categorize-event-type";
+import { getEventLabel } from "@/lib/audit-logs/labels";
 
 const BASE_PATH = "/audit-logs";
 const EXPORT_PATH = "/api/admin/audit-logs/export";
@@ -11,8 +12,14 @@ const EXPORT_PATH = "/api/admin/audit-logs/export";
 type Props = {
   selectedEventTypes: AuditEventType[];
   userId: string | null;
+  email: string | null;
   dateFrom: string | null;
   dateTo: string | null;
+  // Indique au caller que le rate-limit /admin/audit-logs/email-lookup
+  // a tapé 30/min (cf. T-083). UI affiche un message neutre — pas de
+  // distinction "user trouvé" vs "user inconnu" pour ne pas réintroduire
+  // l'oracle énumération via banner.
+  emailRateLimited?: boolean;
 };
 
 // Construit l'URL pour toggler un event_type côté pills. Préserve les
@@ -23,6 +30,7 @@ function toggleEventTypeHref(
   eventType: AuditEventType,
   selected: AuditEventType[],
   userId: string | null,
+  email: string | null,
   dateFrom: string | null,
   dateTo: string | null,
 ): string {
@@ -32,6 +40,7 @@ function toggleEventTypeHref(
   const params = new URLSearchParams();
   for (const t of next) params.append("event_type", t);
   if (userId) params.set("user_id", userId);
+  if (email) params.set("email", email);
   if (dateFrom) params.set("date_from", dateFrom);
   if (dateTo) params.set("date_to", dateTo);
   const qs = params.toString();
@@ -45,12 +54,14 @@ function toggleEventTypeHref(
 function buildExportHref(
   selected: AuditEventType[],
   userId: string | null,
+  email: string | null,
   dateFrom: string | null,
   dateTo: string | null,
 ): string {
   const params = new URLSearchParams();
   for (const t of selected) params.append("event_type", t);
   if (userId) params.set("user_id", userId);
+  if (email) params.set("email", email);
   if (dateFrom) params.set("date_from", dateFrom);
   if (dateTo) params.set("date_to", dateTo);
   const qs = params.toString();
@@ -60,27 +71,46 @@ function buildExportHref(
 export function AuditLogsFilters({
   selectedEventTypes,
   userId,
+  email,
   dateFrom,
   dateTo,
+  emailRateLimited = false,
 }: Props) {
   const selectedSet = new Set<AuditEventType>(selectedEventTypes);
   const hasActiveFilters =
-    selectedEventTypes.length > 0 || !!userId || !!dateFrom || !!dateTo;
+    selectedEventTypes.length > 0 ||
+    !!userId ||
+    !!email ||
+    !!dateFrom ||
+    !!dateTo;
 
   return (
     <section className="mb-6 rounded-md border border-gray-200 bg-white p-4 shadow-sm">
-      {/* Form GET pour user_id + date range. Les event_types sont préservés
-          via hidden inputs : leur sélection est portée par les pills, mais
-          quand l'admin clique "Appliquer" sur les autres champs, on ne
-          veut pas perdre la sélection courante. */}
+      {/* Form GET pour user_id + email + date range. Les event_types sont
+          préservés via hidden inputs : leur sélection est portée par les
+          pills, mais quand l'admin clique "Appliquer" sur les autres
+          champs, on ne veut pas perdre la sélection courante. */}
       <form
         method="get"
         action={BASE_PATH}
-        className="grid gap-3 sm:grid-cols-3"
+        className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
       >
         {selectedEventTypes.map((t) => (
           <input key={t} type="hidden" name="event_type" value={t} />
         ))}
+
+        <label className="flex flex-col gap-1 text-[12px] text-gray-600">
+          Email (lookup user)
+          <input
+            type="email"
+            name="email"
+            defaultValue={email ?? ""}
+            placeholder="user@exemple.fr"
+            maxLength={320}
+            autoComplete="off"
+            className="rounded-md border border-gray-300 bg-white px-3 py-2 text-[13px] text-gray-900 placeholder:text-gray-400 focus:border-terroir-green-700 focus:outline-none focus:ring-2 focus:ring-terroir-green-700"
+          />
+        </label>
 
         <label className="flex flex-col gap-1 text-[12px] text-gray-600">
           User ID (UUID)
@@ -114,11 +144,12 @@ export function AuditLogsFilters({
           />
         </label>
 
-        <div className="flex flex-wrap items-center justify-end gap-3 sm:col-span-3">
+        <div className="flex flex-wrap items-center justify-end gap-3 sm:col-span-2 lg:col-span-4">
           <a
             href={buildExportHref(
               selectedEventTypes,
               userId,
+              email,
               dateFrom,
               dateTo,
             )}
@@ -147,6 +178,13 @@ export function AuditLogsFilters({
         </div>
       </form>
 
+      {emailRateLimited && (
+        <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
+          Trop de recherches email récentes. Patientez 1 minute avant la
+          prochaine.
+        </p>
+      )}
+
       <div className="mt-4 border-t border-gray-200 pt-4">
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-600">
           Event types{" "}
@@ -163,6 +201,7 @@ export function AuditLogsFilters({
               eventType,
               selectedEventTypes,
               userId,
+              email,
               dateFrom,
               dateTo,
             );
@@ -171,7 +210,8 @@ export function AuditLogsFilters({
                 key={eventType}
                 href={href}
                 aria-pressed={isActive}
-                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-mono text-[11px] transition-colors ${
+                title={eventType}
+                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] transition-colors ${
                   isActive
                     ? `${palette.bg} ${palette.text} ring-1 ring-inset ring-current`
                     : "bg-gray-100 text-gray-600 hover:bg-gray-200"
@@ -182,7 +222,7 @@ export function AuditLogsFilters({
                     isActive ? palette.dot : "bg-gray-400"
                   }`}
                 />
-                {eventType}
+                {getEventLabel(eventType)}
               </Link>
             );
           })}

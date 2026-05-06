@@ -8,6 +8,16 @@ import {
   type AuditLogCsvRow,
 } from "@/lib/audit-logs/serialize-csv";
 import { buildExportFilename } from "@/lib/audit-logs/export-filename";
+import {
+  consumeRateLimit,
+  getAuditLogsEmailLookupRateLimit,
+} from "@/lib/rate-limit";
+import {
+  lookupUserIdByEmail,
+  maskEmail,
+  SENTINEL_NOT_FOUND_USER_ID,
+} from "@/lib/audit-logs/email-lookup";
+import { logLegalEvent } from "@/lib/audit-logs/log-legal-event";
 
 // GET /api/admin/audit-logs/export — Export CSV des audit_logs filtrés.
 //
@@ -46,8 +56,39 @@ export async function GET(request: NextRequest) {
   const hasFilters =
     filters.eventTypes.length > 0 ||
     !!filters.userId ||
+    !!filters.email ||
     !!filters.dateFrom ||
     !!filters.dateTo;
+
+  // T-083 — symétrique page : si un email est posé, lookup serveur avec
+  // rate-limit + audit log meta. Le sentinel garantit la réponse uniforme
+  // (export vide si email inconnu OU rate-limited).
+  let resolvedEmailUserId: string | null = null;
+  let emailRateLimited = false;
+  if (filters.email) {
+    const adminId = session.id ?? "anonymous";
+    const rl = await consumeRateLimit(
+      getAuditLogsEmailLookupRateLimit(),
+      adminId,
+    );
+    if (!rl.success) {
+      emailRateLimited = true;
+      resolvedEmailUserId = SENTINEL_NOT_FOUND_USER_ID;
+    } else {
+      const lookup = await lookupUserIdByEmail(filters.email);
+      resolvedEmailUserId = lookup.userId;
+    }
+    void logLegalEvent({
+      eventType: "admin_audit_logs_email_lookup",
+      userId: session.id ?? null,
+      metadata: {
+        masked_email: maskEmail(filters.email),
+        user_resolved: resolvedEmailUserId !== SENTINEL_NOT_FOUND_USER_ID,
+        rate_limited: emailRateLimited,
+        surface: "export",
+      },
+    });
+  }
 
   const supabase = createSupabaseServerClient();
   let query = supabase
@@ -64,6 +105,9 @@ export async function GET(request: NextRequest) {
   }
   if (filters.userId) {
     query = query.eq("user_id", filters.userId);
+  }
+  if (resolvedEmailUserId) {
+    query = query.eq("user_id", resolvedEmailUserId);
   }
   if (filters.dateFrom) {
     const { startUtc } = parisCalendarDayBoundsUtc(filters.dateFrom);

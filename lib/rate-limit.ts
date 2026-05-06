@@ -125,6 +125,12 @@ let _stripeConnectOnboardLimiter: Ratelimit | null | undefined;
 // reste la première ligne de défense ; le rate-limit absorbe les spammers
 // qui contournent le honeypot.
 let _contactFormLimiter: Ratelimit | null | undefined;
+// T-083 : page /admin/audit-logs lookup email → user_id. Cap 30/min/admin
+// pour limiter l'usage en oracle énumération même si l'admin est de
+// confiance (defense-in-depth + détection forensique d'abus côté audit
+// log meta event 'admin_audit_logs_email_lookup'). Pas IP-keyed : tous
+// les admins partagent le réseau bureau quand co-localisés.
+let _auditLogsEmailLookupLimiter: Ratelimit | null | undefined;
 
 export function getSignupRateLimit(): Ratelimit | null {
   if (_signupLimiter === undefined) {
@@ -188,4 +194,15 @@ export function getContactFormRateLimit(): Ratelimit | null {
     _contactFormLimiter = createRateLimiter(3, "1 h", "contact_form");
   }
   return _contactFormLimiter;
+}
+
+export function getAuditLogsEmailLookupRateLimit(): Ratelimit | null {
+  if (_auditLogsEmailLookupLimiter === undefined) {
+    _auditLogsEmailLookupLimiter = createRateLimiter(
+      30,
+      "60 s",
+      "audit_logs_email_lookup",
+    );
+  }
+  return _auditLogsEmailLookupLimiter;
 }

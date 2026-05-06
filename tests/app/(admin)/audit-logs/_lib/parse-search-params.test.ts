@@ -7,9 +7,29 @@ describe("parseSearchParams", () => {
     const r = parseSearchParams({});
     expect(r.eventTypes).toEqual([]);
     expect(r.userId).toBeNull();
+    expect(r.email).toBeNull();
     expect(r.dateFrom).toBeNull();
     expect(r.dateTo).toBeNull();
     expect(r.cursor).toBeNull();
+  });
+
+  it("accepte un email non vide trim", () => {
+    expect(parseSearchParams({ email: "  Bob@example.fr  " }).email).toBe(
+      "Bob@example.fr",
+    );
+  });
+
+  it("ignore un email vide ou trop long (> 320 chars)", () => {
+    expect(parseSearchParams({ email: "" }).email).toBeNull();
+    expect(parseSearchParams({ email: "   " }).email).toBeNull();
+    const huge = "a".repeat(320) + "@b.fr"; // 325 chars > 320 cap
+    expect(parseSearchParams({ email: huge }).email).toBeNull();
+  });
+
+  it("ignore un email passé en string[] (Next.js fallthrough)", () => {
+    expect(
+      parseSearchParams({ email: ["a@b.fr", "c@d.fr"] }).email,
+    ).toBeNull();
   });
 
   it("garde les event_types valides et drop ceux inconnus", () => {

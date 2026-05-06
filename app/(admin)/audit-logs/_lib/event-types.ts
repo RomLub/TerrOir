@@ -6,14 +6,28 @@ import {
   PAYMENT_EVENT_TYPES,
   type PaymentEventType,
 } from "@/lib/audit-logs/log-payment-event";
+import {
+  REVIEW_EVENT_TYPES,
+  type ReviewEventType,
+} from "@/lib/audit-logs/log-review-event";
+import {
+  LEGAL_COMPLIANCE_EVENT_TYPES,
+  type LegalComplianceEventType,
+} from "@/lib/audit-logs/log-legal-event";
 
 // Source unique consolidée pour la page admin /audit-logs : concaténation
-// des deux listes sans duplication. L'ordre suit l'ordre de déclaration
-// dans les helpers (Auth d'abord, puis Payment) — cohérent avec l'ordre
-// d'apparition dans le journal.
+// des clusters helpers sans duplication. L'ordre suit l'ordre d'apparition
+// historique (Auth d'abord, Payment, puis Review et Legal). Nouveau cluster
+// = ajouter ici + dans labels.ts + couvert auto par categorize-event-type.
 export const ALL_EVENT_TYPES = [
   ...AUTH_EVENT_TYPES,
   ...PAYMENT_EVENT_TYPES,
+  ...REVIEW_EVENT_TYPES,
+  ...LEGAL_COMPLIANCE_EVENT_TYPES,
 ] as const;
 
-export type AuditEventType = AuthEventType | PaymentEventType;
+export type AuditEventType =
+  | AuthEventType
+  | PaymentEventType
+  | ReviewEventType
+  | LegalComplianceEventType;

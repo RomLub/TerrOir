@@ -6,6 +6,17 @@ import {
 } from "@/app/(admin)/audit-logs/_lib/categorize-event-type";
 import { ALL_EVENT_TYPES } from "@/app/(admin)/audit-logs/_lib/event-types";
 
+const ALL_CATEGORIES = [
+  "auth",
+  "admin_invite",
+  "order",
+  "stripe",
+  "review",
+  "notification",
+  "legal",
+  "email",
+] as const;
+
 describe("categorizeEventType", () => {
   it("préfixe 'stripe_' → catégorie 'stripe'", () => {
     expect(categorizeEventType("stripe_dispute")).toBe("stripe");
@@ -21,7 +32,42 @@ describe("categorizeEventType", () => {
     expect(categorizeEventType("order_refund_retry_exhausted")).toBe("order");
   });
 
-  it("tous les autres préfixes auth → catégorie 'auth'", () => {
+  it("préfixe 'admin_invite_' → catégorie 'admin_invite' (pas 'auth')", () => {
+    expect(categorizeEventType("admin_invite_sent")).toBe("admin_invite");
+    expect(categorizeEventType("admin_invite_blocked_admin")).toBe(
+      "admin_invite",
+    );
+    expect(categorizeEventType("admin_invite_expired")).toBe("admin_invite");
+  });
+
+  it("préfixe 'admin_legal_' / 'admin_audit_logs_' → catégorie 'legal'", () => {
+    expect(categorizeEventType("admin_legal_compliance_exported")).toBe(
+      "legal",
+    );
+    expect(categorizeEventType("admin_audit_logs_email_lookup")).toBe(
+      "legal",
+    );
+  });
+
+  it("préfixe 'producer_response_' → catégorie 'review'", () => {
+    expect(categorizeEventType("producer_response_published")).toBe("review");
+    expect(categorizeEventType("producer_response_removed_by_admin")).toBe(
+      "review",
+    );
+  });
+
+  it("préfixe 'notification_' → catégorie 'notification'", () => {
+    expect(categorizeEventType("notification_preference_updated")).toBe(
+      "notification",
+    );
+  });
+
+  it("préfixe 'email_' → catégorie 'email' (delivery webhooks)", () => {
+    expect(categorizeEventType("email_complaint_received")).toBe("email");
+    expect(categorizeEventType("email_hard_bounce_suppressed")).toBe("email");
+  });
+
+  it("autres préfixes auth → catégorie 'auth' (fallback)", () => {
     expect(categorizeEventType("account_logout")).toBe("auth");
     expect(categorizeEventType("password_changed")).toBe("auth");
     expect(categorizeEventType("invitation_created")).toBe("auth");
@@ -29,13 +75,13 @@ describe("categorizeEventType", () => {
     expect(categorizeEventType("rate_limit_exceeded")).toBe("auth");
     expect(categorizeEventType("admin_login")).toBe("auth");
     expect(categorizeEventType("role_changed")).toBe("auth");
-    expect(categorizeEventType("email_change")).toBe("auth");
+    expect(categorizeEventType("email_change")).toBe("auth"); // pas le préfixe email_*
   });
 
   it("chaque event_type déclaré tombe dans une catégorie connue", () => {
     for (const t of ALL_EVENT_TYPES) {
       const cat = categorizeEventType(t);
-      expect(["auth", "order", "stripe"]).toContain(cat);
+      expect(ALL_CATEGORIES).toContain(cat);
       expect(CATEGORY_PALETTE[cat]).toBeDefined();
     }
   });
@@ -43,7 +89,7 @@ describe("categorizeEventType", () => {
 
 describe("CATEGORY_PALETTE", () => {
   it("expose une palette pour chaque catégorie", () => {
-    for (const cat of ["auth", "order", "stripe"] as const) {
+    for (const cat of ALL_CATEGORIES) {
       const p = CATEGORY_PALETTE[cat];
       expect(p.label).toBeTruthy();
       expect(p.bg).toMatch(/^bg-/);
