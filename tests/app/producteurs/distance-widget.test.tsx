@@ -518,6 +518,78 @@ describe("DistanceWidget — bascule hors zone circuit court (T-230)", () => {
     expect(container.textContent).not.toContain(LONG_NAME);
   });
 
+  // ZG3 T-230 (2026-05-07) : couverture exhaustive DOM-TOM. Le seuil 500 km
+  // est atteint trivialement depuis n'importe quelle collectivité d'outre-mer
+  // car la distance vers la métropole est >= 6800 km (Antilles ≈ 6800 km,
+  // Réunion ≈ 9300 km, Polynésie ≈ 15700 km, Mayotte ≈ 8000 km, Saint-Pierre
+  // ≈ 4500 km, Nouvelle-Calédonie ≈ 16700 km, Wallis ≈ 16400 km). Donc le
+  // seuil 500 km couvre 100% des CP 97xxx + 98xxx sans logique dédiée. Ces
+  // tests verrouillent le comportement bout-en-bout sans tomber dans une
+  // sur-spécification (un seuil "DOM_TOM_KM" séparé serait du code mort).
+
+  it("Antilles 97200 (Fort-de-France) : bascule hors zone (≈ 6800 km)", () => {
+    const ANTILLES_SESSION = {
+      lat: 14.6,
+      lng: -61.07,
+      source: "postal" as const,
+    };
+    window.sessionStorage.setItem(
+      SESSION_KEY,
+      JSON.stringify(ANTILLES_SESSION),
+    );
+    render(
+      <DistanceWidget
+        producerLat={LE_MANS_LAT}
+        producerLng={LE_MANS_LNG}
+        producerName="Ferme Test"
+      />,
+    );
+    const compact = container.querySelector("button")!;
+    expect(compact.textContent).toContain("Hors zone circuit court");
+    expect(compact.textContent).not.toMatch(/\d+\s*km/);
+  });
+
+  it("Polynésie 98700 (Papeete) : bascule hors zone (≈ 15700 km)", () => {
+    const POLYNESIE_SESSION = {
+      lat: -17.55,
+      lng: -149.56,
+      source: "postal" as const,
+    };
+    window.sessionStorage.setItem(
+      SESSION_KEY,
+      JSON.stringify(POLYNESIE_SESSION),
+    );
+    render(
+      <DistanceWidget
+        producerLat={LE_MANS_LAT}
+        producerLng={LE_MANS_LNG}
+        producerName="Ferme Test"
+      />,
+    );
+    const compact = container.querySelector("button")!;
+    expect(compact.textContent).toContain("Hors zone circuit court");
+    expect(compact.textContent).not.toMatch(/\d+\s*km/);
+  });
+
+  it("Mayotte 97600 (Mamoudzou) : bascule hors zone (≈ 8000 km)", () => {
+    const MAYOTTE_SESSION = {
+      lat: -12.78,
+      lng: 45.23,
+      source: "postal" as const,
+    };
+    window.sessionStorage.setItem(SESSION_KEY, JSON.stringify(MAYOTTE_SESSION));
+    render(
+      <DistanceWidget
+        producerLat={LE_MANS_LAT}
+        producerLng={LE_MANS_LNG}
+        producerName="Ferme Test"
+      />,
+    );
+    const compact = container.querySelector("button")!;
+    expect(compact.textContent).toContain("Hors zone circuit court");
+    expect(compact.textContent).not.toMatch(/\d+\s*km/);
+  });
+
   it("distance < seuil : comportement existant inchangé (verrou non-régression)", () => {
     // Verrou : Paris↔Sarthe (~165 km, bien sous le seuil) DOIT garder le
     // rendu km classique avec comparaison GMS au déploiement.
