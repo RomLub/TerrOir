@@ -68,12 +68,12 @@ const ITEMS: Item[] = [
   {
     icon: <PeopleIcon />,
     title: "Circuit court, humain",
-    body: "Pas de centrale d'achat, pas de plateforme intermédiaire. Vous achetez à un éleveur, il vous remet votre commande lui-même.",
+    body: "Pas de centrale d'achat, pas de plateforme intermédiaire. Tu achètes à un éleveur, il te remet ta commande lui-même.",
   },
   {
     icon: <BasketLockIcon />,
     title: "Retrait à la ferme ou en point relais",
-    body: "Choisissez le créneau qui vous arrange parmi ceux que le producteur propose. Pas de livraison aléatoire, pas de frais cachés.",
+    body: "Choisis le créneau qui t'arrange parmi ceux que le producteur propose. Pas de livraison aléatoire, pas de frais cachés.",
   },
 ];
 

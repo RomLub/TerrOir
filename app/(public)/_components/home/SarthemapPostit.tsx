@@ -34,7 +34,7 @@ export function SarthemapPostit({
             <p className="mt-3 max-w-[480px] text-base leading-[1.55] text-terroir-ink/[0.72]">
               Volaille à Coulaines, maraîchage à Allonnes, chèvrerie à
               Vibraye, vergers à Saosnes. Une carte simple pour repérer la
-              ferme la plus proche de chez vous — et son créneau de retrait
+              ferme la plus proche de chez toi — et son créneau de retrait
               du week-end.
             </p>
             <div className="mt-7">
@@ -44,7 +44,7 @@ export function SarthemapPostit({
               href="/carte"
               className="mt-6 inline-flex items-center gap-2 text-[15px] font-medium text-terra-700 transition-colors hover:text-terra-900"
             >
-              Trouver un éleveur près de chez vous&nbsp;→
+              Trouver un éleveur près de chez toi&nbsp;→
             </Link>
           </div>
 
@@ -61,7 +61,7 @@ export function SarthemapPostit({
             <p className="mt-4 text-[15px] leading-[1.6] text-terroir-ink/[0.7]">
               Marie, Julien, Claire et les autres glissent un conseil de
               cuisson, une recette de saison ou simplement un mot de la
-              semaine à côté de votre commande. Le geste qu&rsquo;aucune grande
+              semaine à côté de ta commande. Le geste qu&rsquo;aucune grande
               surface ne fait.
             </p>
             <div className="mt-8">

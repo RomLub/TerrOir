@@ -51,8 +51,8 @@ export function Hero({
             </h1>
             <p className="mt-6 max-w-[520px] text-base leading-[1.55] text-terroir-ink/[0.78] md:text-[19px]">
               Volaille fermière, légumes des sables, fromages affinés à la
-              cave : commandez en ligne auprès des producteurs de la Sarthe et
-              récupérez votre commande sur le créneau qui vous convient.
+              cave : commande en ligne auprès des producteurs de la Sarthe et
+              récupère ta commande sur le créneau qui te convient.
             </p>
             <div className="mt-9 flex flex-col gap-3 md:flex-row md:items-center md:gap-3.5">
               <Link href="#produits" className="md:inline-flex">

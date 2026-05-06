@@ -18,7 +18,7 @@ import { CtaBand } from "./_components/home/CtaBand";
 export const metadata: Metadata = {
   title: "TerrOir — La marketplace des producteurs sarthois",
   description:
-    "Marketplace circuit court en Sarthe : commandez en ligne auprès des producteurs locaux (volaille, légumes, fromages, fruits) et récupérez votre commande sur le créneau de votre choix.",
+    "Marketplace circuit court en Sarthe : commande en ligne auprès des producteurs locaux (volaille, légumes, fromages, fruits) et récupère ta commande sur le créneau de ton choix.",
 };
 
 export default function HomePage() {

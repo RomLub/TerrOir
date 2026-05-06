@@ -1,4 +1,4 @@
-// Section "Du pré à votre table, en trois étapes" (homepage.html .steps).
+// Section "Du pré à ta table, en trois étapes" (homepage.html .steps).
 //
 // 3 étapes horizontales desktop / stack mobile, sur fond blanc. Icônes
 // SVG inline stroke green-700 (pattern repo : pas de bibliothèque
@@ -52,8 +52,8 @@ const STEPS: Step[] = [
     num: "1",
     numLabel: "Choisir",
     icon: <BasketIcon />,
-    title: "Composez votre panier",
-    body: "Parcourez les fermes près de chez vous, ajoutez les produits du moment. Chaque fiche indique le producteur, sa commune et son mode d'élevage.",
+    title: "Compose ton panier",
+    body: "Parcours les fermes près de chez toi, ajoute les produits du moment. Chaque fiche indique le producteur, sa commune et son mode d'élevage.",
   },
   {
     num: "2",
@@ -66,8 +66,8 @@ const STEPS: Step[] = [
     num: "3",
     numLabel: "Récupérer",
     icon: <PinIcon />,
-    title: "Récupérez chez le producteur",
-    body: "Choisissez votre créneau de retrait à la ferme ou en point relais sarthois. On vous guide jusqu'à l'éleveur, vous repartez avec votre commande.",
+    title: "Récupère chez le producteur",
+    body: "Choisis ton créneau de retrait à la ferme ou en point relais sarthois. On te guide jusqu'à l'éleveur, tu repars avec ta commande.",
   },
 ];
 
@@ -84,7 +84,7 @@ export function Steps({ className = "" }: StepsProps) {
             Comment ça marche
           </span>
           <h2 className="mt-4 font-serif text-[32px] font-medium leading-[1.1] tracking-[-0.005em] text-green-900 md:text-[44px]">
-            Du pré à votre table,
+            Du pré à ta table,
             <br />
             en{" "}
             <em className="not-italic">
