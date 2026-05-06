@@ -16,8 +16,12 @@ import {
   MODE_ELEVAGE_HINTS,
   MODE_ELEVAGE_LABELS,
   MODE_ELEVAGE_VALUES,
+  type Alimentation,
+  type DensiteAnimale,
+  type ModeElevage,
 } from "@/lib/producers/score-carbone-enums";
 import { getDeclarationVeraciteText } from "@/lib/producers/declaration-veracite";
+import { ScoreCarbonPreview } from "@/components/producer/ScoreCarbonPreview";
 
 const FORMES = [
   { value: "gaec", label: "GAEC" },
@@ -88,6 +92,14 @@ export function StepInfos({
 }) {
   const [typeProduction, setTypeProduction] = useState(
     initialValues.type_production,
+  );
+  // T-212 — états contrôlés des 3 enums score carbone pour brancher
+  // ScoreCarbonPreview en direct. La submission reste basée sur FormData
+  // (radio name=...) → pas d'impact côté action complete-onboarding.
+  const [modeElevage, setModeElevage] = useState<ModeElevage | null>(null);
+  const [alimentation, setAlimentation] = useState<Alimentation | null>(null);
+  const [densiteAnimale, setDensiteAnimale] = useState<DensiteAnimale | null>(
+    null,
   );
   const [state, action] = useFormState(completeOnboardingAction, initial);
 
@@ -301,86 +313,106 @@ export function StepInfos({
           </p>
         </div>
 
-        <fieldset className="space-y-2">
-          <legend className="mb-1 block text-sm font-medium text-gray-800">
-            Mode d&apos;élevage
-          </legend>
-          {MODE_ELEVAGE_VALUES.map((v) => (
-            <label
-              key={v}
-              className="flex cursor-pointer select-none items-start gap-3 rounded-md border border-gray-200 bg-white p-3 hover:border-terroir-green-700/40"
-            >
-              <input
-                type="radio"
-                name="mode_elevage"
-                value={v}
-                className="mt-1 h-4 w-4 accent-terroir-green-700"
-              />
-              <span className="flex flex-col">
-                <span className="text-sm font-medium text-gray-900">
-                  {MODE_ELEVAGE_LABELS[v]}
-                </span>
-                <span className="text-xs text-gray-500">
-                  {MODE_ELEVAGE_HINTS[v]}
-                </span>
-              </span>
-            </label>
-          ))}
-        </fieldset>
+        {/* T-212 — Layout 2 colonnes desktop : sélecteurs à gauche, aperçu
+            sticky à droite. Mobile : pile vertical (preview au-dessous). */}
+        <div className="grid gap-6 md:grid-cols-[1fr_320px]">
+          <div className="space-y-4">
+            <fieldset className="space-y-2">
+              <legend className="mb-1 block text-sm font-medium text-gray-800">
+                Mode d&apos;élevage
+              </legend>
+              {MODE_ELEVAGE_VALUES.map((v) => (
+                <label
+                  key={v}
+                  className="flex cursor-pointer select-none items-start gap-3 rounded-md border border-gray-200 bg-white p-3 hover:border-terroir-green-700/40"
+                >
+                  <input
+                    type="radio"
+                    name="mode_elevage"
+                    value={v}
+                    checked={modeElevage === v}
+                    onChange={() => setModeElevage(v)}
+                    className="mt-1 h-4 w-4 accent-terroir-green-700"
+                  />
+                  <span className="flex flex-col">
+                    <span className="text-sm font-medium text-gray-900">
+                      {MODE_ELEVAGE_LABELS[v]}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {MODE_ELEVAGE_HINTS[v]}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
 
-        <fieldset className="space-y-2">
-          <legend className="mb-1 block text-sm font-medium text-gray-800">
-            Alimentation
-          </legend>
-          {ALIMENTATION_VALUES.map((v) => (
-            <label
-              key={v}
-              className="flex cursor-pointer select-none items-start gap-3 rounded-md border border-gray-200 bg-white p-3 hover:border-terroir-green-700/40"
-            >
-              <input
-                type="radio"
-                name="alimentation"
-                value={v}
-                className="mt-1 h-4 w-4 accent-terroir-green-700"
-              />
-              <span className="flex flex-col">
-                <span className="text-sm font-medium text-gray-900">
-                  {ALIMENTATION_LABELS[v]}
-                </span>
-                <span className="text-xs text-gray-500">
-                  {ALIMENTATION_HINTS[v]}
-                </span>
-              </span>
-            </label>
-          ))}
-        </fieldset>
+            <fieldset className="space-y-2">
+              <legend className="mb-1 block text-sm font-medium text-gray-800">
+                Alimentation
+              </legend>
+              {ALIMENTATION_VALUES.map((v) => (
+                <label
+                  key={v}
+                  className="flex cursor-pointer select-none items-start gap-3 rounded-md border border-gray-200 bg-white p-3 hover:border-terroir-green-700/40"
+                >
+                  <input
+                    type="radio"
+                    name="alimentation"
+                    value={v}
+                    checked={alimentation === v}
+                    onChange={() => setAlimentation(v)}
+                    className="mt-1 h-4 w-4 accent-terroir-green-700"
+                  />
+                  <span className="flex flex-col">
+                    <span className="text-sm font-medium text-gray-900">
+                      {ALIMENTATION_LABELS[v]}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {ALIMENTATION_HINTS[v]}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
 
-        <fieldset className="space-y-2">
-          <legend className="mb-1 block text-sm font-medium text-gray-800">
-            Densité animale
-          </legend>
-          {DENSITE_ANIMALE_VALUES.map((v) => (
-            <label
-              key={v}
-              className="flex cursor-pointer select-none items-start gap-3 rounded-md border border-gray-200 bg-white p-3 hover:border-terroir-green-700/40"
-            >
-              <input
-                type="radio"
-                name="densite_animale"
-                value={v}
-                className="mt-1 h-4 w-4 accent-terroir-green-700"
-              />
-              <span className="flex flex-col">
-                <span className="text-sm font-medium text-gray-900">
-                  {DENSITE_ANIMALE_LABELS[v]}
-                </span>
-                <span className="text-xs text-gray-500">
-                  {DENSITE_ANIMALE_HINTS[v]}
-                </span>
-              </span>
-            </label>
-          ))}
-        </fieldset>
+            <fieldset className="space-y-2">
+              <legend className="mb-1 block text-sm font-medium text-gray-800">
+                Densité animale
+              </legend>
+              {DENSITE_ANIMALE_VALUES.map((v) => (
+                <label
+                  key={v}
+                  className="flex cursor-pointer select-none items-start gap-3 rounded-md border border-gray-200 bg-white p-3 hover:border-terroir-green-700/40"
+                >
+                  <input
+                    type="radio"
+                    name="densite_animale"
+                    value={v}
+                    checked={densiteAnimale === v}
+                    onChange={() => setDensiteAnimale(v)}
+                    className="mt-1 h-4 w-4 accent-terroir-green-700"
+                  />
+                  <span className="flex flex-col">
+                    <span className="text-sm font-medium text-gray-900">
+                      {DENSITE_ANIMALE_LABELS[v]}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {DENSITE_ANIMALE_HINTS[v]}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+          </div>
+
+          <div className="md:sticky md:top-4 md:self-start">
+            <ScoreCarbonPreview
+              modeElevage={modeElevage}
+              alimentation={alimentation}
+              densiteAnimale={densiteAnimale}
+            />
+          </div>
+        </div>
 
         <label
           className={`flex cursor-pointer select-none items-start gap-3 rounded-md border p-3 ${
