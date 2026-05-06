@@ -77,6 +77,16 @@ export default function CommentCaMarchePage() {
               <Button size="md" variant="secondary">Nous contacter →</Button>
             </Link>
           </div>
+          <p className="mt-4 text-[13px] text-dark/60">
+            Voir la{" "}
+            <Link
+              href="/faq"
+              className="text-green-900 underline decoration-dotted underline-offset-4 hover:text-terra-700"
+            >
+              FAQ complète
+            </Link>{" "}
+            (commandes, paiement, livraison, qualité).
+          </p>
         </div>
       </section>
 
