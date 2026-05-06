@@ -1,6 +1,69 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 
+// T-266-bis : nouvelle cle namespace doctrine T-266 (underscore).
+// Ancienne cle 'terroir-cart' (tiret) lue en fallback + migree au passage
+// (cf. storage adapter ci-dessous). Suppression fallback legacy programmee
+// apres 2026-06-05 (T-266-tris).
+const CART_KEY = 'terroir_cart';
+const CART_KEY_LEGACY = 'terroir-cart';
+
+// Storage adapter custom : zustand persist passe par getItem/setItem/removeItem
+// au lieu d'un .setItem direct. Le helper createMigratedStorage ne s'applique
+// pas tel quel ici (zustand attend une signature key-aware). On reproduit la
+// logique inline.
+const cartStorageAdapter: Storage = {
+  get length() {
+    return typeof window !== 'undefined' ? window.localStorage.length : 0;
+  },
+  clear() {
+    if (typeof window !== 'undefined') window.localStorage.clear();
+  },
+  key(index: number): string | null {
+    if (typeof window === 'undefined') return null;
+    return window.localStorage.key(index);
+  },
+  getItem(name: string): string | null {
+    if (typeof window === 'undefined') return null;
+    try {
+      // Pour la cle cart, lit d'abord la nouvelle, fallback sur l'ancienne +
+      // migration. Pour toute autre cle, comportement standard localStorage.
+      if (name !== CART_KEY) return window.localStorage.getItem(name);
+      const newVal = window.localStorage.getItem(CART_KEY);
+      if (newVal !== null) return newVal;
+      const legacyVal = window.localStorage.getItem(CART_KEY_LEGACY);
+      if (legacyVal === null) return null;
+      window.localStorage.setItem(CART_KEY, legacyVal);
+      window.localStorage.removeItem(CART_KEY_LEGACY);
+      return legacyVal;
+    } catch {
+      return null;
+    }
+  },
+  setItem(name: string, value: string): void {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(name, value);
+      if (name === CART_KEY) {
+        window.localStorage.removeItem(CART_KEY_LEGACY);
+      }
+    } catch {
+      // quota / mode prive : fail-silent.
+    }
+  },
+  removeItem(name: string): void {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.removeItem(name);
+      if (name === CART_KEY) {
+        window.localStorage.removeItem(CART_KEY_LEGACY);
+      }
+    } catch {
+      // fail-silent.
+    }
+  },
+};
+
 export type CartItem = {
   productId: string;
   producerId: string;
@@ -59,8 +122,8 @@ export const useCartStore = create<CartState>()(
       clear: () => set({ items: [] }),
     }),
     {
-      name: 'terroir-cart',
-      storage: createJSONStorage(() => (typeof window !== 'undefined' ? window.localStorage : undefined as unknown as Storage)),
+      name: CART_KEY,
+      storage: createJSONStorage(() => cartStorageAdapter),
       version: 1,
     },
   ),

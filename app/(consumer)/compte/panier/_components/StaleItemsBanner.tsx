@@ -7,13 +7,22 @@
 // re-flashe pas après dismiss, mais un nouveau jeu déclenche un re-flash.
 
 import { useEffect, useState } from 'react';
+import { createMigratedStorage } from '@/lib/storage/migrated-storage';
 
 export type StaleChange = {
   nom: string;
   reason: string;
 };
 
-const SESSION_KEY = 'terroir-cart-banner-dismissed';
+// T-266-bis : migration progressive 'terroir-cart-banner-dismissed' (legacy)
+// → 'terroir_cart_banner_dismissed' (cible). Le helper lit ancien+nouveau,
+// ecrit nouveau uniquement, migre au passage. Suppression fallback legacy
+// programmee apres 2026-06-05 (T-266-tris).
+const bannerDismissedStorage = createMigratedStorage(
+  'terroir-cart-banner-dismissed',
+  'terroir_cart_banner_dismissed',
+  'session',
+);
 
 function hashChanges(changes: StaleChange[]): string {
   return changes
@@ -35,18 +44,18 @@ export function StaleItemsBanner({
   useEffect(() => {
     if (changes.length === 0) return;
     if (forceShow) {
-      sessionStorage.removeItem(SESSION_KEY);
+      bannerDismissedStorage.remove();
       setDismissed(false);
       return;
     }
-    const stored = sessionStorage.getItem(SESSION_KEY);
+    const stored = bannerDismissedStorage.read();
     setDismissed(stored === hash);
   }, [hash, forceShow, changes.length]);
 
   if (changes.length === 0 || dismissed) return null;
 
   const onDismiss = () => {
-    sessionStorage.setItem(SESSION_KEY, hash);
+    bannerDismissedStorage.write(hash);
     setDismissed(true);
   };
 

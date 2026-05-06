@@ -11,7 +11,8 @@ import { useCartStore } from "@/lib/store/cart";
 // 1. signOut côté client d'abord : déclenche onAuthStateChange du
 //    UserProvider (SIGNED_OUT → setUser(null)) → UI rafraîchie
 //    immédiatement sans attendre un reload.
-// 2. Purge du panier Zustand persist (clé localStorage 'terroir-cart') :
+// 2. Purge du panier Zustand persist (clé localStorage 'terroir_cart',
+//    fallback 'terroir-cart' legacy migré par cartStorageAdapter — T-266-bis) :
 //    le panier est lié au user authentifié ; sans purge, les articles
 //    restent visibles via le badge navbar et fuitent vers la session
 //    suivante (autre user sur poste partagé, login d'un autre compte).
