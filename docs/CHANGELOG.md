@@ -7,6 +7,40 @@ Pour les priorités forward-looking, voir [`TODO.md`](./TODO.md).
 
 ---
 
+## 2026-05-06 (chantier pickup-validation — flow remise commande producer + boucle feedback avis)
+
+> Chantier hors numérotation T-XXX selon directive. Doc complète : [`docs/fixes/pickup-validation-2026-05-06.md`](./fixes/pickup-validation-2026-05-06.md). Sessions 2 enchaînées sur terminal TC, 8 LOTs séquentiels (commits `4c8e2e1` → ce commit).
+>
+> 🟢 **Audit LOT 0 a corrigé le brief initial** : le brief postulait un workflow 4 états (`pending → confirmed → ready → completed`) à construire from-scratch. L'audit a montré que la feature pickup existait déjà à ~80% (code `TRR-XXXXX` généré par trigger Postgres, route `/complete`, email J0, cron `review-followup` J+2/J+7). MAIS l'état `ready` était dormant en pratique (aucune route ne le set), donc la section "Validation du retrait" sur la page détail producer n'était jamais atteignable. Décision Romain : **modèle 3 états réel** `pending → confirmed → completed`, état `ready` conservé en state machine pour rétro-compat mais réaffectation/nettoyage en backlog.
+>
+> 🟢 **Architecture finale — single source of truth pour 2 entrées UX** :
+> - **Route id-based** `POST /api/orders/[id]/complete` (page détail commande producer, 1-clic conservé selon arbitrage Q3 — la fiche sert de preview).
+> - **Route code-based** `GET/POST /api/producer/orders/validate-pickup` (saisie haut-de-page `/producer/commandes` + modale preview obligatoire avant confirm — mode "caisse rapide marché").
+> - Les 2 routes partagent : helper `lib/orders/pickup-validation.ts` (Zod TRR-XXXXX + UPDATE atomic `WHERE statut='confirmed'` race-safe), rate-limit Upstash `getPickupValidationRateLimit` (10/min/`producer:<id>`), cluster audit log `pickup_*` (5 events), helper email `lib/orders/send-pickup-review-email.tsx` (J0 review_request).
+> - `metadata.route='complete_id_based'` discrimine en admin /audit-logs les events de chaque route.
+>
+> 🟢 **UI `PickupValidationCard`** (LOT 4) — composant client `app/(producer)/commandes/_components/`. 3 états visuels (idle / preview AdminModal / success). 8 variants d'erreurs typés via `<ErrorBanner>`. Callback `onValidated(orderId)` met à jour le statut local en `completed` sans recharger.
+>
+> 🟢 **Anti-info-leakage 404 unifié** (arbitrage Q5) — `code_unknown` ET `wrong_producer` retournent la même réponse `pickup_code_unknown` côté API. Distinction préservée seulement en audit log interne (`metadata.reason`). Un producer A ne peut pas déduire qu'un code "exists but isn't mine".
+>
+> 🟢 **409 explicite avec `detail_url`** pour `order_not_confirmed` (cas pending fréquent — producer a oublié de confirmer la commande). Message UI : "Cette commande n'a pas encore été confirmée. Validez-la d'abord dans votre espace commandes." + lien "Voir la fiche commande" cliquable.
+>
+> 🟢 **Échéances rappels avis J+2 / J+7 conservées** (arbitrage Q4). Cron `/api/cron/review-followup` `0 10 * * *` UTC daily inchangé. Calibration agressive volontaire pour capter la mémoire fraîche du retrait. LOT 6 NO-OP (audit lecture validé + comblement lacune trou : ajout 13 tests vitest sur le cron qui n'en avait aucun).
+>
+> 🟢 **Backlog identifié** (cf. doc finale section dédiée) : nettoyage état `ready` state machine, marqueur DB déduplication cron (race Vercel timeout retry), audit log cluster `review_followup_*`, warning SSR styled-jsx, refactor pattern N+1 cron review-followup vers embeds PostgREST.
+>
+> 🟢 **Tests ajoutés** : 132 nouveaux tests sur le chantier (cumul) — `pickup-validation.test.ts` (35) + `validate-pickup/route.test.ts` (23) + `validate-pickup/integration.test.ts` (7) + `OrderDetailClient.test.tsx` (5) + `PickupValidationCard.test.tsx` (10) + `complete/route.test.ts` étendu (29) + `log-pickup-event.test.ts` (7) + `cron/review-followup/route.test.tsx` (13) + extensions `stateMachine.test.ts` matrice + LEGAL/ILLEGAL.
+>
+> 🟢 **Conventions vitest formalisées** : nouvelle doc [`docs/conventions/vitest-mocking-patterns.md`](./conventions/vitest-mocking-patterns.md) avec 3 leçons collectées en cours de chantier (`importOriginal` pour préserver exports transverses, imports directs vs barrel pour tests jsdom, `act()` autour helpers DOM custom) + 2 patterns bonus (mock Supabase queue par-table FIFO + capture, hoisted env stubs).
+>
+> 🟢 **Convention rate-limit étendue** : [`docs/conventions/rate-limiting.md`](./conventions/rate-limiting.md) — ajout ligne `getPickupValidationRateLimit` (10/60s `producerId`).
+>
+> 🧪 **Tests effectués** : Suite complète 2247/2247 verts (192 fichiers). tsc strict OK. lint OK. `npm run build` OK.
+>
+> ⚠️ **Aucune migration DB livrée** — le code commande `TRR-XXXXX` existait déjà via trigger Postgres `generate_order_code()` (migration initial schema 2026-04-19).
+
+---
+
 ## 2026-05-06 (T-219 cache serveur géocodage CP→lat/lng)
 
 > Cache persistant Supabase (`public.geocode_cache`) qui amortit les appels au géocodeur public `api-adresse.data.gouv.fr`. Le DistanceWidget hit ce cache via `/api/geocode` plutôt que d'appeler gouv.fr direct depuis le navigateur. Continuité T-200 r1 préservée (pas de PII, pas de log par-IP, pas de profilage user).

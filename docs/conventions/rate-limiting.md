@@ -17,6 +17,7 @@
 | Stripe  | `getStripeCreatePaymentIntentRateLimit`      | 10/60s  | `app/api/stripe/create-payment-intent/route.ts`          | `userId`       | `429 { error: 'rate_limited', retry_after }` + header `Retry-After`      |
 | Stripe  | `getStripeRefundRateLimit`                   | 5/60s   | `app/api/stripe/refund/route.tsx`                        | `userId` ∥ IP  | `429 { error: 'rate_limited', retry_after }` + header `Retry-After`      |
 | Stripe  | `getStripeConnectOnboardRateLimit`           | 3/60s   | `app/api/stripe/connect/onboard/route.ts`                | `userId`       | `429 { error: 'rate_limited', retry_after }` + header `Retry-After`      |
+| Pickup  | `getPickupValidationRateLimit`               | 10/60s  | `app/api/orders/[id]/complete/route.tsx` + `app/api/producer/orders/validate-pickup/route.ts` | `producerId`   | `429 { error: 'rate_limit', retry_after_seconds }` + header `Retry-After` + audit `pickup_attempt_rate_limited` |
 
 `POST /api/stripe/webhook` est **exempté** : signature `stripe.webhooks.constructEvent` + IP allowlist (`lib/stripe/ip-allowlist.ts`) = double-defense suffisante.
 
