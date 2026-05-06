@@ -15,6 +15,7 @@ const ALL_CATEGORIES = [
   "notification",
   "legal",
   "email",
+  "catalog",
 ] as const;
 
 describe("categorizeEventType", () => {
@@ -47,6 +48,17 @@ describe("categorizeEventType", () => {
     expect(categorizeEventType("admin_audit_logs_email_lookup")).toBe(
       "legal",
     );
+  });
+
+  it("préfixe 'admin_category_' / 'admin_animal_' / 'admin_cut_' → catégorie 'catalog' (T-130)", () => {
+    expect(categorizeEventType("admin_category_created")).toBe("catalog");
+    expect(categorizeEventType("admin_category_updated")).toBe("catalog");
+    expect(categorizeEventType("admin_category_deleted")).toBe("catalog");
+    expect(categorizeEventType("admin_animal_created")).toBe("catalog");
+    expect(categorizeEventType("admin_animal_deleted")).toBe("catalog");
+    expect(categorizeEventType("admin_cut_created")).toBe("catalog");
+    expect(categorizeEventType("admin_cut_updated")).toBe("catalog");
+    expect(categorizeEventType("admin_cut_deleted")).toBe("catalog");
   });
 
   it("préfixe 'producer_response_' → catégorie 'review'", () => {

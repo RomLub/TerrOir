@@ -14,6 +14,10 @@ import {
   LEGAL_COMPLIANCE_EVENT_TYPES,
   type LegalComplianceEventType,
 } from "@/lib/audit-logs/log-legal-event";
+import {
+  CATEGORISATION_EVENT_TYPES,
+  type CategorisationEventType,
+} from "@/lib/audit-logs/log-categorisation-event";
 
 // Source unique consolidée pour la page admin /audit-logs : concaténation
 // des clusters helpers sans duplication. L'ordre suit l'ordre d'apparition
@@ -24,10 +28,12 @@ export const ALL_EVENT_TYPES = [
   ...PAYMENT_EVENT_TYPES,
   ...REVIEW_EVENT_TYPES,
   ...LEGAL_COMPLIANCE_EVENT_TYPES,
+  ...CATEGORISATION_EVENT_TYPES,
 ] as const;
 
 export type AuditEventType =
   | AuthEventType
   | PaymentEventType
   | ReviewEventType
-  | LegalComplianceEventType;
+  | LegalComplianceEventType
+  | CategorisationEventType;

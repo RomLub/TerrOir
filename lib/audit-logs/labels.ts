@@ -92,6 +92,17 @@ export const AUDIT_EVENT_LABELS: Record<string, string> = {
   // ─── Légal / conformité ─────────────────────────────────────────────
   admin_legal_compliance_exported: "Export conformité CGU",
   admin_audit_logs_email_lookup: "Recherche email (audit-logs)",
+
+  // ─── Catalogue / catégorisation produit (T-130) ─────────────────────
+  admin_category_created: "Catégorie créée",
+  admin_category_updated: "Catégorie modifiée",
+  admin_category_deleted: "Catégorie supprimée",
+  admin_animal_created: "Espèce animale créée",
+  admin_animal_updated: "Espèce animale modifiée",
+  admin_animal_deleted: "Espèce animale supprimée",
+  admin_cut_created: "Morceau créé",
+  admin_cut_updated: "Morceau modifié",
+  admin_cut_deleted: "Morceau supprimé",
 };
 
 export function getEventLabel(eventType: string): string {

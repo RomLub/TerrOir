@@ -18,7 +18,8 @@ export type EventCategory =
   | "review"
   | "notification"
   | "legal"
-  | "email";
+  | "email"
+  | "catalog";
 
 export function categorizeEventType(eventType: AuditEventType): EventCategory {
   if (eventType.startsWith("admin_invite_")) return "admin_invite";
@@ -27,6 +28,15 @@ export function categorizeEventType(eventType: AuditEventType): EventCategory {
     eventType.startsWith("admin_audit_logs_")
   )
     return "legal";
+  // T-130 : mutations admin sur les 3 référentiels de catégorisation produit.
+  // Doit passer AVANT le fallback "auth" (préfixes commencent par "admin_"
+  // mais ne sont pas des events auth).
+  if (
+    eventType.startsWith("admin_category_") ||
+    eventType.startsWith("admin_animal_") ||
+    eventType.startsWith("admin_cut_")
+  )
+    return "catalog";
   if (eventType.startsWith("stripe_")) return "stripe";
   if (eventType.startsWith("order_")) return "order";
   if (eventType.startsWith("producer_response_")) return "review";
@@ -97,5 +107,11 @@ export const CATEGORY_PALETTE: Record<
     bg: "bg-rose-50",
     text: "text-rose-700",
     dot: "bg-rose-500",
+  },
+  catalog: {
+    label: "Catalogue",
+    bg: "bg-teal-50",
+    text: "text-teal-700",
+    dot: "bg-teal-500",
   },
 };
