@@ -1,8 +1,10 @@
 # T-250 — Audit tutoiement parcours consumer + corrections
 
 Date : 2026-05-06
-Status : Cluster consumer-facing principal livré (4 commits) — reliquat
-documenté pour suite (zones grises arbitrage lead, mails Resend).
+Status : Reliquat consumer-facing + mails Resend consumer LIVRÉS
+(6 commits, suite cycle). Zones grises (cgu/cgv/légales,
+devenir-producteur, mails admin/producer Resend) en attente
+arbitrage lead.
 
 ## Doctrine TerrOir (CLAUDE.md)
 
@@ -15,7 +17,7 @@ fiche produit, panier, checkout, profil, mails Auth.
 
 ## Stratégie de segmentation
 
-Découpage en 4 commits atomiques par cluster pour respecter la doctrine
+Découpage en 6 commits atomiques par cluster pour respecter la doctrine
 git stricte (pas de mass commit fourre-tout) :
 
 | Commit | Cluster | Fichiers | Lignes touchées |
@@ -24,9 +26,17 @@ git stricte (pas de mass commit fourre-tout) :
 | `d92f264` | Fiche produit (ProductPageClient + StockAlertForm) | 2 | 10/-10 |
 | `1a108d9` | app/(consumer)/* (compte, panier, checkout, profil, auth) | 20 | 62/-62 |
 | `d8fb30c` | Funnel public (faq, comment-ca-marche, livraison) | 3 | 64/-64 |
+| `0197fc5` | Public consumer-facing (contact, carte, alertes-stock, auth pages, notre-demarche, producteurs) | 10 | 33/-33 |
+| `87b2fb6` | Mails Resend consumer (8 templates + 3 tests snapshot) | 11 | 49/-49 |
 
-**Total : 31 fichiers modifiés en 4 commits, 152 substitutions
-vouvoiement → tutoiement.**
+**Total : 52 fichiers modifiés en 6 commits, 234 substitutions
+vouvoiement → tutoiement. Tests snapshot Resend mis à jour
+(29/29 passent). Build OK à chaque commit.**
+
+**Doctrine git renforcée mid-cycle (cf. décision lead 2026-05-06)** :
+clusters 5 et 6 commités via `git commit -o <fichier1> <fichier2> ...`
+strict (index temporaire scopé aux fichiers nommés, immune aux race
+conditions multi-terminaux observées au commit T-241 r4 / T-243).
 
 ## Détail des clusters
 
@@ -114,41 +124,60 @@ Ping envoyé au team-lead pour décision sur :
 5. **`/cgu` ligne 681** — `<li>Indiquez vos coordonnées pour suivi</li>`
    dans bloc support contact, ambigu (légal vs operational).
 
-## Reliquat consumer-facing à reprendre (cluster 5 suite)
+### Cluster 5 — Public consumer-facing (commit `0197fc5`, 10 fichiers)
 
-Ces fichiers consumer-facing contiennent encore du vouvoiement et
-n'ont pas été touchés faute de context window — à reprendre en
-suite-cycle :
-
-- `app/(public)/_components/home/NotreDemarcheTeaser.tsx`
-- `app/(public)/_components/home/FeaturedProducts.tsx`
-- `app/(public)/notre-demarche/_components/{CircuitSection,ComparisonSection,CtaSection,Disclaimer,Hero}.tsx`
-- `app/(public)/notre-demarche/page.tsx`
-- `app/(public)/contact/page.tsx`, `ContactClient.tsx`
-- `app/(public)/carte/page.tsx`, `CarteClient.tsx`,
-  `_components/CarteClientLazy.tsx`
-- `app/(public)/producteurs/page.tsx`, `ProducteursClient.tsx`
-- `app/(public)/produits/page.tsx`
-- `app/(public)/morceaux/boeuf/page.tsx`,
-  `_components/CutsMap.tsx`
-- `app/(public)/desabonnement/page.tsx`,
-  `UnsubscribeForm.tsx`,
-  `_components/RequestLinkForm.tsx`,
-  `request-new-link-action.tsx`
+- `app/(public)/notre-demarche/_components/CircuitSection.tsx` —
+  H2 "Voici comment se répartit ce que tu payes"
+- `app/(public)/contact/page.tsx`, `ContactClient.tsx` — formulaire
+  contact, validations, CTA, success state
+- `app/(public)/carte/CarteClient.tsx`, `_components/CarteClientLazy.tsx`
+  — légende "Ta position", loading
+- `app/(public)/producteurs/page.tsx` — H1, description SEO
 - `app/(public)/alertes-stock/confirm/page.tsx`,
-  `unsubscribe/page.tsx`
-- `app/(public)/mot-de-passe-oublie/page.tsx`
-- `app/(public)/reinitialiser-mot-de-passe/page.tsx`,
-  `_components/ResetPasswordForm.tsx`
-- Mails Resend consumer-facing (à audit dédié) :
-  `lib/resend/templates/order-confirmed-consumer.tsx`,
-  `order-reminder-consumer.tsx`,
-  `review-request.tsx`,
-  `stock-alert-back-in-stock.tsx`,
-  `stock-alert-confirm.tsx`,
-  `account-deleted.tsx`,
-  `email-change-otp-current.tsx`,
-  `email-change-otp-new.tsx`
+  `unsubscribe/page.tsx` — pages d'atterrissage email
+- `app/(public)/mot-de-passe-oublie/page.tsx` — étapes flow reset
+- `app/(public)/reinitialiser-mot-de-passe/page.tsx` — descriptif
+  + erreurs lien
+
+Note : `app/(public)/desabonnement/*` adresse les **leads producteurs**
+(« base leads producteurs TerrOir ») — laissé en vouvoiement (zone
+audience, pas consumer).
+
+### Cluster 6 — Mails Resend consumer (commit `87b2fb6`, 11 fichiers)
+
+8 templates emails consumer + 3 tests snapshot mis à jour :
+
+- `order-confirmed-consumer.tsx` — subject + corps confirmation
+  commande
+- `order-reminder-consumer.tsx` — rappel J-1 retrait
+- `review-request.tsx` — 3 variantes J0/J+2/J+7 (subject + intro)
+- `stock-alert-back-in-stock.tsx` — notification retour stock
+- `stock-alert-confirm.tsx` — double opt-in inscription alerte
+- `account-deleted.tsx` — confirmation suppression compte RGPD
+- `email-change-otp-current.tsx` — code OTP changement email étape 1
+- `email-change-otp-new.tsx` — code OTP changement email étape 2
+
+Tests snapshot mis à jour : `email-change-otp-current.test.tsx`
+(subject + disclaimer string), `email-change-otp-new.test.tsx` (id),
+`stock-alert-confirm.test.tsx` (subject). Suite Resend complète
+**29/29 OK**.
+
+## Reliquat — items déjà non-touchés volontairement
+
+Tous les fichiers identifiés au reliquat initial ont été traités
+sauf les zones grises explicites :
+
+- `app/(public)/_components/home/NotreDemarcheTeaser.tsx` et
+  `FeaturedProducts.tsx` : pas de vouvoiement détecté (faux positifs
+  grep large initial).
+- `app/(public)/notre-demarche/page.tsx` et autres composants
+  (`ComparisonSection`, `CtaSection`, `Disclaimer`, `Hero`) : pas
+  de vouvoiement (déjà rédigés en tutoiement ou neutre).
+- `app/(public)/produits/page.tsx`, `morceaux/boeuf/page.tsx`,
+  `CutsMap.tsx`, `ProducteursClient.tsx`, `ResetPasswordForm.tsx` :
+  pas de vouvoiement détecté.
+- `app/(public)/desabonnement/*` : audience leads producteur,
+  laissé en vouvoiement.
 
 ## Validation
 
@@ -159,8 +188,15 @@ suite-cycle :
   inspecté via `git diff --cached --stat` avant chaque commit.
 - Tutoiement appliqué avec contraction grammaticale propre (`tu
   reçois` non `tu recevras` quand le présent suffit, `t'expédie` avec
-  élision, etc.). Apostrophe `&apos;` dans JSX text, ASCII `'` dans
-  strings JS.
+  élision, etc.). Apostrophe `&apos;`/`&rsquo;` dans JSX text, ASCII `'`
+  dans strings JS.
+- Suite test Resend templates **29/29 verts** après mise à jour des
+  3 snapshots impactés par les nouveaux wordings.
+- Doctrine `git commit -o <fichier1> <fichier2> ...` strict appliquée
+  aux clusters 5+6 (immune aux race conditions multi-terminaux). Les
+  clusters 1-4 utilisaient `git add <fichier précis>` puis `git commit`
+  classique — fonctionnait ici car aucune race observée sur ces commits,
+  mais doctrine `-o` désormais standard pour la suite.
 
 ## Garde-fou
 
