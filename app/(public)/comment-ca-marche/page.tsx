@@ -17,7 +17,7 @@ const STEPS_PROD = [
 ];
 
 const FAQ = [
-  { q: 'Comment fonctionne le paiement ?', a: "Tu payes directement à l'éleveur lors du retrait, en espèces ou par carte selon ses moyens. TerrOir ne prend aucune commission sur le paiement." },
+  { q: 'Comment fonctionne le paiement ?', a: "TerrOir applique une commission de 6 % sur chaque vente. Le paiement se fait exclusivement en ligne au moment de la commande." },
   { q: 'Et si la quantité varie au moment du retrait ?', a: "C'est normal pour de la viande à la pièce. Le prix final est ajusté au poids réel pesé à la ferme. Le total estimé sur la commande sert de base." },
   { q: 'Puis-je annuler une commande ?', a: "Oui, tant que le créneau de retrait n'est pas dépassé. Préviens simplement l'éleveur via la messagerie pour libérer le créneau." },
   { q: "Les producteurs sont-ils vérifiés ?", a: "Tous les producteurs présents sur TerrOir sont des éleveurs sarthois certifiés. Nous vérifions les labels, l'adresse d'exploitation et le numéro SIRET avant publication." },
