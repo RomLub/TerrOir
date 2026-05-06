@@ -173,11 +173,13 @@ export async function POST(request: Request) {
   // valides simultanément — pas de corruption, juste de la dette nettoyable
   // par le cron de purge ou la consommation `used_at`.
   //
-  // Race condition acceptée : deux POST concurrents pourraient chacun voir
-  // l'autre comme "actif" et se bumper mutuellement. Pas critique en
-  // pratique (admin humain, le state `submitting` du modal absorbe le
-  // double-clic). Si besoin futur, basculer sur trigger BEFORE INSERT
-  // côté DB pour atomicité.
+  // Race condition couverte par un trigger DB AFTER INSERT
+  // `trg_invalidate_active_invitations` (migration 20260506143923, T-109) qui
+  // re-bumpe expires_at=now() sur les invitations actives matchant NEW.email.
+  // Le bloc applicatif ci-dessous reste source des audit_logs `invitation_revoked`
+  // (1 event par row revoquée, voir bloc L243+) — le trigger est un filet
+  // atomique pour les POST concurrents (admin humain, peu probable, mais le
+  // double-clic du modal et un éventuel script automatisé sont couverts).
   //
   // Ordre critique : ce bloc DOIT s'exécuter AVANT l'INSERT du nouveau
   // token, sinon on bumperait aussi le nouveau (ilike + used_at null +
