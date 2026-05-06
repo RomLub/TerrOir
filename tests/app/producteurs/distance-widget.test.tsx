@@ -2,7 +2,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { DistanceWidget } from "@/app/(public)/producteurs/[slug]/_components/DistanceWidget";
+import {
+  DistanceWidget,
+  formatProducerNameForWidget,
+} from "@/app/(public)/producteurs/[slug]/_components/DistanceWidget";
 
 // Flag global React 18 : à `true`, React signale (warn) toute state update
 // non wrappée dans `act(...)`. À `false`/undefined, React reste silencieux.
@@ -453,6 +456,53 @@ describe("DistanceWidget — bascule hors zone circuit court (T-230)", () => {
     expect(compact.textContent).not.toContain("Hors zone");
   });
 
+  it("nom long : invite déployée bascule sur 'cette ferme' (fallback T-233)", () => {
+    const LONG_NAME =
+      "Maraîchage Biologique des Coopérateurs du Bocage Manceaux"; // 57 chars
+    expect(LONG_NAME.length).toBeGreaterThan(30);
+    render(
+      <DistanceWidget
+        producerLat={LE_MANS_LAT}
+        producerLng={LE_MANS_LNG}
+        producerName={LONG_NAME}
+      />,
+    );
+    const expandBtn = container.querySelector("button");
+    act(() => {
+      expandBtn!.click();
+    });
+    // L'invite déployée doit utiliser "cette ferme" et NON le nom long
+    // (vérifie que le fallback est bien câblé sur le site d'utilisation
+    // en plus de l'unit-test du helper plus bas).
+    expect(container.textContent).toContain(
+      "découvrir la distance à vol d'oiseau jusqu'à cette ferme",
+    );
+    expect(container.textContent).not.toContain(LONG_NAME);
+  });
+
+  it("nom long avec hors zone : DistanceOutOfReach utilise le fallback 'cette ferme'", () => {
+    const LONG_NAME =
+      "La Ferme des Quatre Vents du Plateau Manceau de l'Ouest"; // 55 chars
+    window.sessionStorage.setItem(
+      SESSION_KEY,
+      JSON.stringify(REUNION_SESSION),
+    );
+    render(
+      <DistanceWidget
+        producerLat={LE_MANS_LAT}
+        producerLng={LE_MANS_LNG}
+        producerName={LONG_NAME}
+      />,
+    );
+    act(() => {
+      container.querySelector("button")!.click();
+    });
+    expect(container.textContent).toContain(
+      "Depuis ta position, cette ferme se trouve en dehors",
+    );
+    expect(container.textContent).not.toContain(LONG_NAME);
+  });
+
   it("distance < seuil : comportement existant inchangé (verrou non-régression)", () => {
     // Verrou : Paris↔Sarthe (~165 km, bien sous le seuil) DOIT garder le
     // rendu km classique avec comparaison GMS au déploiement.
@@ -475,5 +525,56 @@ describe("DistanceWidget — bascule hors zone circuit court (T-230)", () => {
     });
     expect(container.textContent).toContain("En circuit long");
     expect(container.textContent).toContain("~1500 km");
+  });
+});
+
+describe("formatProducerNameForWidget — fallback noms longs (T-233)", () => {
+  it("nom court sans article : retourné tel quel", () => {
+    expect(formatProducerNameForWidget("Petite Ferme")).toBe("Petite Ferme");
+  });
+
+  it("nom court avec article La/Le/Les/L' : retourné tel quel (pas de doublon)", () => {
+    // Verrou : un nom propre français commençant par "La/Le/Les/L'" reste
+    // grammaticalement correct dans la phrase "à vol d'oiseau jusqu'à
+    // {name}" — "à La Ferme des Prés" est du français standard. On ne
+    // touche pas, on n'introduit pas de logique de retrait d'article.
+    expect(formatProducerNameForWidget("La Ferme des Prés")).toBe(
+      "La Ferme des Prés",
+    );
+    expect(formatProducerNameForWidget("Le Mas des Oliviers")).toBe(
+      "Le Mas des Oliviers",
+    );
+    expect(formatProducerNameForWidget("Les Vergers du Sud")).toBe(
+      "Les Vergers du Sud",
+    );
+    expect(formatProducerNameForWidget("L'Atelier du Pain")).toBe(
+      "L'Atelier du Pain",
+    );
+  });
+
+  it("nom long sans article : bascule sur 'cette ferme'", () => {
+    const longName =
+      "Maraîchage Biologique des Coopérateurs du Bocage Mancelle"; // 56 chars
+    expect(longName.length).toBeGreaterThan(30);
+    expect(formatProducerNameForWidget(longName)).toBe("cette ferme");
+  });
+
+  it("nom long avec article : bascule sur 'cette ferme' (l'article ne sauve pas)", () => {
+    const longName =
+      "La Ferme des Quatre Vents du Plateau Manceau de l'Ouest"; // 55 chars
+    expect(longName.length).toBeGreaterThan(30);
+    expect(formatProducerNameForWidget(longName)).toBe("cette ferme");
+  });
+
+  it("boundary : nom de 30 chars exactement reste affiché (≤ seuil)", () => {
+    const exactly30 = "Ferme des Coteaux Mancelles 30"; // 30 chars
+    expect(exactly30.length).toBe(30);
+    expect(formatProducerNameForWidget(exactly30)).toBe(exactly30);
+  });
+
+  it("boundary : nom de 31 chars bascule sur le fallback (> seuil strict)", () => {
+    const exactly31 = "Ferme des Coteaux Mancelles 311"; // 31 chars
+    expect(exactly31.length).toBe(31);
+    expect(formatProducerNameForWidget(exactly31)).toBe("cette ferme");
   });
 });

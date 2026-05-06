@@ -35,6 +35,27 @@ const POSTAL_CODE_REGEX = /^\d{5}$/;
 type GeoSource = "geoloc" | "postal";
 type GeoSession = { lat: number; lng: number; source: GeoSource };
 
+// Fallback wording noms longs (T-233) — au-delà du seuil, le nom est
+// substitué par "cette ferme" pour préserver l'équilibre visuel des phrases
+// "jusqu'à {name}", "depuis {name}", "{name} se trouve...". Seuil 30 chars
+// dérivé du benchmark des noms producteurs onboardés (médiane ~18 chars,
+// 90e percentile ~28 chars). Au-delà, la concaténation casse mobile.
+//
+// Pas de troncature `…` choisie : sur la fiche, l'utilisateur LIT déjà le
+// nom complet en haut, donc il sait de qui on parle. La formulation neutre
+// "cette ferme" est plus naturelle qu'un nom mutilé. Cohérent avec le
+// vocabulaire existant ("Toi ↔ ferme" dans la barre de comparaison).
+//
+// Note T-211 (backlog) : "ferme" est imprécis pour maraîchers/boulangers/
+// apiculteurs ; quand les indicateurs adaptés par métier seront livrés,
+// rebrancher ce fallback sur le terme par `type_production`.
+const NAME_FALLBACK_THRESHOLD = 30;
+const NAME_FALLBACK_LABEL = "cette ferme";
+
+export function formatProducerNameForWidget(name: string): string {
+  return name.length > NAME_FALLBACK_THRESHOLD ? NAME_FALLBACK_LABEL : name;
+}
+
 export type DistanceWidgetProps = {
   producerLat: number | null;
   producerLng: number | null;
@@ -246,13 +267,14 @@ export function DistanceWidget({
 
   // État déployé sans session : invite + bouton géoloc + code postal + RGPD.
   const isPostalValid = POSTAL_CODE_REGEX.test(postalInput);
+  const displayName = formatProducerNameForWidget(producerName);
 
   return (
     <div className="rounded-xl border border-terroir-border bg-white p-5">
       <div className="flex items-start justify-between gap-3">
         <p className="text-[14px] leading-[1.55] text-terroir-ink/[0.78]">
           Indique ta position pour découvrir la distance à vol d&apos;oiseau
-          jusqu&apos;à {producerName}.
+          jusqu&apos;à {displayName}.
         </p>
         <CollapseLink onClick={() => setExpanded(false)} />
       </div>
@@ -389,6 +411,7 @@ function DistanceResult({
   // Ratio visuel borné [0,1] : la barre du producteur est proportionnelle à
   // la référence circuit long. Un producteur très lointain s'aligne au max.
   const ratio = Math.max(0.04, Math.min(distance / ref, 1));
+  const displayName = formatProducerNameForWidget(producerName);
   return (
     <div className="rounded-xl border border-terroir-border bg-white p-5">
       <div className="grid gap-5 md:grid-cols-2">
@@ -405,7 +428,7 @@ function DistanceResult({
             {distance} <span className="text-[22px] md:text-[26px]">km</span>
           </div>
           <p className="mt-2 text-[13px] leading-[1.5] text-terroir-ink/[0.7]">
-            à vol d&apos;oiseau jusqu&apos;à toi depuis {producerName}.
+            à vol d&apos;oiseau jusqu&apos;à toi depuis {displayName}.
           </p>
         </div>
         <div className="md:border-l md:border-terroir-border md:pl-5">
@@ -473,6 +496,7 @@ function DistanceOutOfReach({
   // + reset) pour que le visiteur sente que sa position a été prise en compte,
   // mais on retire la distance chiffrée et la comparaison ~1500 km. Ton
   // factuel et neutre — pas de rouge ni de wording culpabilisant.
+  const displayName = formatProducerNameForWidget(producerName);
   return (
     <div className="rounded-xl border border-terroir-border bg-white p-5">
       <div className="flex items-start justify-between gap-3">
@@ -481,7 +505,7 @@ function DistanceOutOfReach({
             Hors zone
           </div>
           <p className="mt-2 text-[14px] leading-[1.55] text-terroir-ink/[0.78]">
-            Depuis ta position, {producerName} se trouve en dehors de notre
+            Depuis ta position, {displayName} se trouve en dehors de notre
             zone de circuit court. La comparaison à vol d&apos;oiseau ne
             reflète plus une logique de proximité pertinente.
           </p>
