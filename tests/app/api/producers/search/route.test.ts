@@ -48,6 +48,21 @@ function buildMockClient(rpcResult: RpcResult<unknown>): SupabaseClient {
   } as unknown as SupabaseClient;
 }
 
+// Helper test T-205 : intercepte le payload args envoyé à supabase.rpc().
+function buildCapturingMockClient(): {
+  client: SupabaseClient;
+  rpcCalls: Array<{ name: string; args: Record<string, unknown> }>;
+} {
+  const rpcCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
+  const client = {
+    rpc: vi.fn(async (name: string, args: Record<string, unknown>) => {
+      rpcCalls.push({ name, args });
+      return { data: [], error: null };
+    }),
+  } as unknown as SupabaseClient;
+  return { client, rpcCalls };
+}
+
 beforeEach(() => {
   mockClientHolder.current = null;
   // Reset rate-limit holder à "allowed" entre tests pour ne pas
@@ -263,5 +278,82 @@ describe("GET /api/producers/search — rate-limit anti-trilatération (T-236)",
     expect(body.results).toHaveLength(1);
     expect(body.results[0]!.latitude).toBe(47.99);
     expect(body.results[0]!.longitude).toBe(-3.12);
+  });
+});
+
+describe("GET /api/producers/search — facets score-carbone (T-205)", () => {
+  it("passe NULL pour les 3 facets si non spécifiés", async () => {
+    const { client, rpcCalls } = buildCapturingMockClient();
+    mockClientHolder.current = client;
+
+    await GET(
+      new Request(
+        "http://localhost:3000/api/producers/search?lat=48&lng=0&radius=50",
+      ),
+    );
+    expect(rpcCalls).toHaveLength(1);
+    const args = rpcCalls[0]!.args;
+    expect(args.p_mode_elevage).toBeNull();
+    expect(args.p_alimentation).toBeNull();
+    expect(args.p_densite_animale).toBeNull();
+  });
+
+  it("parse multi-select virgule-séparé pour mode_elevage", async () => {
+    const { client, rpcCalls } = buildCapturingMockClient();
+    mockClientHolder.current = client;
+
+    await GET(
+      new Request(
+        "http://localhost:3000/api/producers/search?lat=48&lng=0&radius=50&mode_elevage=plein_air,semi_plein_air",
+      ),
+    );
+    expect(rpcCalls[0]!.args.p_mode_elevage).toEqual([
+      "plein_air",
+      "semi_plein_air",
+    ]);
+  });
+
+  it("filtre les valeurs inconnues (whitelist defense-in-depth)", async () => {
+    const { client, rpcCalls } = buildCapturingMockClient();
+    mockClientHolder.current = client;
+
+    await GET(
+      new Request(
+        "http://localhost:3000/api/producers/search?lat=48&lng=0&radius=50&mode_elevage=plein_air,lune,semi_plein_air",
+      ),
+    );
+    // 'lune' filtré ; 'plein_air' et 'semi_plein_air' conservés
+    expect(rpcCalls[0]!.args.p_mode_elevage).toEqual([
+      "plein_air",
+      "semi_plein_air",
+    ]);
+  });
+
+  it("retourne NULL si toutes les valeurs sont rejetées par la whitelist", async () => {
+    const { client, rpcCalls } = buildCapturingMockClient();
+    mockClientHolder.current = client;
+
+    await GET(
+      new Request(
+        "http://localhost:3000/api/producers/search?lat=48&lng=0&radius=50&mode_elevage=lune,mars",
+      ),
+    );
+    expect(rpcCalls[0]!.args.p_mode_elevage).toBeNull();
+  });
+
+  it("supporte les 3 facets simultanément (AND)", async () => {
+    const { client, rpcCalls } = buildCapturingMockClient();
+    mockClientHolder.current = client;
+
+    await GET(
+      new Request(
+        "http://localhost:3000/api/producers/search?lat=48&lng=0&radius=50" +
+          "&mode_elevage=plein_air&alimentation=pature_dominante&densite_animale=extensive",
+      ),
+    );
+    const args = rpcCalls[0]!.args;
+    expect(args.p_mode_elevage).toEqual(["plein_air"]);
+    expect(args.p_alimentation).toEqual(["pature_dominante"]);
+    expect(args.p_densite_animale).toEqual(["extensive"]);
   });
 });

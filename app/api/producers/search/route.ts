@@ -6,8 +6,34 @@ import {
   getProducersSearchRateLimit,
 } from "@/lib/rate-limit";
 import { extractRequestContext } from "@/lib/audit-logs/log-auth-event";
+import {
+  ALIMENTATION_VALUES,
+  DENSITE_ANIMALE_VALUES,
+  MODE_ELEVAGE_VALUES,
+} from "@/lib/producers/score-carbone-enums";
 
 // GET /api/producers/search?lat=&lng=&radius=&especes=bovin,ovin&labels=bio
+//   &mode_elevage=plein_air,semi_plein_air&alimentation=pature_dominante
+//   &densite_animale=extensive
+//
+// T-205 : 3 nouveaux filtres optionnels facets score-carbone (multi-select
+// virgule-séparé). Validation whitelist côté serveur (rejet silencieux des
+// valeurs inconnues — un attaquant qui forge `?mode_elevage=lune` ne casse
+// pas la query, simplement ne match rien). RPC search_producers étendue à
+// 8 args via migration 20260507410000.
+function parseMultiSelect(
+  raw: string | null,
+  whitelist: readonly string[],
+): string[] | null {
+  if (!raw) return null;
+  const values = raw
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean)
+    .filter((v) => whitelist.includes(v));
+  return values.length > 0 ? values : null;
+}
+
 export async function GET(request: Request) {
   // T-236 : rate-limit IP cap 30/min — anti-trilatération inverse. Couplé
   // au flou roundCoord côté résultats, rend économiquement non rentable
@@ -65,6 +91,22 @@ export async function GET(request: Request) {
     .map((v) => v.trim())
     .filter(Boolean);
 
+  // T-205 : facets score-carbone (multi-select). Whitelist Zod-style côté
+  // serveur — une valeur inconnue est silencieusement filtrée. Si après
+  // filtrage la liste est vide, on passe NULL au RPC (= pas de filtre).
+  const modeElevage = parseMultiSelect(
+    url.searchParams.get("mode_elevage"),
+    MODE_ELEVAGE_VALUES,
+  );
+  const alimentation = parseMultiSelect(
+    url.searchParams.get("alimentation"),
+    ALIMENTATION_VALUES,
+  );
+  const densiteAnimale = parseMultiSelect(
+    url.searchParams.get("densite_animale"),
+    DENSITE_ANIMALE_VALUES,
+  );
+
   const admin = createSupabaseAdminClient();
   const { data, error } = await admin.rpc("search_producers", {
     p_lat: lat,
@@ -72,6 +114,9 @@ export async function GET(request: Request) {
     p_radius_km: radius,
     p_especes: especes.length ? especes : null,
     p_labels: labels.length ? labels : null,
+    p_mode_elevage: modeElevage,
+    p_alimentation: alimentation,
+    p_densite_animale: densiteAnimale,
   });
 
   if (error) {
