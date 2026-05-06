@@ -101,7 +101,7 @@ export default function ComptabilitePage() {
 
           <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-dark/[0.06] pt-4">
             <p className="text-[12px] text-dark/55 max-w-md">
-              CSV ',' / UTF-8 BOM. Date filtrée = date de validation
+              CSV &apos;,&apos; / UTF-8 BOM. Date filtrée = date de validation
               (completed_at). Email consumer masqué pour la confidentialité.
             </p>
             <Button
