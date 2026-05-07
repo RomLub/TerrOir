@@ -28,7 +28,20 @@ const MIGRATION_PATH = resolve(
   "../../../supabase/migrations/20260501231300_t102_1_refund_incidents.sql",
 );
 
+// Override migration 2026-05-07 (Cluster B Phase 3) : ajout 'manual_cancel'
+// a l'enum kind via DROP + ADD CHECK constraint (cancel/route.tsx). Pour
+// que le test ↔ DDL soit fidele a l'etat courant, on lit la migration
+// override en plus de l'originale et on prend la liste effective.
+const MIGRATION_PATH_KIND_OVERRIDE = resolve(
+  __dirname,
+  "../../../supabase/migrations/20260507120000_t102_2_manual_cancel_kind.sql",
+);
+
 const migrationSql = readFileSync(MIGRATION_PATH, "utf8");
+const migrationSqlKindOverride = readFileSync(
+  MIGRATION_PATH_KIND_OVERRIDE,
+  "utf8",
+);
 
 function extractCheckInValues(
   sql: string,
@@ -52,9 +65,36 @@ function extractCheckInValues(
     .filter((v) => v.length > 0);
 }
 
+// Pour ALTER TABLE ADD CONSTRAINT (override 2026-05-07).
+function extractCheckInValuesFromAlter(
+  sql: string,
+  columnName: string,
+): readonly string[] {
+  const re = new RegExp(
+    `add\\s+constraint\\s+\\w+\\s+check\\s*\\(\\s*${columnName}\\s+in\\s*\\(([^)]*)\\)\\s*\\)`,
+    "is",
+  );
+  const match = sql.match(re);
+  if (!match) {
+    throw new Error(
+      `ALTER TABLE ... CHECK ${columnName} IN (...) introuvable`,
+    );
+  }
+  return match[1]!
+    .split(",")
+    .map((v) => v.trim().replace(/^'|'$/g, ""))
+    .filter((v) => v.length > 0);
+}
+
 describe("T-102.1 — refund-incidents types ↔ migration DDL", () => {
-  it("REFUND_KINDS aligné avec CHECK kind IN (...) de la migration", () => {
-    const ddlValues = extractCheckInValues(migrationSql, "kind");
+  it("REFUND_KINDS aligné avec CHECK kind IN (...) de la migration override (2026-05-07)", () => {
+    // Source de verite courante : migration override 2026-05-07 (ajout
+    // 'manual_cancel'). La migration originale T-102.1 ne contient plus
+    // que les 3 kinds historiques, l'override les remplace.
+    const ddlValues = extractCheckInValuesFromAlter(
+      migrationSqlKindOverride,
+      "kind",
+    );
     expect([...REFUND_KINDS].sort()).toEqual([...ddlValues].sort());
   });
 
@@ -72,8 +112,13 @@ describe("T-102.1 — refund-incidents types ↔ migration DDL", () => {
     );
   });
 
-  it("REFUND_KINDS contient exactement les 3 paths refund (revival, admin, timeout)", () => {
-    expect([...REFUND_KINDS].sort()).toEqual(["admin", "revival", "timeout"]);
+  it("REFUND_KINDS contient les 4 paths refund (revival, admin, timeout, manual_cancel)", () => {
+    expect([...REFUND_KINDS].sort()).toEqual([
+      "admin",
+      "manual_cancel",
+      "revival",
+      "timeout",
+    ]);
   });
 
   it("REFUND_INCIDENT_STATUSES contient les 6 lifecycle states attendus", () => {

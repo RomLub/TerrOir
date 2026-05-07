@@ -12,7 +12,12 @@
  * échouer la suite.
  */
 
-export const REFUND_KINDS = ["revival", "admin", "timeout"] as const;
+export const REFUND_KINDS = [
+  "revival",
+  "admin",
+  "timeout",
+  "manual_cancel",
+] as const;
 export type RefundKind = (typeof REFUND_KINDS)[number];
 
 export const REFUND_INCIDENT_STATUSES = [
