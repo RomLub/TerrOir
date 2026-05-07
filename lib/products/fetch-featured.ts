@@ -63,7 +63,7 @@ async function fetchFeaturedRaw(): Promise<ProductCardData[]> {
       return [];
     }
 
-    return ((data ?? []) as unknown as RawRow[]).map((p) => {
+    return ((data ?? []) as RawRow[]).map((p) => {
       const producer = pickFirst(p.producers);
       const cut = pickFirst(p.cuts);
       const animal = pickFirst(p.animals);

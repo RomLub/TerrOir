@@ -204,7 +204,13 @@ export async function previewPickup(
     .eq("code_commande", code)
     .maybeSingle();
 
-  const row = data as unknown as RawOrderRow | null;
+  // Cast direct vers RawOrderRow : PostgREST renvoie un type approximatif
+  // pour les embeds nominaux (consumer:consumer_id(...), order_items(...)) et
+  // ne peut pas être inféré finement même avec les types générés de
+  // database.types.ts (les alias d'embed cassent le mapping automatique).
+  // Le typage runtime reste aligné via RawOrderRow + parsing défensif dans
+  // buildPreview.
+  const row = data as RawOrderRow | null;
   if (!row) {
     return { ok: false, error: { kind: "code_unknown" } };
   }
@@ -253,7 +259,7 @@ export async function validatePickup(
     .eq("code_commande", code)
     .maybeSingle();
 
-  const row = lookupData as unknown as RawOrderRow | null;
+  const row = lookupData as RawOrderRow | null;
   if (!row) {
     return { ok: false, error: { kind: "code_unknown" } };
   }
@@ -280,7 +286,7 @@ export async function validatePickup(
     throw updateError;
   }
 
-  const updated = updateData as unknown as RawOrderRow | null;
+  const updated = updateData as RawOrderRow | null;
   if (!updated) {
     // Race perdue : un autre tab du même producer a complété entre SELECT
     // et UPDATE. Re-caractériser l'état actuel.
@@ -290,7 +296,7 @@ export async function validatePickup(
       .eq("id", row.id)
       .maybeSingle();
 
-    const refetched = refetchData as unknown as
+    const refetched = refetchData as
       | { id: string; statut: OrderStatus; completed_at: string | null }
       | null;
     if (!refetched) {

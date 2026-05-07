@@ -33,7 +33,9 @@ async function fetchPublicStats(): Promise<PublicStats> {
   const ordersPromise = supabase
     .from("orders")
     .select("id", { count: "exact", head: true })
-    .in("statut", COMPLETED_ORDER_STATUSES as unknown as string[]);
+    // Spread pour convertir le tuple readonly de COMPLETED_ORDER_STATUSES
+    // en array mutable string[] attendu par PostgrestFilterBuilder.in().
+    .in("statut", [...COMPLETED_ORDER_STATUSES]);
 
   // Inner join sur producers : un produit n'est public que si son producer
   // l'est. Filtrer côté joined table via le path "producers.<col>".

@@ -30,6 +30,10 @@ export async function fetchCutsWithStock(
   if (error) throw error;
 
   const slugs = new Set<string>();
+  // Cast `as unknown as` requis : Supabase infère les embeds nominaux en
+  // `Array<...>` alors que le runtime PostgREST renvoie un objet
+  // FK-to-one. Les types générés ne portent pas la métadonnée
+  // is-one-to-one suffisante pour mapper finement.
   const rows = (data ?? []) as unknown as Array<{
     cuts: { slug: string } | null;
   }>;

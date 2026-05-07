@@ -122,9 +122,12 @@ export async function fetchPublicProducts(
 
   const { data, error } = await query;
   if (error) throw error;
-  // Cast `as unknown as PublicProductRow[]` : à éliminer une fois
-  // database.types.ts généré (ticket T-XXX à ouvrir : `supabase gen types`
-  // pour typer automatiquement les retours PostgREST avec embeds).
+  // Cast `as unknown as PublicProductRow[]` nécessaire : Supabase infère
+  // les embeds (`product_categories(slug, name)` etc.) en `Array<...>`
+  // alors que le runtime PostgREST retourne un objet (FK to-one) ou null.
+  // Les types générés (lib/types/database.types.ts) n'ont pas l'info FK
+  // is-one-to-one suffisante pour inférer correctement. Workaround
+  // documenté côté communauté Supabase.
   return {
     products: (data ?? []) as unknown as PublicProductRow[],
     resolved,
