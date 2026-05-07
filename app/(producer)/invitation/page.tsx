@@ -10,7 +10,7 @@ import { InvitationConfirmCard } from "./_components/InvitationConfirmCard";
 import { ConsumerUpgradeNotice } from "./_components/ConsumerUpgradeNotice";
 
 interface PageProps {
-  searchParams: { token?: string };
+  searchParams: Promise<{ token?: string }>;
 }
 
 type InvitationStatus = "ok" | "missing" | "not-found" | "used" | "expired";
@@ -44,7 +44,8 @@ function ErrorCard({
   );
 }
 
-export default async function InvitationPage({ searchParams }: PageProps) {
+export default async function InvitationPage(props: PageProps) {
+  const searchParams = await props.searchParams;
   const token = searchParams.token;
   if (!token) {
     return (

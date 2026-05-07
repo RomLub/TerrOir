@@ -76,7 +76,7 @@ export async function loginAction(
   // distincte du cap rate-limited Supabase (cf. T-309 reason_code). Mutualisé
   // avec requestMagicLinkAction (D2 PR-B) — un attaquant qui alterne login
   // mdp + magic link sur la même IP rencontre le compteur partagé.
-  const { ipAddress } = extractRequestContext(headers());
+  const { ipAddress } = extractRequestContext(await headers());
   const rateLimit = await consumeRateLimit(
     getLoginRateLimit(),
     ipAddress ?? "unknown",
@@ -94,7 +94,7 @@ export async function loginAction(
     return { error: "Trop de tentatives. Réessayez dans quelques minutes." };
   }
 
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.auth.signInWithPassword(parsed.data);
 
   if (error || !data.user) {
@@ -135,7 +135,7 @@ export async function loginAction(
     });
   }
 
-  const host = headers().get("host") ?? "";
+  const host = (await headers()).get("host") ?? "";
 
   // T-321 — Cache role lookup post-login : pré-pose le cookie role snapshot
   // signé HMAC pour que la prochaine request middleware skip 2 queries DB
@@ -143,7 +143,7 @@ export async function loginAction(
   // invalider naturellement quand un autre user se connecte.
   // Async (Web Crypto API) car middleware Edge Runtime ne supporte pas
   // crypto Node natif.
-  await setRoleSnapshotOnStore(cookies(), host, {
+  await setRoleSnapshotOnStore(await cookies(), host, {
     user_id: data.user.id,
     roles: role.roles,
     isAdmin: role.isAdmin,
@@ -199,7 +199,7 @@ export async function requestMagicLinkAction(
   // Audit Auth 2026-05-05 M-5 : rate-limit magic link séparé de login
   // (3/120s vs 5/60s pour login). Évite qu'un attaquant flood magic link
   // consomme le quota login pour tous les users derrière une IP NAT.
-  const { ipAddress } = extractRequestContext(headers());
+  const { ipAddress } = extractRequestContext(await headers());
   const rateLimit = await consumeRateLimit(
     getMagicLinkRateLimit(),
     ipAddress ?? "unknown",
@@ -247,7 +247,7 @@ export async function requestMagicLinkAction(
   // et un second `?` dans RedirectTo casserait l'URL. À la place, on persiste
   // le redirectTo dans un cookie HttpOnly (.terroir-local.fr en prod) lu par
   // /auth/callback après verifyOtp.
-  setRedirectAfterAuth(formData.get("redirectTo"));
+  await setRedirectAfterAuth(formData.get("redirectTo"));
 
   const emailRedirectTo = getAuthCallbackUrl(isAdmin);
 
@@ -255,7 +255,7 @@ export async function requestMagicLinkAction(
   // auth.users, Supabase renvoie une erreur — on la swallow pour préserver
   // l'enumeration-resistance côté UI.
   try {
-    const supabase = createSupabaseServerClient();
+    const supabase = await createSupabaseServerClient();
     await supabase.auth.signInWithOtp({
       email,
       options: {
@@ -333,7 +333,7 @@ export async function requestPasswordResetAction(
   // 3/60s (plus strict que login : recovery déclenche envoi mail coûteux +
   // flooding boîte cible). Helper dédié getRecoveryRateLimit (cf. lib/rate-
   // limit.ts).
-  const { ipAddress } = extractRequestContext(headers());
+  const { ipAddress } = extractRequestContext(await headers());
   const rateLimit = await consumeRateLimit(
     getRecoveryRateLimit(),
     ipAddress ?? "unknown",
@@ -371,7 +371,7 @@ export async function requestPasswordResetAction(
   const redirectTo = getPasswordResetUrl(isAdmin);
 
   try {
-    const supabase = createSupabaseServerClient();
+    const supabase = await createSupabaseServerClient();
     await supabase.auth.resetPasswordForEmail(email, { redirectTo });
   } catch (err) {
     console.warn(

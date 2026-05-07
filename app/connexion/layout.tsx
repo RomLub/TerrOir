@@ -37,12 +37,12 @@ export default async function ConnexionLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const host = headers().get("host") ?? "";
+  const host = (await headers()).get("host") ?? "";
 
   let alreadyLoggedInPath: string | null = null;
   let user: User | null = null;
   try {
-    const supabase = createSupabaseServerClient();
+    const supabase = await createSupabaseServerClient();
     const { data } = await supabase.auth.getUser();
     user = data.user;
     if (user) {

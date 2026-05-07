@@ -115,7 +115,7 @@ export async function acceptInvitationAction(
     // 'producer']. Conditionnel sur !currentRoles.includes('producer') :
     // l'idempotence garde la cohérence côté cookie (pas d'invalidation si
     // pas de changement réel).
-    clearRoleSnapshotOnStore(cookies(), headers().get("host"));
+    clearRoleSnapshotOnStore(await cookies(), (await headers()).get("host"));
   }
 
   // Idempotent : si une ligne producers existe déjà (flux interrompu, reprise

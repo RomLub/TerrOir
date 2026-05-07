@@ -23,7 +23,7 @@ export default async function AdminLayout({
   const session = await getSessionUser();
   if (!session?.isAdmin) redirect("/connexion");
 
-  const host = headers().get("host") ?? "";
+  const host = (await headers()).get("host") ?? "";
   if (
     process.env.NODE_ENV === "production" &&
     !host.startsWith("admin.")

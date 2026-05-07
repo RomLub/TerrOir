@@ -385,7 +385,7 @@ describe("D. État commande + filet assertTransition", () => {
     expect((orderUpdate!.payload as Record<string, unknown>).statut).toBe(
       "refunded",
     );
-    expect(mockRevalidateTag).toHaveBeenCalledWith("public-stats");
+    expect(mockRevalidateTag).toHaveBeenCalledWith("public-stats", "max");
     // badge_annulation_score : aucun UPDATE sur producers (cohérent avec
     // l'absence de logique badge dans cette route — gating dans cancel route).
     expect(captured.updates.find((u) => u.table === "producers")).toBeUndefined();
@@ -442,7 +442,7 @@ describe("E. Happy path + side effects", () => {
 
     // 3. revalidateTag('public-stats') appelé une fois (via helper).
     expect(mockRevalidateTag).toHaveBeenCalledTimes(1);
-    expect(mockRevalidateTag).toHaveBeenCalledWith("public-stats");
+    expect(mockRevalidateTag).toHaveBeenCalledWith("public-stats", "max");
     // T-100 C2 : helper invoque avec signature {source, orderId}.
     expect(mockRevalidatePublicStats).toHaveBeenCalledTimes(1);
     expect(mockRevalidatePublicStats).toHaveBeenCalledWith({

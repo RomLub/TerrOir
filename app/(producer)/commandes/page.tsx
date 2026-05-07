@@ -38,17 +38,18 @@ function formatDateShort(iso: string | null): string {
   return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
 }
 
-export default async function ProducerCommandesPage({
-  searchParams,
-}: {
-  searchParams: SearchParams;
-}) {
+export default async function ProducerCommandesPage(
+  props: {
+    searchParams: Promise<SearchParams>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const session = await getSessionUser();
   if (!session) redirect('/connexion');
 
   // (producer)/layout.tsx vérifie déjà session + host. Le lookup producer
   // utilise le client serveur (RLS owner read autorise auth.uid() = user_id).
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const producer = await fetchProducerForUser(supabase, session.id);
   if (!producer) redirect('/invitation');
 

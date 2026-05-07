@@ -75,7 +75,7 @@ function consumeRpc(name: string): Resp {
 }
 
 vi.mock("@/lib/supabase/server", () => ({
-  createSupabaseServerClient: () => ({
+  createSupabaseServerClient: async () => ({
     from: (table: string) => {
       captured.fromCalls.push(table);
       const t = table as "slots" | "orders";

@@ -30,7 +30,7 @@ export async function createAccountAction(
   // T-305 PR-B : rate-limit applicatif IP avant lookup invitation +
   // createUser. Mutualise getSignupRateLimit() (D3) — flow signup invitation
   // partage la même surface attaque que signup classique côté IP.
-  const { ipAddress } = extractRequestContext(headers());
+  const { ipAddress } = extractRequestContext(await headers());
   const rateLimit = await consumeRateLimit(
     getSignupRateLimit(),
     ipAddress ?? "unknown",
@@ -135,7 +135,7 @@ export async function createAccountAction(
 
   // Dépose les cookies de session pour que les étapes 2 et 3 puissent
   // lire getSessionUser().
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const { error: signinError } = await supabase.auth.signInWithPassword({
     email: invitation.email,
     password: parsed.data.password,

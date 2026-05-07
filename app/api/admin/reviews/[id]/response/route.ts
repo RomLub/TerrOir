@@ -11,10 +11,11 @@ import { logReviewEvent } from "@/lib/audit-logs/log-review-event";
 // traçabilité forensique légale (litige producer si suppression contestée).
 
 interface RouteContext {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
-export async function DELETE(_request: Request, { params }: RouteContext) {
+export async function DELETE(_request: Request, props: RouteContext) {
+  const params = await props.params;
   const session = await getSessionUser();
   if (!session || !session.isAdmin) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });

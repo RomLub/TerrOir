@@ -59,7 +59,7 @@ type Builder = {
 };
 
 vi.mock("@/lib/supabase/server", () => ({
-  createSupabaseServerClient: () => ({
+  createSupabaseServerClient: async () => ({
     from: (table: string) => {
       const filters: Record<string, unknown> = {};
       let limitVal: number | null = null;

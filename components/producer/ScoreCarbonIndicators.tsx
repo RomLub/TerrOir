@@ -1,3 +1,4 @@
+import type { ReactElement } from "react";
 import {
   ALIMENTATION_HINTS,
   ALIMENTATION_PUBLIC_LABELS,
@@ -98,7 +99,7 @@ function WarningIcon() {
   );
 }
 
-export const DENSITE_ICON: Record<DensiteAnimale, JSX.Element> = {
+export const DENSITE_ICON: Record<DensiteAnimale, ReactElement> = {
   extensive: <CheckIcon />,
   standard: <MinusIcon />,
   intensive: <WarningIcon />,
@@ -116,7 +117,7 @@ export function IndicatorCard({
   hint: string;
   pillClass: string;
   // T-215 : picto non-couleur facultatif (utilisé pour DENSITE_TONE).
-  pillIcon?: JSX.Element;
+  pillIcon?: ReactElement;
 }) {
   return (
     <div className="rounded-xl border border-terroir-border bg-white p-5">

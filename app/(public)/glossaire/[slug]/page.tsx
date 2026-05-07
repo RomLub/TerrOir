@@ -16,11 +16,12 @@ export function generateStaticParams() {
   return GLOSSAIRE_ARTICLES.map((a) => ({ slug: a.slug }));
 }
 
-export function generateMetadata({
-  params,
-}: {
-  params: { slug: string };
-}): Metadata {
+export async function generateMetadata(
+  props: {
+    params: Promise<{ slug: string }>;
+  }
+): Promise<Metadata> {
+  const params = await props.params;
   const article = getGlossaireArticleBySlug(params.slug);
   if (!article) {
     return { title: "Glossaire — TerrOir" };
@@ -31,11 +32,12 @@ export function generateMetadata({
   };
 }
 
-export default function GlossaireArticlePage({
-  params,
-}: {
-  params: { slug: string };
-}) {
+export default async function GlossaireArticlePage(
+  props: {
+    params: Promise<{ slug: string }>;
+  }
+) {
+  const params = await props.params;
   const article = getGlossaireArticleBySlug(params.slug);
   if (!article) notFound();
 

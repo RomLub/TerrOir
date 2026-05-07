@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useFormState, useFormStatus } from "react-dom";
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
 import { signupAction, type SignupState } from "./actions";
 import { PasswordInput } from "@/components/ui";
 
@@ -22,7 +23,7 @@ function SubmitButton({ disabled }: { disabled: boolean }) {
 }
 
 export default function InscriptionPage() {
-  const [state, formAction] = useFormState(signupAction, initialState);
+  const [state, formAction] = useActionState(signupAction, initialState);
   const [cguAccepted, setCguAccepted] = useState(false);
 
   if (state.success) {

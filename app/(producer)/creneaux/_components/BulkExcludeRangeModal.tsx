@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useFormState, useFormStatus } from "react-dom";
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
 import {
   bulkExcludeRangeAction,
   type BulkExcludeRangeState,
@@ -22,7 +23,7 @@ export default function BulkExcludeRangeModal({
   onClose: () => void;
   onSuccess: (msg: string) => void;
 }) {
-  const [state, formAction] = useFormState(bulkExcludeRangeAction, INITIAL);
+  const [state, formAction] = useActionState(bulkExcludeRangeAction, INITIAL);
   const [startDate, setStartDate] = useState(todayISO());
   const [endDate, setEndDate] = useState(todayISO());
   const firstInputRef = useRef<HTMLInputElement>(null);

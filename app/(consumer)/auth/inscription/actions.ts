@@ -39,7 +39,7 @@ export async function signupAction(
   // Cap 5/60s (cf. lib/rate-limit.ts getSignupRateLimit). Fail-open Redis
   // indispo — un incident Upstash ne bloque pas la signup. Audit log
   // rate_limit_exceeded émis sur cap reached pour détection forensique.
-  const { ipAddress } = extractRequestContext(headers());
+  const { ipAddress } = extractRequestContext(await headers());
   const rateLimit = await consumeRateLimit(
     getSignupRateLimit(),
     ipAddress ?? "unknown",
@@ -59,7 +59,7 @@ export async function signupAction(
 
   const { prenom, nom, email, password, telephone, sms_optin } = parsed.data;
 
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.auth.signUp({
     email,
     password,

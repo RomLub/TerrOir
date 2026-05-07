@@ -53,7 +53,7 @@ let logAuthEventMock: Mock<AnyAsyncFn>;
 let maybeSingleMock: Mock<AnyAsyncFn>;
 
 vi.mock("@/lib/supabase/server", () => ({
-  createSupabaseServerClient: () => ({
+  createSupabaseServerClient: async () => ({
     auth: {
       signInWithOtp: (...args: unknown[]) => signInWithOtpMock(...args),
       signInWithPassword: (...args: unknown[]) =>

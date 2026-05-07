@@ -23,10 +23,11 @@ const bodySchema = z.object({
 });
 
 interface RouteContext {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
-export async function POST(request: Request, { params }: RouteContext) {
+export async function POST(request: Request, props0: RouteContext) {
+  const params = await props0.params;
   const body = await request.json().catch(() => ({}));
   const parsed = bodySchema.safeParse(body);
   if (!parsed.success) {

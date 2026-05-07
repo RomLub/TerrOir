@@ -154,7 +154,7 @@ export async function completeEmailChangeAction(
   // userClient (server client avec cookies/JWT) car GoTrue admin signOut
   // requiert un JWT, pas un userId. scope 'others' garde la session
   // courante naturellement (cf. typedoc GoTrueClient.signOut).
-  const userClient = createSupabaseServerClient();
+  const userClient = await createSupabaseServerClient();
   const { error: signOutError } = await userClient.auth.signOut({
     scope: "others",
   });

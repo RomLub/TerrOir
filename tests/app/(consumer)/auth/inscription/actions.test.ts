@@ -48,7 +48,7 @@ let adminInsertMock: Mock<AnyAsyncFn>;
 let adminDeleteUserMock: Mock<AnyAsyncFn>;
 
 vi.mock("@/lib/supabase/server", () => ({
-  createSupabaseServerClient: () => ({
+  createSupabaseServerClient: async () => ({
     auth: {
       signUp: (...args: unknown[]) => supabaseSignUpMock(...args),
     },

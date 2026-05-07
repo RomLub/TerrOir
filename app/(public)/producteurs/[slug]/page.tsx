@@ -60,7 +60,8 @@ function firstNameFrom(user: { prenom: string | null; nom: string | null } | nul
   return 'Anonyme';
 }
 
-export default async function ProducteurPage({ params }: { params: { slug: string } }) {
+export default async function ProducteurPage(props: { params: Promise<{ slug: string }> }) {
+  const params = await props.params;
   // Bloc producer cached (60s + tag par slug). Produits/reviews fetch
   // direct via admin client en parallèle (force-dynamic pour ces deux).
   const producer = await fetchCachedProducerBlock(params.slug);

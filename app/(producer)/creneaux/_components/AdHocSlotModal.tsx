@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useFormState, useFormStatus } from "react-dom";
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
 import {
   createAdHocSlotAction,
   type SlotRuleActionState,
@@ -26,7 +27,7 @@ export default function AdHocSlotModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
-  const [state, formAction] = useFormState(createAdHocSlotAction, INITIAL);
+  const [state, formAction] = useActionState(createAdHocSlotAction, INITIAL);
   const defaultStart = tomorrowAt9();
   const [startAt, setStartAt] = useState(defaultStart);
   const [endAt, setEndAt] = useState(() => {

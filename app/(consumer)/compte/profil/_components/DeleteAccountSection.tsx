@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useFormState, useFormStatus } from "react-dom";
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useUserContext } from "@/components/providers/user-provider";
@@ -49,7 +50,7 @@ function DeleteModal({ onClose }: { onClose: () => void }) {
   const email = user?.email ?? "";
   const isProducer = roles.includes("producer");
 
-  const [state, formAction] = useFormState(deleteAccountAction, INITIAL);
+  const [state, formAction] = useActionState(deleteAccountAction, INITIAL);
   const [confirmText, setConfirmText] = useState("");
   const passwordRef = useRef<HTMLInputElement>(null);
 

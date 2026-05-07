@@ -116,9 +116,9 @@ export async function requestOtpAction(
 
   // Capture request context (forensique) — tolérant si headers() inaccessible
   // (test, job background, etc.).
-  const { ipAddress, userAgent } = (() => {
+  const { ipAddress, userAgent } = await (async () => {
     try {
-      return extractRequestContext(headers());
+      return extractRequestContext(await headers());
     } catch {
       return { ipAddress: null, userAgent: null };
     }

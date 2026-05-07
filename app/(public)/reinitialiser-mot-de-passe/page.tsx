@@ -25,11 +25,12 @@ function pickParam(value: string | string[] | undefined): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
-export default function ReinitialiserMotDePassePage({
-  searchParams,
-}: {
-  searchParams: SearchParams;
-}) {
+export default async function ReinitialiserMotDePassePage(
+  props: {
+    searchParams: Promise<SearchParams>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const tokenHash = pickParam(searchParams.token_hash);
   const type = pickParam(searchParams.type);
 

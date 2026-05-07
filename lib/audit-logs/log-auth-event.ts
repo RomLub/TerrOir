@@ -127,7 +127,7 @@ type LogAuthEventParams = {
 
 export async function logAuthEvent(params: LogAuthEventParams): Promise<void> {
   try {
-    const { ipAddress, userAgent } = resolveRequestContext(params);
+    const { ipAddress, userAgent } = await resolveRequestContext(params);
     const admin = createSupabaseAdminClient();
     const { error } = await admin.from("audit_logs").insert({
       user_id: params.userId ?? null,
@@ -166,10 +166,10 @@ export function extractRequestContext(headersList: Headers): {
   return { ipAddress, userAgent };
 }
 
-function resolveRequestContext(params: LogAuthEventParams): {
+async function resolveRequestContext(params: LogAuthEventParams): Promise<{
   ipAddress: string | null;
   userAgent: string | null;
-} {
+}> {
   // Mode explicite : si l'appelant a fourni au moins l'un des deux, on
   // prend ce qu'il a passé tel quel (null compris).
   if (params.ipAddress !== undefined || params.userAgent !== undefined) {
@@ -181,7 +181,7 @@ function resolveRequestContext(params: LogAuthEventParams): {
   // Mode auto : tenter headers() Next.js. Lance une erreur si appelé
   // hors d'un scope server (route handler / server action) — on swallow.
   try {
-    return extractRequestContext(headers());
+    return extractRequestContext(await headers());
   } catch {
     return { ipAddress: null, userAgent: null };
   }

@@ -20,7 +20,7 @@ const bodySchema = z.object({
 });
 
 interface RouteContext {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 // LOT 5 chantier pickup-validation 2026-05-06 — rétrofit cluster pickup_*
@@ -30,7 +30,8 @@ interface RouteContext {
 // joue le rôle de preview visuel — contexte commande déjà à l'écran).
 const ROUTE_TAG = "complete_id_based";
 
-export async function POST(request: Request, { params }: RouteContext) {
+export async function POST(request: Request, props: RouteContext) {
+  const params = await props.params;
   const session = await getSessionUser();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

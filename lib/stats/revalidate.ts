@@ -27,7 +27,7 @@ export async function revalidatePublicStats(opts: {
   extra?: Record<string, string>;
 }): Promise<void> {
   try {
-    revalidateTag("public-stats");
+    revalidateTag("public-stats", "max");
   } catch (e) {
     const parts: string[] = [
       `[STATS_REVAL_WARN]`,
@@ -56,7 +56,7 @@ export async function revalidatePublicProducts(opts: {
   extra?: Record<string, string>;
 }): Promise<void> {
   try {
-    revalidateTag("public-products");
+    revalidateTag("public-products", "max");
   } catch (e) {
     const parts: string[] = [
       `[PRODUCTS_REVAL_WARN]`,
@@ -81,7 +81,7 @@ export async function revalidateProducerCard(opts: {
   source: string;
 }): Promise<void> {
   try {
-    revalidateTag(`producer:${opts.slug}`);
+    revalidateTag(`producer:${opts.slug}`, "max");
   } catch (e) {
     console.warn(
       `[PRODUCER_REVAL_WARN] source=${opts.source} slug=${opts.slug} ${(e as Error).message}`,
@@ -101,7 +101,7 @@ export async function revalidateCoverageDepartments(opts: {
   producerId?: string;
 }): Promise<void> {
   try {
-    revalidateTag("coverage-departments");
+    revalidateTag("coverage-departments", "max");
   } catch (e) {
     console.warn(
       `[COVERAGE_REVAL_WARN] source=${opts.source} producerId=${opts.producerId ?? "none"} ${(e as Error).message}`,

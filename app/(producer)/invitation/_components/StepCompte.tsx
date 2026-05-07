@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useEffect } from "react";
-import { useFormState, useFormStatus } from "react-dom";
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
 import {
   createAccountAction,
   type State as CreateState,
@@ -47,7 +48,7 @@ export function StepCompteNew({
   email: string;
   onSuccess: () => void;
 }) {
-  const [state, action] = useFormState(createAccountAction, initialCreate);
+  const [state, action] = useActionState(createAccountAction, initialCreate);
 
   useEffect(() => {
     if (state.success) onSuccess();
@@ -108,7 +109,7 @@ export function StepCompteLogin({
   email: string;
   onSuccess: () => void;
 }) {
-  const [state, action] = useFormState(loginAndUpgradeAction, initialLogin);
+  const [state, action] = useActionState(loginAndUpgradeAction, initialLogin);
 
   useEffect(() => {
     if (state.success) onSuccess();

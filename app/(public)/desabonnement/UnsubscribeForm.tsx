@@ -1,13 +1,14 @@
 'use client';
 
-import { useFormState, useFormStatus } from 'react-dom';
+import { useActionState } from "react";
+import { useFormStatus } from 'react-dom';
 import { Button } from '@/components/ui';
 import { unsubscribeAction } from './unsubscribe-action';
 
 type State = { success: true } | { success: false; error: string } | null;
 
 export function UnsubscribeForm({ email, token }: { email: string; token: string }) {
-  const [state, formAction] = useFormState<State, FormData>(
+  const [state, formAction] = useActionState<State, FormData>(
     async (_prev, formData) => unsubscribeAction(formData),
     null,
   );

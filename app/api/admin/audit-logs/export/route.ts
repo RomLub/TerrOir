@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   let query = supabase
     .from("audit_logs")
     .select(

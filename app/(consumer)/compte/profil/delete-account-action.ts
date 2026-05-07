@@ -152,7 +152,7 @@ export async function deleteAccountAction(
     (user?.stripe_customer_id as string | null | undefined) ?? null;
 
   // 4. RPC delete_user_account via client authentifié (auth.uid() = session.id)
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const { error: rpcError } = await supabase.rpc("delete_user_account", {
     p_user_id: session.id,
   });
@@ -178,7 +178,7 @@ export async function deleteAccountAction(
   // doit être invalidé. Inconditionnel : un consumer pur génère une invalidation
   // no-op côté cache, coût négligeable.
   try {
-    revalidateTag("public-stats");
+    revalidateTag("public-stats", "max");
   } catch (e) {
     console.warn(`[STATS_REVAL_WARN] user=${session.id} ${(e as Error).message}`);
   }

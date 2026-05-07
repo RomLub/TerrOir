@@ -51,7 +51,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
-  createSupabaseServerClient: () => ({
+  createSupabaseServerClient: async () => ({
     auth: {
       signInWithPassword: (...args: unknown[]) => signInMock(...args),
     },

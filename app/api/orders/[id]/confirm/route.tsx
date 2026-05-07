@@ -15,10 +15,11 @@ import OrderConfirmedConsumer, {
 } from "@/lib/resend/templates/order-confirmed-consumer";
 
 interface RouteContext {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
-export async function POST(_request: Request, { params }: RouteContext) {
+export async function POST(_request: Request, props0: RouteContext) {
+  const params = await props0.params;
   const session = await getSessionUser();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -68,7 +69,7 @@ export async function POST(_request: Request, { params }: RouteContext) {
   // l'order vient d'entrer dans le filtre IN ('confirmed','ready','completed').
   // Try/catch défensif — un échec d'invalidation ne doit pas 500 la confirmation.
   try {
-    revalidateTag("public-stats");
+    revalidateTag("public-stats", "max");
   } catch (e) {
     console.warn(`[STATS_REVAL_WARN] order=${order.id} ${(e as Error).message}`);
   }

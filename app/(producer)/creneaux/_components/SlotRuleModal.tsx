@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useFormState, useFormStatus } from "react-dom";
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
 import {
   createSlotRuleAction,
   updateSlotRuleAction,
@@ -66,7 +67,7 @@ export default function SlotRuleModal({
       ? updateSlotRuleAction.bind(null, initialRule.id)
       : createSlotRuleAction;
 
-  const [state, formAction] = useFormState(action, INITIAL);
+  const [state, formAction] = useActionState(action, INITIAL);
 
   const [daysOfWeek, setDaysOfWeek] = useState<Set<number>>(
     new Set(initialRule?.days_of_week ?? []),

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useFormState, useFormStatus } from "react-dom";
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
 import { useUserContext } from "@/components/providers/user-provider";
 import { Button, PasswordInput } from "@/components/ui";
 import {
@@ -23,7 +24,7 @@ function SubmitButton() {
 export default function PasswordPage() {
   const { user } = useUserContext();
   const email = user?.email ?? "";
-  const [state, formAction] = useFormState(changePasswordAction, INITIAL);
+  const [state, formAction] = useActionState(changePasswordAction, INITIAL);
   const formRef = useRef<HTMLFormElement>(null);
 
   // Reset les champs après un changement réussi pour éviter qu'un mdp

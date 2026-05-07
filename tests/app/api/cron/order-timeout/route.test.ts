@@ -656,7 +656,7 @@ describe("POST /api/cron/order-timeout — revalidateTag", () => {
 
     // Une seule invalidation atomique pour tout le batch (pas N).
     expect(vi.mocked(revalidateTag)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(revalidateTag)).toHaveBeenCalledWith("public-stats");
+    expect(vi.mocked(revalidateTag)).toHaveBeenCalledWith("public-stats", "max");
 
     // T-100 C2 : helper invoque avec source explicite, pas d'orderId (batch
     // multi-orders), pas d'extra.

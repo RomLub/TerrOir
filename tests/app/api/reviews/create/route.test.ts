@@ -27,7 +27,7 @@ let serverResponses: {
 };
 
 vi.mock("@/lib/supabase/server", () => ({
-  createSupabaseServerClient: () => ({
+  createSupabaseServerClient: async () => ({
     from: (table: string) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const b: any = {};

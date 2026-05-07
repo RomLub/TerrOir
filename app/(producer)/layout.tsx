@@ -20,7 +20,7 @@ export default async function ProducerLayout({
   const session = await getSessionUser();
   if (!session) redirect("/connexion");
 
-  const host = headers().get("host") ?? "";
+  const host = (await headers()).get("host") ?? "";
   if (
     process.env.NODE_ENV === "production" &&
     !host.startsWith("pro.")

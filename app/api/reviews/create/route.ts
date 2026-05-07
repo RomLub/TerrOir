@@ -34,7 +34,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
 
   // RLS "orders parties read" : auth.uid() == consumer_id OR owns_producer.
   // Si l'user n'est pas concerné → 0 row → 404 (équivalent fonctionnel d'un

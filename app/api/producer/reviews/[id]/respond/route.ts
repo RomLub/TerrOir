@@ -26,7 +26,7 @@ const bodySchema = z.object({
 });
 
 interface RouteContext {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 async function getProducerForUser(userId: string): Promise<string | null> {
@@ -42,7 +42,8 @@ async function getProducerForUser(userId: string): Promise<string | null> {
   return data?.id ?? null;
 }
 
-export async function POST(request: Request, { params }: RouteContext) {
+export async function POST(request: Request, props: RouteContext) {
+  const params = await props.params;
   const session = await getSessionUser();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -61,7 +62,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     );
   }
 
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
 
   // RLS "reviews producer response update" + ownership : on filtre sur
   // producer_id pour récupérer uniquement la review du producer caller.
@@ -178,7 +179,8 @@ export async function POST(request: Request, { params }: RouteContext) {
   return NextResponse.json({ ok: true, mode: "created" });
 }
 
-export async function DELETE(_request: Request, { params }: RouteContext) {
+export async function DELETE(_request: Request, props: RouteContext) {
+  const params = await props.params;
   const session = await getSessionUser();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -189,7 +191,7 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const { data: review } = await supabase
     .from("reviews")
     .select("id, producer_response, producer_response_locked_at")

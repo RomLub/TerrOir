@@ -84,7 +84,7 @@ vi.mock("next/headers", () => ({
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
-  createSupabaseServerClient: () => ({
+  createSupabaseServerClient: async () => ({
     auth: {
       signOut: (...args: unknown[]) => userSignOutMock(...args),
     },

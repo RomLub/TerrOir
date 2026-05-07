@@ -27,7 +27,7 @@ let verifyOtpResp: VerifyOtpResp;
 let updateUserResp: UpdateUserResp;
 
 vi.mock("@/lib/supabase/server", () => ({
-  createSupabaseServerClient: () => ({
+  createSupabaseServerClient: async () => ({
     auth: {
       verifyOtp: async () => verifyOtpResp,
       updateUser: async () => updateUserResp,

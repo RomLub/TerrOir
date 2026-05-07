@@ -76,7 +76,7 @@ export async function POST(request: Request) {
   const productIds = Array.from(new Set(items.map((i) => i.productId)));
   const slotIds = Array.from(new Set(items.map((i) => i.creneauId)));
 
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const admin = createSupabaseAdminClient();
 
   const [producersRes, productsRes, slotsRes, ordersRes] = await Promise.all([

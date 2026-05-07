@@ -1,6 +1,7 @@
 'use client';
 
-import { useFormState, useFormStatus } from 'react-dom';
+import { useActionState } from "react";
+import { useFormStatus } from 'react-dom';
 import { Button } from '@/components/ui';
 import { requestNewOptOutLinkAction } from '../request-new-link-action';
 
@@ -10,7 +11,7 @@ type State =
   | null;
 
 export function RequestLinkForm({ helperText }: { helperText?: string }) {
-  const [state, formAction] = useFormState<State, FormData>(
+  const [state, formAction] = useActionState<State, FormData>(
     async (_prev, formData) => requestNewOptOutLinkAction(formData),
     null,
   );

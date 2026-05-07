@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 };
 
 export default async function NotreDemarchePage() {
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const refs = await fetchActiveGmsPrices(supabase);
 
   return (

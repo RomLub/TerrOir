@@ -88,7 +88,7 @@ export async function POST(request: Request) {
 
   // User client : auth.uid() est posé, indispensable pour la RPC
   // SECURITY DEFINER qui vérifie p_consumer_id = auth.uid().
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
 
   // heure_retrait = heure locale (Europe/Paris) extraite du slot.starts_at,
   // autoritatif côté serveur. La RPC attend un `time` ; on passe "HH:MM:00".

@@ -29,11 +29,12 @@ const MESSAGES: Record<
 
 const FALLBACK = MESSAGES.invalid;
 
-export default function StockAlertUnsubscribePage({
-  searchParams,
-}: {
-  searchParams: { status?: string };
-}) {
+export default async function StockAlertUnsubscribePage(
+  props: {
+    searchParams: Promise<{ status?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const status = searchParams.status ?? "";
   const message = MESSAGES[status] ?? FALLBACK;
 

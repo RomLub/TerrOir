@@ -327,7 +327,7 @@ describe("F. revalidateTag", () => {
   it("F1 revalidateTag('public-stats') appelé une fois en cas nominal", async () => {
     await POST(makeRequest(), PARAMS);
     expect(mockRevalidateTag).toHaveBeenCalledTimes(1);
-    expect(mockRevalidateTag).toHaveBeenCalledWith("public-stats");
+    expect(mockRevalidateTag).toHaveBeenCalledWith("public-stats", "max");
   });
 
   it("F2 revalidateTag throw → console.warn [STATS_REVAL_WARN] mais 200", async () => {

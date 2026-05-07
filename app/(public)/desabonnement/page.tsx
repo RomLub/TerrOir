@@ -11,11 +11,12 @@ import { RequestLinkForm } from './_components/RequestLinkForm';
 // a perdu son email (ou n'en a jamais reçu) de redemander un lien
 // enumeration-resistant (V2 opt-out RGPD).
 
-export default function DesabonnementPage({
-  searchParams,
-}: {
-  searchParams: { email?: string; token?: string };
-}) {
+export default async function DesabonnementPage(
+  props: {
+    searchParams: Promise<{ email?: string; token?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const email = (searchParams.email ?? '').trim().toLowerCase();
   const token = (searchParams.token ?? '').trim();
 

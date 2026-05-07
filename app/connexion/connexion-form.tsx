@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useFormState, useFormStatus } from "react-dom";
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
 import {
   loginAction,
   requestMagicLinkAction,
@@ -150,7 +151,7 @@ function PasswordForm({
   callbackError?: string | null;
   onSwitchToMagic: () => void;
 }) {
-  const [state, formAction] = useFormState(loginAction, initialLoginState);
+  const [state, formAction] = useActionState(loginAction, initialLoginState);
   const remembered = useRememberedEmail();
 
   return (
@@ -231,7 +232,7 @@ function MagicLinkForm({
   redirectTo?: string;
   onSwitchToPassword: () => void;
 }) {
-  const [state, formAction] = useFormState(
+  const [state, formAction] = useActionState(
     requestMagicLinkAction,
     initialMagicLinkState,
   );

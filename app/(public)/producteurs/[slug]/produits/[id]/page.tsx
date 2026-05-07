@@ -26,7 +26,8 @@ function weightStepFor(unit: string | null): number {
   return 1;
 }
 
-export default async function ProductPage({ params }: { params: { slug: string; id: string } }) {
+export default async function ProductPage(props: { params: Promise<{ slug: string; id: string }> }) {
+  const params = await props.params;
   const admin = createSupabaseAdminClient();
 
   const { data: productRow } = await admin

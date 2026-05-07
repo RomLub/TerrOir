@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useFormState, useFormStatus } from "react-dom";
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
 import {
   completeOnboardingAction,
   type State,
@@ -101,7 +102,7 @@ export function StepInfos({
   const [densiteAnimale, setDensiteAnimale] = useState<DensiteAnimale | null>(
     null,
   );
-  const [state, action] = useFormState(completeOnboardingAction, initial);
+  const [state, action] = useActionState(completeOnboardingAction, initial);
 
   return (
     <form action={action} className="space-y-4">

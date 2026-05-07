@@ -49,10 +49,11 @@ type Props = {
   searchParams: Record<string, string | string[] | undefined>;
 };
 
-export default async function AuditLogsPage({ searchParams }: Props) {
+export default async function AuditLogsPage(props: Props) {
+  const searchParams = await props.searchParams;
   const filters = parseSearchParams(searchParams);
   const cursor = decodeCursor(filters.cursor);
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
 
   // ─── T-083 lookup email → user_id avec rate-limit + audit log meta ──
   // Si filters.email présent, on consomme le rate-limit AVANT le lookup
@@ -162,7 +163,7 @@ export default async function AuditLogsPage({ searchParams }: Props) {
 
   // Touch headers() pour matcher les warnings Next.js si jamais on
   // ajoute du request-aware logging plus tard. No-op fonctionnel.
-  void extractRequestContext(headers());
+  void extractRequestContext(await headers());
 
   // D1 : pre-fetch des user_ids visibles ayant une row dans public.producers
   // pour afficher un badge "Prod" dans la colonne user. Une seule query

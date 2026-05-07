@@ -31,7 +31,7 @@ export async function loginAndUpgradeAction(
   // T-305 PR-B : rate-limit applicatif IP avant lookup + signInWithPassword.
   // Mutualise getLoginRateLimit() (D3) — flow login invitation partage la
   // même surface attaque brute-force que loginAction classique côté IP.
-  const { ipAddress } = extractRequestContext(headers());
+  const { ipAddress } = extractRequestContext(await headers());
   const rateLimit = await consumeRateLimit(
     getLoginRateLimit(),
     ipAddress ?? "unknown",
@@ -102,7 +102,7 @@ export async function loginAndUpgradeAction(
   // Cette action est idempotente : upsert roles via Set, insert producer
   // conditionnel.
 
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const { error: signinError } = await supabase.auth.signInWithPassword({
     email: invitation.email,
     password: parsed.data.password,
@@ -139,7 +139,7 @@ export async function loginAndUpgradeAction(
   // signInWithPassword juste au-dessus) refléterait roles=['consumer'].
   // Clear plutôt que rewrite : la prochaine request middleware refera un
   // DB lookup et reposera un cookie frais avec roles=['consumer','producer'].
-  clearRoleSnapshotOnStore(cookies(), headers().get("host"));
+  clearRoleSnapshotOnStore(await cookies(), (await headers()).get("host"));
 
   // Si une ligne producers existe déjà (ex: flux interrompu puis repris),
   // on ne la duplique pas. Sinon on la crée en statut='draft'.

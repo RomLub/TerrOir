@@ -24,7 +24,8 @@
 // =============================================================================
 
 import { useEffect, useState } from "react";
-import { useFormState, useFormStatus } from "react-dom";
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
 import { Input } from "@/components/ui";
 import {
   requestOtpAction,
@@ -62,7 +63,7 @@ export default function ChangeEmailSection({
 }) {
   const [step, setStep] = useState<FlowStep>("idle");
   const [newEmailValue, setNewEmailValue] = useState("");
-  const [requestState, requestAction] = useFormState(
+  const [requestState, requestAction] = useActionState(
     requestOtpAction,
     INITIAL_REQUEST,
   );
@@ -76,15 +77,15 @@ export default function ChangeEmailSection({
   // Playwright (cf. tests/e2e/change-email.spec.ts) — defense in depth
   // côté serveur via le test "completeEmailChange refuse si verifyOtp(new)
   // pas consommé" dans integration-flow.test.tsx.
-  const [verifyCurrentState, verifyCurrentAction] = useFormState(
+  const [verifyCurrentState, verifyCurrentAction] = useActionState(
     verifyOtpAction,
     INITIAL_VERIFY,
   );
-  const [verifyNewState, verifyNewAction] = useFormState(
+  const [verifyNewState, verifyNewAction] = useActionState(
     verifyOtpAction,
     INITIAL_VERIFY,
   );
-  const [completeState, completeAction] = useFormState(
+  const [completeState, completeAction] = useActionState(
     completeEmailChangeAction,
     INITIAL_COMPLETE,
   );

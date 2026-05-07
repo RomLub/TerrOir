@@ -25,15 +25,16 @@ function getFriendlyAuthError(reason: string | undefined): string | null {
 // client. La validation de sécurité (anti open-redirect) est faite côté
 // loginAction via resolvePostLoginPath ; on transmet ici tel quel — React
 // échappe la value en HTML donc pas de risque XSS.
-export default function ConnexionPage({
-  searchParams,
-}: {
-  searchParams: {
-    redirectTo?: string | string[];
-    error?: string | string[];
-    reason?: string | string[];
-  };
-}) {
+export default async function ConnexionPage(
+  props: {
+    searchParams: Promise<{
+      redirectTo?: string | string[];
+      error?: string | string[];
+      reason?: string | string[];
+    }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const raw = searchParams.redirectTo;
   const redirectTo = typeof raw === "string" ? raw : undefined;
 

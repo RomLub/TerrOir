@@ -134,7 +134,7 @@ export default async function ComptePage() {
   const session = await getSessionUser();
   if (!session) redirect("/connexion");
 
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const [{ data: profile }, { count: activeOrders }] = await Promise.all([
     supabase
       .from("users")

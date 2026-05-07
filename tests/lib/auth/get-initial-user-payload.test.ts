@@ -10,7 +10,7 @@ const producerMaybeSingleMock = vi.fn();
 const usersMaybeSingleMock = vi.fn();
 
 vi.mock("@/lib/supabase/server", () => ({
-  createSupabaseServerClient: () => ({
+  createSupabaseServerClient: async () => ({
     auth: {
       getUser: authGetUserMock,
     },

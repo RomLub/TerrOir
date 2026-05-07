@@ -14,7 +14,7 @@ export interface SessionUser {
 }
 
 export async function getSessionUser(): Promise<SessionUser | null> {
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -73,7 +73,7 @@ export async function isAdmin(userId: string): Promise<boolean> {
 // migration 20260421100000) — mais on garde les 2 lookups indépendants par
 // robustesse défensive contre un état corrompu hypothétique.
 export async function getInitialUserPayload(): Promise<InitialUserPayload> {
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

@@ -2,9 +2,9 @@ import { cookies, headers } from "next/headers";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookieConfigForHost } from "./cookie-domain";
 
-export const createSupabaseServerClient = () => {
-  const cookieStore = cookies();
-  const host = headers().get("host") ?? undefined;
+export const createSupabaseServerClient = async () => {
+  const cookieStore = await cookies();
+  const host = (await headers()).get("host") ?? undefined;
   const cookieOptions = cookieConfigForHost(host);
 
   return createServerClient(

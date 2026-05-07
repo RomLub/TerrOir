@@ -32,7 +32,8 @@ function pct(part: number, total: number): string {
   return `${Math.round((part / total) * 100)} %`;
 }
 
-export default async function LegalCompliancePage({ searchParams }: Props) {
+export default async function LegalCompliancePage(props: Props) {
+  const searchParams = await props.searchParams;
   const filters = parseSearchParams(searchParams);
   const limit = DEFAULT_PAGE_SIZE;
   const offset = (filters.page - 1) * limit;

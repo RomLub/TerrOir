@@ -1,4 +1,4 @@
-import { notFound, redirect } from 'next/navigation';
+﻿import { notFound, redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getSessionUser } from '@/lib/auth/session';
 import {
@@ -31,11 +31,12 @@ function formatQty(qty: number, unite: string | null): string {
   return `${q} ${unite ?? ''}`.trim();
 }
 
-export default async function ConfirmationPage({ params }: { params: { id: string } }) {
+export default async function ConfirmationPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await getSessionUser();
   if (!session) redirect('/connexion');
 
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
 
   // T-217-bis (Cluster A) : detache la lecture producer du embed orders
   // pour passer par la vue producers_public (lat/lng floutees DB-level).
@@ -64,7 +65,7 @@ export default async function ConfirmationPage({ params }: { params: { id: strin
   const address = [producerRow?.adresse, producerRow?.code_postal, producerRow?.commune].filter(Boolean).join(', ');
   const slotTyped = slotRow as { starts_at: string | null; ends_at: string | null } | null;
   // Time strings "HH:MM" for ICS (startISO/endISO). Source : slot.starts_at/ends_at
-  // (timestamptz → Europe/Paris) avec fallback order.heure_retrait (time legacy).
+  // (timestamptz â†’ Europe/Paris) avec fallback order.heure_retrait (time legacy).
   const startTimeHMM = slotTyped?.starts_at
     ? extractHeureRetrait(slotTyped.starts_at).slice(0, 5)
     : (order.heure_retrait ?? '00:00').slice(0, 5);
@@ -98,7 +99,7 @@ export default async function ConfirmationPage({ params }: { params: { id: strin
       items={items}
       producer={{
         name: producerRow?.nom_exploitation ?? 'Producteur',
-        address: address || '—',
+        address: address || 'â€”',
         // T-217-bis : coords deja arrondies a 2 decimales par la vue
         // producers_public (verrou DB-level). roundCoord reapplique pour
         // fail-safe en cas de regression future.
@@ -106,7 +107,7 @@ export default async function ConfirmationPage({ params }: { params: { id: strin
         lng: roundCoord(producerRow?.longitude ?? null),
       }}
       slot={{
-        dateLabel: order.date_retrait ? formatDateLabel(order.date_retrait) : '—',
+        dateLabel: order.date_retrait ? formatDateLabel(order.date_retrait) : 'â€”',
         timeLabel,
         dateISO: order.date_retrait ?? '',
         startISO: order.date_retrait ? isoDateTime(order.date_retrait, startTimeHMM) : '',

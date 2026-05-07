@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactElement } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -12,7 +13,7 @@ type NavItem = {
   kind: "item";
   href: string;
   label: string;
-  icon: JSX.Element;
+  icon: ReactElement;
 };
 
 type NavGroup = {

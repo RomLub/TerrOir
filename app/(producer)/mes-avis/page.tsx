@@ -17,7 +17,7 @@ export default async function ProducerAvisPage() {
   const session = await getSessionUser();
   if (!session) redirect('/connexion');
 
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const producer = await fetchProducerForUser(supabase, session.id);
   if (!producer) redirect('/invitation');
 

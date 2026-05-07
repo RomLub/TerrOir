@@ -29,10 +29,11 @@ const bodySchema = z.object({
 });
 
 interface RouteContext {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
-export async function POST(request: Request, { params }: RouteContext) {
+export async function POST(request: Request, props: RouteContext) {
+  const params = await props.params;
   const session = await getSessionUser();
   if (!session || !session.isAdmin) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });

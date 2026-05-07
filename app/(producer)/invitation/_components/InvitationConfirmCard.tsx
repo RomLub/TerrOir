@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useFormState, useFormStatus } from "react-dom";
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
 import {
   acceptInvitationAction,
   type State,
@@ -37,7 +38,7 @@ export function InvitationConfirmCard({
   email: string;
   prenom: string | null;
 }) {
-  const [state, action] = useFormState(acceptInvitationAction, initial);
+  const [state, action] = useActionState(acceptInvitationAction, initial);
 
   return (
     <div className="w-full max-w-xl rounded-2xl border border-terroir-border bg-white p-8 shadow-sm">

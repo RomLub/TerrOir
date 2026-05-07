@@ -48,7 +48,7 @@ export async function updatePasswordAction(
     return { error: parsed.error.issues[0]?.message ?? "Saisie invalide" };
   }
 
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
 
   const { error: verifyError } = await supabase.auth.verifyOtp({
     type: "recovery",

@@ -40,7 +40,7 @@ export async function POST(request: Request) {
 
   // Ownership : l'order doit appartenir au caller (guard cohérent avec
   // le pattern de create-payment-intent).
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const { data: order, error: orderError } = await supabase
     .from("orders")
     .select("id, consumer_id")

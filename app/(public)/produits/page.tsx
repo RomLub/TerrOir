@@ -80,11 +80,12 @@ function badgeFor(p: PublicProductRow): string | undefined {
   return p.cuts?.name ?? p.animals?.name ?? p.product_categories?.name ?? undefined;
 }
 
-export default async function ProduitsPage({
-  searchParams,
-}: {
-  searchParams: SearchParams;
-}) {
+export default async function ProduitsPage(
+  props: {
+    searchParams: Promise<SearchParams>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const filters = parseProductsSearchParams(searchParams);
   const { products, resolved } = await getPublicProducts(filters);
   const pills = buildPills(resolved, searchParams);

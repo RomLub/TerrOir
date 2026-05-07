@@ -70,14 +70,14 @@ describe("cookieOptionsForHost", () => {
 });
 
 describe("setRedirectAfterAuth", () => {
-  it("pose le cookie quand le path est valide (prod → __Secure- prefix)", () => {
+  it("pose le cookie quand le path est valide (prod → __Secure- prefix)", async () => {
     const setSpy = vi.fn();
-    vi.mocked(cookies).mockReturnValue({ set: setSpy } as never);
-    vi.mocked(headers).mockReturnValue({
+    vi.mocked(cookies).mockResolvedValue({ set: setSpy } as never);
+    vi.mocked(headers).mockResolvedValue({
       get: () => "www.terroir-local.fr",
     } as never);
 
-    setRedirectAfterAuth("/panier");
+    await setRedirectAfterAuth("/panier");
 
     expect(setSpy).toHaveBeenCalledTimes(1);
     expect(setSpy).toHaveBeenCalledWith(
@@ -93,18 +93,18 @@ describe("setRedirectAfterAuth", () => {
     );
   });
 
-  it("ignore silencieusement les paths invalides (open-redirect guard)", () => {
+  it("ignore silencieusement les paths invalides (open-redirect guard)", async () => {
     const setSpy = vi.fn();
-    vi.mocked(cookies).mockReturnValue({ set: setSpy } as never);
-    vi.mocked(headers).mockReturnValue({
+    vi.mocked(cookies).mockResolvedValue({ set: setSpy } as never);
+    vi.mocked(headers).mockResolvedValue({
       get: () => "www.terroir-local.fr",
     } as never);
 
-    setRedirectAfterAuth("https://evil.example.com/phish");
-    setRedirectAfterAuth("//evil.example.com");
-    setRedirectAfterAuth("");
-    setRedirectAfterAuth(null);
-    setRedirectAfterAuth(undefined);
+    await setRedirectAfterAuth("https://evil.example.com/phish");
+    await setRedirectAfterAuth("//evil.example.com");
+    await setRedirectAfterAuth("");
+    await setRedirectAfterAuth(null);
+    await setRedirectAfterAuth(undefined);
 
     expect(setSpy).not.toHaveBeenCalled();
   });

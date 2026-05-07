@@ -37,7 +37,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
-  createSupabaseServerClient: () => ({ from: mockServerFrom }),
+  createSupabaseServerClient: async () => ({ from: mockServerFrom }),
 }));
 
 vi.mock("@/lib/audit-logs/log-review-event", () => ({

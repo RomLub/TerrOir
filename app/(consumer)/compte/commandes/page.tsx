@@ -40,11 +40,12 @@ function searchParamsToUrlSearchParams(sp: SearchParams): URLSearchParams {
   return out;
 }
 
-export default async function CommandesPage({
-  searchParams,
-}: {
-  searchParams: SearchParams;
-}) {
+export default async function CommandesPage(
+  props: {
+    searchParams: Promise<SearchParams>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const session = await getSessionUser();
   if (!session) redirect('/connexion');
 

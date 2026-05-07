@@ -12,7 +12,7 @@ import { clearRoleSnapshotOnStore } from "@/lib/auth/role-snapshot-cookie";
 // (déconnecte les deux sous-domaines). Logout depuis admin → efface
 // uniquement le cookie 'sb-admin-auth-token' scopé sur admin.*.
 export async function logoutAction() {
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
 
   // userId capturé AVANT signOut : sinon la session est détruite et on
   // perdrait l'attribution. getUser() est l'appel canonique vérifié
@@ -32,7 +32,7 @@ export async function logoutAction() {
   // user_id mismatch (vs getUser() returning null) le rejetterait déjà
   // côté middleware, mais on nettoie côté serveur pour ne pas garder un
   // cookie signé valide circulant inutilement post-logout.
-  clearRoleSnapshotOnStore(cookies(), headers().get("host"));
+  clearRoleSnapshotOnStore(await cookies(), (await headers()).get("host"));
 
   redirect("/");
 }

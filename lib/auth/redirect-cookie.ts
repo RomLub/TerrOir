@@ -71,10 +71,11 @@ function cookieOptionsForHost(
 // est appliquée ici (defense-in-depth) pour qu'un FormData injecté avec un
 // path foireux ne contamine pas le cookie. Écriture sur le nouveau nom
 // uniquement (legacy continuera d'être lu pour la transition).
-export function setRedirectAfterAuth(redirectTo: unknown): void {
+export async function setRedirectAfterAuth(redirectTo: unknown): Promise<void> {
   if (!isValidRedirectPath(redirectTo)) return;
-  const host = headers().get("host");
-  cookies().set(cookieNameForHost(host), redirectTo, cookieOptionsForHost(host));
+  const host = (await headers()).get("host");
+  const cookieStore = await cookies();
+  cookieStore.set(cookieNameForHost(host), redirectTo, cookieOptionsForHost(host));
 }
 
 // Lit le cookie depuis une NextRequest (Route Handler /auth/callback).

@@ -1,4 +1,4 @@
-import { notFound, redirect } from 'next/navigation';
+﻿import { notFound, redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -15,22 +15,23 @@ function formatReceived(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) +
-    ' à ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    ' Ã  ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 }
 
 function formatDateLabel(iso: string | null): string {
-  if (!iso) return '—';
+  if (!iso) return 'â€”';
   const d = new Date(iso + 'T00:00:00');
   if (Number.isNaN(d.getTime())) return iso;
   const s = d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-export default async function ProducerOrderDetailPage({ params }: { params: { id: string } }) {
+export default async function ProducerOrderDetailPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await getSessionUser();
   if (!session) redirect('/connexion');
 
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const producer = await fetchProducerForUser(supabase, session.id);
   if (!producer) redirect('/invitation');
 
@@ -80,8 +81,8 @@ export default async function ProducerOrderDetailPage({ params }: { params: { id
     codeCommande: order.code_commande ?? null,
     client: {
       name: clientName,
-      email: consumer?.email ?? '—',
-      phone: consumer?.telephone ?? '—',
+      email: consumer?.email ?? 'â€”',
+      phone: consumer?.telephone ?? 'â€”',
     },
     createdAtLabel: formatReceived(order.created_at),
     slotDate: formatDateLabel(order.date_retrait),

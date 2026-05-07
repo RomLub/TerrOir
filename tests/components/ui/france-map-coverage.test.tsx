@@ -104,10 +104,11 @@ describe("FranceMapCoverage — rendu SVG", () => {
       coveredDepartments: ["72"],
       departmentProducerCounts: { "72": 1 },
     });
-    // renderToStaticMarkup escape les " inside <style> en &quot;.
-    // Le navigateur réinterprète correctement à l'exécution — le test
-    // vérifie juste que le sélecteur est bien présent.
-    expect(html).toContain("rect[data-covered=&quot;1&quot;]:hover");
-    expect(html).toContain("rect[data-covered=&quot;0&quot;]:hover");
+    // React 19 : renderToStaticMarkup ne ré-escape plus les " dans <style>
+    // (vs React 18 qui les sortait en &quot;). Le navigateur les interprète
+    // correctement dans les deux cas — le test vérifie juste que le sélecteur
+    // est bien présent.
+    expect(html).toContain('rect[data-covered="1"]:hover');
+    expect(html).toContain('rect[data-covered="0"]:hover');
   });
 });

@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useFormState, useFormStatus } from "react-dom";
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
 import { Button, PasswordInput } from "@/components/ui";
 import {
   updatePasswordAction,
@@ -20,7 +21,7 @@ function SubmitButton() {
 }
 
 export function ResetPasswordForm({ tokenHash }: { tokenHash: string }) {
-  const [state, formAction] = useFormState(updatePasswordAction, initialState);
+  const [state, formAction] = useActionState(updatePasswordAction, initialState);
 
   return (
     <form action={formAction} className="space-y-4">

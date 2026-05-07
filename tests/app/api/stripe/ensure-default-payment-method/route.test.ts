@@ -78,7 +78,7 @@ let orderLookupResp: Resp;
 let userLookupResp: Resp;
 
 vi.mock("@/lib/supabase/server", () => ({
-  createSupabaseServerClient: () => ({
+  createSupabaseServerClient: async () => ({
     from: (_table: string) => {
       const builder: Record<string, unknown> = {};
       builder.select = (_cols: string) => builder;

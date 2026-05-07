@@ -1,4 +1,4 @@
-import { notFound, redirect } from 'next/navigation';
+﻿import { notFound, redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getSessionUser } from '@/lib/auth/session';
 import {
@@ -33,15 +33,16 @@ function formatQty(qty: number, unite: string | null): string {
   return `${q} ${unite ?? ''}`.trim();
 }
 
-export default async function OrderDetailPage({ params }: { params: { id: string } }) {
+export default async function OrderDetailPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await getSessionUser();
   if (!session) redirect('/connexion');
 
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
 
   // T-217-bis (Cluster A) : on detache la lecture producer du embed orders
   // pour passer par la vue producers_public (lat/lng deja floutees DB-level).
-  // L'embed sur orders ne peut pas pointer une vue PostgREST — fetch separe.
+  // L'embed sur orders ne peut pas pointer une vue PostgREST â€” fetch separe.
   const { data: order } = await supabase
     .from('orders')
     .select(`
@@ -56,7 +57,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
   if (!order) notFound();
   if (order.consumer_id !== session.id) redirect('/compte/commandes');
 
-  // Lecture producer via la vue producers_public — les coords sont deja
+  // Lecture producer via la vue producers_public â€” les coords sont deja
   // arrondies a 2 decimales (filtre statut='public' AND deleted_at IS NULL
   // dans le body de la vue).
   const { data: producerRow } = await supabase
@@ -102,7 +103,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
     producer: {
       name: producerRow?.nom_exploitation ?? 'Producteur',
       slug: producerRow?.slug ?? '',
-      address: address || '—',
+      address: address || 'â€”',
       // T-217-bis : coords deja arrondies a 2 decimales par la vue
       // producers_public (verrou DB-level). roundCoord reapplique pour
       // fail-safe en cas de regression future de la vue.
@@ -110,7 +111,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
       lng: roundCoord(producerRow?.longitude ?? null),
     },
     slot: {
-      dateLabel: order.date_retrait ? formatDateLabel(order.date_retrait) : '—',
+      dateLabel: order.date_retrait ? formatDateLabel(order.date_retrait) : 'â€”',
       timeLabel,
     },
     hasReview: !!review,

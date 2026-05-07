@@ -631,7 +631,7 @@ describe("G. revalidateTag", () => {
   it("G1 revalidateTag('public-stats') appelé une fois en cas nominal", async () => {
     await POST(makeRequest(), PARAMS);
     expect(mockRevalidateTag).toHaveBeenCalledTimes(1);
-    expect(mockRevalidateTag).toHaveBeenCalledWith("public-stats");
+    expect(mockRevalidateTag).toHaveBeenCalledWith("public-stats", "max");
     // T-100 C2 : helper invoque avec signature {source, orderId}.
     expect(mockRevalidatePublicStats).toHaveBeenCalledTimes(1);
     expect(mockRevalidatePublicStats).toHaveBeenCalledWith({

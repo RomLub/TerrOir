@@ -33,10 +33,11 @@ const updateSchema = z.object({
 });
 
 interface RouteContext {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
-export async function GET(_request: Request, { params }: RouteContext) {
+export async function GET(_request: Request, props: RouteContext) {
+  const params = await props.params;
   const session = await getSessionUser();
   if (!session?.isAdmin) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -51,7 +52,8 @@ export async function GET(_request: Request, { params }: RouteContext) {
   return NextResponse.json({ row, dependencies: deps });
 }
 
-export async function PATCH(request: Request, { params }: RouteContext) {
+export async function PATCH(request: Request, props: RouteContext) {
+  const params = await props.params;
   const session = await getSessionUser();
   if (!session?.isAdmin) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -109,7 +111,8 @@ export async function PATCH(request: Request, { params }: RouteContext) {
   }
 }
 
-export async function DELETE(_request: Request, { params }: RouteContext) {
+export async function DELETE(_request: Request, props: RouteContext) {
+  const params = await props.params;
   const session = await getSessionUser();
   if (!session?.isAdmin) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
