@@ -107,7 +107,7 @@ describe("middleware — role snapshot cookie cache (T-321)", () => {
       buildRequest({
         url: "https://www.terroir-local.fr/compte",
         host: "www.terroir-local.fr",
-        cookies: { __terroir_role_snapshot: cookieValue },
+        cookies: { "__Secure-terroir_role_snapshot": cookieValue },
       }),
     );
 
@@ -153,7 +153,7 @@ describe("middleware — role snapshot cookie cache (T-321)", () => {
       buildRequest({
         url: "https://www.terroir-local.fr/compte",
         host: "www.terroir-local.fr",
-        cookies: { __terroir_role_snapshot: tamperedCookie },
+        cookies: { "__Secure-terroir_role_snapshot": tamperedCookie },
       }),
     );
 
@@ -179,7 +179,7 @@ describe("middleware — role snapshot cookie cache (T-321)", () => {
       buildRequest({
         url: "https://www.terroir-local.fr/compte",
         host: "www.terroir-local.fr",
-        cookies: { __terroir_role_snapshot: expiredCookie },
+        cookies: { "__Secure-terroir_role_snapshot": expiredCookie },
       }),
     );
 
@@ -205,7 +205,7 @@ describe("middleware — role snapshot cookie cache (T-321)", () => {
       buildRequest({
         url: "https://www.terroir-local.fr/compte",
         host: "www.terroir-local.fr",
-        cookies: { __terroir_role_snapshot: otherUserCookie },
+        cookies: { "__Secure-terroir_role_snapshot": otherUserCookie },
       }),
     );
 
