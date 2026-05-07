@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { logReviewEvent } from "@/lib/audit-logs/log-review-event";
+import { revalidateProducerCard } from "@/lib/stats/revalidate";
 
 // Admin override : suppression d'une réponse Producer abusive (modération
 // a posteriori, override de la lock 24h producer). Décision business :
@@ -22,9 +23,11 @@ export async function DELETE(_request: Request, props: RouteContext) {
   }
 
   const admin = createSupabaseAdminClient();
+  // bugs-P2-3 : embed producers.slug pour invalider le tag `producer:<slug>`
+  // après remove de la réponse abusive.
   const { data: review } = await admin
     .from("reviews")
-    .select("id, producer_id, producer_response")
+    .select("id, producer_id, producer_response, producers!inner(slug)")
     .eq("id", params.id)
     .maybeSingle();
 
@@ -63,6 +66,20 @@ export async function DELETE(_request: Request, props: RouteContext) {
       response_length: snapshotLength,
     },
   });
+
+  // bugs-P2-3 : invalidation cache `producer:<slug>` après remove. Défensif
+  // (reviews force-dynamic aujourd'hui sur la fiche, no-op sémantique, mais
+  // wiring posé pour éviter régression silencieuse si reviews basculent en
+  // ISR/cache plus tard).
+  const producerSlug = Array.isArray(review.producers)
+    ? review.producers[0]?.slug
+    : (review.producers as { slug: string } | null)?.slug;
+  if (producerSlug) {
+    await revalidateProducerCard({
+      slug: producerSlug,
+      source: "admin-reviews-response-delete",
+    });
+  }
 
   return NextResponse.json({ ok: true });
 }

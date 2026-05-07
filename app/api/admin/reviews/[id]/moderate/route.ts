@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { revalidateProducerCard } from "@/lib/stats/revalidate";
 
 const bodySchema = z.object({
   action: z.enum(["publish", "reject"]),
@@ -28,14 +29,21 @@ export async function POST(request: Request, props: RouteContext) {
 
   const admin = createSupabaseAdminClient();
 
+  // bugs-P2-3 : embed producers.slug pour invalider le tag `producer:<slug>`
+  // après update note_moyenne/nb_avis. Sans ça, la fiche /producteurs/[slug]
+  // sert la note stale jusqu'à 60s (revalidate du unstable_cache du bloc
+  // producer côté page.tsx).
   const { data: review } = await admin
     .from("reviews")
-    .select("id, producer_id, statut")
+    .select("id, producer_id, statut, producers!inner(slug)")
     .eq("id", params.id)
     .maybeSingle();
   if (!review) {
     return NextResponse.json({ error: "Review not found" }, { status: 404 });
   }
+  const producerSlug = Array.isArray(review.producers)
+    ? review.producers[0]?.slug
+    : (review.producers as { slug: string } | null)?.slug;
 
   const isPublish = parsed.data.action === "publish";
   const update: Record<string, unknown> = {
@@ -95,6 +103,16 @@ export async function POST(request: Request, props: RouteContext) {
       },
       { status: 500 },
     );
+  }
+
+  // bugs-P2-3 : invalidation explicite du tag `producer:<slug>` après UPDATE
+  // note_moyenne/nb_avis. Fail-safe (le helper swallow l'erreur). Sans cet
+  // appel, la fiche /producteurs/[slug] sert la note stale jusqu'à 60s.
+  if (producerSlug) {
+    await revalidateProducerCard({
+      slug: producerSlug,
+      source: "admin-reviews-moderate",
+    });
   }
 
   return NextResponse.json({

@@ -22,10 +22,13 @@ vi.mock("@/lib/auth/session", () => ({
   getSessionUser: async () => sessionUser,
 }));
 
-const { mockAdminFrom, mockLogReview } = vi.hoisted(() => ({
-  mockAdminFrom: vi.fn(),
-  mockLogReview: vi.fn(),
-}));
+const { mockAdminFrom, mockLogReview, mockRevalidateProducerCard } = vi.hoisted(
+  () => ({
+    mockAdminFrom: vi.fn(),
+    mockLogReview: vi.fn(),
+    mockRevalidateProducerCard: vi.fn(),
+  }),
+);
 
 vi.mock("@/lib/supabase/admin", () => ({
   createSupabaseAdminClient: () => ({ from: mockAdminFrom }),
@@ -33,6 +36,12 @@ vi.mock("@/lib/supabase/admin", () => ({
 
 vi.mock("@/lib/audit-logs/log-review-event", () => ({
   logReviewEvent: mockLogReview,
+}));
+
+// bugs-P2-3 : mock helper revalidateProducerCard ; route admin DELETE response
+// embed maintenant producers!inner(slug) et appelle revalidate après UPDATE.
+vi.mock("@/lib/stats/revalidate", () => ({
+  revalidateProducerCard: mockRevalidateProducerCard,
 }));
 
 import { DELETE } from "@/app/api/admin/reviews/[id]/response/route";
@@ -73,6 +82,7 @@ beforeEach(() => {
   sessionUser = { id: ADMIN_ID, email: "admin@test", roles: [], isAdmin: true };
   mockAdminFrom.mockReset();
   mockLogReview.mockReset();
+  mockRevalidateProducerCard.mockReset();
 });
 
 describe("DELETE /api/admin/reviews/[id]/response", () => {
@@ -105,6 +115,7 @@ describe("DELETE /api/admin/reviews/[id]/response", () => {
       producer_id: PRODUCER_ID,
       producer_response: "réponse abusive",
       producer_response_locked_at: pastLock,
+      producers: { slug: "test-slug" },
     });
     const res = await DELETE(makeRequest(), { params: { id: REVIEW_ID } });
     expect(res.status).toBe(200);
@@ -116,6 +127,13 @@ describe("DELETE /api/admin/reviews/[id]/response", () => {
         eventType: "producer_response_removed_by_admin",
         userId: ADMIN_ID,
         metadata: expect.objectContaining({ response_length: 15 }),
+      }),
+    );
+    // bugs-P2-3 : revalidate cache `producer:<slug>` après remove
+    expect(mockRevalidateProducerCard).toHaveBeenCalledWith(
+      expect.objectContaining({
+        slug: "test-slug",
+        source: "admin-reviews-response-delete",
       }),
     );
   });

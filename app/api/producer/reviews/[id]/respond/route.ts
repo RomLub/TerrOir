@@ -5,6 +5,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { logReviewEvent } from "@/lib/audit-logs/log-review-event";
 import { sendReviewResponseEmail } from "@/lib/notifications/send-review-response-email";
+import { revalidateProducerCard } from "@/lib/stats/revalidate";
 
 // Droit de réponse Producer aux avis (CGU 6.4) — publication immédiate,
 // éditable + supprimable pendant 24h, puis figée.
@@ -29,17 +30,23 @@ interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
-async function getProducerForUser(userId: string): Promise<string | null> {
+async function getProducerForUser(
+  userId: string,
+): Promise<{ id: string; slug: string } | null> {
   // Lookup producer.id via user_id. Admin client : la RLS producers self
   // l'autoriserait avec user client, mais on passe par admin pour rester
   // simple (read-only sur producers est OK).
+  // bugs-P2-3 : ajout slug pour invalidation cache `producer:<slug>` après
+  // create/update/delete d'une producer_response (impact futur si reviews
+  // basculent en cache, défensif aujourd'hui).
   const admin = createSupabaseAdminClient();
   const { data } = await admin
     .from("producers")
-    .select("id")
+    .select("id, slug")
     .eq("user_id", userId)
     .maybeSingle();
-  return data?.id ?? null;
+  if (!data) return null;
+  return { id: data.id as string, slug: data.slug as string };
 }
 
 export async function POST(request: Request, props: RouteContext) {
@@ -49,10 +56,11 @@ export async function POST(request: Request, props: RouteContext) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const producerId = await getProducerForUser(session.id);
-  if (!producerId) {
+  const producerInfo = await getProducerForUser(session.id);
+  if (!producerInfo) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
+  const { id: producerId, slug: producerSlug } = producerInfo;
 
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
@@ -131,6 +139,16 @@ export async function POST(request: Request, props: RouteContext) {
       },
     });
 
+    // bugs-P2-3 : invalidation cache `producer:<slug>` après update producer_response.
+    // Défensif : aujourd'hui les reviews sont en force-dynamic sur la fiche
+    // /producteurs/[slug] (pas de cache), donc l'invalidation est no-op
+    // sémantiquement. Si demain reviews basculent en cache (ex: ISR fiche
+    // producteur), ce wiring évitera une régression silencieuse.
+    await revalidateProducerCard({
+      slug: producerSlug,
+      source: "producer-reviews-respond-update",
+    });
+
     return NextResponse.json({ ok: true, mode: "updated" });
   }
 
@@ -176,6 +194,13 @@ export async function POST(request: Request, props: RouteContext) {
     );
   }
 
+  // bugs-P2-3 : invalidation cache `producer:<slug>` après create producer_response.
+  // Cf commentaire path update plus haut.
+  await revalidateProducerCard({
+    slug: producerSlug,
+    source: "producer-reviews-respond-create",
+  });
+
   return NextResponse.json({ ok: true, mode: "created" });
 }
 
@@ -186,10 +211,11 @@ export async function DELETE(_request: Request, props: RouteContext) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const producerId = await getProducerForUser(session.id);
-  if (!producerId) {
+  const producerInfo = await getProducerForUser(session.id);
+  if (!producerInfo) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
+  const { id: producerId, slug: producerSlug } = producerInfo;
 
   const supabase = await createSupabaseServerClient();
   const { data: review } = await supabase
@@ -237,6 +263,12 @@ export async function DELETE(_request: Request, props: RouteContext) {
     eventType: "producer_response_deleted_by_producer",
     userId: session.id,
     metadata: { review_id: review.id, producer_id: producerId },
+  });
+
+  // bugs-P2-3 : invalidation cache `producer:<slug>` après delete producer_response.
+  await revalidateProducerCard({
+    slug: producerSlug,
+    source: "producer-reviews-respond-delete",
   });
 
   return NextResponse.json({ ok: true });

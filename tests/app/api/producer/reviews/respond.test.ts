@@ -24,13 +24,19 @@ vi.mock("@/lib/auth/session", () => ({
   getSessionUser: async () => sessionUser,
 }));
 
-const { mockAdminFrom, mockServerFrom, mockLogReview, mockSendEmail } =
-  vi.hoisted(() => ({
-    mockAdminFrom: vi.fn(),
-    mockServerFrom: vi.fn(),
-    mockLogReview: vi.fn(),
-    mockSendEmail: vi.fn(),
-  }));
+const {
+  mockAdminFrom,
+  mockServerFrom,
+  mockLogReview,
+  mockSendEmail,
+  mockRevalidateProducerCard,
+} = vi.hoisted(() => ({
+  mockAdminFrom: vi.fn(),
+  mockServerFrom: vi.fn(),
+  mockLogReview: vi.fn(),
+  mockSendEmail: vi.fn(),
+  mockRevalidateProducerCard: vi.fn(),
+}));
 
 vi.mock("@/lib/supabase/admin", () => ({
   createSupabaseAdminClient: () => ({ from: mockAdminFrom }),
@@ -48,6 +54,13 @@ vi.mock("@/lib/notifications/send-review-response-email", () => ({
   sendReviewResponseEmail: mockSendEmail,
 }));
 
+// bugs-P2-3 : mock du helper revalidateProducerCard. Test de leak ('not.toHaveBeenCalled')
+// pas pertinent ici, on vérifie juste qu'on l'appelle bien sur les paths
+// create/update/delete (cf assertions plus bas).
+vi.mock("@/lib/stats/revalidate", () => ({
+  revalidateProducerCard: mockRevalidateProducerCard,
+}));
+
 import { POST, DELETE } from "@/app/api/producer/reviews/[id]/respond/route";
 
 const REVIEW_ID = "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa";
@@ -62,7 +75,7 @@ function makeRequest(method: string, body?: unknown): Request {
   });
 }
 
-function setupProducerLookup(producerId: string | null) {
+function setupProducerLookup(producerId: string | null, slug = "test-slug") {
   mockAdminFrom.mockImplementation((table: string) => {
     if (table === "producers") {
       return {
@@ -70,7 +83,7 @@ function setupProducerLookup(producerId: string | null) {
           eq: () => ({
             maybeSingle: () =>
               Promise.resolve({
-                data: producerId ? { id: producerId } : null,
+                data: producerId ? { id: producerId, slug } : null,
                 error: null,
               }),
           }),
@@ -116,6 +129,7 @@ beforeEach(() => {
   mockLogReview.mockReset();
   mockSendEmail.mockReset();
   mockSendEmail.mockResolvedValue({ ok: true });
+  mockRevalidateProducerCard.mockReset();
 });
 
 describe("POST /api/producer/reviews/[id]/respond", () => {
@@ -188,6 +202,13 @@ describe("POST /api/producer/reviews/[id]/respond", () => {
       expect.objectContaining({ eventType: "producer_response_published" }),
     );
     expect(mockSendEmail).toHaveBeenCalledOnce();
+    // bugs-P2-3 : revalidation du tag producer:<slug> après create response
+    expect(mockRevalidateProducerCard).toHaveBeenCalledWith(
+      expect.objectContaining({
+        slug: "test-slug",
+        source: "producer-reviews-respond-create",
+      }),
+    );
   });
 
   it("modification dans 24h → mode=updated + producer_response_at unchanged", async () => {
