@@ -59,18 +59,28 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: 'npm run dev',
+    // Script dédié e2e : check port 3000 + spawn `next dev` avec 4 env vars
+    // inline (NODE_ENV=test, RESEND_TEST_MODE, PLAYWRIGHT_TEST,
+    // RATE_LIMIT_BYPASS_TESTS). Voir scripts/dev-e2e.mjs.
+    command: 'npm run dev:e2e',
     url: 'http://localhost:3000',
-    reuseExistingServer: !process.env.CI,
+    // Toujours kill + restart : un dev server préexistant n'a pas les flags
+    // e2e (RESEND_TEST_MODE, PLAYWRIGHT_TEST, RATE_LIMIT_BYPASS_TESTS) →
+    // tests flaky (capture email vide, rate-limit 6e loginAs throw). Coût :
+    // cold start Next ~30-60s à chaque run. Apprentissage post-mortem cycle
+    // FIX 2026-05-07 : "détecter la flakiness, pas la masquer".
+    reuseExistingServer: false,
     timeout: 120_000, // Next.js dev server cold start peut être long
     stdout: 'ignore',
     stderr: 'pipe',
-    // RESEND_TEST_MODE=true active la capture e2e dans test_emails_captured
-    // (cf. lib/resend/send.ts isE2ETestCaptureMode). Gate strict NODE_ENV !==
-    // production côté send.ts → safe en local dev (NODE_ENV=development par
-    // défaut sous `next dev`).
+    // Belt-and-suspenders : les vars sont aussi posées par dev-e2e.mjs.
+    // On les répète ici pour clarté à la lecture du config + protection
+    // si quelqu'un override webServer.command vers `npm run dev` brut.
     env: {
+      NODE_ENV: 'test',
       RESEND_TEST_MODE: 'true',
+      PLAYWRIGHT_TEST: '1',
+      RATE_LIMIT_BYPASS_TESTS: 'true',
     },
   },
 });
