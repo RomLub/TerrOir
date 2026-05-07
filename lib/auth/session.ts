@@ -17,7 +17,21 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
+    error: getUserError,
   } = await supabase.auth.getUser();
+
+  // bugs-P2-1 (T9 2026-05-07) : fail-closed logging. Avant, une erreur de
+  // getUser() (Supabase Auth indispo, JWT corrompu, RPC timeout) était
+  // silencieusement avalée car on ne destructurait que `data.user`. La
+  // route appelante voyait alors un Unauthorized générique sans signal côté
+  // SRE pour distinguer "session expirée" (normal) de "Auth backend down"
+  // (incident). On loggue avec préfixe grep-able + on continue le fail-
+  // closed (return null si !user).
+  if (getUserError) {
+    console.error(
+      `[AUTH_GETUSER_ERR] supabase.auth.getUser() failed: ${getUserError.message}`,
+    );
+  }
 
   if (!user) return null;
 
@@ -28,6 +42,20 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     supabase.from("users").select("roles").eq("id", user.id).maybeSingle(),
     supabase.from("admin_users").select("id").eq("id", user.id).maybeSingle(),
   ]);
+
+  // bugs-P2-1 : log les erreurs de lookup (faux !isAdmin invisible côté SRE).
+  // On continue avec roles=[] / isAdmin=false (fail-closed) — comportement
+  // identique au précédent, mais visible côté logs maintenant.
+  if (userRes.error) {
+    console.error(
+      `[AUTH_USERS_LOOKUP_ERR] user_id=${user.id} error=${userRes.error.message}`,
+    );
+  }
+  if (adminRes.error) {
+    console.error(
+      `[AUTH_ADMIN_LOOKUP_ERR] user_id=${user.id} error=${adminRes.error.message}`,
+    );
+  }
 
   const roles = (userRes.data?.roles as UserRole[] | undefined) ?? [];
   const isAdmin = !!adminRes.data;
