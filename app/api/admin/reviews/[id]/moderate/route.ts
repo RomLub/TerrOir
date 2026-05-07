@@ -48,7 +48,16 @@ export async function POST(request: Request, props: RouteContext) {
     .update(update)
     .eq("id", review.id);
   if (updateError) {
-    return NextResponse.json({ error: updateError.message }, { status: 500 });
+    // bugs-P3-3 (T9 2026-05-07) : ne pas exposer updateError.message dans
+    // la réponse — même auth-gated admin, c'est une bonne hygiène (l'admin
+    // ne tire rien d'utile du message Postgres brut). Loggué côté serveur.
+    console.error(
+      `[ADMIN_REVIEW_MODERATE_UPDATE_ERR] review=${review.id} action=${parsed.data.action} error=${updateError.message}`,
+    );
+    return NextResponse.json(
+      { error: "Internal database error" },
+      { status: 500 },
+    );
   }
 
   // Recalcul complet du cache (publish ET reject) : un rejet peut concerner
@@ -72,11 +81,17 @@ export async function POST(request: Request, props: RouteContext) {
     .update({ note_moyenne: noteMoyenne, nb_avis: nbAvis })
     .eq("id", review.producer_id);
   if (producerUpdateError) {
+    // bugs-P3-3 (T9 2026-05-07) : retirer le message Postgres exposé. Le
+    // détail va dans console.error pour la SRE, l'admin reçoit un warning
+    // générique.
+    console.error(
+      `[ADMIN_REVIEW_MODERATE_PRODUCER_UPDATE_ERR] review=${review.id} producer=${review.producer_id} error=${producerUpdateError.message}`,
+    );
     return NextResponse.json(
       {
         review_id: review.id,
         statut: update.statut,
-        warning: `Cache producteur non mis à jour : ${producerUpdateError.message}`,
+        warning: "Cache producteur non mis à jour",
       },
       { status: 500 },
     );

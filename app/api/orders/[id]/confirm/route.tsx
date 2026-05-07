@@ -93,10 +93,19 @@ export async function POST(_request: Request, props0: RouteContext) {
       return deltaMs <= 2 * 60 * 60 * 1000;
     }).length;
     const score = Math.round((fast / history.length) * 10000) / 100;
-    await admin
+    // bugs-P2-6 (T9 2026-05-07) : destructure error pour rendre visible un
+    // badge stale silencieux (RLS bug, statement_timeout, etc.). Le UPDATE
+    // reste fail-safe (pas de 500) car le badge est un cache non-critique
+    // recalculé hebdomadairement par le cron weekly-badges.
+    const { error: badgeUpdateErr } = await admin
       .from("producers")
       .update({ badge_confirmation_score: score })
       .eq("id", order.producer_id);
+    if (badgeUpdateErr) {
+      console.error(
+        `[BADGE_UPDATE_ERR] producer=${order.producer_id} badge=confirmation error=${badgeUpdateErr.message}`,
+      );
+    }
   }
 
   // 2. Email récap au consommateur
