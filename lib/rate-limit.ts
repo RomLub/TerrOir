@@ -69,14 +69,55 @@ export function createRateLimiter(
   });
 }
 
+// Bypass e2e (tests Playwright TerrOir) — TRIPLE GATE pour rendre
+// l'activation accidentelle en preview/prod impossible :
+//   1. NODE_ENV !== 'production'
+//   2. RATE_LIMIT_BYPASS_TESTS === 'true'
+//   3. PLAYWRIGHT_TEST === '1'
+//
+// PLAYWRIGHT_TEST est posé UNIQUEMENT par playwright.config.ts
+// webServer.env (pas dans .env.example, pas dans la doc utilisateur).
+// Triple intersection = activation impossible hors run Playwright local.
+//
+// Defense in depth : warning console une fois par process si le bypass
+// se déclenche. Si jamais ce log apparaît dans Vercel prod logs (par
+// erreur de config), alerte immédiate forensique.
+let _bypassWarningLogged = false;
+function isE2ETestBypassActive(): boolean {
+  return (
+    process.env.NODE_ENV !== "production" &&
+    process.env.RATE_LIMIT_BYPASS_TESTS === "true" &&
+    process.env.PLAYWRIGHT_TEST === "1"
+  );
+}
+
+function maybeWarnBypassActive(): void {
+  if (_bypassWarningLogged) return;
+  _bypassWarningLogged = true;
+  console.warn(
+    "[RATE_LIMIT_BYPASS] Active for tests — should NEVER appear in production logs",
+  );
+}
+
+// Reset mémoire du flag bypass-warning. Test-only (cf. tests/lib/rate-limit/*).
+// Pas exposé pour usage applicatif.
+export function __resetBypassWarning(): void {
+  _bypassWarningLogged = false;
+}
+
 // Helper consume : prend un identifier (IP ou autre clé) et retourne un
 // résultat normalisé. Fail-open systématique :
+//   - bypass e2e triple gate → success=true (court-circuit Upstash)
 //   - limiter null  (env vars absentes) → success=true
 //   - limiter throw (Redis down/timeout) → success=true + console.error
 export async function consumeRateLimit(
   limiter: Ratelimit | null,
   identifier: string,
 ): Promise<RateLimitResult> {
+  if (isE2ETestBypassActive()) {
+    maybeWarnBypassActive();
+    return { success: true, limit: 0, remaining: 0, reset: 0 };
+  }
   if (!limiter) {
     return { success: true, limit: 0, remaining: 0, reset: 0 };
   }
