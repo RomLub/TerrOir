@@ -5,6 +5,7 @@ import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { stripe } from "@/lib/stripe/server";
 import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
+import { sendOpsAlert } from "@/lib/ops/alert";
 import { classifyRefundError } from "@/lib/refund-incidents/classify-error";
 import { recordRefundAttempt } from "@/lib/refund-incidents/record-refund-attempt";
 import { revalidatePublicStats } from "@/lib/stats/revalidate";
@@ -176,6 +177,13 @@ export async function POST(request: Request) {
   if (updateError) {
     // Drift Stripe/DB : refund émis chez Stripe mais statut DB non mis à
     // jour. Préfixe grep-able pour réconciliation manuelle en prod.
+    // Cluster B Phase 3 (bugs-P1-3) — alerte ops critique : Sentry + email.
+    await sendOpsAlert("[REFUND_DB_DRIFT]", updateError, {
+      order_id: order.id,
+      refund_id: refund.id,
+      path: "admin_refund",
+      db_error: updateError.message,
+    });
     return NextResponse.json(
       {
         refund_id: refund.id,

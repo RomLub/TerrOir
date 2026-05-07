@@ -5,6 +5,7 @@ import { stripe } from "@/lib/stripe/server";
 import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
 import { classifyRefundError } from "@/lib/refund-incidents/classify-error";
 import { recordRefundAttempt } from "@/lib/refund-incidents/record-refund-attempt";
+import { sendOpsAlert } from "@/lib/ops/alert";
 import { revalidatePublicStats } from "@/lib/stats/revalidate";
 import {
   assertTransition,
@@ -172,6 +173,13 @@ export async function POST(request: Request) {
                 `final_status=${finalStatus} ` +
                 `error=${e.message}`,
             );
+            // Cluster B Phase 3 (bugs-P1-3) — alerte ops critique.
+            await sendOpsAlert("[REFUND_TRANSITION_DRIFT]", e, {
+              order_id: order.id,
+              path: "cron_timeout",
+              final_status: finalStatus,
+              transition_error: e.message,
+            });
             return {
               order_id: order.id,
               refunded: refundEmitted,
@@ -199,6 +207,12 @@ export async function POST(request: Request) {
           console.warn(
             `[REFUND_DB_DRIFT] order=${order.id} pi=${order.stripe_payment_intent_id} ${updateError.message}`,
           );
+          // Cluster B Phase 3 (bugs-P1-3) — alerte ops critique.
+          await sendOpsAlert("[REFUND_DB_DRIFT]", updateError, {
+            order_id: order.id,
+            path: "cron_timeout",
+            db_error: updateError.message,
+          });
         }
         return {
           order_id: order.id,

@@ -12,6 +12,9 @@ import {
 } from "@/lib/orders/stateMachine";
 import { stripe } from "@/lib/stripe/server";
 import { sendTemplate } from "@/lib/resend/send";
+import { classifyRefundError } from "@/lib/refund-incidents/classify-error";
+import { recordRefundAttempt } from "@/lib/refund-incidents/record-refund-attempt";
+import { sendOpsAlert } from "@/lib/ops/alert";
 import OrderTimeoutCancelled, {
   subject as timeoutSubject,
 } from "@/lib/resend/templates/order-timeout-cancelled";
@@ -105,14 +108,30 @@ export async function POST(request: Request, props0: RouteContext) {
   // (cron retry-failed-refunds, retry-failed-refund.ts:80) et des autres
   // contexts (admin, timeout) — pas de collision keys.
   let refundError: string | undefined;
+  let refundEmitted = false;
   if (order.stripe_payment_intent_id) {
     try {
       await stripe.refunds.create(
         { payment_intent: order.stripe_payment_intent_id },
         { idempotencyKey: `refund_${order.id}_manual_cancel` },
       );
+      refundEmitted = true;
     } catch (e) {
       refundError = (e as Error).message;
+      // Cluster B Phase 3 (bugs-P1-4) — pattern T-102.2.b complet : double
+      // ecriture refund_incidents + audit_logs sur refund failed pour que
+      // le cron `retry-failed-refunds` puisse reprendre l'orphelin. Helper
+      // fail-safe (ne throw pas).
+      const classified = classifyRefundError(e);
+      await recordRefundAttempt({
+        orderId: order.id,
+        kind: "manual_cancel",
+        paymentIntentId: order.stripe_payment_intent_id,
+        consumerId: order.consumer_id,
+        blockedReason: null,
+        outcome: "failed",
+        classified,
+      });
     }
   }
 
@@ -134,7 +153,11 @@ export async function POST(request: Request, props0: RouteContext) {
     }
   }
 
-  await admin
+  // Cluster B Phase 3 (bugs-P1-1) — guard UPDATE + log [REFUND_DB_DRIFT]
+  // grep-able si refund Stripe deja emis mais UPDATE DB rate. Sans ce guard
+  // le path silenciait une drift critique (refund cote Stripe, statut DB
+  // toujours pending → prochain trigger rejouera + double refund possible).
+  const { error: cancelUpdateError } = await admin
     .from("orders")
     .update({
       statut: finalStatus,
@@ -142,6 +165,29 @@ export async function POST(request: Request, props0: RouteContext) {
       cancelled_at: new Date().toISOString(),
     })
     .eq("id", order.id);
+
+  if (cancelUpdateError) {
+    if (refundEmitted) {
+      console.warn(
+        `[REFUND_DB_DRIFT] order=${order.id} pi=${order.stripe_payment_intent_id} ${cancelUpdateError.message}`,
+      );
+      await sendOpsAlert("[REFUND_DB_DRIFT]", cancelUpdateError, {
+        order_id: order.id,
+        path: "manual_cancel",
+        final_status: finalStatus,
+        db_error: cancelUpdateError.message,
+      });
+    }
+    return NextResponse.json(
+      {
+        error: "DB update failed",
+        warning: refundEmitted
+          ? `[REFUND_DB_DRIFT] order=${order.id} ${cancelUpdateError.message}`
+          : cancelUpdateError.message,
+      },
+      { status: 500 },
+    );
+  }
 
   // Invalide le cache des stats publiques (ordersCount sur la home) :
   // si l'order quittait le filtre IN ('confirmed','ready','completed'), le
