@@ -150,16 +150,47 @@ export async function POST(request: Request, props: RouteContext) {
     return NextResponse.json({ error: "Code invalide" }, { status: 400 });
   }
 
+  // sec-P1-2 (T9 2026-05-07) : transition atomique race-safe. Le filtre
+  // `.eq("statut","confirmed")` garantit qu'un double-clic réseau, deux
+  // tabs producer ouvertes, ou un retry parallèle code-based ne mettront
+  // pas à jour la même row 2 fois. Si une autre transaction a déjà bougé
+  // le statut, le UPDATE matchera 0 rows, on retourne 409. Cohérent avec
+  // la route code-based /api/producer/orders/validate-pickup.
   const completedAt = new Date();
-  const { error: updateError } = await admin
+  const { data: updatedRows, error: updateError } = await admin
     .from("orders")
     .update({
       statut: "completed",
       completed_at: completedAt.toISOString(),
     })
-    .eq("id", order.id);
+    .eq("id", order.id)
+    .eq("statut", "confirmed")
+    .select("id");
   if (updateError) {
-    return NextResponse.json({ error: updateError.message }, { status: 500 });
+    console.error(
+      `[PICKUP_COMPLETE_UPDATE_ERR] order=${order.id} error=${updateError.message}`,
+    );
+    return NextResponse.json(
+      { error: "Internal database error" },
+      { status: 500 },
+    );
+  }
+  if (!updatedRows || updatedRows.length === 0) {
+    // Race condition : un autre flow (autre tab, double-clic, route
+    // code-based concurrente) a déjà transitioné cette commande. On loggue
+    // pour la forensique mais on ne 500 pas — l'opération est idempotente
+    // côté business (pickup déjà validé, mail review déjà parti).
+    await logPickupEvent({
+      eventType: "pickup_attempt_invalid",
+      userId: session.id,
+      metadata: {
+        producer_id: producerId,
+        order_id: order.id,
+        reason: "race_already_completed",
+        route: ROUTE_TAG,
+      },
+    });
+    return NextResponse.json({ ok: true, already: true });
   }
 
   // Email review-request (J0). Les relances J+2 / J+7 sont gérées par le cron
