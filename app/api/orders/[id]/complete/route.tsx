@@ -133,10 +133,19 @@ export async function POST(request: Request, props: RouteContext) {
     }
     throw e;
   }
-  if (
-    parsed.data.code_commande.trim().toUpperCase() !==
-    order.code_commande.toUpperCase()
-  ) {
+  // Normalisation identique des 2 côtés : strip [^A-Z0-9] + uppercase. Le
+  // form OrderDetailClient.tsx submitCode() strip déjà les non-alphanum
+  // côté client (pour tolérer `TRR-XXXXX` ou `TRRXXXXX` ou avec espaces
+  // / lowercase). Sans la même normalisation côté serveur, le code soumis
+  // sans dash ne matche jamais le code DB qui inclut le dash → bug
+  // 100% reproductible UI cycle quality 2026-05-07.
+  const submittedNormalized = parsed.data.code_commande
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+  const expectedNormalized = order.code_commande
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+  if (submittedNormalized !== expectedNormalized) {
     await logPickupEvent({
       eventType: "pickup_attempt_invalid",
       userId: session.id,
