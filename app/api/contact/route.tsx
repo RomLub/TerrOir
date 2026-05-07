@@ -9,6 +9,7 @@ import {
 } from "@/lib/rate-limit";
 import { extractRequestContext } from "@/lib/audit-logs/log-auth-event";
 import { maskEmail } from "@/lib/rgpd/mask-email";
+import { maskIp } from "@/lib/rgpd/mask-ip";
 import ContactFormSubmission, {
   subject as contactSubject,
   type Props as ContactProps,
@@ -191,6 +192,14 @@ export async function POST(request: Request) {
   // Audit log best-effort : ne bloque pas la réponse OK si la table audit_logs
   // est down ou si l'INSERT plante. Le mail est déjà parti, le contact est
   // enregistré côté Resend (logs Resend dashboard).
+  //
+  // sec-P2-2 (T9 2026-05-07) : pas de PII en clair dans cet audit_logs.
+  // Avant : email + nom + IP brute en clair (déviation doctrine T-200 r1).
+  // Après : maskEmail (ju***@dom), nom retiré du metadata (pas de masking
+  // standard FR sans risque de mishandle accents), maskIp (/24). Le destinataire
+  // de l'email reçoit déjà nom + email en clair via Resend (legitime), donc
+  // pas de perte fonctionnelle. La trace forensique reste utile (sujet,
+  // longueur message, presence telephone, /24 IP pour grouper attaques).
   try {
     const admin = createSupabaseAdminClient();
     await admin.from("audit_logs").insert({
@@ -198,12 +207,12 @@ export async function POST(request: Request) {
       event_type: "contact_form_submitted",
       metadata: {
         sujet: input.sujet,
-        email: input.email,
-        nom: input.nom,
+        email_masked: maskEmail(input.email),
+        has_nom: input.nom.length > 0,
         has_telephone: input.telephone != null,
         message_length: input.message.length,
       },
-      ip_address: ipAddress,
+      ip_address: maskIp(ipAddress),
       user_agent: userAgent,
     });
   } catch (err) {
