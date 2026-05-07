@@ -139,9 +139,14 @@ describe("POST /api/contact — happy path", () => {
       metadata: Record<string, unknown>;
     };
     expect(row.event_type).toBe("contact_form_submitted");
-    expect(row.ip_address).toBe("203.0.113.42");
+    // sec-P2-2 (T9 2026-05-07) : IP masquée /24 + email masqué + nom retiré
+    // (déviation doctrine T-200 r1 corrigée).
+    expect(row.ip_address).toBe("203.0.113.0");
     expect(row.metadata.sujet).toBe("question");
-    expect(row.metadata.email).toBe("camille.martin@example.com");
+    expect(row.metadata.email_masked).toBe("ca***@example.com");
+    expect(row.metadata.has_nom).toBe(true);
+    expect(row.metadata.email).toBeUndefined();
+    expect(row.metadata.nom).toBeUndefined();
     expect(row.metadata.has_telephone).toBe(true);
   });
 });

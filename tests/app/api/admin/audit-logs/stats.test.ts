@@ -57,7 +57,7 @@ describe("GET /api/admin/audit-logs/stats", () => {
     expect(res.status).toBe(403);
   });
 
-  it("retourne stats JSON 200 + Cache-Control no-store", async () => {
+  it("retourne stats JSON 200 + Cache-Control private max-age=60 (sec-P2-5)", async () => {
     mockGetStats.mockResolvedValue({
       todayCount: 5,
       last7daysCount: 60,
@@ -66,7 +66,10 @@ describe("GET /api/admin/audit-logs/stats", () => {
     });
     const res = await GET();
     expect(res.status).toBe(200);
-    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    // sec-P2-5 (T9 2026-05-07) : cache HTTP browser-side 60s pour réduire
+    // charge DB sur dashboard admin (4 count agrégés + fetch 50k lignes).
+    // `private` interdit cache CDN/proxy partagé.
+    expect(res.headers.get("Cache-Control")).toBe("private, max-age=60");
     const body = await res.json();
     expect(body).toEqual({
       todayCount: 5,

@@ -321,11 +321,14 @@ describe("GET /api/admin/audit-logs/export — truncation", () => {
 });
 
 describe("GET /api/admin/audit-logs/export — erreur DB", () => {
-  it("error renvoyée par Supabase → 500 JSON", async () => {
+  it("error renvoyée par Supabase → 500 JSON générique (bugs-P1-5)", async () => {
     auditLogsResponse = { data: null, error: { message: "boom" } };
     const res = await GET(makeRequest(""));
     expect(res.status).toBe(500);
     const body = (await res.json()) as { error: string };
-    expect(body.error).toBe("boom");
+    // bugs-P1-5 (T9 2026-05-07) : helper dbErrorResponse remplace l'exposition
+    // du message Postgres brut par un message générique côté client. La trace
+    // forensique va dans console.error côté serveur (préfixe grep-able).
+    expect(body.error).toBe("Internal database error");
   });
 });
