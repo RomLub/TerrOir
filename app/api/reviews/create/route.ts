@@ -5,7 +5,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const bodySchema = z.object({
-  order_id: z.string().uuid(),
+  order_id: z.string().guid(),
   note: z.number().int().min(1).max(5),
   commentaire: z.string().trim().max(2000).optional(),
 });

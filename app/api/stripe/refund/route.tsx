@@ -24,7 +24,7 @@ import {
 } from "@/lib/rate-limit";
 import { extractRequestContext } from "@/lib/audit-logs/log-auth-event";
 
-const bodySchema = z.object({ order_id: z.string().uuid() });
+const bodySchema = z.object({ order_id: z.string().guid() });
 
 // Audit Stripe L-5 (2026-05-05) : seuil au-delà duquel un refund producer
 // déclenche un email admin. Default 100€, configurable via env. Sujet V1.x

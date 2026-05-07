@@ -56,7 +56,7 @@ export async function PATCH(request: Request, props: RouteContext) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (!z.string().uuid().safeParse(params.id).success) {
+  if (!z.string().guid().safeParse(params.id).success) {
     return NextResponse.json({ error: "Invalid product id" }, { status: 400 });
   }
 

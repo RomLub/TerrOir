@@ -70,7 +70,7 @@ const bodySchema = z.object({
     .min(20, "Le message doit contenir au moins 20 caractères")
     .max(5000),
   consent: z.literal(true, {
-    errorMap: () => ({ message: "Le consentement RGPD est requis" }),
+    error: "Le consentement RGPD est requis",
   }),
   // Honeypot : champ texte facultatif. La présence d'une valeur est traitée
   // comme un signal bot — la requête est faussement validée 200 sans envoi.

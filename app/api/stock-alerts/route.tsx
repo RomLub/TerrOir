@@ -21,7 +21,7 @@ import StockAlertConfirm, {
 //   - double opt-in côté email (PUSH 4 reste : confirm route)
 
 const bodySchema = z.object({
-  product_id: z.string().uuid(),
+  product_id: z.string().guid(),
   email: z.string().trim().toLowerCase().email(),
   // Consentement RGPD explicite : checkbox cochée. literal(true) = false
   // ou absent → 400. Pas d'opt-in implicite.

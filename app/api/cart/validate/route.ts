@@ -33,9 +33,9 @@ const bodySchema = z.object({
   items: z
     .array(
       z.object({
-        productId: z.string().uuid(),
-        producerId: z.string().uuid(),
-        creneauId: z.string().uuid(),
+        productId: z.string().guid(),
+        producerId: z.string().guid(),
+        creneauId: z.string().guid(),
         dateRetrait: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
         quantite: z.number().positive(),
       }),

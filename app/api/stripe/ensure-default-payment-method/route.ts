@@ -24,7 +24,7 @@ import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
 // Fail-open côté client : si ça échoue, pas de blocage (le paiement a déjà
 // réussi, l'user pourra set un default manuellement depuis /compte/paiements).
 
-const bodySchema = z.object({ order_id: z.string().uuid() });
+const bodySchema = z.object({ order_id: z.string().guid() });
 
 export async function POST(request: Request) {
   const session = await getSessionUser();

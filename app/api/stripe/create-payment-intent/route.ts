@@ -13,7 +13,7 @@ import {
 } from "@/lib/rate-limit";
 
 const bodySchema = z.object({
-  order_id: z.string().uuid(),
+  order_id: z.string().guid(),
   save_card: z.boolean().optional().default(false),
 });
 

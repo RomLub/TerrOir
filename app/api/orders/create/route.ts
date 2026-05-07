@@ -7,14 +7,14 @@ import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
 import { LEGAL_VERSIONS } from "@/lib/legal/versions";
 
 const bodySchema = z.object({
-  producer_id: z.string().uuid(),
-  slot_id: z.string().uuid(),
+  producer_id: z.string().guid(),
+  slot_id: z.string().guid(),
   date_retrait: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   notes_client: z.string().trim().max(1000).optional(),
   items: z
     .array(
       z.object({
-        product_id: z.string().uuid(),
+        product_id: z.string().guid(),
         quantite: z.number().positive(),
       }),
     )
@@ -24,9 +24,7 @@ const bodySchema = z.object({
   // l'order via UPDATE post-RPC. Refus serveur si manquant ou false (cas
   // client trafiqué, double-couche défense vs front).
   cgv_accepted: z.literal(true, {
-    errorMap: () => ({
-      message: "Vous devez accepter les conditions générales de vente",
-    }),
+    error: "Vous devez accepter les conditions générales de vente",
   }),
 });
 
