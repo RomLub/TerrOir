@@ -136,7 +136,7 @@ export default async function ProducerDashboardPage() {
         consumer:consumer_id ( prenom )
       `)
       .eq('producer_id', producer.id)
-      .in('statut', ['confirmed', 'ready'])
+      .in('statut', ['confirmed'])
       .gte('date_retrait', todayStart.toISOString().slice(0, 10))
       .order('date_retrait', { ascending: true })
       .order('heure_retrait', { ascending: true })

@@ -130,8 +130,8 @@ const DEFAULT_ORDER = {
 };
 
 const DEFAULT_USER_PROFILE = { prenom: "Alice", nom: "Tester" };
-// Audit Stripe M-6 : guard pré-PI charges_enabled. Defaut "ready" → tous les
-// tests historiques continuent de passer le guard sans modif.
+// Audit Stripe M-6 : guard pré-PI charges_enabled. Defaut charges_enabled=true
+// → tous les tests historiques continuent de passer le guard sans modif.
 const DEFAULT_PRODUCER_STRIPE = { stripe_charges_enabled: true };
 
 function defaultResp(table: string, op: Op): Resp {

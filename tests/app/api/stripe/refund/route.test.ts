@@ -384,31 +384,14 @@ describe("D. État commande + filet assertTransition", () => {
     expect(mockRefundCreate).not.toHaveBeenCalled();
   });
 
-  it("D3 statut='ready' → 200 happy path (T-151 transition ready→refunded autorisée)", async () => {
-    setOrderFetch({ statut: "ready" });
-    const res = await POST(makeRequest());
-    expect(res.status).toBe(200);
-    expect((await res.json()).refund_id).toBe("re_test_123");
-    // Refund Stripe émis + UPDATE statut=refunded + revalidateTag.
-    expect(mockRefundCreate).toHaveBeenCalledTimes(1);
-    const orderUpdate = captured.updates.find((u) => u.table === "orders");
-    expect((orderUpdate!.payload as Record<string, unknown>).statut).toBe(
-      "refunded",
-    );
-    expect(mockRevalidateTag).toHaveBeenCalledWith("public-stats", "max");
-    // badge_annulation_score : aucun UPDATE sur producers (cohérent avec
-    // l'absence de logique badge dans cette route — gating dans cancel route).
-    expect(captured.updates.find((u) => u.table === "producers")).toBeUndefined();
-  });
-
-  it("D4 statut='cancelled' (terminal) → 409, refund Stripe jamais émis", async () => {
+  it("D3 statut='cancelled' (terminal) → 409, refund Stripe jamais émis", async () => {
     setOrderFetch({ statut: "cancelled" });
     const res = await POST(makeRequest());
     expect(res.status).toBe(409);
     expect(mockRefundCreate).not.toHaveBeenCalled();
   });
 
-  it("D5 statut='completed' (terminal) → 409, refund Stripe jamais émis (filet clé post-T-151)", async () => {
+  it("D4 statut='completed' (terminal) → 409, refund Stripe jamais émis (filet clé post-T-151)", async () => {
     setOrderFetch({ statut: "completed" });
     const res = await POST(makeRequest());
     expect(res.status).toBe(409);

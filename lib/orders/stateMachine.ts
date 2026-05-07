@@ -9,7 +9,6 @@
 export type OrderStatus =
   | "pending"
   | "confirmed"
-  | "ready"
   | "completed"
   | "cancelled"
   | "refunded";
@@ -17,18 +16,31 @@ export type OrderStatus =
 // Modèle métier réel = 3 états actifs (pending → confirmed → completed).
 // La transition canonique du pickup est `confirmed → completed` : producer
 // reçoit, valide, prépare, le consumer arrive avec le code, producer saisit
-// le code → completed direct. `ready` est un état dormant (aucune route ne
-// le set en pratique) conservé en transition légale `confirmed → ready` et
-// `ready → completed` pour ne pas casser d'éventuels enregistrements
-// historiques. À nettoyer ou réaffecter dans un chantier dédié.
+// le code → completed direct.
+//
+// Cluster C — T6 cleanup (migration `20260507B00000_cluster_c_drop_ready_status`) :
+// l'état `ready` était mort (aucune route ne le settait en prod) et a été
+// retiré du CHECK orders.statut + de l'union TS + des transitions ici. Tout
+// code TS référençant 'ready' doit être considéré legacy et retiré.
 const TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
   pending: ["confirmed", "cancelled", "refunded"],
-  confirmed: ["ready", "completed", "cancelled", "refunded"],
-  ready: ["completed", "cancelled", "refunded"],
+  confirmed: ["completed", "cancelled", "refunded"],
   completed: [],
   cancelled: [],
   refunded: [],
 };
+
+/**
+ * Statuts "actifs" d'une commande = tous ceux qui occupent un slot et sont
+ * comptabilisés en cours de cycle de vie (avant terminal). Source de vérité
+ * unique pour les call sites qui filtraient historiquement
+ * `["pending","confirmed","ready"]` inline.
+ *
+ * Cluster C — T6 cleanup : la liste passe de 3 à 2 valeurs (ready retiré).
+ * Ne pas remplacer par un literal inline ailleurs — importer cette constante.
+ */
+export const ACTIVE_ORDER_STATUTS = ["pending", "confirmed"] as const;
+export type ActiveOrderStatut = (typeof ACTIVE_ORDER_STATUTS)[number];
 
 /**
  * Validateur de transition. Tolère un `from` hors `OrderStatus` (retour
@@ -98,13 +110,12 @@ export function canConsumerCancel(status: OrderStatus): boolean {
  *
  * Source de vérité : route /api/orders/[id]/cancel/route.tsx encode la
  * règle "producer owner peut cancel toute order non-terminal" (= pending,
- * confirmed, ready). Couvre les cas légitimes :
+ * confirmed). Couvre les cas légitimes :
  *   - pending   : annulation pré-confirmation
- *   - confirmed : annulation pré-préparation (changement d'avis producer)
- *   - ready     : annulation post-préparation (perte produit, panne, accident)
+ *   - confirmed : annulation pré/post-préparation (changement d'avis,
+ *     perte produit, panne, accident)
  *
- * Helper exporté pour aligner Producer UI avec server (ferme la divergence
- * historique où l'UI cachait le bouton sur `ready`).
+ * Helper exporté pour aligner Producer UI avec server.
  */
 export function canProducerCancel(status: OrderStatus): boolean {
   return !isTerminal(status);

@@ -23,6 +23,7 @@ import { z } from "zod";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { ACTIVE_ORDER_STATUTS } from "@/lib/orders/stateMachine";
 import {
   itemKey,
   type ItemStatus,
@@ -93,7 +94,7 @@ export async function POST(request: Request) {
       .from("orders")
       .select("slot_id")
       .in("slot_id", slotIds)
-      .in("statut", ["pending", "confirmed", "ready"]),
+      .in("statut", [...ACTIVE_ORDER_STATUTS]),
   ]);
 
   // T-450 forensique : log greppable [CART_VALIDATE_SELECT_FAIL] sur fail

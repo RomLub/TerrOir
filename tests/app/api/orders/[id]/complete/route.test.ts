@@ -1,11 +1,14 @@
 // Vitest pour POST /api/orders/[id]/complete.
 // Couverture : zod body (code_commande required), auth, order lookup,
 // idempotence, autorisation, state machine (assertTransition vers completed
-// depuis confirmed OU ready — modèle 3 états réel : pickup direct depuis
-// confirmed, transition ready → completed conservée legacy), code_commande
-// check (case-insensitive trim), UPDATE orders, email review_request_j0.
+// depuis confirmed — modèle 3 états réel : pickup direct depuis confirmed),
+// code_commande check (case-insensitive trim), UPDATE orders, email
+// review_request_j0.
 // Pas de revalidateTag (intentionnel — la commande reste dans le filtre
-// IN ('confirmed','ready','completed')).
+// IN ('confirmed','completed')).
+//
+// Cluster C — T6 cleanup : 'ready' a été retiré du modèle (CHECK
+// orders.statut + union TS). Default order statut bascule à 'confirmed'.
 //
 // LOT 5 chantier pickup-validation 2026-05-06 — la route est rétrofittée
 // avec audit log cluster pickup_* et rate-limit Upstash 10/min/producer
@@ -117,7 +120,7 @@ const DEFAULT_ORDER = {
   id: ORDER_ID,
   producer_id: PRODUCER_ID,
   consumer_id: CONSUMER_ID,
-  statut: "ready" as string,
+  statut: "confirmed" as string,
   code_commande: "ABC123",
 };
 
@@ -342,7 +345,7 @@ describe("D. Autorisation (getOwnedProducerId)", () => {
 
 // --- E. Transition (state machine) ---------------------------------------
 
-describe("E. Transition state machine — completed depuis confirmed OU ready", () => {
+describe("E. Transition state machine — completed depuis confirmed (modèle 3 états)", () => {
   it("E1 statut pending + code valide → 409 InvalidOrderTransitionError", async () => {
     setOrderFetch({ statut: "pending" });
     const res = await POST(makeRequest(), PARAMS);
@@ -382,7 +385,7 @@ describe("E. Transition state machine — completed depuis confirmed OU ready", 
 // --- F. Code commande check ---------------------------------------------
 
 describe("F. Code commande check (case-insensitive trim)", () => {
-  it("F1 statut ready + code mismatch → 400 Code invalide, pas d'UPDATE", async () => {
+  it("F1 statut confirmed + code mismatch → 400 Code invalide, pas d'UPDATE", async () => {
     const res = await POST(
       makeRequest({ body: { code_commande: "WRONG1" } }),
       PARAMS,
@@ -393,7 +396,7 @@ describe("F. Code commande check (case-insensitive trim)", () => {
     expect(mockSendTemplate).not.toHaveBeenCalled();
   });
 
-  it("F2 statut ready + code lowercase → 200 (case-insensitive)", async () => {
+  it("F2 statut confirmed + code lowercase → 200 (case-insensitive)", async () => {
     const res = await POST(
       makeRequest({ body: { code_commande: "abc123" } }),
       PARAMS,
@@ -405,7 +408,7 @@ describe("F. Code commande check (case-insensitive trim)", () => {
     );
   });
 
-  it("F3 statut ready + code avec espaces → 200 (trim côté zod et check)", async () => {
+  it("F3 statut confirmed + code avec espaces → 200 (trim côté zod et check)", async () => {
     const res = await POST(
       makeRequest({ body: { code_commande: "  ABC123  " } }),
       PARAMS,
@@ -425,10 +428,10 @@ describe("F. Code commande check (case-insensitive trim)", () => {
   });
 });
 
-// --- G. Cas nominal ready → completed ------------------------------------
+// --- G. Cas nominal confirmed → completed --------------------------------
 
-describe("G. Cas nominal ready → completed", () => {
-  it("G1 ready + code valide → 200 + UPDATE orders { statut, completed_at }", async () => {
+describe("G. Cas nominal confirmed → completed", () => {
+  it("G1 confirmed + code valide → 200 + UPDATE orders { statut, completed_at }", async () => {
     const res = await POST(makeRequest(), PARAMS);
     expect(res.status).toBe(200);
     const json = (await res.json()) as { ok: boolean; completed_at: string };
@@ -518,7 +521,7 @@ describe("I. Email consumer (review_request_j0)", () => {
 // --- J. LOT 5 — Audit log cluster pickup_* + rate-limit ----------------
 
 describe("J. Audit log cluster pickup_* (LOT 5)", () => {
-  it("J1 nominal ready → audit pickup_validated avec metadata complet", async () => {
+  it("J1 nominal confirmed → audit pickup_validated avec metadata complet", async () => {
     await POST(makeRequest(), PARAMS);
     const validatedCalls = mockLogPickupEvent.mock.calls.filter(
       (c) => (c[0] as { eventType: string }).eventType === "pickup_validated",

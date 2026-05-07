@@ -238,17 +238,7 @@ describe("previewPickup", () => {
     if (!result.ok) expect(result.error.kind).toBe("order_refunded");
   });
 
-  it("B9 statut ready (legacy dormant) → order_not_confirmed avec current_status='ready'", async () => {
-    responses = [{ data: { ...baseRow, statut: "ready" } }];
-    const result = await previewPickup(makeAdmin(), CODE, PRODUCER_ID);
-    expect(result.ok).toBe(false);
-    if (result.ok || result.error.kind !== "order_not_confirmed") {
-      expect.fail("expected order_not_confirmed");
-    }
-    expect(result.error.current_status).toBe("ready");
-  });
-
-  it("B10 format invalide → code_format_invalid sans aucun I/O Supabase", async () => {
+  it("B9 format invalide → code_format_invalid sans aucun I/O Supabase", async () => {
     const result = await previewPickup(makeAdmin(), "WRONG", PRODUCER_ID);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.kind).toBe("code_format_invalid");

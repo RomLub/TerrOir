@@ -193,7 +193,7 @@ export async function POST(request: Request) {
     );
   }
 
-  // Refunded sort le filtre IN ('confirmed','ready','completed') du cache
+  // Refunded sort le filtre IN ('confirmed','completed') du cache
   // public-stats → invalidation requise. Le helper swallow toute exception
   // (cache flapping ne doit pas faire échouer le 200 vers l'admin).
   await revalidatePublicStats({ source: "stripe-refund", orderId: order.id });

@@ -228,8 +228,8 @@ export default function CheckoutPage() {
         if (!piRes.ok || !piData.client_secret) {
           // T-407 : 409 = T-406 guard (order non-pending). Order morte
           // (webhook payment_failed a déjà cancelle, ou order
-          // confirmed/ready/completed/refunded). Pas de retry possible
-          // sur cette order, l'user doit consulter ses commandes.
+          // confirmed/completed/refunded). Pas de retry possible sur
+          // cette order, l'user doit consulter ses commandes.
           if (piRes.status === 409) {
             clientLog('warn', '[CHECKOUT_INIT_409]', 'create-payment-intent', piData?.error);
             setInitError({ kind: 'init_409', message: 'Cette commande n\'est plus payable.' });
@@ -366,7 +366,7 @@ export default function CheckoutPage() {
               ) : initError?.kind === 'init_409' ? (
                 // T-407 : order morte (T-406 guard 409 sur create-PI/create-order).
                 // Webhook payment_failed a probablement déjà cancelle l'order,
-                // ou statut confirmed/ready/completed/refunded. Pas de retry
+                // ou statut confirmed/completed/refunded. Pas de retry
                 // possible sur cette order — orienter user vers ses commandes.
                 <div className="space-y-4">
                   <div className="p-4 rounded-xl bg-terra-100/60 border border-terra-300/40 text-[13px] text-terra-900">

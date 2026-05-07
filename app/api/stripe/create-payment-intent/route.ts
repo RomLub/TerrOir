@@ -70,7 +70,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   // T-406 : la route prépare le paiement initial uniquement. Toute commande
-  // hors `pending` (confirmed/ready/completed/cancelled/refunded) ne doit pas
+  // hors `pending` (confirmed/completed/cancelled/refunded) ne doit pas
   // pouvoir (re)passer ici — bloque aussi le path `update setup_future_usage`
   // ci-dessous sur un PI orphelin d'une commande terminée.
   if (order.statut !== "pending") {

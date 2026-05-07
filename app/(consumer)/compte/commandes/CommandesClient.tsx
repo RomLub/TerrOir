@@ -116,7 +116,7 @@ export function CommandesClient({
 
   const filtered = useMemo(() => orders.filter((o) => {
     if (filter === 'all') return true;
-    if (filter === 'active') return o.statut === 'pending' || o.statut === 'confirmed' || o.statut === 'ready';
+    if (filter === 'active') return o.statut === 'pending' || o.statut === 'confirmed';
     if (filter === 'done') return o.statut === 'completed';
     if (filter === 'cancelled') return o.statut === 'cancelled' || o.statut === 'refunded';
     return true;

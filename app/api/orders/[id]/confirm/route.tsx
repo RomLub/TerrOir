@@ -66,7 +66,7 @@ export async function POST(_request: Request, props0: RouteContext) {
   }
 
   // Invalide le cache des stats publiques (ordersCount sur la home) :
-  // l'order vient d'entrer dans le filtre IN ('confirmed','ready','completed').
+  // l'order vient d'entrer dans le filtre IN ('confirmed','completed').
   // Try/catch défensif — un échec d'invalidation ne doit pas 500 la confirmation.
   try {
     revalidateTag("public-stats", "max");

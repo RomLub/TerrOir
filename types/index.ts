@@ -6,7 +6,6 @@ export interface Order {
   status:
     | "pending"
     | "confirmed"
-    | "ready"
     | "completed"
     | "cancelled"
     | "refunded";

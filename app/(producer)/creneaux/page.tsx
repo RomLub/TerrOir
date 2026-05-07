@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { ACTIVE_ORDER_STATUTS } from "@/lib/orders/stateMachine";
 import type { SlotRuleRow } from "@/lib/slots/validators";
 import { ProducerLayout } from "../_components/ProducerLayout";
 import SlotRulesList from "./_components/SlotRulesList";
@@ -93,7 +94,7 @@ export default async function CreneauxPage() {
       .from("orders")
       .select("slot_id")
       .in("slot_id", slotIds)
-      .in("statut", ["pending", "confirmed", "ready"]);
+      .in("statut", [...ACTIVE_ORDER_STATUTS]);
     blockedSlotIds = Array.from(
       new Set(
         (blockedRaw ?? [])

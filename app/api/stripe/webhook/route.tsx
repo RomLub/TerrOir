@@ -127,8 +127,8 @@ export async function POST(request: Request) {
         // Logique de transition extraite dans `lib/stripe/handle-payment-succeeded.ts` :
         // distingue cas nominal (pending), résurrection 3DS-retry
         // (cancelled+payment_failed → pending), idempotence (déjà
-        // confirmed/ready/completed) et anomaly (refunded ou cancelled
-        // avec autre closure_reason). Cf doc fonction.
+        // confirmed/completed) et anomaly (refunded ou cancelled avec
+        // autre closure_reason). Cf doc fonction.
         const { result, orderId } = await syncStripePaymentSucceeded(pi, admin);
 
         // debt-P1-2 — orchestration des notifications post-RPC extraite dans
@@ -145,7 +145,7 @@ export async function POST(request: Request) {
       case "payment_intent.payment_failed": {
         // Logique extraite dans `lib/stripe/handle-payment-failed.ts` :
         // pose closure_reason='payment_failed', guard contre la
-        // rétrogradation confirmed/ready→cancelled (rejouage Stripe tardif),
+        // rétrogradation confirmed→cancelled (rejouage Stripe tardif),
         // assertTransition + revalidatePublicStats. Cf doc fonction.
         await syncStripePaymentFailed(
           event.data.object as Stripe.PaymentIntent,

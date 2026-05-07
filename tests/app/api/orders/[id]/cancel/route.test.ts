@@ -377,8 +377,8 @@ describe("C. Auth — session manquante", () => {
 describe("D. Auth — utilisateur", () => {
   // T-150 : consumer peut annuler sa propre commande tant qu'elle est
   // pending (producteur pas confirmé → zéro engagement). Après
-  // 'confirmed' / 'ready' → 403 (passage par contact direct producteur).
-  // reason forcée à "consumer_cancel" côté route (analytics + défense).
+  // 'confirmed' → 403 (passage par contact direct producteur). reason
+  // forcée à "consumer_cancel" côté route (analytics + défense).
   it("D1a consumer-owner + statut=pending → 200 + statut cancelled", async () => {
     sessionUser = {
       id: CONSUMER_ID,
@@ -422,21 +422,7 @@ describe("D. Auth — utilisateur", () => {
     expect(mockSendTemplate).not.toHaveBeenCalled();
   });
 
-  it("D1c consumer-owner + statut=ready → 403 (fenêtre fermée)", async () => {
-    setOrderFetch({ statut: "ready" });
-    sessionUser = {
-      id: CONSUMER_ID,
-      email: "c@example.com",
-      roles: ["consumer"],
-      isAdmin: false,
-    };
-    const res = await POST(makeRequest(), PARAMS);
-    expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({ error: "Forbidden" });
-    expect(captured.updates).toEqual([]);
-  });
-
-  it("D1d consumer non-owner + statut=pending → 403 (n'est pas sa commande)", async () => {
+  it("D1c consumer non-owner + statut=pending → 403 (n'est pas sa commande)", async () => {
     sessionUser = {
       id: "other-consumer",
       email: "other@example.com",
@@ -449,7 +435,7 @@ describe("D. Auth — utilisateur", () => {
     expect(captured.updates).toEqual([]);
   });
 
-  it("D1e consumer-owner + pending + stripe_pi → refund déclenché + statut refunded + pas de badge", async () => {
+  it("D1d consumer-owner + pending + stripe_pi → refund déclenché + statut refunded + pas de badge", async () => {
     setOrderFetch({ stripe_payment_intent_id: PI_ID });
     mockRefundCreate.mockResolvedValue({ id: "re_1" });
     sessionUser = {
@@ -476,7 +462,7 @@ describe("D. Auth — utilisateur", () => {
     ).toBeUndefined();
   });
 
-  it("D1f consumer-owner force reason='consumer_cancel' même si client envoie autre", async () => {
+  it("D1e consumer-owner force reason='consumer_cancel' même si client envoie autre", async () => {
     sessionUser = {
       id: CONSUMER_ID,
       email: "c@example.com",
@@ -597,8 +583,8 @@ describe("E. Stripe refund + finalStatus dynamique", () => {
     );
   });
 
-  it("E4 stripe_pi + refund OK + statut ready → finalStatus refunded (T-151 transition autorisée, drift Stripe/DB résolu)", async () => {
-    setOrderFetch({ statut: "ready", stripe_payment_intent_id: PI_ID });
+  it("E4 stripe_pi + refund OK + statut confirmed → finalStatus refunded (T-151 transition autorisée, drift Stripe/DB résolu)", async () => {
+    setOrderFetch({ statut: "confirmed", stripe_payment_intent_id: PI_ID });
     mockRefundCreate.mockResolvedValue({ id: "re_1" });
     const res = await POST(makeRequest(), PARAMS);
     expect(res.status).toBe(200);

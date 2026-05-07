@@ -18,16 +18,16 @@ import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
 //   - Si l'order n'existe pas → log warn + no-op (orphelin / RGPD).
 //   - Si l'order est déjà terminale (cancelled/refunded/completed) → no-op
 //     idempotent. Couvre le webhook rejoué ET le cas litige post-retrait.
-//   - 🛡️ Guard rétrogradation : si l'order est en `confirmed` ou `ready`,
-//     no-op + log warn. Une fois confirmée par un payment_intent.succeeded,
-//     une commande ne doit JAMAIS rétrograder à cancelled par un event
-//     failed tardif (rare mais possible : rejouage webhook, race latence
-//     réseau). Le payment a réussi, le producer a été notifié, c'est figé.
+//   - 🛡️ Guard rétrogradation : si l'order est en `confirmed`, no-op + log
+//     warn. Une fois confirmée par un payment_intent.succeeded, une
+//     commande ne doit JAMAIS rétrograder à cancelled par un event failed
+//     tardif (rare mais possible : rejouage webhook, race latence réseau).
+//     Le payment a réussi, le producer a été notifié, c'est figé.
 //   - Cas nominal `pending → cancelled` : assertTransition (state machine
 //     est la source de vérité), UPDATE avec closure_reason='payment_failed'
 //     pour permettre le filtrage UI consumer (la commande n'a jamais été
 //     "engagée" du point de vue consumer). revalidatePublicStats car le
-//     count public est filtré sur statut IN ('confirmed','ready','completed').
+//     count public est filtré sur statut IN ('confirmed','completed').
 //
 // Logs préfixés grep-able pour Vercel (cohérent avec le pattern projet
 // [STRIPE_*], [WEBHOOK_*], [STATS_REVAL_WARN], etc.).
@@ -87,11 +87,11 @@ export async function syncStripePaymentFailed(
     return { result: "already_terminal", orderId };
   }
 
-  // 🛡️ Guard : payment a déjà été confirmé/préparé. Une commande
-  // confirmed/ready ne doit JAMAIS rétrograder à cancelled par un event
-  // failed tardif (rejouage webhook, race latence). Le producer a été
-  // notifié, l'argent est encaissé, l'état est figé.
-  if (currentStatus === "confirmed" || currentStatus === "ready") {
+  // 🛡️ Guard : payment a déjà été confirmé. Une commande confirmed ne
+  // doit JAMAIS rétrograder à cancelled par un event failed tardif
+  // (rejouage webhook, race latence). Le producer a été notifié, l'argent
+  // est encaissé, l'état est figé.
+  if (currentStatus === "confirmed") {
     console.warn(
       `[WEBHOOK_FAILED_AFTER_SUCCEEDED_NOOP] order=${orderId} pi=${paymentIntent.id} status=${currentStatus} — refused to downgrade`,
     );

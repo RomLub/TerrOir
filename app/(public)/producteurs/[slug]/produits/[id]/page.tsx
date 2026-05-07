@@ -3,6 +3,7 @@ import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { generateSlotsForProducer } from '@/lib/slots/generate';
 import { fetchPublicProducerBySlug } from '@/lib/producers/fetch-public';
 import { getProducerDisplayName } from '@/lib/producers/get-display-name';
+import { ACTIVE_ORDER_STATUTS } from '@/lib/orders/stateMachine';
 import {
   ProductPageClient,
   type ProducerSummary,
@@ -84,7 +85,7 @@ export default async function ProductPage(props: { params: Promise<{ slug: strin
         .limit(3),
       // Phase 6b : comptage des orders actives par slot pour dériver la
       // capacité restante (SlotOption.left). Bornée aux statuts actifs
-      // (pending/confirmed/ready) → les orders completed/cancelled/refunded
+      // (pending/confirmed) → les orders completed/cancelled/refunded
       // libèrent leur slot dans le décompte consumer. Le check autoritatif
       // reste côté RPC create_order_with_items (SELECT FOR UPDATE +
       // recount), ce fetch sert uniquement à griser les slots pleins en UI.
@@ -92,7 +93,7 @@ export default async function ProductPage(props: { params: Promise<{ slug: strin
         .from('orders')
         .select('slot_id')
         .eq('producer_id', producerRow.id)
-        .in('statut', ['pending', 'confirmed', 'ready']),
+        .in('statut', [...ACTIVE_ORDER_STATUTS]),
     ]);
 
   const bookingCounts = new Map<string, number>();

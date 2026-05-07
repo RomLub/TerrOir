@@ -41,9 +41,9 @@ import {
   invalidateProducer,
 } from "@/lib/slots/generate";
 import { slotRuleSchema } from "@/lib/slots/validators";
+import { ACTIVE_ORDER_STATUTS } from "@/lib/orders/stateMachine";
 
 const TZ_PARIS = "Europe/Paris";
-const ACTIVE_ORDER_STATUTS = ["pending", "confirmed", "ready"] as const;
 
 export type SlotRuleActionState = {
   error?: string;
@@ -454,7 +454,7 @@ export async function excludeSlotAction(
     return { error: "Créneau introuvable." };
   }
 
-  // Guard : pas d'exclusion si order active (pending/confirmed/ready).
+  // Guard : pas d'exclusion si order active (pending/confirmed).
   // Les orders historiques (completed/cancelled/refunded) n'empêchent pas
   // l'exclusion : le slot est déjà consommé ou annulé côté commande.
   const { count: activeOrderCount } = await admin

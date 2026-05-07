@@ -1,6 +1,9 @@
 // Test rendu conditionnel de la section "Validation du retrait" sur la
 // page detail commande producer. Couvre le mini-fix du gate :
-// `status === 'confirmed'` (modèle 3 états réel) et NON plus 'ready'.
+// `status === 'confirmed'` (modèle 3 états réel).
+//
+// Cluster C — T6 cleanup : 'ready' a été retiré du modèle (CHECK
+// orders.statut + union TS). Le test sur status='ready' est obsolète.
 //
 // Pattern SSR static (renderToStaticMarkup) suffisant : le test porte sur
 // le branch initial du conditionnel, pas sur des interactions stateful.
@@ -58,11 +61,6 @@ describe("OrderDetailClient producer — gate section 'Validation du retrait'", 
     const html = render(makeData("pending"));
     expect(html).not.toContain("Validation du retrait");
     expect(html).not.toContain("Valider le retrait");
-  });
-
-  it("status='ready' → section masquée (gate strict confirmed, ready dormant)", () => {
-    const html = render(makeData("ready"));
-    expect(html).not.toContain("Validation du retrait");
   });
 
   it("status='completed' → section masquée + message 'Commande finalisée'", () => {

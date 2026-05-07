@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { ACTIVE_ORDER_STATUTS } from "@/lib/orders/stateMachine";
 
 function ChevronIcon() {
   return (
@@ -145,7 +146,7 @@ export default async function ComptePage() {
       .from("orders")
       .select("id", { count: "exact", head: true })
       .eq("consumer_id", session.id)
-      .in("statut", ["pending", "confirmed", "ready"]),
+      .in("statut", [...ACTIVE_ORDER_STATUTS]),
   ]);
 
   const prenom = profile?.prenom?.trim() || "";

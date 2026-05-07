@@ -5,7 +5,7 @@ import type { StripeError } from "@stripe/stripe-js";
 // réels observables sur le checkout :
 //   - init_409 = HTTP 409 sur /api/stripe/create-payment-intent (T-406
 //     guard order non-pending : webhook payment_failed a déjà cancelle,
-//     ou order confirmed/ready/completed/refunded). Order morte → redirect.
+//     ou order confirmed/completed/refunded). Order morte → redirect.
 //   - 3ds_abandoned = user a fermé la modal 3DS Stripe ou n'a pas
 //     répondu au challenge. PI repasse `requires_payment_method` côté
 //     Stripe → retry direct OK.

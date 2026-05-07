@@ -23,7 +23,7 @@ export type ProducerOrderRow = {
 type Tab = 'pending' | 'confirmed' | 'completed' | 'cancelled';
 const TABS: { value: Tab; label: string; statuses: OrderStatus[] }[] = [
   { value: 'pending', label: 'À confirmer', statuses: ['pending'] },
-  { value: 'confirmed', label: 'Confirmées', statuses: ['confirmed', 'ready'] },
+  { value: 'confirmed', label: 'Confirmées', statuses: ['confirmed'] },
   { value: 'completed', label: 'Terminées', statuses: ['completed'] },
   { value: 'cancelled', label: 'Annulées', statuses: ['cancelled', 'refunded'] },
 ];
@@ -159,7 +159,7 @@ export function ProducerCommandesClient({
                     </Button>
                   </>
                 )}
-                {(o.status === 'confirmed' || o.status === 'ready') && (
+                {o.status === 'confirmed' && (
                   <Link href={`/commandes/${o.id}`}><Button variant="primary" size="sm">Voir le détail</Button></Link>
                 )}
                 {(o.status === 'completed' || o.status === 'cancelled' || o.status === 'refunded') && (

@@ -205,24 +205,7 @@ describe("syncStripePaymentFailed — Cas 5 : guard_confirmed (statut=confirmed)
   });
 });
 
-describe("syncStripePaymentFailed — Cas 6 : guard_confirmed (statut=ready)", () => {
-  it("order ready → même protection que confirmed", async () => {
-    const { client } = makeSupabase({
-      fetchResp: { data: { id: "order-42", statut: "ready" }, error: null },
-    });
-    const pi = makePaymentIntent({ orderId: "order-42" });
-
-    const res = await syncStripePaymentFailed(pi, client);
-
-    expect(res).toEqual({ result: "guard_confirmed", orderId: "order-42" });
-    expect(consoleWarnSpy).toHaveBeenCalledTimes(1);
-    expect(String(consoleWarnSpy.mock.calls[0]?.[0])).toContain(
-      "status=ready",
-    );
-  });
-});
-
-describe("syncStripePaymentFailed — Cas 7 : cancelled (cas nominal pending)", () => {
+describe("syncStripePaymentFailed — Cas 6 : cancelled (cas nominal pending)", () => {
   it("order pending → UPDATE avec closure_reason='payment_failed' + revalidatePublicStats", async () => {
     const { client, captured } = makeSupabase();
     const pi = makePaymentIntent({ orderId: "order-42" });
@@ -259,7 +242,7 @@ describe("syncStripePaymentFailed — Cas 7 : cancelled (cas nominal pending)", 
   });
 });
 
-describe("syncStripePaymentFailed — Cas 8 : audit log Phase 2 (path nominal)", () => {
+describe("syncStripePaymentFailed — Cas 7 : audit log Phase 2 (path nominal)", () => {
   it("path cancelled → log order_payment_failed avec userId=consumer_id + metadata", async () => {
     const { client } = makeSupabase();
     const pi = makePaymentIntent({ id: "pi_failed_audit", orderId: "order-42" });
@@ -297,7 +280,7 @@ describe("syncStripePaymentFailed — Cas 8 : audit log Phase 2 (path nominal)",
   });
 });
 
-describe("syncStripePaymentFailed — Cas 9 : pas d'audit log sur paths idempotents", () => {
+describe("syncStripePaymentFailed — Cas 8 : pas d'audit log sur paths idempotents", () => {
   it("already_terminal (cancelled rejoué) → PAS d'audit log (évite duplication)", async () => {
     const { client } = makeSupabase({
       fetchResp: {

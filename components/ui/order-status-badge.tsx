@@ -10,7 +10,6 @@ export type OrderStatusBadgeProps = Omit<BadgeProps, "tone" | "children"> & {
 const labels: Record<OrderStatus, string> = {
   pending: "En attente",
   confirmed: "Confirmée",
-  ready: "Prête au retrait",
   completed: "Retirée",
   cancelled: "Annulée",
   refunded: "Remboursée",
@@ -19,7 +18,6 @@ const labels: Record<OrderStatus, string> = {
 const tones: Record<OrderStatus, BadgeProps["tone"]> = {
   pending: "neutral",
   confirmed: "terra",
-  ready: "green",
   completed: "gray",
   cancelled: "danger",
   refunded: "gray",

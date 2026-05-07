@@ -31,8 +31,8 @@
 //
 // Guards appliqués par la RPC (Phase 1) :
 //   - auth.uid() doit correspondre à p_user_id (via JWT du server client)
-//   - Aucune commande en statut pending/confirmed/ready côté consumer
-//   - Aucune commande en statut pending/confirmed/ready côté producer
+//   - Aucune commande en statut pending/confirmed côté consumer
+//   - Aucune commande en statut pending/confirmed côté producer
 //
 // Cas de test à valider en prod (Phase 4) :
 //   A. Consumer pur, 0 commande                 → suppression instantanée

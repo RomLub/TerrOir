@@ -134,8 +134,7 @@ function nonConfirmedStatusToError(
   if (status === "refunded") {
     return { kind: "order_refunded", order_id: orderId };
   }
-  // pending ou ready (ce dernier dormant dans le modèle 3 états réel — cf
-  // JSDoc lib/orders/stateMachine.ts).
+  // pending uniquement (Cluster C — T6 cleanup : 'ready' retiré du modèle).
   return {
     kind: "order_not_confirmed",
     current_status: status,

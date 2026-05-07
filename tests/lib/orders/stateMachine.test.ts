@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  ACTIVE_ORDER_STATUTS,
   canTransition,
   assertTransition,
   isTerminal,
@@ -12,7 +13,6 @@ import {
 const STATUSES: readonly OrderStatus[] = [
   "pending",
   "confirmed",
-  "ready",
   "completed",
   "cancelled",
   "refunded",
@@ -22,16 +22,18 @@ const STATUSES: readonly OrderStatus[] = [
 // l'implémentation par elle-même). Toute modif de TRANSITIONS dans
 // stateMachine.ts doit aussi être répercutée ici, ce qui force une
 // revue consciente de la matrice.
+//
+// Cluster C — T6 cleanup : 'ready' retiré du modèle (CHECK orders.statut +
+// union TS), matrice passe de 6×6 à 5×5.
 const LEGAL: Record<OrderStatus, readonly OrderStatus[]> = {
   pending: ["confirmed", "cancelled", "refunded"],
-  confirmed: ["ready", "completed", "cancelled", "refunded"],
-  ready: ["completed", "cancelled", "refunded"],
+  confirmed: ["completed", "cancelled", "refunded"],
   completed: [],
   cancelled: [],
   refunded: [],
 };
 
-describe("canTransition — matrice exhaustive 36 cellules", () => {
+describe("canTransition — matrice exhaustive 25 cellules", () => {
   for (const from of STATUSES) {
     describe(`from=${from}`, () => {
       for (const to of STATUSES) {
@@ -48,12 +50,19 @@ describe("canTransition — matrice exhaustive 36 cellules", () => {
       expect(canTransition("pending", "pending")).toBe(false);
     });
 
-    it("statut source invalide → false (couvre le ?? false ligne 27)", () => {
+    it("statut source invalide → false (couvre le ?? false)", () => {
       expect(canTransition("foo" as OrderStatus, "confirmed")).toBe(false);
     });
 
     it("statut cible invalide → false", () => {
       expect(canTransition("pending", "bar" as OrderStatus)).toBe(false);
+    });
+
+    it("ancienne valeur 'ready' (legacy retirée Cluster C) → false depuis pending", () => {
+      // Garde-fou : 'ready' n'est plus un statut légal mais un input dynamique
+      // pourrait encore arriver via un payload externe. canTransition tolère
+      // grâce au `?.` défensif et retourne false.
+      expect(canTransition("pending", "ready" as unknown as OrderStatus)).toBe(false);
     });
   });
 });
@@ -70,21 +79,15 @@ describe("assertTransition — contrat throw / no-throw", () => {
   });
 
   describe("transitions illégales : throw InvalidOrderTransitionError", () => {
-    // Échantillon représentatif (pas re-dérouler les 28 cellules de
-    // canTransition — on teste le contrat throw, pas la matrice).
     const ILLEGAL_SAMPLES: ReadonlyArray<[OrderStatus, OrderStatus]> = [
       // Diagonale (X → X)
       ["pending", "pending"],
       ["confirmed", "confirmed"],
-      ["ready", "ready"],
       // Sauts en avant impossibles
-      ["pending", "ready"],
       ["pending", "completed"],
       // Retours en arrière interdits
       ["confirmed", "pending"],
-      ["ready", "confirmed"],
       // Terminaux : aucune transition sortante
-      ["completed", "ready"],
       ["completed", "refunded"],
       ["cancelled", "pending"],
       ["cancelled", "refunded"],
@@ -127,9 +130,6 @@ describe("isTerminal — sémantique", () => {
     it("confirmed → false", () => {
       expect(isTerminal("confirmed")).toBe(false);
     });
-    it("ready → false", () => {
-      expect(isTerminal("ready")).toBe(false);
-    });
   });
 
   describe("contrat fail-fast (asymétrie volontaire vs canTransition)", () => {
@@ -161,8 +161,8 @@ describe("InvalidOrderTransitionError — contrat erreur", () => {
   });
 
   it("expose from et to en propriétés readonly", () => {
-    const err = new InvalidOrderTransitionError("ready", "refunded");
-    expect(err.from).toBe("ready");
+    const err = new InvalidOrderTransitionError("confirmed", "refunded");
+    expect(err.from).toBe("confirmed");
     expect(err.to).toBe("refunded");
   });
 
@@ -175,14 +175,14 @@ describe("InvalidOrderTransitionError — contrat erreur", () => {
   it("instanceof reste fiable après throw + catch (call sites en dépendent)", () => {
     let caught: unknown = null;
     try {
-      assertTransition("completed", "ready");
+      assertTransition("completed", "pending");
     } catch (e) {
       caught = e;
     }
     expect(caught).toBeInstanceOf(InvalidOrderTransitionError);
     if (caught instanceof InvalidOrderTransitionError) {
       expect(caught.from).toBe("completed");
-      expect(caught.to).toBe("ready");
+      expect(caught.to).toBe("pending");
     }
   });
 });
@@ -196,19 +196,15 @@ describe("canConsumerCancel — T-420", () => {
     expect(canConsumerCancel("confirmed")).toBe(false);
   });
 
-  it("3 — ready → false", () => {
-    expect(canConsumerCancel("ready")).toBe(false);
-  });
-
-  it("4 — completed → false", () => {
+  it("3 — completed → false", () => {
     expect(canConsumerCancel("completed")).toBe(false);
   });
 
-  it("5 — cancelled → false", () => {
+  it("4 — cancelled → false", () => {
     expect(canConsumerCancel("cancelled")).toBe(false);
   });
 
-  it("6 — refunded → false", () => {
+  it("5 — refunded → false", () => {
     expect(canConsumerCancel("refunded")).toBe(false);
   });
 });
@@ -222,19 +218,34 @@ describe("canProducerCancel — T-420", () => {
     expect(canProducerCancel("confirmed")).toBe(true);
   });
 
-  it("3 — ready → true (Option (a) Romain : alignement UI ↔ server)", () => {
-    expect(canProducerCancel("ready")).toBe(true);
-  });
-
-  it("4 — completed → false (terminal)", () => {
+  it("3 — completed → false (terminal)", () => {
     expect(canProducerCancel("completed")).toBe(false);
   });
 
-  it("5 — cancelled → false (terminal)", () => {
+  it("4 — cancelled → false (terminal)", () => {
     expect(canProducerCancel("cancelled")).toBe(false);
   });
 
-  it("6 — refunded → false (terminal)", () => {
+  it("5 — refunded → false (terminal)", () => {
     expect(canProducerCancel("refunded")).toBe(false);
+  });
+});
+
+describe("ACTIVE_ORDER_STATUTS — Cluster C", () => {
+  it("contient pending et confirmed (pas plus, pas moins)", () => {
+    expect([...ACTIVE_ORDER_STATUTS].sort()).toEqual(["confirmed", "pending"]);
+  });
+
+  it("ne contient plus 'ready' (état mort retiré T6)", () => {
+    expect((ACTIVE_ORDER_STATUTS as readonly string[]).includes("ready")).toBe(
+      false,
+    );
+  });
+
+  it("longueur figée à 2", () => {
+    // Garde-fou applicatif. La readonly-ness vient du `as const` et est
+    // contrainte côté TypeScript uniquement (à runtime l'array reste un
+    // Array JS standard) — c'est l'intention contractuelle qu'on fige ici.
+    expect(ACTIVE_ORDER_STATUTS.length).toBe(2);
   });
 });

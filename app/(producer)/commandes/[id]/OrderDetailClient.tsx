@@ -223,9 +223,6 @@ export function OrderDetailClient({ data }: { data: OrderDetailData }) {
               {order.status === 'confirmed' && (
                 <p className="text-[13px] text-dark/60">Préparez la commande puis validez le retrait avec le code client.</p>
               )}
-              {order.status === 'ready' && (
-                <p className="text-[13px] text-dark/60">Saisissez le code client ci-contre pour finaliser.</p>
-              )}
               {canProducerCancel(order.status) && (
                 <Button variant="ghost" size="lg" disabled={busy !== null} onClick={() => call('cancel', { reason: 'producer_cancel' })}>
                   Annuler

@@ -20,13 +20,12 @@ export type OrderDetailData = {
 const STEPS: { key: OrderStatus; label: string }[] = [
   { key: 'pending', label: 'Commandé' },
   { key: 'confirmed', label: 'Confirmé' },
-  { key: 'ready', label: 'Prêt' },
   { key: 'completed', label: 'Retiré' },
 ];
 
 export function OrderDetailClient({ data }: { data: OrderDetailData }) {
   const o = data;
-  const showCode = o.statut === 'confirmed' || o.statut === 'ready';
+  const showCode = o.statut === 'confirmed';
   const showReview = o.statut === 'completed' && !o.hasReview;
   const currentIdx = STEPS.findIndex((s) => s.key === o.statut);
 

@@ -86,9 +86,9 @@ export async function POST(request: Request, props0: RouteContext) {
   // T-410 : valider la transition d'etat AVANT d'emettre un refund Stripe
   // irrécupérable. La cible *tentative* dépend de la presence d'un PI
   // (refunded si paid, sinon cancelled). Vu la matrice TRANSITIONS, depuis
-  // pending/confirmed/ready (les seuls atteignant ce point post-isTerminal)
-  // les deux cibles sont équivalemment légales → valider la tentative
-  // suffit. Pattern aligné refund/route.ts:78-85.
+  // pending/confirmed (les seuls atteignant ce point post-isTerminal) les
+  // deux cibles sont équivalemment légales → valider la tentative suffit.
+  // Pattern aligné refund/route.ts:78-85.
   const from = order.statut as OrderStatus;
   const tentativeFinalStatus: OrderStatus = order.stripe_payment_intent_id
     ? "refunded"
@@ -190,7 +190,7 @@ export async function POST(request: Request, props0: RouteContext) {
   }
 
   // Invalide le cache des stats publiques (ordersCount sur la home) :
-  // si l'order quittait le filtre IN ('confirmed','ready','completed'), le
+  // si l'order quittait le filtre IN ('confirmed','completed'), le
   // count change. Inconditionnel pour simplifier — pending → cancelled n'a
   // pas d'impact mais coût d'invalidation négligeable. Le helper swallow
   // toute exception (cache flapping ne doit pas faire échouer le 200).

@@ -47,8 +47,8 @@ import { sendOpsAlert } from "@/lib/ops/alert";
 //     Audit log poussé pour retry admin manuel (cf dette ouverte
 //     "Cron retry-failed-refunds"). NE PAS UPDATE l'order : reste en
 //     cancelled+payment_failed pour permettre un retry manuel.
-//   - already_confirmed : statut ∈ {confirmed, ready, completed} →
-//     idempotent webhook rejoué après confirm manuel producer. No-op.
+//   - already_confirmed : statut ∈ {confirmed, completed} → idempotent
+//     webhook rejoué après confirm manuel producer. No-op.
 //   - anomaly : statut ∈ {refunded} ou cancelled avec closure_reason
 //     ≠ 'payment_failed' (consumer_cancel, producer_cancel, timeout, stock,
 //     other), OU RPC a retourné une erreur/valeur inattendue. Cas patho-
@@ -140,7 +140,6 @@ export async function syncStripePaymentSucceeded(
 
   if (
     currentStatus === "confirmed" ||
-    currentStatus === "ready" ||
     currentStatus === "completed"
   ) {
     // Idempotent : webhook rejoué après que le producer a déjà confirmé,

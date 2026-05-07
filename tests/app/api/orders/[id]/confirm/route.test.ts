@@ -272,12 +272,16 @@ describe("C. Autorisation (userOwnsProducer)", () => {
 // --- D. Transition (state machine) ---------------------------------------
 
 describe("D. Transition state machine — confirmed depuis pending only", () => {
-  it("D1 statut ready → 409 InvalidOrderTransitionError", async () => {
-    setOrderFetch({ statut: "ready" });
+  it("D1 statut completed → 409 InvalidOrderTransitionError", async () => {
+    // Cluster C — T6 cleanup : ce test couvrait historiquement statut=ready
+    // (transition ready → confirmed interdite). 'ready' a été retiré du
+    // modèle ; on bascule sur 'completed' (terminal, transition vers
+    // 'confirmed' interdite par la state machine).
+    setOrderFetch({ statut: "completed" });
     const res = await POST(makeRequest(), PARAMS);
     expect(res.status).toBe(409);
     const json = (await res.json()) as { error?: string };
-    expect(json.error).toContain("ready");
+    expect(json.error).toContain("completed");
     expect(json.error).toContain("confirmed");
     expect(captured.updates).toEqual([]);
   });

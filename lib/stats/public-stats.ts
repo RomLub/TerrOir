@@ -7,7 +7,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 //
 // Filtres :
 //  - producers : statut = 'public' AND deleted_at IS NULL
-//  - orders    : statut IN ('confirmed','ready','completed')
+//  - orders    : statut IN ('confirmed','completed')
 //                exclut 'pending' (paiement non finalisé) + 'cancelled' / 'refunded'
 //  - products  : active = true AND producer (statut = 'public' AND deleted_at IS NULL)
 //
@@ -19,7 +19,7 @@ export interface PublicStats {
   productsCount: number;
 }
 
-const COMPLETED_ORDER_STATUSES = ["confirmed", "ready", "completed"] as const;
+const COMPLETED_ORDER_STATUSES = ["confirmed", "completed"] as const;
 
 async function fetchPublicStats(): Promise<PublicStats> {
   const supabase = createSupabaseAdminClient();

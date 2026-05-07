@@ -5,7 +5,7 @@ import { formatDateFr } from '@/lib/format/date';
 import { formatEuro } from '@/lib/format/currency';
 import { AdminPageHeader, MetricCard, StatusDotBadge, TableStatus } from '@/components/ui';
 
-export type Status = 'pending' | 'confirmed' | 'ready' | 'completed' | 'cancelled' | 'refunded';
+export type Status = 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'refunded';
 
 // Pseudo-statuts UI : commandes cancelled avec closure_reason
 // spécifiques au flow Stripe webhook. 2 pseudo-statuts distincts pour
@@ -41,7 +41,6 @@ const FILTERS: { value: Filter; label: string }[] = [
   { value: 'all', label: 'Toutes' },
   { value: 'pending', label: 'À confirmer' },
   { value: 'confirmed', label: 'Confirmées' },
-  { value: 'ready', label: 'Prêtes' },
   { value: 'completed', label: 'Terminées' },
   { value: 'cancelled', label: 'Annulées' },
   { value: 'payment_failed', label: 'Tentatives échouées' },
@@ -52,7 +51,6 @@ const FILTERS: { value: Filter; label: string }[] = [
 const STATUS_META: Record<DisplayStatus, { label: string; dot: string; bg: string; text: string }> = {
   pending:                       { label: 'En attente',         dot: 'bg-amber-500',         bg: 'bg-amber-50',          text: 'text-amber-800' },
   confirmed:                     { label: 'Confirmée',          dot: 'bg-amber-600',         bg: 'bg-amber-100',         text: 'text-amber-900' },
-  ready:                         { label: 'Prête',              dot: 'bg-terroir-green-700', bg: 'bg-terroir-green-100', text: 'text-terroir-green-700' },
   completed:                     { label: 'Retirée',            dot: 'bg-terroir-green-700', bg: 'bg-terroir-green-100', text: 'text-terroir-green-700' },
   cancelled:                     { label: 'Annulée',            dot: 'bg-red-500',           bg: 'bg-red-100',           text: 'text-red-700' },
   refunded:                      { label: 'Remboursée',         dot: 'bg-red-500',           bg: 'bg-red-100',           text: 'text-red-700' },
