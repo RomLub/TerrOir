@@ -7,6 +7,7 @@ import { revalidatePublicStats } from "@/lib/stats/revalidate";
 import {
   InvalidOrderTransitionError,
   assertTransition,
+  canConsumerCancel,
   isTerminal,
   type OrderStatus,
 } from "@/lib/orders/stateMachine";
@@ -70,11 +71,12 @@ export async function POST(request: Request, props0: RouteContext) {
     authorizedByProducer = true;
   } else if (
     session.id === order.consumer_id &&
-    order.statut === "pending"
+    canConsumerCancel(order.statut as OrderStatus)
   ) {
     // Fenêtre stricte : tant que le producteur n'a pas confirmé, zéro
     // engagement de sa part → l'annulation consumer est sans préjudice.
     // Après 'confirmed' le consumer doit passer par contact direct.
+    // canConsumerCancel = source de vérité partagée (lib/orders/stateMachine.ts).
     // reason forcée à "consumer_cancel" pour analytics propres + défense
     // contre un client forgeant une reason réservée producteur ("stock").
     // authorizedByProducer reste false → pas de recalcul du badge.
