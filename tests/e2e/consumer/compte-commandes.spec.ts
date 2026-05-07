@@ -76,7 +76,12 @@ test.describe('Consumer — /compte/commandes', () => {
       ).toBeVisible();
 
       for (const o of orders) {
-        await expect(page.getByText(o.codeCommande, { exact: false })).toBeVisible();
+        // Le code TRR-XXXXX peut apparaître dans plusieurs éléments
+        // imbriqués (link role + span). .first() évite la strict mode
+        // violation tout en validant la présence.
+        await expect(
+          page.getByText(o.codeCommande, { exact: false }).first(),
+        ).toBeVisible();
       }
     } finally {
       await cleanupOrdersForProducers([producer.producerId]);
@@ -110,14 +115,20 @@ test.describe('Consumer — /compte/commandes', () => {
       await loginAs(page, consumer);
       await page.goto('/compte/commandes');
 
-      // Tab "En cours" : pending visible, completed cachée
+      // Tab "En cours" : pending visible, completed cachée. Le code TRR
+      // peut apparaître dans plusieurs éléments imbriqués (link + span) →
+      // .first() pour viser le 1er match sans casser sur strict mode.
       await page.getByRole('button', { name: 'En cours', exact: true }).click();
-      await expect(page.getByText(pending.codeCommande, { exact: false })).toBeVisible();
+      await expect(
+        page.getByText(pending.codeCommande, { exact: false }).first(),
+      ).toBeVisible();
       await expect(page.getByText(completed.codeCommande, { exact: false })).toHaveCount(0);
 
       // Tab "Terminées" : inverse
       await page.getByRole('button', { name: 'Terminées', exact: true }).click();
-      await expect(page.getByText(completed.codeCommande, { exact: false })).toBeVisible();
+      await expect(
+        page.getByText(completed.codeCommande, { exact: false }).first(),
+      ).toBeVisible();
       await expect(page.getByText(pending.codeCommande, { exact: false })).toHaveCount(0);
     } finally {
       await cleanupOrdersForProducers([producer.producerId]);
@@ -222,7 +233,8 @@ test.describe('Consumer — /compte/commandes', () => {
       ).toBe(true);
 
       // Garde-fou strict : le code retrait de A ne doit jamais fuiter
-      // sur la page rendue à B (anti-leak).
+      // sur la page rendue à B (anti-leak). toHaveCount(0) reste correct
+      // car on cherche absence, pas .first().
       await expect(page.getByText(order.codeCommande, { exact: false })).toHaveCount(0);
     } finally {
       await cleanupOrdersForProducers([producer.producerId]);
