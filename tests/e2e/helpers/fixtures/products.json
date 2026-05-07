@@ -1,0 +1,42 @@
+{
+  "boeuf_colis": {
+    "nom": "Colis viande de bœuf 5kg",
+    "prix": 89.5,
+    "unite": "colis",
+    "stock_disponible": 10,
+    "stock_illimite": false,
+    "active": true
+  },
+  "agneau_gigot": {
+    "nom": "Gigot d'agneau frais",
+    "prix": 32.0,
+    "unite": "kg",
+    "stock_disponible": 5,
+    "stock_illimite": false,
+    "active": true
+  },
+  "tomate_grappe": {
+    "nom": "Tomates en grappe (saison)",
+    "prix": 4.5,
+    "unite": "kg",
+    "stock_disponible": 50,
+    "stock_illimite": false,
+    "active": true
+  },
+  "pain_campagne": {
+    "nom": "Pain de campagne 500g",
+    "prix": 4.2,
+    "unite": "piece",
+    "stock_disponible": 20,
+    "stock_illimite": false,
+    "active": true
+  },
+  "out_of_stock": {
+    "nom": "Produit en rupture (e2e)",
+    "prix": 12.0,
+    "unite": "piece",
+    "stock_disponible": 0,
+    "stock_illimite": false,
+    "active": true
+  }
+}

@@ -22,5 +22,8 @@ next-env.d.ts.bak
 # Audit log E2E (logs des writes prod par les tests)
 /tests/e2e/.audit-log.jsonl
 
+# Auth-state pré-calculés Playwright (regénérés au global-setup)
+/tests/e2e/setup/auth-state/
+
 # Scripts ad-hoc one-shot (T-229 — backfills, scripts privés non versionnés)
 /.tmp/

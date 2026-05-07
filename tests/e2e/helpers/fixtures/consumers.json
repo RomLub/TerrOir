@@ -1,0 +1,11 @@
+{
+  "default": {
+    "suffix": "consumer-default"
+  },
+  "with_orders": {
+    "suffix": "consumer-orders"
+  },
+  "fresh_signup": {
+    "suffix": "consumer-fresh"
+  }
+}

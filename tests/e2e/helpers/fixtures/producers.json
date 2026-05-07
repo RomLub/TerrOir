@@ -1,0 +1,26 @@
+{
+  "elevage_sarthe": {
+    "suffix": "elevage-sarthe",
+    "nomExploitation": "Élevage de la Sarthe (e2e)",
+    "statut": "public",
+    "type_production": "elevage",
+    "code_postal": "72000",
+    "ville": "Le Mans"
+  },
+  "maraicher_sarthe": {
+    "suffix": "maraicher-sarthe",
+    "nomExploitation": "Maraîcher de la Sarthe (e2e)",
+    "statut": "public",
+    "type_production": "maraichage",
+    "code_postal": "72100",
+    "ville": "Le Mans"
+  },
+  "boulanger_sarthe": {
+    "suffix": "boulanger-sarthe",
+    "nomExploitation": "Boulangerie artisanale (e2e)",
+    "statut": "public",
+    "type_production": "boulangerie",
+    "code_postal": "72200",
+    "ville": "La Flèche"
+  }
+}
