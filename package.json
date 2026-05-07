@@ -47,7 +47,6 @@
     "next": "^16.2.5",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
-    "react-map-gl": "^7.1.7",
     "resend": "^6.12.3",
     "stripe": "^22.1.0",
     "tailwind-merge": "^3.5.0",
