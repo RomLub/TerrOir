@@ -31,9 +31,10 @@
   "dependencies": {
     "@date-fns/tz": "^1.4.1",
     "@react-email/render": "^2.0.7",
+    "@sentry/nextjs": "^10.51.0",
     "@stripe/react-stripe-js": "^6.3.0",
     "@stripe/stripe-js": "^9.4.0",
-    "@supabase/ssr": "^0.5.2",
+    "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.45.4",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.37.0",

@@ -148,4 +148,19 @@ const nextConfig = {
   },
 };
 
-module.exports = withBundleAnalyzer(nextConfig);
+// Cluster B Phase 3 (bugs-P1-3) — wrap Sentry. Active uniquement si SENTRY_DSN
+// est defini (sinon withSentryConfig est un no-op cote build : pas d'upload
+// sourcemaps, juste injection du SDK runtime).
+const { withSentryConfig } = require("@sentry/nextjs");
+
+module.exports = withSentryConfig(withBundleAnalyzer(nextConfig), {
+  // Skip si pas de creds (init manuel : DSN + auth token poses ulterieurement
+  // par Romain dans Vercel — cf. RAPPORT FINAL ARBITRAGE REQUIS).
+  silent: !process.env.SENTRY_AUTH_TOKEN,
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  // Cache les sourcemaps de la build production (anti-leak code source en
+  // public). Les errors Sentry restent symboliquees cote dashboard.
+  hideSourceMaps: true,
+});
