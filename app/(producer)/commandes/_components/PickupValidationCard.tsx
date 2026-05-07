@@ -368,7 +368,7 @@ export function PickupValidationCard({
       <AdminModal
         open={view.kind === 'preview'}
         onClose={onCancelPreview}
-        title="Confirmer la livraison"
+        title="Confirmer la remise"
         eyebrow="Aperçu commande"
         size="md"
         footer={
@@ -377,7 +377,7 @@ export function PickupValidationCard({
               Annuler
             </Button>
             <Button variant="success" size="sm" onClick={onConfirm} disabled={busy}>
-              {busy ? 'Validation…' : 'Confirmer la livraison'}
+              {busy ? 'Validation…' : 'Confirmer la remise'}
             </Button>
           </>
         }

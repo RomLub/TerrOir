@@ -151,14 +151,14 @@ test.describe("Producer — Pickup validation", () => {
         .fill(order.codeCommande);
       await page.getByRole("button", { name: /^Vérifier$/i }).click();
 
-      // Étape 2 — modale preview affichée avec "Confirmer la livraison".
+      // Étape 2 — modale preview affichée avec "Confirmer la remise".
       await expect(
-        page.getByRole("heading", { name: /Confirmer la livraison/i }),
+        page.getByRole("heading", { name: /Confirmer la remise/i }),
       ).toBeVisible({ timeout: 10_000 });
 
-      // Bouton "Confirmer la livraison" dans le footer modale.
+      // Bouton "Confirmer la remise" dans le footer modale.
       await page
-        .getByRole("button", { name: /Confirmer la livraison/i })
+        .getByRole("button", { name: /Confirmer la remise/i })
         .click();
 
       // Étape 3 — succès "Commande remise à <Prenom>".

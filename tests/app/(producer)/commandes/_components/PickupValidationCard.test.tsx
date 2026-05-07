@@ -164,7 +164,7 @@ describe("PickupValidationCard — flow nominal", () => {
     expect(document.body.textContent).toContain("Marie Dupont");
     expect(document.body.textContent).toContain("Saucisson sec");
     expect(document.body.textContent).toContain("8,00 €");
-    expect(findButtonByText("Confirmer la livraison")).toBeDefined();
+    expect(findButtonByText("Confirmer la remise")).toBeDefined();
     expect(findButtonByText("Annuler")).toBeDefined();
   });
 
@@ -176,7 +176,7 @@ describe("PickupValidationCard — flow nominal", () => {
 
     await clickAsync(findButtonByText("Annuler")!);
 
-    expect(findButtonByText("Confirmer la livraison")).toBeUndefined();
+    expect(findButtonByText("Confirmer la remise")).toBeUndefined();
     expect(getInput()).not.toBeNull();
   });
 
@@ -188,7 +188,7 @@ describe("PickupValidationCard — flow nominal", () => {
     await clickAsync(findButtonByText("Vérifier")!);
 
     mockFetchOnce(200, { order: sampleValidated });
-    await clickAsync(findButtonByText("Confirmer la livraison")!);
+    await clickAsync(findButtonByText("Confirmer la remise")!);
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const [, init2] = fetchMock.mock.calls[1]!;
@@ -205,7 +205,7 @@ describe("PickupValidationCard — flow nominal", () => {
     mockFetchOnce(200, { order: samplePreview });
     await clickAsync(findButtonByText("Vérifier")!);
     mockFetchOnce(200, { order: sampleValidated });
-    await clickAsync(findButtonByText("Confirmer la livraison")!);
+    await clickAsync(findButtonByText("Confirmer la remise")!);
 
     await clickAsync(findButtonByText("Valider une autre commande")!);
 
@@ -227,7 +227,7 @@ describe("PickupValidationCard — erreurs", () => {
       "Code de retrait inconnu",
     );
     // Reste sur idle : la modale n'est pas ouverte
-    expect(findButtonByText("Confirmer la livraison")).toBeUndefined();
+    expect(findButtonByText("Confirmer la remise")).toBeUndefined();
   });
 
   it("C2 409 order_not_confirmed pending → message + lien detail_url", async () => {

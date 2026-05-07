@@ -72,8 +72,8 @@ const ITEMS: Item[] = [
   },
   {
     icon: <BasketLockIcon />,
-    title: "Retrait à la ferme ou en point relais",
-    body: "Choisis le créneau qui t'arrange parmi ceux que le producteur propose. Pas de livraison aléatoire, pas de frais cachés.",
+    title: "Retrait à la ferme",
+    body: "Choisis le créneau qui t'arrange parmi ceux que le producteur propose. Tu viens chercher ta commande directement chez l'éleveur — pas de frais cachés.",
   },
 ];
 
