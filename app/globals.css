@@ -46,3 +46,39 @@ body {
   background-color: var(--color-terroir-bg);
   color: #1a1a1a;
 }
+
+/*
+  Schéma anatomique des morceaux du bœuf (CowDiagram).
+  Le SVG est injecté tel quel ; on stylise les paths interactifs ici
+  parce qu'ils n'ont pas de classes Tailwind (dangerouslySetInnerHTML).
+*/
+.cow-diagram__svg svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 800px;
+  margin-inline: auto;
+}
+
+.cow-diagram__svg path[data-cut] {
+  cursor: pointer;
+  fill: transparent;
+  opacity: 1;
+  transition:
+    fill 120ms ease-out,
+    opacity 120ms ease-out;
+  outline: none;
+}
+
+.cow-diagram__svg path[data-cut]:hover {
+  fill: rgba(184, 113, 62, 0.4); /* terra-500 @ 40% */
+}
+
+.cow-diagram__svg path[data-cut]:focus-visible {
+  outline: 2px solid var(--terra-700);
+  outline-offset: 2px;
+}
+
+.cow-diagram__svg path[data-cut][data-highlighted='true'] {
+  fill: rgba(184, 113, 62, 0.6); /* terra-500 @ 60% */
+}
