@@ -35,13 +35,13 @@ export function PostIt({
 }: PostItProps) {
   return (
     <div
-      className={`relative rounded-xl border border-postit-border/60 bg-postit-bg p-6 shadow-lift before:absolute before:left-8 before:top-[-10px] before:h-6 before:w-20 before:rounded-sm before:bg-terra-700/[0.18] before:[transform:rotate(-3deg)] before:content-[''] ${className}`}
+      className={`relative rounded-xl border border-postit-border/60 bg-postit-bg p-6 shadow-lift before:absolute before:left-8 before:top-[-10px] before:h-6 before:w-20 before:rounded-sm before:bg-terra-700/[0.18] before:transform-[rotate(-3deg)] before:content-[''] ${className}`}
       style={{ transform: "rotate(-1.4deg)" }}
     >
       <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-terra-700">
         {eyebrow}
       </span>
-      <p className="mt-3 font-serif text-[21px] font-medium italic leading-[1.5] text-terroir-ink/[0.88]">
+      <p className="mt-3 font-serif text-[21px] font-medium italic leading-normal text-terroir-ink/[0.88]">
         «&nbsp;{quote}&nbsp;»
       </p>
       <div className="mt-4 text-right font-hand text-[24px] font-medium leading-none text-green-900">

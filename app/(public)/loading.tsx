@@ -14,7 +14,7 @@ export default function PublicLoading() {
             key={i}
             className="overflow-hidden rounded-2xl border border-terroir-border bg-white shadow-sm"
           >
-            <div className="aspect-[4/3] w-full animate-pulse bg-terroir-green-100" />
+            <div className="aspect-4/3 w-full animate-pulse bg-terroir-green-100" />
             <div className="space-y-3 p-4">
               <div className="h-5 w-3/4 animate-pulse rounded bg-dark/10" />
               <div className="h-3 w-1/2 animate-pulse rounded bg-dark/10" />

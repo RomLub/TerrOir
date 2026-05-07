@@ -238,7 +238,7 @@ export function AdminSidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="sticky top-24 h-fit min-h-[400px] w-[220px] flex-shrink-0 rounded-md border border-gray-200 bg-white shadow-sm">
+    <aside className="sticky top-24 h-fit min-h-[400px] w-[220px] shrink-0 rounded-md border border-gray-200 bg-white shadow-sm">
       <nav aria-label="Navigation back-office" className="py-2">
         <ul className="flex flex-col">
           {NAV.map((entry, idx) => {

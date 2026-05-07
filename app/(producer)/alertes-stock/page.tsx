@@ -76,7 +76,7 @@ export default async function ProducerAlertesStockPage() {
                     le retour en stock
                   </p>
                 </div>
-                <div className="flex items-center gap-4 flex-shrink-0">
+                <div className="flex items-center gap-4 shrink-0">
                   <span className="font-serif text-[28px] text-terra-700 tabular-nums">
                     {alert.count}
                   </span>

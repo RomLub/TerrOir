@@ -91,7 +91,7 @@ export function Hero({
               }}
             />
             {/* Tag overlay producteur (placeholder Phase 1) */}
-            <div className="absolute inset-x-6 bottom-6 flex items-center gap-3.5 rounded-xl bg-white/[0.92] p-3.5 backdrop-blur">
+            <div className="absolute inset-x-6 bottom-6 flex items-center gap-3.5 rounded-xl bg-white/92 p-3.5 backdrop-blur">
               <div
                 className="h-11 w-11 shrink-0 rounded-full"
                 style={{

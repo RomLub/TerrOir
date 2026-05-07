@@ -24,7 +24,7 @@ export function ProducerLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-bg flex">
-      <aside className="w-64 flex-shrink-0 bg-green-900 text-white flex flex-col sticky top-0 h-screen">
+      <aside className="w-64 shrink-0 bg-green-900 text-white flex flex-col sticky top-0 h-screen">
         <div className="p-6 border-b border-white/10">
           <Logo variant="mono" />
           <div className="mt-2 text-[11px] uppercase tracking-[0.18em] text-terra-300 font-semibold">Espace Producteur</div>

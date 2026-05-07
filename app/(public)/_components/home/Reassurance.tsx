@@ -86,7 +86,7 @@ export function Reassurance({ className = "" }: ReassuranceProps) {
         <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4">
           {ITEMS.map((item) => (
             <div key={item.title}>
-              <div className="mb-4 h-10 w-10 text-terra-700 [&_svg]:h-full [&_svg]:w-full [&_svg]:fill-none [&_svg]:stroke-current [&_svg]:[stroke-linecap:round] [&_svg]:[stroke-linejoin:round] [&_svg]:[stroke-width:1.5]">
+              <div className="mb-4 h-10 w-10 text-terra-700 [&_svg]:h-full [&_svg]:w-full [&_svg]:fill-none [&_svg]:stroke-current [&_svg]:[stroke-linecap:round] [&_svg]:[stroke-linejoin:round] [&_svg]:stroke-[1.5]">
                 {item.icon}
               </div>
               <h3 className="text-base font-semibold leading-[1.3] text-terroir-ink">

@@ -185,7 +185,7 @@ export function ProductPageClient({
       <section className="max-w-7xl mx-auto px-6 py-10">
         <div className="grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] gap-10 lg:gap-14">
           <div>
-            <div className="aspect-[4/3] rounded-2xl overflow-hidden relative">
+            <div className="aspect-4/3 rounded-2xl overflow-hidden relative">
               {photos[activePhoto] ? (
                 <Image
                   src={photos[activePhoto] as string}

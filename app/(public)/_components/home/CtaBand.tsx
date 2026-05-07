@@ -37,7 +37,7 @@ export function CtaBand({ className = "" }: CtaBandProps) {
           </em>
           , une rencontre.
         </h2>
-        <p className="mx-auto mt-5 max-w-[580px] text-base leading-[1.55] text-white/[0.78] md:text-[17px]">
+        <p className="mx-auto mt-5 max-w-[580px] text-base leading-[1.55] text-white/78 md:text-[17px]">
           Cette semaine, 320 produits sont disponibles auprès de 42 fermes
           sarthoises. Compose ton panier, choisis ton créneau, le
           reste se passe en cuisine.

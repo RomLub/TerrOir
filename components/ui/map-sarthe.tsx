@@ -36,7 +36,7 @@ export type MapSartheProps = {
 export function MapSarthe({ className = "" }: MapSartheProps) {
   return (
     <div
-      className={`relative aspect-[16/11] overflow-hidden rounded-2xl border border-terroir-border bg-terroir-bg shadow-soft ${className}`}
+      className={`relative aspect-16/11 overflow-hidden rounded-2xl border border-terroir-border bg-terroir-bg shadow-soft ${className}`}
     >
       <svg
         viewBox="0 0 600 410"

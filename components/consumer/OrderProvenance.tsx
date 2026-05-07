@@ -143,7 +143,7 @@ export function OrderProvenance({
                   {distance}{" "}
                   <span className="text-[18px] md:text-[22px]">km</span>
                 </div>
-                <p className="mt-2 text-[13px] leading-[1.5] text-terroir-ink/[0.7]">
+                <p className="mt-2 text-[13px] leading-normal text-terroir-ink/[0.7]">
                   à vol d&rsquo;oiseau jusqu&rsquo;à toi depuis {producerName}.
                 </p>
               </>
@@ -171,7 +171,7 @@ export function OrderProvenance({
               <div className="mt-1 font-serif text-[22px] leading-none text-terroir-ink/[0.55] md:text-[26px]">
                 ~{GMS_DISTANCE_KM_REFERENCE} km
               </div>
-              <p className="mt-1.5 text-[12px] leading-[1.5] text-terroir-ink/[0.6]">
+              <p className="mt-1.5 text-[12px] leading-normal text-terroir-ink/[0.6]">
                 en moyenne en circuit long (importation, centrale
                 d&rsquo;achat, entrepôts).
               </p>

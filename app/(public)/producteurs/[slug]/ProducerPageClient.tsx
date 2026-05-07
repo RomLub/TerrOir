@@ -123,7 +123,7 @@ export function ProducerPageClient({
           sizes="100vw"
           className="object-cover"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-green-900/90 via-green-900/50 to-transparent" />
+        <div className="absolute inset-0 bg-linear-to-t from-green-900/90 via-green-900/50 to-transparent" />
         <div className="relative max-w-7xl mx-auto px-6 h-full flex flex-col justify-end pb-8">
           <div className="flex items-center gap-2 mb-3">
             <Link href="/carte" className="text-[12px] text-green-100/80 hover:text-white flex items-center gap-1.5">
@@ -160,7 +160,7 @@ export function ProducerPageClient({
       <section id="histoire" className="max-w-7xl mx-auto px-6 py-16 md:py-24 scroll-mt-32">
         <div className="grid md:grid-cols-[5fr_6fr] gap-10 md:gap-16 items-start">
           <div>
-            <PhotoPlaceholder label="Photo de famille devant la ferme" className="aspect-[4/5] w-full rounded-2xl" />
+            <PhotoPlaceholder label="Photo de famille devant la ferme" className="aspect-4/5 w-full rounded-2xl" />
             <div className="mt-6 grid grid-cols-3 gap-3">
               {producer.generations && <InfoKey stat={`${producer.generations}e`} label="génération" />}
               {yearsActive !== null && <InfoKey stat={`${yearsActive}+`} label="ans d'élevage" />}
@@ -195,7 +195,7 @@ export function ProducerPageClient({
             <div className="text-[11px] uppercase tracking-[0.18em] text-terra-700 font-semibold mb-4">La ferme en images</div>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               {producer.gallery.map((photo, i) => (
-                <div key={i} className={`relative rounded-xl overflow-hidden ${i === 0 ? 'md:row-span-2 md:col-span-2 aspect-[4/3]' : 'aspect-[4/3]'}`}>
+                <div key={i} className={`relative rounded-xl overflow-hidden ${i === 0 ? 'md:row-span-2 md:col-span-2 aspect-4/3' : 'aspect-4/3'}`}>
                   {photo ? (
                     <Image
                       src={photo}
@@ -314,7 +314,7 @@ function InfoKey({ stat, label }: { stat: string; label: string }) {
   return (
     <div className="bg-white rounded-xl border border-dark/[0.06] p-3 text-center">
       <div className="font-serif text-[28px] text-green-900 leading-none">{stat}</div>
-      <div className="text-[11px] uppercase tracking-[0.1em] text-dark/60 mt-1">{label}</div>
+      <div className="text-[11px] uppercase tracking-widest text-dark/60 mt-1">{label}</div>
     </div>
   );
 }

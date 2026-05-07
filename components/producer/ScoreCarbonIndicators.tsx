@@ -138,7 +138,7 @@ export function IndicatorCard({
           {label}
         </span>
       </div>
-      <p className="mt-2 text-[12px] leading-[1.5] text-terroir-ink/[0.6]">
+      <p className="mt-2 text-[12px] leading-normal text-terroir-ink/[0.6]">
         {hint}
       </p>
     </div>

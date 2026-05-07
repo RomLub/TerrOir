@@ -177,7 +177,7 @@ export function CatalogueClient({
                 <article key={p.id} className={`bg-white rounded-2xl border shadow-soft overflow-hidden transition-opacity ${
                   p.active ? 'border-dark/[0.06]' : 'border-dark/[0.04] opacity-60'
                 }`}>
-                  <div className="aspect-[4/3] relative flex items-center justify-center text-green-900/30 font-mono text-[10px] uppercase overflow-hidden"
+                  <div className="aspect-4/3 relative flex items-center justify-center text-green-900/30 font-mono text-[10px] uppercase overflow-hidden"
                        style={!p.image ? { backgroundImage: 'repeating-linear-gradient(45deg, #D8F3DC 0 12px, #C9EAD0 12px 24px)' } : undefined}>
                     {p.image ? (
                       <Image

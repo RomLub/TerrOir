@@ -128,7 +128,7 @@ function PriceCard({ item }: { item: GmsPrice }) {
         {item.libelle}
       </h4>
       {item.description_courte ? (
-        <p className="mt-1 text-xs text-terroir-muted leading-[1.5]">
+        <p className="mt-1 text-xs text-terroir-muted leading-normal">
           {item.description_courte}
         </p>
       ) : null}

@@ -82,7 +82,7 @@ export function HelpTooltip({ id, ariaLabel, children }: HelpTooltipProps) {
         <span
           id={id}
           role="tooltip"
-          className="absolute left-0 top-7 z-10 w-64 rounded-md border border-gray-200 bg-white p-3 text-[12px] leading-[1.5] text-gray-700 shadow-lg"
+          className="absolute left-0 top-7 z-10 w-64 rounded-md border border-gray-200 bg-white p-3 text-[12px] leading-normal text-gray-700 shadow-lg"
         >
           {children}
         </span>

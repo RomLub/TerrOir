@@ -5,7 +5,7 @@ export default function ProducerSlugLoading() {
     <div aria-busy="true" aria-live="polite">
       <section className="mx-auto max-w-7xl px-6 py-12 md:py-16">
         <div className="grid gap-10 md:grid-cols-[1.4fr_1fr]">
-          <div className="aspect-[16/10] w-full animate-pulse rounded-2xl bg-terroir-green-100" />
+          <div className="aspect-16/10 w-full animate-pulse rounded-2xl bg-terroir-green-100" />
           <div className="space-y-5">
             <div className="h-4 w-32 animate-pulse rounded bg-dark/10" />
             <div className="h-12 w-3/4 animate-pulse rounded bg-dark/10" />
@@ -29,7 +29,7 @@ export default function ProducerSlugLoading() {
               <div
                 key={i}
                 className={`animate-pulse rounded-xl bg-terroir-green-100 ${
-                  i === 0 ? 'md:col-span-2 md:row-span-2 aspect-[4/3]' : 'aspect-[4/3]'
+                  i === 0 ? 'md:col-span-2 md:row-span-2 aspect-4/3' : 'aspect-4/3'
                 }`}
               />
             ))}
@@ -49,7 +49,7 @@ export default function ProducerSlugLoading() {
                 key={i}
                 className="overflow-hidden rounded-2xl border border-terroir-border bg-white shadow-sm"
               >
-                <div className="aspect-[4/3] w-full animate-pulse bg-terroir-green-100" />
+                <div className="aspect-4/3 w-full animate-pulse bg-terroir-green-100" />
                 <div className="space-y-3 p-4">
                   <div className="h-5 w-3/4 animate-pulse rounded bg-dark/10" />
                   <div className="h-3 w-1/2 animate-pulse rounded bg-dark/10" />

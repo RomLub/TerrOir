@@ -90,7 +90,7 @@ export default async function GlossaireArticlePage(
           <Body />
         </div>
 
-        <footer className="mt-10 border-t border-terroir-border pt-6 text-[12px] leading-[1.5] text-terroir-ink/[0.55]">
+        <footer className="mt-10 border-t border-terroir-border pt-6 text-[12px] leading-normal text-terroir-ink/[0.55]">
           {article.sources.length > 0 && (
             <div>
               <span className="font-semibold uppercase tracking-wider text-terra-700">

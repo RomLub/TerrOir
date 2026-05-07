@@ -42,7 +42,7 @@ function Toggle({ checked, onChange, label, hint, disabled }: {
         <div className="text-[15px] font-medium text-green-900">{label}</div>
         {hint && <div className="text-[12px] text-dark/55 mt-0.5">{hint}</div>}
       </div>
-      <span className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${checked ? 'bg-green-700' : 'bg-dark/20'}`}>
+      <span className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${checked ? 'bg-green-700' : 'bg-dark/20'}`}>
         <input type="checkbox" className="sr-only" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
         <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
       </span>

@@ -36,7 +36,7 @@ export function CtaSection({ className = "" }: CtaSectionProps) {
             <span className="italic text-terra-300">à la ferme.</span>
           </em>
         </h2>
-        <p className="mx-auto mt-5 max-w-[580px] text-base leading-[1.55] text-white/[0.78] md:text-[17px]">
+        <p className="mx-auto mt-5 max-w-[580px] text-base leading-[1.55] text-white/78 md:text-[17px]">
           Découvrez les producteurs sarthois disponibles dès aujourd&apos;hui.
           Une commande, un éleveur, une rencontre.
         </p>

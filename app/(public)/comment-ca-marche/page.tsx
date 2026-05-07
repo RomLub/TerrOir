@@ -134,7 +134,7 @@ function StepsRow({ steps, variant }: { steps: { n: string; title: string; text:
     <div className="grid md:grid-cols-3 gap-6 md:gap-8 max-w-6xl mx-auto">
       {steps.map((s, i) => (
         <div key={s.n}>
-          <div className="aspect-[4/3] rounded-2xl mb-5 flex items-center justify-center text-green-900/30 font-mono text-[11px] uppercase tracking-wider"
+          <div className="aspect-4/3 rounded-2xl mb-5 flex items-center justify-center text-green-900/30 font-mono text-[11px] uppercase tracking-wider"
                style={{ backgroundImage: 'repeating-linear-gradient(45deg, #D8F3DC 0 14px, #C9EAD0 14px 28px)' }}>
             Illustration étape {i + 1}
           </div>

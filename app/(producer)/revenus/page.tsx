@@ -168,7 +168,7 @@ export default async function RevenusPage() {
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-[13px]">
-              <thead className="bg-bg text-[11px] uppercase tracking-[0.1em] text-dark/55">
+              <thead className="bg-bg text-[11px] uppercase tracking-widest text-dark/55">
                 <tr>
                   <th className="text-left px-6 py-3 font-semibold">Période</th>
                   <th className="text-right px-4 py-3 font-semibold">Brut</th>

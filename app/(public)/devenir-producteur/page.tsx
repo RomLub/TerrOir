@@ -89,7 +89,7 @@ export default function DevenirProducteurPage() {
               <span className="text-[13px] text-terra-100/80">Réponse sous 48h · Entretien téléphonique</span>
             </div>
           </div>
-          <div className="aspect-[4/5] rounded-2xl hidden md:flex items-center justify-center text-white/40 font-mono text-[11px] uppercase tracking-wider"
+          <div className="aspect-4/5 rounded-2xl hidden md:flex items-center justify-center text-white/40 font-mono text-[11px] uppercase tracking-wider"
                style={{ backgroundImage: 'repeating-linear-gradient(45deg, rgba(255,255,255,0.08) 0 14px, rgba(255,255,255,0.04) 14px 28px)' }}>
             Photo éleveur en pré
           </div>

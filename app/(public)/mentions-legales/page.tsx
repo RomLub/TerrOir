@@ -213,7 +213,7 @@ export default function MentionsLegalesPage() {
             {EDITOR_INFOS.map(({ label, value }) => (
               <div key={label} className="contents">
                 <dt className="text-dark/55 font-medium">{label}</dt>
-                <dd className="text-dark/85 break-words">{value}</dd>
+                <dd className="text-dark/85 wrap-break-word">{value}</dd>
               </div>
             ))}
           </dl>

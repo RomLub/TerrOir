@@ -220,7 +220,7 @@ function PanierClientInner() {
                   const s = step(it.unite);
                   return (
                     <li key={`${it.productId}-${it.creneauId}-${it.dateRetrait}`} className="p-5 flex items-start gap-4">
-                      <div className="relative w-20 h-20 rounded-xl flex-shrink-0 overflow-hidden"
+                      <div className="relative w-20 h-20 rounded-xl shrink-0 overflow-hidden"
                            style={!it.image ? { backgroundImage: 'repeating-linear-gradient(45deg, #D8F3DC 0 10px, #C9EAD0 10px 20px)' } : undefined}>
                         {it.image && (
                           <Image
@@ -252,7 +252,7 @@ function PanierClientInner() {
                             className="text-[13px] text-dark/50 hover:text-terra-700 underline">Retirer</button>
                         </div>
                       </div>
-                      <div className="text-right flex-shrink-0">
+                      <div className="text-right shrink-0">
                         <div className="font-serif text-[20px] text-green-900 tabular-nums">{(it.prix * it.quantite).toFixed(2).replace('.', ',')} €</div>
                         <div className="text-[12px] text-dark/50 mono">{it.prix.toFixed(2).replace('.', ',')} € / {it.unite}</div>
                       </div>

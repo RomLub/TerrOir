@@ -103,7 +103,7 @@ export function Steps({ className = "" }: StepsProps) {
                   {step.numLabel}
                 </span>
               </div>
-              <div className="mb-4 h-14 w-14 text-green-700 [&_svg]:h-full [&_svg]:w-full [&_svg]:fill-none [&_svg]:stroke-current [&_svg]:[stroke-linecap:round] [&_svg]:[stroke-linejoin:round] [&_svg]:[stroke-width:1.5]">
+              <div className="mb-4 h-14 w-14 text-green-700 [&_svg]:h-full [&_svg]:w-full [&_svg]:fill-none [&_svg]:stroke-current [&_svg]:[stroke-linecap:round] [&_svg]:[stroke-linejoin:round] [&_svg]:stroke-[1.5]">
                 {step.icon}
               </div>
               <h3 className="font-serif text-[26px] font-medium leading-[1.2] text-green-900">

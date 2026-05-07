@@ -23,7 +23,7 @@ export default function AProposPage() {
       </section>
 
       <section className="max-w-7xl mx-auto px-6 mb-20">
-        <div className="aspect-[16/7] rounded-3xl flex items-center justify-center text-green-900/30 font-mono text-[12px] uppercase tracking-wider"
+        <div className="aspect-16/7 rounded-3xl flex items-center justify-center text-green-900/30 font-mono text-[12px] uppercase tracking-wider"
              style={{ backgroundImage: 'repeating-linear-gradient(45deg, #D8F3DC 0 14px, #C9EAD0 14px 28px)' }}>
           Photo panoramique — ferme sarthoise au lever du soleil
         </div>

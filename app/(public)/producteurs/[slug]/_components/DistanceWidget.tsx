@@ -334,7 +334,7 @@ export function DistanceWidget({
       {error && (
         <p
           role="alert"
-          className="mt-3 text-[13px] leading-[1.5] text-red-700"
+          className="mt-3 text-[13px] leading-normal text-red-700"
         >
           {error}
         </p>
@@ -408,7 +408,7 @@ function PrivacyNote() {
   // retiré tant que la page n'existe pas (suivi T-207). À réintroduire en
   // <Link> au go-live, en intégrant le wording cache serveur ci-dessus.
   return (
-    <p className="mt-4 text-[11px] leading-[1.5] text-terroir-ink/[0.55]">
+    <p className="mt-4 text-[11px] leading-normal text-terroir-ink/[0.55]">
       Saisie facultative — la fiche du producteur reste consultable sans. Ta
       position (géoloc ou résolue depuis ton code postal) reste dans ton
       navigateur (stockage de session, effacé à la fermeture de l&apos;onglet)
@@ -451,7 +451,7 @@ function DistanceResult({
           <div className="mt-1 font-serif text-[44px] leading-none text-green-900 md:text-[52px]">
             {distance} <span className="text-[22px] md:text-[26px]">km</span>
           </div>
-          <p className="mt-2 text-[13px] leading-[1.5] text-terroir-ink/[0.7]">
+          <p className="mt-2 text-[13px] leading-normal text-terroir-ink/[0.7]">
             à vol d&apos;oiseau jusqu&apos;à toi depuis {displayName}.
           </p>
         </div>
@@ -467,7 +467,7 @@ function DistanceResult({
           <div className="mt-1 font-serif text-[28px] leading-none text-terroir-ink/[0.55] md:text-[32px]">
             ~{ref} km
           </div>
-          <p className="mt-2 text-[13px] leading-[1.5] text-terroir-ink/[0.6]">
+          <p className="mt-2 text-[13px] leading-normal text-terroir-ink/[0.6]">
             en moyenne en circuit long (importation, centrale d&apos;achat,
             entrepôts).
           </p>

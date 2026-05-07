@@ -44,7 +44,7 @@ export function ProductCard({
         onClick ? "cursor-pointer" : ""
       } ${className}`}
     >
-      <div className="relative aspect-[4/3] w-full overflow-hidden bg-terroir-green-100">
+      <div className="relative aspect-4/3 w-full overflow-hidden bg-terroir-green-100">
         {product.image ? (
           <Image
             src={product.image}

@@ -187,7 +187,7 @@ export default function ProfilPage() {
                 role="switch"
                 aria-checked={profil.smsOptIn}
                 onClick={toggleSms}
-                className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-terroir-green-700 focus:ring-offset-2 ${
+                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-terroir-green-700 focus:ring-offset-2 ${
                   profil.smsOptIn ? "bg-terroir-green-700" : "bg-terroir-border"
                 }`}
               >

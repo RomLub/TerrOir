@@ -326,7 +326,7 @@ export default function MaPagePage() {
                   Photo principale
                 </div>
               )}
-              <div className="absolute inset-0 bg-gradient-to-t from-green-900/80 to-transparent" />
+              <div className="absolute inset-0 bg-linear-to-t from-green-900/80 to-transparent" />
               <div className="absolute bottom-5 left-6 right-6">
                 <h2 className="font-serif text-[40px] text-white leading-tight">{form.nom_exploitation || 'Votre exploitation'}</h2>
                 <p className="text-green-100/90 text-[14px] mt-1">{[form.commune, form.code_postal].filter(Boolean).join(' · ') || '—'}</p>
@@ -371,7 +371,7 @@ export default function MaPagePage() {
               <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
                 <h2 className="font-serif text-[22px] text-green-900 mb-4">Photos</h2>
                 <label className="block">
-                  <div className={`aspect-[2/1] rounded-xl border-2 border-dashed bg-bg overflow-hidden flex items-center justify-center cursor-pointer ${
+                  <div className={`aspect-2/1 rounded-xl border-2 border-dashed bg-bg overflow-hidden flex items-center justify-center cursor-pointer ${
                     previewHero ? 'border-green-500' : 'border-dark/15'
                   }`}>
                     {previewHero ? (
