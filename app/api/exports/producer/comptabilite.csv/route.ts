@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth/session";
+import { dbErrorResponse } from "@/lib/api/db-error-response";
 import {
   consumeRateLimit,
   getExportComptaRateLimit,
@@ -90,7 +91,9 @@ export async function GET(request: Request) {
     .limit(5000);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return dbErrorResponse(error, "EXPORT_PRODUCER_COMPTA_ERR", {
+      producer_id: producer.id,
+    });
   }
 
   // Pour rapprocher les payouts Stripe : lookup payouts qui couvrent la

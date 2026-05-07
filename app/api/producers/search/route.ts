@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { roundCoord } from "@/lib/producers/coords";
+import { dbErrorResponse } from "@/lib/api/db-error-response";
 import {
   consumeRateLimit,
   getProducersSearchRateLimit,
@@ -120,7 +121,11 @@ export async function GET(request: Request) {
   });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return dbErrorResponse(error, "PRODUCERS_SEARCH_RPC_ERR", {
+      lat,
+      lng,
+      radius,
+    });
   }
 
   // Sécurité (T-200 r2) : la RPC search_producers retourne les coordonnées

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { assertCronAuth } from "@/lib/cron/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { dbErrorResponse } from "@/lib/api/db-error-response";
 import { sendTemplate } from "@/lib/resend/send";
 import { sendSms } from "@/lib/twilio/sms";
 import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
@@ -70,7 +71,7 @@ export async function POST(request: Request) {
     .lte("evidence_due_by", cutoffSoon);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return dbErrorResponse(error, "CRON_DISPUTES_DEADLINE_SELECT_ERR");
   }
 
   if (!disputes || disputes.length === 0) {

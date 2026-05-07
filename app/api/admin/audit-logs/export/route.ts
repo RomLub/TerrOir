@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { dbErrorResponse } from "@/lib/api/db-error-response";
 import { parisCalendarDayBoundsUtc } from "@/lib/format/paris-day-bounds";
 import { parseSearchParams } from "@/app/(admin)/audit-logs/_lib/parse-search-params";
 import {
@@ -120,7 +121,7 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await query;
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return dbErrorResponse(error, "ADMIN_AUDIT_LOGS_EXPORT_ERR");
   }
 
   type Raw = {

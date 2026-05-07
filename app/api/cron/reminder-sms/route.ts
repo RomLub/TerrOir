@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { assertCronAuth } from "@/lib/cron/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { dbErrorResponse } from "@/lib/api/db-error-response";
 import { sendReminderSms } from "@/lib/twilio/sms";
 import { googleMapsUrl } from "@/lib/resend/send";
 
@@ -23,7 +24,7 @@ export async function POST(request: Request) {
     .eq("statut", "confirmed")
     .eq("date_retrait", today);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbErrorResponse(error, "CRON_REMINDER_SMS_SELECT_ERR");
   if (!orders || orders.length === 0) {
     return NextResponse.json({ target: today, sent: 0 });
   }

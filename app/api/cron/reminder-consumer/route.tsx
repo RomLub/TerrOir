@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { assertCronAuth } from "@/lib/cron/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { dbErrorResponse } from "@/lib/api/db-error-response";
 import { googleMapsUrl, sendTemplate } from "@/lib/resend/send";
 import OrderReminderConsumer, {
   subject as reminderSubject,
@@ -40,7 +41,7 @@ export async function POST(request: Request) {
     .eq("date_retrait", targetDate);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return dbErrorResponse(error, "CRON_REMINDER_CONSUMER_SELECT_ERR");
   }
   if (!orders || orders.length === 0) {
     return NextResponse.json({ target: targetDate, sent: 0 });
