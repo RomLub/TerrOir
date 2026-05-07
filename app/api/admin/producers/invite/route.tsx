@@ -9,6 +9,10 @@ import { generateOptOutToken } from "@/lib/rgpd/opt-out-token";
 import { maskEmail } from "@/lib/rgpd/mask-email";
 import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 import { logAdminInviteEvent } from "@/lib/audit-logs/log-admin-invite-event";
+import {
+  consumeRateLimit,
+  getAdminInviteRateLimit,
+} from "@/lib/rate-limit";
 import ProducerInvitation, {
   subject as invitationSubject,
 } from "@/lib/resend/templates/producer-invitation";
@@ -36,6 +40,26 @@ export async function POST(request: Request) {
   const session = await getSessionUser();
   if (!session || !session.isAdmin) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  // sec-P2-3 (T9 2026-05-07) : rate-limit applicatif Upstash 10/min/admin
+  // (keying par session.id). Defense in depth pour absorber un admin
+  // compromis ou un bot scriptant le form admin. Couplé au audit log
+  // logAdminInviteEvent existant (forensique). Fail-open si Upstash absent
+  // (cohérent pattern lib/rate-limit.ts).
+  const rl = await consumeRateLimit(
+    getAdminInviteRateLimit(),
+    `admin:${session.id}`,
+  );
+  if (!rl.success) {
+    const retryAfter = Math.max(1, Math.ceil((rl.reset - Date.now()) / 1000));
+    console.warn(
+      `[ADMIN_INVITE_RATE_LIMITED] admin=${session.id} cap=${rl.limit} retry_after=${retryAfter}`,
+    );
+    return NextResponse.json(
+      { error: "rate_limited", retry_after: retryAfter },
+      { status: 429, headers: { "Retry-After": String(retryAfter) } },
+    );
   }
 
   const body = await request.json().catch(() => null);

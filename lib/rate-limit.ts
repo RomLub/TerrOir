@@ -163,6 +163,23 @@ let _pickupValidationLimiter: Ratelimit | null | undefined;
 // l'isolation par compte (cohérent caps Stripe write keying userId).
 let _exportComptaLimiter: Ratelimit | null | undefined;
 
+// sec-P2-3 (T9 2026-05-07) — Route /api/admin/producers/invite. Cap 10/min
+// keying par admin user_id : un admin peut envoyer des invitations en
+// rafale lors d'un onboarding batch (10/min absorbe ce cas). Au-delà =
+// soit script abusif (admin compromis), soit malware admin bot. Defense in
+// depth + audit log applicatif déjà en place via logAdminInviteEvent.
+// Keying user_id (et non IP) car l'IP de bureau peut être partagée et la
+// session admin est forte (login + isAdmin check).
+let _adminInviteLimiter: Ratelimit | null | undefined;
+
+// sec-P3-1 (T9 2026-05-07) — Route /api/producer-interests POST anon. Cap
+// 5/min keying par IP : formulaire candidature producteur public, volume
+// nominal très bas (1-3 soumissions/jour côté business). Au-delà = scripting,
+// énumération du form, ou flood spam. Le helper upsertProducerInterest est
+// idempotent (catch 23505 → UPDATE) donc pas de risque DB, mais le coût
+// applicatif (écriture audit log + run de validation Zod) justifie le cap.
+let _producerInterestLimiter: Ratelimit | null | undefined;
+
 export function getSignupRateLimit(): Ratelimit | null {
   if (_signupLimiter === undefined) {
     _signupLimiter = createRateLimiter(5, "60 s", "signup");
@@ -272,4 +289,22 @@ export function getExportComptaRateLimit(): Ratelimit | null {
     _exportComptaLimiter = createRateLimiter(5, "60 s", "export_compta");
   }
   return _exportComptaLimiter;
+}
+
+export function getAdminInviteRateLimit(): Ratelimit | null {
+  if (_adminInviteLimiter === undefined) {
+    _adminInviteLimiter = createRateLimiter(10, "60 s", "admin_invite");
+  }
+  return _adminInviteLimiter;
+}
+
+export function getProducerInterestRateLimit(): Ratelimit | null {
+  if (_producerInterestLimiter === undefined) {
+    _producerInterestLimiter = createRateLimiter(
+      5,
+      "60 s",
+      "producer_interest",
+    );
+  }
+  return _producerInterestLimiter;
 }

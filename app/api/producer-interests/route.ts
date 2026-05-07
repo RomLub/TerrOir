@@ -3,6 +3,11 @@ import { z } from "zod";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { upsertProducerInterest } from "@/lib/producer-interests/upsert-interest";
 import { maskEmail } from "@/lib/rgpd/mask-email";
+import {
+  consumeRateLimit,
+  getProducerInterestRateLimit,
+} from "@/lib/rate-limit";
+import { extractRequestContext } from "@/lib/audit-logs/log-auth-event";
 
 // POST /api/producer-interests — soumission du formulaire public
 // /devenir-producteur (création de lead producteur).
@@ -36,6 +41,26 @@ const bodySchema = z.object({
 });
 
 export async function POST(request: Request) {
+  // sec-P3-1 (T9 2026-05-07) : rate-limit applicatif Upstash 5/min/IP.
+  // Form public anon, volume nominal très bas (1-3 candidatures/jour côté
+  // business). Au-delà = scripting / spam. Fail-open si Upstash absent
+  // (cohérent pattern lib/rate-limit.ts).
+  const { ipAddress } = extractRequestContext(request.headers);
+  const rl = await consumeRateLimit(
+    getProducerInterestRateLimit(),
+    ipAddress ?? "anon-no-ip",
+  );
+  if (!rl.success) {
+    const retryAfter = Math.max(1, Math.ceil((rl.reset - Date.now()) / 1000));
+    console.warn(
+      `[PRODUCER_INTEREST_RATE_LIMITED] ip=${ipAddress ?? "(none)"} cap=${rl.limit} retry_after=${retryAfter}`,
+    );
+    return NextResponse.json(
+      { error: "rate_limited", retry_after: retryAfter },
+      { status: 429, headers: { "Retry-After": String(retryAfter) } },
+    );
+  }
+
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json(
