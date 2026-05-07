@@ -48,6 +48,25 @@ perdu transitoirement chez TB). Doctrine durcie :
 ### Si conflit working tree avec un autre terminal détecté
 STOP et reporter à Romain. Ne pas forcer.
 
+### Doctrine Agent Teams supervision longue (cycle FIX 2026-05-07)
+Pour cycles >2h sans Romain présent (ex: cycle FIX méga-audit 
+8h+ avec pause sommeil) :
+- Lead doit pinger Romain IMMÉDIATEMENT en cas d'ARBITRAGE REQUIS 
+  bloquant (pas attendre return Romain)
+- Apprentissage cycle 07/05 : T6 race git bloquée pendant pause 
+  sommeil Romain, mission interrompue avec migration DB appliquée 
+  prod sans le code TS aligné. Reprise serial Phase B nécessaire.
+- En Phase parallèle Agent Teams (>4 teammates simultanés sur même 
+  working tree) : risque de stash-pop accidentel quand un teammate 
+  fait `git pull --rebase` ou `git checkout` après modif locale. 
+  Doctrine `git commit -o <files> --only` strict ne suffit pas si 
+  l'index préexistant contient des fichiers d'autres teammates.
+- Pour cycles >4 teammates parallèles, options à explorer :
+  - Worktrees séparées par teammate (isolation forte via `git worktree`)
+  - Doctrine `git stash push -- <files>` ciblé avant `git pull --rebase`
+  - Accepter cascade rouges + fix forward systématique (approche 
+    cycle 07/05)
+
 ---
 
 ## Doctrine privacy
@@ -182,12 +201,44 @@ DROP + ADD constraint avec liste étendue.
 
 ## Conventions repo
 
-### Doctrine npm run build avant push JSX
-Tout push touchant des nouvelles pages JSX (composants, pages 
-App Router, etc.) doit avoir un `npm run build` local validé AVANT 
-le push. Apprentissage incident T-130 : règle ESLint 
+### Doctrine pré-push systématique (étendue cycle FIX 2026-05-07)
+Tout push, sans exception, doit avoir validé localement :
+- `npm install` (sans `--legacy-peer-deps` — voir doctrine bumps deps 
+  ci-dessous)
+- `npm run build` (next build complet)
+- `npx vitest run` (suite tests)
+
+Apprentissage cycle 06/05/2026 (T-130) : règle ESLint 
 `react/no-unescaped-entities` stricte sur ce repo, ne pardonne pas 
 les apostrophes non échappées.
+
+Apprentissage cycle FIX 2026-05-07 (cascades #1 + #2) : la doctrine 
+"npm run build avant push JSX seulement" est insuffisante. Étendue 
+à TOUT commit, JSX ou non, deps ou non. Vercel valide chaque push 
+indépendamment, donc même un commit "petit" peut casser le HEAD si 
+imports cross-fichiers cassés ou peer deps désalignés.
+
+### Doctrine bumps deps + `--legacy-peer-deps` (cycle FIX 2026-05-07)
+- `--legacy-peer-deps` est un SIGNAL D'ALERTE, jamais un fix.
+- Si `npm install` ERESOLVE → STOP, diagnostic peer dep AVANT push.
+- Vercel produit n'utilise PAS `--legacy-peer-deps` par défaut. 
+  Push avec ce flag local = build Vercel rouge garanti.
+- Si bump implique chain peer deps (ex: Next 16 → eslint-config-next 
+  16 → eslint ≥9), traiter atomiquement dans le même commit.
+- Apprentissage cascade #1 : T3 a bumpé Next 14→16 + 
+  eslint-config-next 14→16 sans bumper eslint 8→9, masqué par 
+  `--legacy-peer-deps` local. Vercel rouge cascade 4 commits avant 
+  fix forward (cf. `docs/incidents/cycle-fix-cascade-2026-05-07.md`).
+
+### Doctrine grep import nouveau module (cycle FIX 2026-05-07)
+Si un commit crée ou référence un nouveau module `@/lib/...` ou 
+similaire :
+- `Grep` import "@/lib/<chemin>" dans tout le repo AVANT push
+- Vérifier que le fichier source existe ET exporte les symboles 
+  attendus
+- Apprentissage cascade #2 : T8 a créé `handle-payment-succeeded-notify.tsx` 
+  qui import `@/lib/ops/alert` non encore créé par T4. 
+  4 builds Vercel rouges avant que la chain d'imports soit complète.
 
 ### Doctrine apostrophe et lint storage (T-255 + T-266 + T-266-bis + T-266-tris)
 - Règle ESLint anti-apostrophe courbe U+2019 active. Utiliser 

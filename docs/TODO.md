@@ -291,3 +291,40 @@ Priorités forward-looking uniquement. Pour l'historique complet des commits / c
 - Notation/reviews producteurs (cadre existant via reviews mais flow à valider).
 - ✅ **LIVRÉ 2026-05-07** — Export comptable consommateurs + producteurs.
 - Gestion des litiges (retrait non effectué, marchandise abîmée).
+
+---
+
+## ✅ Cycle FIX méga-audit livré 2026-05-07
+
+Cycle FIX complet sur les 50 findings méga-audit (1 P0 + 11 P1 + 23 P2 + 15 P3 = 50). 4 phases séquentielles + parallélisme Phase 3 :
+- **Phase 1** (T1 + T2 parallèles) : 7 findings — Cluster A privacy P0 + Cluster E types Supabase
+- **Phase 2** (T3 séquentiel + fix eslint) : 1 finding + debt-P2-5 partiel — Bumps breaking Next 14→16 + React 18→19 + Zod 3→4 + ESLint 8→9 (ESLint 10 flat-only en backlog)
+- **Phase 3** (T4-T9 parallèles 6 teammates) : 24 findings — Cluster B Stripe alerting + Cluster D CSP + Cluster F timezone + Cluster ready cleanup amorcé + bumps non-breaking + refacto checkout/webhook + scaffold T-296
+- **Phase A stabilisation** (lead) : régressions vitest + migration T6 commit + regen enums
+- **Phase B reprise serial** (T-RESUME) : 13 findings — Cluster C ready cleanup finalisé + code fantôme + dette éparse
+- **Phase C** (T-TAILWIND4) : finalise debt-P2-5 — Migration Tailwind 3→4 codemod-first 38 fichiers
+- **Phase D cleanup** (lead) : 2 findings P3 + post-mortem + doctrines amendées
+
+**Bilan : 48/50 findings livrés complets + 1 partiel (bugs-P2-6 cancel) + 1 N/A (debt-P3-6 doublon).**
+
+**Post-mortem cascades Vercel** : `docs/incidents/cycle-fix-cascade-2026-05-07.md` (2 cascades, 6 builds rouges intermédiaires, 0 rollback, fix forward systématique).
+
+**Doctrines amendées CLAUDE.md** : pré-push systématique étendu, bumps deps + `--legacy-peer-deps` signal d'alerte, grep import nouveau module, Agent Teams supervision longue.
+
+#### Backlog post-cycle FIX méga-audit (07/05/2026)
+
+- **T-FIX-MIGS-LEGACY** [tech debt] — 13 migrations SQL legacy contiennent encore `IN ('pending','confirmed','ready')` dans RPC (`delete_user_account`, `revive_order_with_stock_check`, triggers `restore_stock_on_order_cancel`, RPC `create_order_with_items`, etc.). INERTE (CHECK constraint rejette `'ready'` désormais), mais cohérence forward-only à finir post-Live via nouvelle migration `CREATE OR REPLACE` des RPCs/triggers. Non bloquant pré-launch. Effort ~2-3h.
+- **T-FIX-PRODUCTCARD-STOCK** [code quality] — Refacto signature `ProductCard.stockLeft: number | 'unlimited'` (ou `stock: number | null` avec null = illimité) pour supprimer la sentinelle 999. Aujourd'hui `STOCK_UNLIMITED_SENTINEL = 999` exporté comme convention applicative (Phase B). Refacto plus propre nécessite migration schema DB (`unlimited_stock` boolean column) + adapter call sites. Backlog post-Live. Effort ~3-4h.
+- **T-TAILWIND4-bis** [code quality] — Réécrire `tailwind.config.js` legacy en `@theme` directive native Tailwind 4 dans `globals.css`. Le `@config 'tailwind.config.js'` legacy fonctionne mais Tailwind documente son retrait à terme. Non bloquant. Effort estimé : 1-2h.
+- **T-TAILWIND4-ter** [code quality] — Auditer 318 `border` standalone et migrer progressivement vers `border-gray-200` explicite, puis retirer le `@layer base` border-color compat. Donnerait du code plus propre v4-natif. Non bloquant. Effort estimé : 2-3h.
+- **T-FIX-ESLINT-FLAT-CONFIG** [tech debt] — Migration `.eslintrc.json` legacy → `eslint.config.js` flat config + bump ESLint 9 → 10 (flat-only). Non bloquant. Effort 2-3h.
+- **T-FIX-WORKTREES-AGENT-TEAMS** [doctrine] — Explorer `git worktree` pour isolation forte teammates parallèles (>4 teammates simultanés). Apprentissage cascade #2 cycle FIX. Implique adaptation outillage Agent Teams.
+- **T-FIX-CI-PIPELINE** [tooling] — Pas de `.github/workflows/` dans le repo aujourd'hui. CI early-fail `npm install` (sans `--legacy-peer-deps`) + `npm run build` + `npm run test` + `supabase gen types --check` détecterait les 2 cascades du cycle FIX en 30s. Pré-requis : décider plateforme CI (GitHub Actions vs Vercel checks).
+- **T-FIX-BUGS-P2-6-CANCEL** [bug latent partiel] — `app/api/orders/[id]/cancel/route.tsx` UPDATE `badge_*_score` reste sans destructuring error (T9 backlog conflit T4 Phase 3). Non bloquant (badge stale silencieux uniquement, pas d'impact métier). Effort 30 min.
+- **Action humaine pendante Romain** — Poser env vars Sentry sur Vercel (Production + Preview + Development) avant T-002 bascule Stripe Live :
+  - `NEXT_PUBLIC_SENTRY_DSN`
+  - `SENTRY_AUTH_TOKEN`
+  - `SENTRY_ORG`
+  - `SENTRY_PROJECT`
+  - `OPS_EMAIL`
+  Sans DSN le SDK Sentry est no-op (build OK), mais aucune alerte ops capturée. **CRITIQUE pré-Live**.
