@@ -24,10 +24,7 @@
 
 import { test, expect } from '../helpers/test-context';
 import { createTestUser, loginAs } from '../helpers/user-lifecycle';
-import {
-  assertAuditLogContains,
-  nowIsoForAudit,
-} from '../helpers/otp-capture';
+import { nowIsoForAudit } from '../helpers/otp-capture';
 import {
   getReadOnlyAdminClient,
   untrackId,
@@ -85,15 +82,22 @@ test.describe('Delete account RGPD', () => {
     // DeleteAccountSection.tsx:19)
     await page.waitForURL((url) => url.pathname === '/', { timeout: 10_000 });
 
-    // Audit log account_deleted émis. Le user_id est encore valide à ce
-    // moment-là car logAuthEvent est appelé AVANT le RPC delete (cf.
-    // delete-account-action.ts:125-129) donc la row audit existe.
-    await assertAuditLogContains(ctx, {
-      userId: user.id,
-      eventType: 'account_deleted',
-      sinceTimestamp: t0,
-      minCount: 1,
-    });
+    // Audit log account_deleted émis. Le user_id est mis à NULL post-flow
+    // par la FK ON DELETE SET NULL (audit_logs.user_id → auth.users.id) une
+    // fois que admin.auth.admin.deleteUser a tourné en step 8 du
+    // delete-account-action.ts. On ne peut donc pas filtrer par user_id ici
+    // (le row existe mais avec user_id=null) — on filtre par event_type +
+    // fenêtre temporelle stricte (t0 capturé juste avant le submit).
+    const adminAudit = getReadOnlyAdminClient();
+    const { data: deletedEvents, error: auditErr } = await adminAudit
+      .from('audit_logs')
+      .select('event_type, user_id, metadata, created_at')
+      .eq('event_type', 'account_deleted')
+      .gte('created_at', t0)
+      .order('created_at', { ascending: false })
+      .limit(5);
+    expect(auditErr).toBeNull();
+    expect(deletedEvents?.length ?? 0).toBeGreaterThanOrEqual(1);
 
     // Email goodbye capturé via RESEND_TEST_MODE
     const captured = await waitForCapturedEmail(ctx, {

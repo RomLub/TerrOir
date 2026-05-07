@@ -56,6 +56,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { createElement } from "react";
 import { revalidateTag } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -266,5 +267,17 @@ export async function deleteAccountAction(
     );
   }
 
-  return { success: true };
+  // 9. Redirect serveur vers /?compte-supprime=1.
+  //    Pourquoi pas un return { success: true } : Next 16 auto-revalide la
+  //    route courante après chaque server action. Or /compte/profil est
+  //    protégée par middleware → l'auth.getUser() post-deleteUser renvoie
+  //    null → redirect vers /connexion. Conséquence : la modale "Compte
+  //    supprimé" est unmount avant rendu côté client (race confirmée par
+  //    test E2E delete-account.spec.ts:82 timeout sur heading).
+  //
+  //    Solution : `redirect()` côté serveur. Next renvoie une 303 directement
+  //    vers / (route publique) — pas de revalidation /compte/profil → pas de
+  //    redirect parasite vers /connexion. La home page lit le query param et
+  //    affiche le confirmation-banner "Compte supprimé".
+  redirect("/?compte-supprime=1");
 }
