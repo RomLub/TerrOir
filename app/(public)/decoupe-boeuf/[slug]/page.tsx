@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Image from 'next/image';
 import Link from 'next/link';
 import Script from 'next/script';
 import { notFound } from 'next/navigation';
@@ -100,6 +101,31 @@ export default async function CutDetailPage({
                 {cut.description}
               </p>
             </div>
+
+            <figure>
+              {cut.imageUrl ? (
+                <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl bg-stone-100">
+                  <Image
+                    src={cut.imageUrl}
+                    alt={cut.imageAlt ?? cut.name}
+                    fill
+                    sizes="(min-width: 768px) 60vw, 100vw"
+                    className="object-cover"
+                  />
+                </div>
+              ) : (
+                <div className="flex aspect-[4/3] w-full items-center justify-center rounded-2xl bg-stone-100">
+                  <span className="text-[12px] uppercase tracking-wider text-terra-700">
+                    Photo à venir
+                  </span>
+                </div>
+              )}
+              {cut.imageCredit && (
+                <figcaption className="mt-2 text-xs text-stone-500">
+                  {cut.imageCredit}
+                </figcaption>
+              )}
+            </figure>
 
             <div>
               <h2 className="font-serif text-[24px] text-green-900">

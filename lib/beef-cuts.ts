@@ -9,6 +9,8 @@
  * sous licence CC-BY-SA 3.0. Voir https://commons.wikimedia.org/wiki/File:Beef_cuts_France.svg
  */
 
+import { CUT_IMAGES } from '@/scripts/cut-images.generated';
+
 export type BeefCutCategory =
   | 'noble'
   | 'piece-du-boucher'
@@ -47,6 +49,15 @@ export type BeefCutSlug =
   | 'langue'
   | 'queue';
 
+export type BeefCutImage = {
+  /** URL relative au domaine (ex. /images/cuts/filet.jpg) ou absolue. */
+  imageUrl: string;
+  /** Alt text descriptif (sert aussi pour SEO + lecteurs d'ecran). */
+  imageAlt: string;
+  /** Credit photographe au format libre (ex. "Photo : John Doe / Pixabay"). */
+  imageCredit: string;
+};
+
 export type BeefCut = {
   slug: BeefCutSlug;
   /** Nom affiché à l'utilisateur (avec accents et casse correcte) */
@@ -60,6 +71,10 @@ export type BeefCut = {
   cookingMethods: readonly string[];
   /** Plats emblématiques où ce morceau est utilisé */
   signatureDishes: readonly string[];
+  /** Photo du morceau cuisiné (auto-fetch via scripts/fetch-cut-images.ts). */
+  imageUrl?: string;
+  imageAlt?: string;
+  imageCredit?: string;
 };
 
 /**
@@ -68,7 +83,7 @@ export type BeefCut = {
  * L'ordre suit une logique de "noblesse décroissante" pour faciliter
  * la lecture si on itère dessus.
  */
-export const BEEF_CUTS: Record<BeefCutSlug, BeefCut> = {
+const BEEF_CUTS_BASE: Record<BeefCutSlug, BeefCut> = {
   // ─────────── Morceaux nobles ───────────
   'basses-cotes': {
     slug: 'basses-cotes',
@@ -398,6 +413,20 @@ export const BEEF_CUTS: Record<BeefCutSlug, BeefCut> = {
     signatureDishes: ['Queue de bœuf braisée', 'Pot-au-feu'],
   },
 };
+
+/**
+ * BEEF_CUTS final : fusionne BEEF_CUTS_BASE avec les metadonnees image
+ * generees par scripts/fetch-cut-images.ts. Pour les slugs sans image,
+ * la valeur reste celle de BEEF_CUTS_BASE (sans imageUrl/Alt/Credit).
+ */
+export const BEEF_CUTS: Record<BeefCutSlug, BeefCut> = Object.fromEntries(
+  (Object.entries(BEEF_CUTS_BASE) as [BeefCutSlug, BeefCut][]).map(
+    ([slug, cut]) => {
+      const image = CUT_IMAGES[slug];
+      return [slug, image ? { ...cut, ...image } : cut];
+    },
+  ),
+) as Record<BeefCutSlug, BeefCut>;
 
 /**
  * Liste de tous les slugs valides — utile pour les routes [slug] et la validation.
