@@ -41,6 +41,11 @@ interface CreateTestOrderOptions {
   daysAhead?: number;
 }
 
+// Compteur monotone pour staggérer les starts_at de slots créés dans le même
+// process (évite collision sur slots_producer_starts_at_unique = (producer_id,
+// starts_at) quand 2+ seedOrder visent le même producer dans la même seconde).
+let _slotSlotCounter = 0;
+
 export async function createTestOrder(
   _ctx: TestContext,
   options: CreateTestOrderOptions,
@@ -69,12 +74,19 @@ export async function createTestOrder(
   }
   const productId = product.id as string;
 
+  // Stagger starts_at par appel : daysAhead × 24h + slot_offset minutes.
+  // Sans ça, 2+ seedOrder pour un même producer dans une même seconde
+  // collisionnent sur slots_producer_starts_at_unique (cf. test
+  // /compte/commandes "liste les 3 orders" qui crée 3 orders d'affilée).
+  // Compteur global process-level garantit unicité même cross-tests dans
+  // le même worker Playwright.
   const days = options.daysAhead ?? 1;
+  const slotOffsetMin = ++_slotSlotCounter; // 1 min de gap entre seedOrder
   const start = new Date();
   start.setDate(start.getDate() + days);
   start.setHours(10, 0, 0, 0);
-  const end = new Date(start);
-  end.setHours(11, 0, 0, 0);
+  start.setTime(start.getTime() + slotOffsetMin * 60_000);
+  const end = new Date(start.getTime() + 60 * 60_000); // +1h
 
   const { data: slot, error: slotErr } = await admin
     .from('slots')
@@ -93,22 +105,28 @@ export async function createTestOrder(
   const slotId = slot.id as string;
 
   const dateRetrait = start.toISOString().slice(0, 10);
-  // Marqueur explicite : trigger generate_order_code() ne fire que si null/''.
-  // On veut un marqueur unique reconnaissable pour les assertions de RLS leak.
-  const codeCommande = options.codeCommande ?? `PWE2E-${ts}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+  // Si options.codeCommande est fourni, on le pose tel quel (cas tests
+  // legacy qui asseraient sur un marqueur custom). Sinon, on laisse le
+  // trigger Postgres generate_order_code() poser un TRR-XXXXX valide
+  // (cf. supabase/migrations/20260419000000_initial_schema.sql L284-300).
+  // C'est nécessaire pour que les inputs UI (form pickup-validation
+  // maxLength=12 + strip [^A-Z0-9]) acceptent le code sans tronquer.
+  const orderInsertPayload: Record<string, unknown> = {
+    producer_id: options.producerId,
+    consumer_id: options.consumerId,
+    slot_id: slotId,
+    date_retrait: dateRetrait,
+    heure_retrait: '10:00',
+    statut: options.statut ?? 'pending',
+    montant_total: montant,
+  };
+  if (options.codeCommande) {
+    orderInsertPayload.code_commande = options.codeCommande;
+  }
 
   const { data: order, error: orderErr } = await admin
     .from('orders')
-    .insert({
-      producer_id: options.producerId,
-      consumer_id: options.consumerId,
-      slot_id: slotId,
-      date_retrait: dateRetrait,
-      heure_retrait: '10:00',
-      statut: options.statut ?? 'pending',
-      montant_total: montant,
-      code_commande: codeCommande,
-    })
+    .insert(orderInsertPayload)
     .select('id, code_commande')
     .single();
   if (orderErr || !order) {
