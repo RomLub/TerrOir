@@ -103,19 +103,28 @@ export async function ensurePersistentUser(role: PersistentRole): Promise<Persis
     }
     userId = data.user.id;
 
-    // INSERT public.users (pas de trigger DB qui le fait, cf user-lifecycle.ts)
-    const { error: profileErr } = await admin.from('users').insert({
-      id: userId,
-      email,
-      roles: role === 'producer' ? ['consumer', 'producer'] : ['consumer'],
-    });
-    if (profileErr) {
-      throw new Error(
-        `ensurePersistentUser ${role}: INSERT public.users failed: ${profileErr.message}`,
-      );
+    // INSERT public.users SAUF si role='admin'. Le trigger d'exclusivité
+    // `users_exclusive_with_admin` (migration 20260421100000) bloque la
+    // co-existence d'une row public.users et admin_users pour le même id.
+    // Pour role='admin' on saute donc public.users — l'INSERT admin_users
+    // suit en step 4. Détecté par teammates Phase 4 admin-core et admin-
+    // categorisation (qui ont contourné via helper local pendant Phase 4).
+    if (role !== 'admin') {
+      const { error: profileErr } = await admin.from('users').insert({
+        id: userId,
+        email,
+        roles: role === 'producer' ? ['consumer', 'producer'] : ['consumer'],
+      });
+      if (profileErr) {
+        throw new Error(
+          `ensurePersistentUser ${role}: INSERT public.users failed: ${profileErr.message}`,
+        );
+      }
     }
-  } else {
-    // 3. Idempotence : sync rôle (un user pré-existant peut avoir vu son rôle muté)
+  } else if (role !== 'admin') {
+    // 3. Idempotence : sync rôle pour consumer/producer existants. Ne tente
+    // pas l'UPDATE pour admin (la row public.users n'existe pas par design,
+    // cf. trigger users_exclusive_with_admin).
     const targetRoles = role === 'producer' ? ['consumer', 'producer'] : ['consumer'];
     await admin.from('users').update({ roles: targetRoles }).eq('id', userId);
   }
