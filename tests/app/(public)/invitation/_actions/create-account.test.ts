@@ -76,7 +76,7 @@ vi.mock("@/lib/audit-logs/log-auth-event", () => ({
   }),
 }));
 
-import { createAccountAction } from "@/app/(producer)/invitation/_actions/create-account";
+import { createAccountAction } from "@/app/(public)/invitation/_actions/create-account";
 
 // --- Helpers --------------------------------------------------------------
 

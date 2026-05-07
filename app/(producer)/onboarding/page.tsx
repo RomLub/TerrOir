@@ -3,7 +3,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { escapeIlikeEmail } from "@/lib/supabase/escape-ilike";
 import { getSessionUser } from "@/lib/auth/session";
 import { pickInitialInfos } from "@/lib/producers/pick-initial-infos";
-import { OnboardingWizard } from "../invitation/_components/OnboardingWizard";
+import { OnboardingWizard } from "@/app/(public)/invitation/_components/OnboardingWizard";
 
 // Reprise d'onboarding pour un producteur en statut 'draft' (Phase 4).
 // Accessible depuis le middleware qui redirige ici tout producer draft qui

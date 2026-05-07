@@ -117,7 +117,7 @@ vi.mock("@/lib/audit-logs/log-auth-event", () => ({
 import {
   completeOnboardingAction,
   type State,
-} from "@/app/(producer)/invitation/_actions/complete-onboarding";
+} from "@/app/(public)/invitation/_actions/complete-onboarding";
 import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 
 // --- Helpers --------------------------------------------------------------

@@ -74,7 +74,7 @@ vi.mock("next/headers", () => ({
   headers: () => ({ get: vi.fn(() => null) }),
 }));
 
-import { acceptInvitationAction } from "@/app/(producer)/invitation/_actions/accept-invitation";
+import { acceptInvitationAction } from "@/app/(public)/invitation/_actions/accept-invitation";
 
 // --- Helpers --------------------------------------------------------------
 

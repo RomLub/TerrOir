@@ -80,7 +80,7 @@ vi.mock("@/lib/supabase/admin", () => ({
   }),
 }));
 
-import InvitationPage from "@/app/(producer)/invitation/page";
+import InvitationPage from "@/app/(public)/invitation/page";
 
 // --- Helpers --------------------------------------------------------------
 

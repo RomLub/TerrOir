@@ -90,7 +90,7 @@ vi.mock("next/headers", () => ({
   headers: () => ({ get: vi.fn(() => null) }),
 }));
 
-import { loginAndUpgradeAction } from "@/app/(producer)/invitation/_actions/login-and-upgrade";
+import { loginAndUpgradeAction } from "@/app/(public)/invitation/_actions/login-and-upgrade";
 
 // --- Helpers --------------------------------------------------------------
 

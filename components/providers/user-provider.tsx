@@ -88,7 +88,7 @@ export function UserProvider({
   // sur la valeur du premier mount → ce useEffect ne tire pas (pas de
   // transition initial.user?.id). Couvre login (PR #13), signup
   // (cf. app/(consumer)/auth/inscription/actions.ts) et complete-onboarding
-  // producer (cf. app/(producer)/invitation/_actions/complete-onboarding.ts).
+  // producer (cf. app/(public)/invitation/_actions/complete-onboarding.ts).
   //
   // Dépendances primitives (id) uniquement : `initial` est recréé à chaque
   // render parent ; dépendre de l'objet entier ferait re-tirer à chaque

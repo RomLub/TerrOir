@@ -7,7 +7,7 @@
  *
  * Cleanup : zéro action explicite — auth.users CASCADE sur public.users.id
  * et producers.user_id (cf. migration 20260421 + comment dans
- * app/(producer)/invitation/_actions/create-account.ts:127). Le helper
+ * app/(public)/invitation/_actions/create-account.ts:127). Le helper
  * cleanupAllTrackedUsers (afterEach) appelle auth.admin.deleteUser, le row
  * producer disparaît automatiquement.
  */

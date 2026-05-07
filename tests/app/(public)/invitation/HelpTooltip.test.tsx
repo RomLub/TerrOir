@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { HelpTooltip } from "@/app/(producer)/invitation/_components/HelpTooltip";
+import { HelpTooltip } from "@/app/(public)/invitation/_components/HelpTooltip";
 
 // =============================================================================
 // T-241 r4 — HelpTooltip
