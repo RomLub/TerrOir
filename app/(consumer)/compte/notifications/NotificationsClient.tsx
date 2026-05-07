@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type {
   NotificationPreferenceKey,
   UserNotificationPreferences,
@@ -33,6 +33,18 @@ export function NotificationsClient({
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // bugs-P2-4 : ref pour tracker le timeout flash feedback. Cleanup unmount
+  // évite "Can't perform a React state update on an unmounted component" si
+  // l'user quitte la page <3s après une mise à jour de pref. Réutilisé entre
+  // toggles successifs : un nouveau toggle clear le timer du précédent (le
+  // dernier feedback masque le précédent, le timer du précédent devient mort).
+  const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
+    };
+  }, []);
+
   const toggle = async (key: NotificationPreferenceKey) => {
     const previous = prefs[key];
     const next = !previous;
@@ -55,7 +67,11 @@ export function NotificationsClient({
         return;
       }
       setFeedback('Préférence mise à jour');
-      setTimeout(() => setFeedback(null), 3000);
+      if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
+      feedbackTimerRef.current = setTimeout(() => {
+        setFeedback(null);
+        feedbackTimerRef.current = null;
+      }, 3000);
     } catch {
       setPrefs((p) => ({ ...p, [key]: previous }));
       setError('Erreur de connexion');

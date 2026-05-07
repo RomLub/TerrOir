@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import AddCardModal from "./AddCardModalLazy";
 import {
@@ -51,16 +51,35 @@ export default function PaymentMethodsList({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
+  // bugs-P2-4 : ref pour tracker le timeout flash status/error. Cleanup unmount
+  // évite "Can't perform a React state update on an unmounted component" si
+  // l'user quitte la page <3s après une action (ex: router.refresh() qui
+  // peut suspend pendant > TTL en navigation rapide).
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    };
+  }, []);
+
   const flash = (msg: string) => {
     setStatusMessage(msg);
     setErrorMessage(null);
-    setTimeout(() => setStatusMessage(null), STATUS_TTL_MS);
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    flashTimerRef.current = setTimeout(() => {
+      setStatusMessage(null);
+      flashTimerRef.current = null;
+    }, STATUS_TTL_MS);
   };
 
   const flashError = (msg: string) => {
     setErrorMessage(msg);
     setStatusMessage(null);
-    setTimeout(() => setErrorMessage(null), STATUS_TTL_MS);
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    flashTimerRef.current = setTimeout(() => {
+      setErrorMessage(null);
+      flashTimerRef.current = null;
+    }, STATUS_TTL_MS);
   };
 
   const handleSetDefault = (pm: PaymentMethodSummary) => {
