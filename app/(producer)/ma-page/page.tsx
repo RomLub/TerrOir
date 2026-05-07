@@ -347,15 +347,15 @@ export default function MaPagePage() {
               <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
                 <h2 className="font-serif text-[22px] text-green-900 mb-4">Informations générales</h2>
                 <div className="space-y-4">
-                  <Input label="Nom de l'exploitation *" value={form.nom_exploitation}
+                  <Input id="ma-page-nom-exploitation" label="Nom de l'exploitation *" value={form.nom_exploitation}
                     onChange={(e) => { setForm({ ...form, nom_exploitation: e.target.value }); setSaved(false); }} />
-                  <Textarea label="Description courte" rows={2} value={form.description}
+                  <Textarea id="ma-page-description" label="Description courte" rows={2} value={form.description}
                     onChange={(e) => { setForm({ ...form, description: e.target.value }); setSaved(false); }}
                     placeholder="En une phrase, votre ferme." />
                   <div className="grid sm:grid-cols-2 gap-4">
-                    <Input label="Commune" value={form.commune}
+                    <Input id="ma-page-commune" label="Commune" value={form.commune}
                       onChange={(e) => { setForm({ ...form, commune: e.target.value }); setSaved(false); }} />
-                    <Input label="Code postal" value={form.code_postal}
+                    <Input id="ma-page-code-postal" label="Code postal" value={form.code_postal}
                       onChange={(e) => { setForm({ ...form, code_postal: e.target.value }); setSaved(false); }} />
                   </div>
                 </div>

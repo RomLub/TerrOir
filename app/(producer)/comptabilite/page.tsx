@@ -77,6 +77,7 @@ export default function ComptabilitePage() {
           </h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <Input
+              id="comptabilite-from"
               label="Du"
               type="date"
               value={from}
@@ -84,6 +85,7 @@ export default function ComptabilitePage() {
               max={to}
             />
             <Input
+              id="comptabilite-to"
               label="Au"
               type="date"
               value={to}
