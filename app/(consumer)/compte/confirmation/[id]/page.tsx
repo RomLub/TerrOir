@@ -6,6 +6,11 @@ import {
   formatLegacyTimeHHMM,
   extractHeureRetrait,
 } from '@/lib/slots/format-slot-time';
+// T-217-bis (Cluster A) : la helper roundCoord reste importee comme filet
+// applicatif, mais la lecture des coords passe desormais par la vue
+// producers_public (verrou DB-level qui floute deja les valeurs a 2 decimales).
+// PRIVACY: opt-out: lat/lng deja arrondies cote DB via vue producers_public,
+// roundCoord reapplique pour fail-safe si la vue venait a etre regressee.
 import { roundCoord } from '@/lib/producers/coords';
 import { ConfirmationClient } from './ConfirmationClient';
 
@@ -32,12 +37,13 @@ export default async function ConfirmationPage({ params }: { params: { id: strin
 
   const supabase = createSupabaseServerClient();
 
+  // T-217-bis (Cluster A) : detache la lecture producer du embed orders
+  // pour passer par la vue producers_public (lat/lng floutees DB-level).
   const { data: order } = await supabase
     .from('orders')
     .select(`
       id, code_commande, consumer_id, producer_id, slot_id,
       date_retrait, heure_retrait, montant_total, statut, closure_reason,
-      producers:producer_id ( nom_exploitation, adresse, commune, code_postal, latitude, longitude ),
       slots:slot_id ( starts_at, ends_at ),
       order_items ( quantite, prix_unitaire, sous_total, products:product_id ( nom, unite ) )
     `)
@@ -47,7 +53,12 @@ export default async function ConfirmationPage({ params }: { params: { id: strin
   if (!order) notFound();
   if (order.consumer_id !== session.id) redirect('/compte/commandes');
 
-  const producerRow = Array.isArray(order.producers) ? order.producers[0] : order.producers;
+  const { data: producerRow } = await supabase
+    .from('producers_public')
+    .select('nom_exploitation, adresse, commune, code_postal, latitude, longitude')
+    .eq('id', order.producer_id)
+    .maybeSingle();
+
   const slotRow = Array.isArray(order.slots) ? order.slots[0] : order.slots;
 
   const address = [producerRow?.adresse, producerRow?.code_postal, producerRow?.commune].filter(Boolean).join(', ');
@@ -88,8 +99,9 @@ export default async function ConfirmationPage({ params }: { params: { id: strin
       producer={{
         name: producerRow?.nom_exploitation ?? 'Producteur',
         address: address || '—',
-        // Sécurité (T-200 r3) : floutage ~1 km via roundCoord avant exposition
-        // au client, cohérent avec /compte/commandes/[id] et fetchPublicProducerBySlug.
+        // T-217-bis : coords deja arrondies a 2 decimales par la vue
+        // producers_public (verrou DB-level). roundCoord reapplique pour
+        // fail-safe en cas de regression future.
         lat: roundCoord(producerRow?.latitude ?? null),
         lng: roundCoord(producerRow?.longitude ?? null),
       }}
