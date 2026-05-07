@@ -62,15 +62,14 @@ async function main() {
     RATE_LIMIT_BYPASS_TESTS: 'true',
   };
 
-  // Spawn `next dev` directement via le bin local. Sur Windows, le binaire
-  // a une extension .cmd que Node ne résout pas avec spawn par défaut → on
-  // passe par `npx --no-install next dev` qui est cross-platform.
+  // Spawn `next dev` via npx. Sur Windows, Node.js spawn ne résout pas les
+  // .cmd/.bat sans shell → shell: true obligatoire (sinon spawn EINVAL).
+  // Sur Linux/macOS shell: false (plus safe, pas d'interpolation).
   const isWindows = process.platform === 'win32';
-  const cmd = isWindows ? 'npx.cmd' : 'npx';
-  const child = spawn(cmd, ['--no-install', 'next', 'dev'], {
+  const child = spawn('npx', ['--no-install', 'next', 'dev'], {
     env,
     stdio: 'inherit',
-    shell: false,
+    shell: isWindows,
   });
 
   child.on('exit', (code) => {
