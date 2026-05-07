@@ -20,6 +20,7 @@ import { config as loadEnv } from "dotenv";
 import readline from "node:readline/promises";
 import { resolve } from "node:path";
 import { stdin as input, stdout as output } from "node:process";
+import { maskEmail } from "@/lib/rgpd/mask-email";
 
 // Charge .env.local depuis la racine du repo AVANT toute lecture process.env.
 // Ergonomie Windows PowerShell — pas besoin de sourcer manuellement.
@@ -76,7 +77,7 @@ async function main(): Promise<void> {
 
   const authUsers = await listAuthSeedUsers();
   console.log(`\nTrouvés dans auth.users : ${authUsers.length}`);
-  for (const u of authUsers) console.log(`  - ${u.email} (${u.id})`);
+  for (const u of authUsers) console.log(`  - ${maskEmail(u.email)} (${u.id})`);
 
   if (authUsers.length === 0) {
     console.log("\nRien à supprimer.");
@@ -124,10 +125,10 @@ async function main(): Promise<void> {
   // 2. Delete auth.users → cascade public.users via FK
   console.log(`\n[2/2] Suppression auth.users (${ids.length})…`);
   for (const u of authUsers) {
-    console.log(`  - ${u.email}`);
+    console.log(`  - ${maskEmail(u.email)}`);
     if (!DRY_RUN) {
       const { error } = await admin.auth.admin.deleteUser(u.id);
-      if (error) throw new Error(`deleteUser ${u.email}: ${error.message}`);
+      if (error) throw new Error(`deleteUser ${maskEmail(u.email)}: ${error.message}`);
     }
   }
 

@@ -26,6 +26,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { config as loadEnv } from "dotenv";
 import { resolve } from "node:path";
 import type { UserRole } from "@/lib/auth/roles";
+import { maskEmail } from "@/lib/rgpd/mask-email";
 
 // Charge .env.local depuis la racine du repo AVANT toute lecture process.env.
 // Ergonomie Windows PowerShell — pas besoin de sourcer manuellement.
@@ -589,7 +590,7 @@ async function main() {
     PRODUCER.prenom,
     PRODUCER.nom,
   );
-  console.log(`  ✓ user producteur ${PRODUCER.email}`);
+  console.log(`  ✓ user producteur ${maskEmail(PRODUCER.email)}`);
 
   const producerId = await ensureProducer(producerUserId);
   console.log(`  ✓ producteur ${PRODUCER.nom_exploitation} (${producerId})`);

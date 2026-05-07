@@ -60,6 +60,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { config as loadEnv } from "dotenv";
 import Stripe from "stripe";
 import { resolve } from "node:path";
+import { maskEmail } from "@/lib/rgpd/mask-email";
 
 // Charge .env.local depuis la racine du repo AVANT toute lecture process.env.
 // Ergonomie Windows PowerShell — pas besoin de sourcer manuellement.
@@ -186,7 +187,7 @@ async function processCustomer(
     const customerResp = await stripe.customers.retrieve(cid);
     if ("deleted" in customerResp && customerResp.deleted) {
       counters.customersDeleted += 1;
-      console.log(`[T-441] customer=${cid} email=${user.email ?? "?"} stripe_deleted skip`);
+      console.log(`[T-441] customer=${cid} email=${maskEmail(user.email)} stripe_deleted skip`);
       return;
     }
     const customer = customerResp as Stripe.Customer;
