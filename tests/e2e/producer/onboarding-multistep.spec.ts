@@ -130,6 +130,11 @@ async function deleteInvitation(invitationId: string) {
 // attendant arbitrage lead — ils restent contractuels (le test code décrit
 // le comportement attendu post-fix layout).
 test.describe('Producer onboarding — multistep StepInfos + déclaration véracité', () => {
+  // Backlog Phase 3 : helper interne setupDraftProducerSession throw sur
+  // auth.admin.listUsers (timing/race avec createTestUser ou perPage limite
+  // atteinte). Les 3 tests multistep nécessitent rebuild du helper. Le BUG P1
+  // route group fix est validé par les tests onboarding-flow GET valid/expired/
+  // not-found (3 verts).
   test.skip('affiche le wording certifié de la version courante (single source)', async ({
     page,
     ctx,
@@ -151,6 +156,7 @@ test.describe('Producer onboarding — multistep StepInfos + déclaration vérac
     }
   });
 
+  // Backlog Phase 3 : meme cause que test wording (helper setupDraftProducerSession).
   test.skip('submit happy path avec déclaration cochée → DB persiste wording_version + snapshot', async ({
     page,
     ctx,
@@ -212,6 +218,7 @@ test.describe('Producer onboarding — multistep StepInfos + déclaration vérac
     }
   });
 
+  // Backlog Phase 3 : meme cause que tests precedents multistep.
   test.skip('submit avec enum coché mais déclaration NON cochée → erreur Zod refine', async ({
     page,
     ctx,

@@ -82,6 +82,9 @@ test.describe('Producer onboarding — invitation flow', () => {
   // Test contractuel skippé : le code décrit l'attendu une fois la var
   // configurée. Pour activer : `export OPT_OUT_TOKEN_SECRET=...` avant
   // `npx playwright test tests/e2e/producer/`.
+  // Backlog Phase 3 : OPT_OUT_TOKEN_SECRET absent du .env.local repo principal
+  // (verifie Romain : set en Production+Preview Vercel, pas en dev local).
+  // Le test est correct, il faut juste ajouter la var en local pour le run.
   test.skip('admin POST /api/admin/producers/invite → email captured + invitation row', async ({
     page,
     ctx,
@@ -152,7 +155,7 @@ test.describe('Producer onboarding — invitation flow', () => {
   //     en allow-list,
   //   - soit /invitation est sortie du route group (producer).
   // Tests skippés contractuels — décrivent le comportement attendu.
-  test.skip('GET /invitation?token=valide → wizard rendu avec email pré-rempli readonly', async ({
+  test('GET /invitation?token=valide → wizard rendu avec email pré-rempli readonly', async ({
     page,
     ctx,
   }) => {
@@ -197,7 +200,7 @@ test.describe('Producer onboarding — invitation flow', () => {
     }
   });
 
-  test.skip('GET /invitation?token=expiré → ErrorCard "expirée", pas de wizard', async ({
+  test('GET /invitation?token=expiré → ErrorCard "expirée", pas de wizard', async ({
     page,
     ctx,
   }) => {
@@ -237,6 +240,9 @@ test.describe('Producer onboarding — invitation flow', () => {
     }
   });
 
+  // Backlog Phase 3 : ce test marquait OK en doc envelope teammate mais le
+  // run live post-Bug-P1-fix le voit fail (assertion ErrorCard probablement
+  // mal calibrée vs flow Phase 2 enum-resistance). A debug isolement.
   test.skip('GET /invitation?token=déjà-utilisé → ErrorCard "déjà utilisée"', async ({
     page,
     ctx,
@@ -272,7 +278,7 @@ test.describe('Producer onboarding — invitation flow', () => {
     }
   });
 
-  test.skip('GET /invitation?token=introuvable → ErrorCard "introuvable"', async ({
+  test('GET /invitation?token=introuvable → ErrorCard "introuvable"', async ({
     page,
   }) => {
     test.setTimeout(30_000);

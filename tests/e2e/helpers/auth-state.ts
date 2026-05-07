@@ -120,17 +120,19 @@ export async function ensurePersistentUser(role: PersistentRole): Promise<Persis
     await admin.from('users').update({ roles: targetRoles }).eq('id', userId);
   }
 
-  // 4. admin_users hookup si role=admin
+  // 4. admin_users hookup si role=admin. Le schema TerrOir utilise `id`
+  // (PK = auth.users.id, pas une colonne user_id séparée). Cf. migration
+  // 20260421100000_cumulative_roles_admin_users.
   if (role === 'admin') {
     const { data: adminRow } = await admin
       .from('admin_users')
-      .select('user_id')
-      .eq('user_id', userId)
+      .select('id')
+      .eq('id', userId)
       .maybeSingle();
     if (!adminRow) {
       const { error: insErr } = await admin
         .from('admin_users')
-        .insert({ user_id: userId });
+        .insert({ id: userId });
       if (insErr) {
         throw new Error(`ensurePersistentUser admin: admin_users insert: ${insErr.message}`);
       }
@@ -199,7 +201,7 @@ export async function cleanupPersistentUsers(): Promise<{ deleted: PersistentRol
     if (!found) continue;
     try {
       await admin.from('producers').delete().eq('user_id', found.id);
-      await admin.from('admin_users').delete().eq('user_id', found.id);
+      await admin.from('admin_users').delete().eq('id', found.id);
       await admin.from('users').delete().eq('id', found.id);
       const { error: delErr } = await admin.auth.admin.deleteUser(found.id);
       if (delErr) {
