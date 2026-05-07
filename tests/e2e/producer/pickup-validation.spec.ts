@@ -46,10 +46,13 @@ test.describe("Producer — Pickup validation", () => {
     const consumer = await seedConsumer(ctx, { suffix: "pkup-id-cons" });
 
     try {
+      // Pas de codeCommande custom : on laisse le trigger Postgres
+      // generate_order_code() poser un TRR-XXXXX valide. L'input UI applique
+      // un maxLength=12 + strip [^A-Z0-9] qui mangerait un PKUP-{ts}-X long,
+      // d'où "Code invalide" 400 et test rouge.
       const order = await createTestOrder(ctx, {
         producerId: producer.producerId,
         consumerId: consumer.id,
-        codeCommande: `PKUP-${Date.now()}-A`,
         statut: "confirmed",
       });
 
@@ -125,10 +128,11 @@ test.describe("Producer — Pickup validation", () => {
     const consumer = await seedConsumer(ctx, { suffix: "pkup-code-cons" });
 
     try {
+      // Cf. test #1 : trigger generate_order_code() pose un TRR-XXXXX valide
+      // que l'input UI accepte sans tronquer (maxLength=12).
       const order = await createTestOrder(ctx, {
         producerId: producer.producerId,
         consumerId: consumer.id,
-        codeCommande: `PKUP-${Date.now()}-B`,
         statut: "confirmed",
       });
 
@@ -216,7 +220,6 @@ test.describe("Producer — Pickup validation", () => {
       const order = await createTestOrder(ctx, {
         producerId: producer.producerId,
         consumerId: consumer.id,
-        codeCommande: `PKUP-${Date.now()}-MM`,
         statut: "confirmed",
       });
 
@@ -277,7 +280,6 @@ test.describe("Producer — Pickup validation", () => {
       const order = await createTestOrder(ctx, {
         producerId: producer.producerId,
         consumerId: consumer.id,
-        codeCommande: `PKUP-${Date.now()}-RC`,
         statut: "confirmed",
       });
 

@@ -43,11 +43,13 @@ test.describe('Consumer — /compte/commandes', () => {
 
     const orders = [];
     try {
+      // codeCommande laissé vide : trigger Postgres generate_order_code()
+      // pose un TRR-XXXXX unique. Pas de collision sur slot car le helper
+      // staggér starts_at via _slotSlotCounter.
       orders.push(
         await seedOrder(ctx, {
           producerId: producer.producerId,
           consumerId: consumer.id,
-          codeCommande: `LIST-${Date.now()}-P`,
           statut: 'pending',
         }),
       );
@@ -55,7 +57,6 @@ test.describe('Consumer — /compte/commandes', () => {
         await seedOrder(ctx, {
           producerId: producer.producerId,
           consumerId: consumer.id,
-          codeCommande: `LIST-${Date.now()}-C`,
           statut: 'confirmed',
         }),
       );
@@ -63,7 +64,6 @@ test.describe('Consumer — /compte/commandes', () => {
         await seedOrder(ctx, {
           producerId: producer.producerId,
           consumerId: consumer.id,
-          codeCommande: `LIST-${Date.now()}-D`,
           statut: 'completed',
         }),
       );
@@ -99,13 +99,11 @@ test.describe('Consumer — /compte/commandes', () => {
       const pending = await seedOrder(ctx, {
         producerId: producer.producerId,
         consumerId: consumer.id,
-        codeCommande: `FLT-${Date.now()}-P`,
         statut: 'pending',
       });
       const completed = await seedOrder(ctx, {
         producerId: producer.producerId,
         consumerId: consumer.id,
-        codeCommande: `FLT-${Date.now()}-D`,
         statut: 'completed',
       });
 
@@ -142,18 +140,18 @@ test.describe('Consumer — /compte/commandes', () => {
       const order = await seedOrder(ctx, {
         producerId: producer.producerId,
         consumerId: consumer.id,
-        codeCommande: `DET-${Date.now()}-X`,
         statut: 'confirmed',
       });
 
       await loginAs(page, consumer);
       await page.goto(`/compte/commandes/${order.orderId}`);
 
-      // Le code retrait apparaît côté UI (rendu via composant CodeCommande
-      // quand statut=confirmed cf. OrderDetailClient: showCode = ...).
-      await expect(page.getByText(order.codeCommande, { exact: false })).toBeVisible({
-        timeout: 10_000,
-      });
+      // Le code retrait apparaît côté UI dans 2+ éléments (entête mono +
+      // bloc dédié <code>). On utilise .first() pour éviter le strict mode
+      // violation Playwright tout en validant la présence du code.
+      await expect(
+        page.getByText(order.codeCommande, { exact: false }).first(),
+      ).toBeVisible({ timeout: 10_000 });
     } finally {
       await cleanupOrdersForProducers([producer.producerId]);
     }
@@ -166,9 +164,14 @@ test.describe('Consumer — /compte/commandes', () => {
     await loginAs(page, consumer);
 
     // UUID syntactiquement valide mais inexistant en DB → notFound()
+    // Note : en dev Next.js (Turbopack), notFound() peut servir 200 + page
+    // 404 dans le DOM (cf. tests/e2e/public/producer-pages.spec.ts ligne 54).
+    // On assert sur le contenu de app/not-found.tsx pour rester portable.
     const fakeId = '00000000-0000-0000-0000-000000000000';
-    const response = await page.goto(`/compte/commandes/${fakeId}`);
-    expect(response?.status() ?? 0).toBe(404);
+    await page.goto(`/compte/commandes/${fakeId}`);
+    await expect(
+      page.getByRole('heading', { level: 1, name: /cette page n['’]existe plus/i }),
+    ).toBeVisible({ timeout: 10_000 });
   });
 
   test('détail [id] d\'un autre user : redirect vers /compte/commandes', async ({
@@ -189,18 +192,38 @@ test.describe('Consumer — /compte/commandes', () => {
       const order = await seedOrder(ctx, {
         producerId: producer.producerId,
         consumerId: consumerA.id,
-        codeCommande: `RLS-${Date.now()}-X`,
         statut: 'pending',
       });
 
-      // Login en tant que B → tente d'accéder à l'order de A
+      // Login en tant que B → tente d'accéder à l'order de A.
+      // 2 paths possibles selon que la SSR utilise le client RLS-aware ou
+      // le client admin :
+      //  - user-client (createSupabaseServerClient) : RLS filtre la row
+      //    avant le check applicatif → row null → notFound() (404 page)
+      //  - admin client + check applicatif : redirect('/compte/commandes')
+      // Le contrat sécurité strict est : "B ne voit pas l'order de A".
+      // On accepte les 2 issues UX. Aujourd'hui la page utilise le user
+      // client → 404 page. Le test verrouille la propriété d'isolation,
+      // pas l'UX précise.
       await loginAs(page, consumerB);
       await page.goto(`/compte/commandes/${order.orderId}`);
 
-      // SSR fait redirect('/compte/commandes') si consumer_id !== session.id.
-      await expect(page).toHaveURL(/\/compte\/commandes(?!\/)/, {
-        timeout: 10_000,
-      });
+      const isOnList = await page
+        .getByRole('heading', { name: 'Mes commandes', exact: true })
+        .isVisible()
+        .catch(() => false);
+      const isOnNotFound = await page
+        .getByRole('heading', { level: 1, name: /cette page n['’]existe plus/i })
+        .isVisible()
+        .catch(() => false);
+      expect(
+        isOnList || isOnNotFound,
+        'B doit voir soit /compte/commandes (redirect) soit la page 404 (RLS), jamais l\'order de A',
+      ).toBe(true);
+
+      // Garde-fou strict : le code retrait de A ne doit jamais fuiter
+      // sur la page rendue à B (anti-leak).
+      await expect(page.getByText(order.codeCommande, { exact: false })).toHaveCount(0);
     } finally {
       await cleanupOrdersForProducers([producer.producerId]);
     }
@@ -232,7 +255,6 @@ test.describe('Consumer — /compte/commandes', () => {
       const order = await seedOrder(ctx, {
         producerId: producer.producerId,
         consumerId: consumer.id,
-        codeCommande: `CRD-${Date.now()}-X`,
         statut: 'confirmed',
       });
 
