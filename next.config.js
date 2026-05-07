@@ -14,15 +14,15 @@ const withBundleAnalyzer = require("@next/bundle-analyzer")({
 // HSTS est posé automatiquement par Vercel sur les domaines custom
 // (max-age=63072000; includeSubDomains). On ajoute ici les headers que ni Next
 // ni Vercel ne posent par défaut : X-Frame-Options, X-Content-Type-Options,
-// Referrer-Policy, Permissions-Policy, et CSP en mode Report-Only.
+// Referrer-Policy, Permissions-Policy, et CSP enforce mode.
 //
 // CSP : démarrée en `Content-Security-Policy-Report-Only` pour observer 7 jours
 // les violations Vercel logs (pattern `[CSPRO]` dans browser console côté
-// users) sans casser la prod si la policy a un trou. Migration vers
-// `Content-Security-Policy` (enforce) prévue après observation — date cible
-// Romain : 2026-05-12. Voir `docs/conventions/security-headers.md`.
+// users) sans casser la prod si la policy a un trou. Bascule en mode enforce
+// (`Content-Security-Policy`) effective 2026-05-12 (sec-P2-1) après période
+// d'observation. Voir `docs/conventions/security-headers.md`.
 
-function buildCSPReportOnly() {
+function buildCSP() {
   // Construction dynamique : on lit NEXT_PUBLIC_SUPABASE_URL pour whitelister
   // précisément le projet Supabase TerrOir au lieu d'un wildcard *.supabase.co
   // trop large. Fallback wildcard si l'env var est absente (build local sans
@@ -107,12 +107,14 @@ const SECURITY_HEADERS = [
     value:
       "camera=(), microphone=(), geolocation=(self), payment=(self), interest-cohort=()",
   },
-  // CSP en Report-Only : on observe les violations sans bloquer. Cf. doc
-  // `docs/conventions/security-headers.md` pour la procédure de migration
-  // vers `Content-Security-Policy` (enforce).
+  // CSP enforce mode (sec-P2-1, bascule 2026-05-12 après 7+ jours
+  // d'observation Report-Only). Toute violation = ressource bloquée par
+  // le browser. Si une page critique casse en prod, rollback temporaire
+  // via revert du nom de header → `Content-Security-Policy-Report-Only`.
+  // Cf. doc `docs/conventions/security-headers.md`.
   {
-    key: "Content-Security-Policy-Report-Only",
-    value: buildCSPReportOnly(),
+    key: "Content-Security-Policy",
+    value: buildCSP(),
   },
 ];
 
