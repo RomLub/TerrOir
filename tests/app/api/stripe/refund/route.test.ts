@@ -15,7 +15,17 @@ vi.hoisted(() => {
   process.env.SUPPORT_EMAIL = "admin@terroir-local.fr";
   process.env.NEXT_PUBLIC_APP_URL = "http://localhost:3000";
   process.env.NEXT_PUBLIC_PRODUCER_URL = "http://localhost:3000";
+  // Cluster B Phase 3 : sendOpsAlert -> admin-ops-alert template -> layout
+  // -> urls.ts charge aussi NEXT_PUBLIC_ADMIN_URL.
+  process.env.NEXT_PUBLIC_ADMIN_URL =
+    process.env.NEXT_PUBLIC_ADMIN_URL ?? "http://localhost:3002";
 });
+
+// Mock helper sendOpsAlert pour ne pas exercer Sentry/Resend dans les tests
+// existants.
+vi.mock("@/lib/ops/alert", () => ({
+  sendOpsAlert: vi.fn(async () => undefined),
+}));
 
 const {
   mockRevalidateTag,

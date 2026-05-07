@@ -1,6 +1,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+// Cluster B Phase 3 : sendOpsAlert -> lib/env/ops-email -> support-email
+vi.hoisted(() => {
+  process.env.SUPPORT_EMAIL =
+    process.env.SUPPORT_EMAIL ?? "admin@terroir-test.fr";
+});
+
+// Mock helper sendOpsAlert pour ne pas exercer Sentry/Resend dans les tests
+// existants (couverture dediee dans tests dedies).
+vi.mock("@/lib/ops/alert", () => ({
+  sendOpsAlert: vi.fn(async () => undefined),
+}));
+
 // Mocks hoistés AVANT l'import de la route. createSupabaseAdminClient et
 // stripe.refunds.create sont substitués pour ne pas avoir à set
 // SUPABASE_SERVICE_ROLE_KEY ni STRIPE_SECRET_KEY dans l'env du test (le

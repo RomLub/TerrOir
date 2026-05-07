@@ -7,6 +7,23 @@ import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
 import { recordRefundAttempt } from "@/lib/refund-incidents/record-refund-attempt";
 import { stripe } from "@/lib/stripe/server";
 
+// Cluster B Phase 3 : sendOpsAlert -> lib/env/ops-email -> support-email
+vi.hoisted(() => {
+  process.env.SUPPORT_EMAIL =
+    process.env.SUPPORT_EMAIL ?? "admin@terroir-test.fr";
+  process.env.NEXT_PUBLIC_APP_URL =
+    process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  process.env.NEXT_PUBLIC_PRODUCER_URL =
+    process.env.NEXT_PUBLIC_PRODUCER_URL ?? "http://localhost:3000";
+  process.env.NEXT_PUBLIC_ADMIN_URL =
+    process.env.NEXT_PUBLIC_ADMIN_URL ?? "http://localhost:3002";
+});
+
+// Mock helper sendOpsAlert pour ne pas exercer Sentry/Resend.
+vi.mock("@/lib/ops/alert", () => ({
+  sendOpsAlert: vi.fn(async () => undefined),
+}));
+
 vi.mock("@/lib/stats/revalidate", () => ({
   revalidatePublicStats: vi.fn(),
 }));

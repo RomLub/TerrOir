@@ -21,6 +21,9 @@ vi.hoisted(() => {
     process.env.NEXT_PUBLIC_PRODUCER_URL ?? "http://localhost:3000";
   process.env.NEXT_PUBLIC_ADMIN_URL =
     process.env.NEXT_PUBLIC_ADMIN_URL ?? "http://localhost:3002";
+  // Cluster B Phase 3 : sendOpsAlert -> lib/env/ops-email -> support-email
+  process.env.SUPPORT_EMAIL =
+    process.env.SUPPORT_EMAIL ?? "admin@terroir-test.fr";
 });
 
 // --- Hoisted mocks partagés avec les factories vi.mock -------------------
@@ -48,6 +51,25 @@ vi.mock("@/lib/stripe/server", () => ({
 
 vi.mock("@/lib/resend/send", () => ({
   sendTemplate: mockSendTemplate,
+}));
+
+// Cluster B Phase 3 : mocks pour les helpers ops + refund-incidents.
+// Helpers fail-safe : ne throw pas, on n'a pas besoin de les exercer dans
+// les tests existants (couverture dediee dans tests dedies).
+vi.mock("@/lib/ops/alert", () => ({
+  sendOpsAlert: vi.fn(async () => undefined),
+}));
+vi.mock("@/lib/refund-incidents/record-refund-attempt", () => ({
+  recordRefundAttempt: vi.fn(async () => null),
+}));
+vi.mock("@/lib/refund-incidents/classify-error", () => ({
+  classifyRefundError: vi.fn(() => ({
+    code: null,
+    type: null,
+    message: "test",
+    requestId: null,
+    category: "unknown",
+  })),
 }));
 
 // T-410 : on wrappe `assertTransition` pour pouvoir le forcer a throw dans

@@ -3,6 +3,22 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type Stripe from "stripe";
 import type { ChainableMockBuilder } from "./_mock-builder";
 
+// Cluster B Phase 3 : sendOpsAlert -> support-email + admin-ops-alert layout.
+vi.hoisted(() => {
+  process.env.SUPPORT_EMAIL =
+    process.env.SUPPORT_EMAIL ?? "admin@terroir-test.fr";
+  process.env.NEXT_PUBLIC_APP_URL =
+    process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  process.env.NEXT_PUBLIC_PRODUCER_URL =
+    process.env.NEXT_PUBLIC_PRODUCER_URL ?? "http://localhost:3000";
+  process.env.NEXT_PUBLIC_ADMIN_URL =
+    process.env.NEXT_PUBLIC_ADMIN_URL ?? "http://localhost:3002";
+});
+
+vi.mock("@/lib/ops/alert", () => ({
+  sendOpsAlert: vi.fn(async () => undefined),
+}));
+
 vi.mock("@/lib/audit-logs/log-payment-event", () => ({
   logPaymentEvent: vi.fn(),
 }));
