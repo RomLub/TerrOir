@@ -7,7 +7,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import type { User } from "@supabase/supabase-js";
+import type { Session, User } from "@supabase/supabase-js";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { UserRole } from "@/lib/auth/roles";
 import type { InitialUserPayload, ProducerLite } from "@/lib/auth/types";
@@ -175,10 +175,12 @@ export function UserProvider({
       // session courante côté lecteur et on re-applique le state. getSession
       // lit les cookies à jour (le tab émetteur a déjà mis à jour cookies
       // via signIn/signOut) ; pas besoin de refresh côté serveur.
-      void supabase.auth.getSession().then(({ data }) => {
-        if (cancelled) return;
-        applySession(data.session?.user ?? null);
-      });
+      void supabase.auth
+        .getSession()
+        .then(({ data }: { data: { session: Session | null } }) => {
+          if (cancelled) return;
+          applySession(data.session?.user ?? null);
+        });
     });
 
     // onAuthStateChange émet INITIAL_SESSION dès l'abonnement, plus tous
@@ -205,7 +207,7 @@ export function UserProvider({
       "PASSWORD_RECOVERY",
     ]);
     const { data: listener } = supabase.auth.onAuthStateChange(
-      (event, session) => {
+      (event: string, session: Session | null) => {
         if (event === "INITIAL_SESSION") {
           // SSR a déjà fourni l'état complet via initial. On flagge juste
           // loading=false pour relâcher l'UI (loading initialisé à

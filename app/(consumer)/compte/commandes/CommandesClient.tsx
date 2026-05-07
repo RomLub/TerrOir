@@ -2,7 +2,10 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import type { RealtimeChannel } from '@supabase/supabase-js';
+import type {
+  RealtimeChannel,
+  RealtimePostgresUpdatePayload,
+} from '@supabase/supabase-js';
 import { OrderStatusBadge, type OrderStatus } from '@/components/ui';
 import { ListingHeader } from '@/components/listings/ListingHeader';
 import { buildCursorUrl } from '@/lib/pagination/cursor';
@@ -83,7 +86,7 @@ export function CommandesClient({
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'orders', filter: `consumer_id=eq.${consumerId}` },
-        (payload) => {
+        (payload: RealtimePostgresUpdatePayload<Record<string, unknown>>) => {
           const updated = payload.new as {
             id: string;
             statut: OrderStatus;
