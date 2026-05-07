@@ -63,11 +63,17 @@ test.describe('Consumer — /compte dashboard', () => {
     await loginAs(page, producer.user);
     await page.goto('/compte');
 
-    // RoleSwitcher rend "Espace acheteur" (current=consumer, non-cliquable)
-    // ET un Link "Espace producteur" vers le subdomain pro.
-    await expect(page.getByText('Espace acheteur', { exact: true })).toBeVisible();
+    // RoleSwitcher du sidebar rend un <div aria-current="page"> "Espace
+    // acheteur" (current=consumer, non-cliquable) ET un <Link> "Espace
+    // producteur" vers le subdomain pro. La navbar peut aussi rendre un
+    // RoleToggle horizontal qui ajoute des matches "Espace acheteur" —
+    // on cible le <aside> (sidebar /compte) pour rester déterministe.
+    const sidebar = page.getByRole('complementary');
     await expect(
-      page.getByRole('link', { name: 'Espace producteur', exact: true }),
+      sidebar.getByText('Espace acheteur', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      sidebar.getByRole('link', { name: 'Espace producteur', exact: true }),
     ).toBeVisible();
   });
 });
