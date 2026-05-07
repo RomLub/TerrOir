@@ -3,7 +3,6 @@ import type Stripe from "stripe";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendTemplate } from "@/lib/resend/send";
 import { sendNewOrderProducerSms } from "@/lib/twilio/sms";
-import { sendOpsAlert } from "@/lib/ops/alert";
 import { NEXT_PUBLIC_PRODUCER_URL } from "@/lib/env/urls";
 import OrderConfirmedProducer, {
   subject as producerSubject,
@@ -127,11 +126,6 @@ export async function notifyPaymentSucceeded(
           console.error(
             `[STRIPE_WEBHOOK_BG_ERR] order=${order.id} payment_intent=${pi.id} error=${(err as Error).message}`,
           );
-          // Cluster B Phase 3 (bugs-P1-3) — alerte ops critique.
-          void sendOpsAlert("[STRIPE_WEBHOOK_BG_ERR]", err, {
-            order_id: order.id,
-            path: "revival_blocked_email",
-          });
         }),
       );
     }
@@ -277,11 +271,6 @@ export async function notifyPaymentSucceeded(
         console.error(
           `[STRIPE_WEBHOOK_BG_ERR] order=${order.id} payment_intent=${pi.id} error=${(err as Error).message}`,
         );
-        // Cluster B Phase 3 (bugs-P1-3) — alerte ops critique.
-        void sendOpsAlert("[STRIPE_WEBHOOK_BG_ERR]", err, {
-          order_id: order.id,
-          path: "producer_notify",
-        });
       }),
     );
   }
