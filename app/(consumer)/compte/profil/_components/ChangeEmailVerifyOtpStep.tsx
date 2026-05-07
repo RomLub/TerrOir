@@ -46,6 +46,14 @@ export function VerifyOtpStep({
   const [cooldownSeconds, setCooldownSeconds] = useState(
     RESEND_COOLDOWN_SECONDS,
   );
+  // Code input contrôlé. Pourquoi : React 19 reset automatiquement les
+  // formulaires uncontrolled après un server action réussi. Avec 5 tentatives
+  // successives (test attempts_cap), la séquence "fill → click → wait alert
+  // → fill" voit la valeur du 2ème fill clobberée par le reset auto qui
+  // arrive entre l'apparition de l'alerte et le 2ème fill (race timing
+  // visible en E2E Playwright). En contrôlé, le state survit au reset
+  // form.reset() (qui réinitialise les uncontrolled inputs uniquement).
+  const [code, setCode] = useState("");
 
   useEffect(() => {
     if (cooldownSeconds <= 0) return;
@@ -81,6 +89,8 @@ export function VerifyOtpStep({
         maxLength={6}
         label="Code à 6 chiffres"
         required
+        value={code}
+        onChange={(e) => setCode(e.target.value)}
       />
 
       {verifyState.reason ? (

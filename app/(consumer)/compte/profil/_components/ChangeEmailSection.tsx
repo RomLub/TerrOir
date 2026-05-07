@@ -23,7 +23,7 @@
 // les transitions automatiques sur ok=true des actions précédentes.
 // =============================================================================
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, startTransition } from "react";
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import { Input } from "@/components/ui";
@@ -107,19 +107,29 @@ export default function ChangeEmailSection({
   // des useFormState verifyCurrent/verifyNew). Chaque useEffect ne
   // dépend QUE de son state propre — pas de step en deps — donc ne
   // peut être déclenché que par une nouvelle réponse serveur de SA phase.
+  //
+  // T-... (2026-05-07) : wrap startTransition obligatoire en React 19 / Next 16
+  // pour les actions invoquées hors `<form action>` ou `formAction` prop.
+  // Sans ça : warning "called outside of a transition" + isPending broken
+  // + re-fire en boucle observé dans tests E2E (loop infini d'OTP requestés
+  // jusqu'à ce que le user soit cleanup en async parallel par afterEach).
   useEffect(() => {
     if (!verifyCurrentState.ok) return;
     const fd = new FormData();
     fd.set("step", "new");
     fd.set("newEmail", newEmailValue);
-    requestAction(fd);
+    startTransition(() => {
+      requestAction(fd);
+    });
   }, [verifyCurrentState, newEmailValue, requestAction]);
 
   useEffect(() => {
     if (!verifyNewState.ok) return;
     const fd = new FormData();
     fd.set("newEmail", newEmailValue);
-    completeAction(fd);
+    startTransition(() => {
+      completeAction(fd);
+    });
   }, [verifyNewState, newEmailValue, completeAction]);
 
   // Transition finale : complete ok → completed
