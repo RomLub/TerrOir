@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type Stripe from "stripe";
 import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
+import { sendOpsAlert } from "@/lib/ops/alert";
 
 // Audit Stripe phase 2 M-3 (2026-05-05) — handler webhook `charge.refunded`.
 // Stripe émet cet event quand un refund est settled côté Stripe (≠ émission
@@ -69,6 +70,21 @@ export async function syncStripeChargeRefunded(
   if (!orderId) {
     console.warn(
       `[STRIPE_CHARGE_REFUNDED_NO_ORDER] charge=${charge.id} payment_intent=${paymentIntentId ?? "null"} amount_refunded=${charge.amount_refunded}`,
+    );
+    // Cluster B Phase 3 (bugs-P1-3) — alerte ops critique : refund Stripe
+    // sans order matchant cote DB est un signal critique (drift externe,
+    // race RGPD purge, ou charge migree). Capture pour reconciliation.
+    await sendOpsAlert(
+      "[STRIPE_CHARGE_REFUNDED_NO_ORDER]",
+      new Error(
+        `charge=${charge.id} payment_intent=${paymentIntentId ?? "null"} no order match`,
+      ),
+      {
+        charge_id: charge.id,
+        amount_refunded: charge.amount_refunded,
+        currency: charge.currency,
+        refund_count: refundCount,
+      },
     );
     await logPaymentEvent({
       eventType: "stripe_charge_refunded_settled",

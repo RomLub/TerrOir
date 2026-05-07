@@ -5,6 +5,7 @@ import { stripe } from "@/lib/stripe/server";
 import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
 import { classifyRefundError } from "@/lib/refund-incidents/classify-error";
 import { recordRefundAttempt } from "@/lib/refund-incidents/record-refund-attempt";
+import { sendOpsAlert } from "@/lib/ops/alert";
 
 // Extrait du handler webhook `payment_intent.succeeded` (cf
 // app/api/stripe/webhook/route.tsx). Sortie en module séparé pour pouvoir
@@ -255,6 +256,12 @@ export async function syncStripePaymentSucceeded(
         console.error(
           `[WEBHOOK_SUCCEEDED_REFUND_FAILED] order=${orderId} pi=${paymentIntent.id} blocked=${rpcResult} error=${(refundErr as Error).message}`,
         );
+        // Cluster B Phase 3 (bugs-P1-3) — alerte ops critique.
+        await sendOpsAlert("[WEBHOOK_SUCCEEDED_REFUND_FAILED]", refundErr, {
+          order_id: orderId,
+          path: "revival",
+          blocked_reason: rpcResult,
+        });
         // T-102.2.b — double écriture refund_incidents + audit_logs (helper
         // fail-safe : ne throw pas, retourne null en cas d'échec write).
         const classified = classifyRefundError(refundErr);
