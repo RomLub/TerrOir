@@ -240,10 +240,7 @@ test.describe('Producer onboarding — invitation flow', () => {
     }
   });
 
-  // Backlog Phase 3 : ce test marquait OK en doc envelope teammate mais le
-  // run live post-Bug-P1-fix le voit fail (assertion ErrorCard probablement
-  // mal calibrée vs flow Phase 2 enum-resistance). A debug isolement.
-  test.skip('GET /invitation?token=déjà-utilisé → ErrorCard "déjà utilisée"', async ({
+  test('GET /invitation?token=déjà-utilisé → ErrorCard "déjà utilisée"', async ({
     page,
     ctx,
   }) => {
@@ -272,7 +269,11 @@ test.describe('Producer onboarding — invitation flow', () => {
     try {
       await page.goto(`/invitation?token=${inv.token}`);
       await expect(page.getByRole('heading', { name: /Invitation invalide/i })).toBeVisible();
-      await expect(page.getByText(/déjà utilisée/i)).toBeVisible();
+      // Page rend "Cette invitation a déjà été utilisée." (cf. page.tsx
+      // messages.used). Le texte exact contient "été" entre "déjà" et
+      // "utilisée" — la regex /déjà.*utilisée/i tolère cette structure et
+      // reste robuste à un éventuel reformulage mineur.
+      await expect(page.getByText(/déjà.*utilisée/i)).toBeVisible();
     } finally {
       await adminClient.from('producer_invitations').delete().eq('id', inv.id);
     }
