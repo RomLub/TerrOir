@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { TZDate } from "@date-fns/tz";
 import { assertCronAuth } from "@/lib/cron/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { sendTemplate } from "@/lib/resend/send";
@@ -7,6 +8,18 @@ import ReviewRequest, {
 } from "@/lib/resend/templates/review-request";
 import { NEXT_PUBLIC_APP_URL } from "@/lib/env/urls";
 import { logReviewFollowupEvent } from "@/lib/audit-logs/log-review-followup-event";
+
+// bugs-P2-5 (2026-05-12) : la fenetre J-2 / J-7 est calculee en Europe/Paris
+// pour aligner sur la perception consommateur (validation pickup faite a
+// 18h Paris doit declencher la relance J+2 a peu pres 18h Paris 2 jours
+// plus tard, pas a minuit UTC).
+//
+// A re-valider post-Live volume-dependant : si le cron tourne 1x/jour a 9h
+// Paris, la fenetre 00:00-23:59:59.999 Paris du jour J-N (mode actuel) est
+// correcte. Si le cron passe a multiples runs/jour, il faudra reduire la
+// fenetre pour ne pas re-traiter (le marqueur dedup
+// review_followup_d{2,7}_sent_at protege deja en pratique).
+const FOLLOWUP_TZ = "Europe/Paris";
 
 // Envoie les relances review J+2 et J+7 pour les commandes completed
 // qui n'ont pas encore de review.
@@ -33,13 +46,18 @@ type FollowupSummary = {
 
 async function sendBatch(dayOffset: 2 | 7): Promise<FollowupSummary> {
   const admin = createSupabaseAdminClient();
-  const now = new Date();
-  const target = new Date(now);
-  target.setUTCDate(now.getUTCDate() - dayOffset);
-  const dayStart = new Date(target);
-  dayStart.setUTCHours(0, 0, 0, 0);
-  const dayEnd = new Date(target);
-  dayEnd.setUTCHours(23, 59, 59, 999);
+  // bugs-P2-5 : fenetre J-N en Europe/Paris (00:00:00.000 -> 23:59:59.999
+  // Paris). TZDate manipule les composantes Date/Hours en zone locale Paris,
+  // converti en UTC via getTime() pour les comparaisons SQL timestamptz.
+  const nowParis = TZDate.tz(FOLLOWUP_TZ);
+  const targetParis = new TZDate(nowParis.getTime(), FOLLOWUP_TZ);
+  targetParis.setDate(targetParis.getDate() - dayOffset);
+  const dayStartParis = new TZDate(targetParis.getTime(), FOLLOWUP_TZ);
+  dayStartParis.setHours(0, 0, 0, 0);
+  const dayEndParis = new TZDate(targetParis.getTime(), FOLLOWUP_TZ);
+  dayEndParis.setHours(23, 59, 59, 999);
+  const dayStart = new Date(dayStartParis.getTime());
+  const dayEnd = new Date(dayEndParis.getTime());
 
   const dedupColumn =
     dayOffset === 2

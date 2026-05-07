@@ -1,5 +1,6 @@
 import "server-only";
 import { waitUntil } from "@vercel/functions";
+import { TZDate } from "@date-fns/tz";
 import { stripe } from "./server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
@@ -11,21 +12,46 @@ import AdminTransferFailed, {
 } from "@/lib/resend/templates/admin-transfer-failed";
 
 // =============================================================================
-// Calcule la plage lundi 00:00 → dimanche 23:59:59.999 UTC de la semaine
-// précédant la date du jour.
+// Calcule la plage lundi 00:00 → dimanche 23:59:59.999 Europe/Paris de la
+// semaine précédant la date du jour (bugs-P2-5, 2026-05-12).
+//
+// Référence locale française = perception civile producteur. Avant ce fix,
+// le calcul UTC pure faisait tomber dans la semaine SUIVANTE une commande
+// validée le dimanche 23h45 Paris (= lundi 21h45 UTC en hiver) — biais
+// pour les producteurs travaillant dimanche soir.
+//
+// A re-valider post-Live volume-dependant : si l'analyse comptable
+// producteur s'aligne en realite sur le calendrier Stripe (UTC) plutot
+// que civil, revenir au calcul UTC. Decision pragmatique pre-Live :
+// prioriser perception producteur francais.
 // =============================================================================
+const PAYOUT_TZ = "Europe/Paris";
+
+// Formate un Date UTC en YYYY-MM-DD interprete dans la timezone donnee
+// (locale civile, pas UTC). Utilise pour periodeDebut/periodeFin DB.
+function formatYmdInTz(date: Date, tz: string): string {
+  const tzd = new TZDate(date.getTime(), tz);
+  const y = tzd.getFullYear();
+  const m = String(tzd.getMonth() + 1).padStart(2, "0");
+  const d = String(tzd.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 export function previousWeekRange(): { start: Date; end: Date } {
-  const now = new Date();
-  const dayOfWeek = now.getUTCDay();
+  const nowParis = TZDate.tz(PAYOUT_TZ);
+  const dayOfWeek = nowParis.getDay(); // 0=dimanche … 6=samedi
   const daysSinceMonday = (dayOfWeek + 6) % 7;
-  const thisMonday = new Date(now);
-  thisMonday.setUTCDate(now.getUTCDate() - daysSinceMonday);
-  thisMonday.setUTCHours(0, 0, 0, 0);
-  const start = new Date(thisMonday);
-  start.setUTCDate(thisMonday.getUTCDate() - 7);
-  const end = new Date(thisMonday);
-  end.setUTCMilliseconds(end.getUTCMilliseconds() - 1);
-  return { start, end };
+  const thisMondayParis = new TZDate(nowParis.getTime(), PAYOUT_TZ);
+  thisMondayParis.setDate(nowParis.getDate() - daysSinceMonday);
+  thisMondayParis.setHours(0, 0, 0, 0);
+  const startParis = new TZDate(thisMondayParis.getTime(), PAYOUT_TZ);
+  startParis.setDate(thisMondayParis.getDate() - 7);
+  const endParis = new TZDate(thisMondayParis.getTime(), PAYOUT_TZ);
+  endParis.setMilliseconds(endParis.getMilliseconds() - 1);
+  return {
+    start: new Date(startParis.getTime()),
+    end: new Date(endParis.getTime()),
+  };
 }
 
 export interface OrderRow {
@@ -83,8 +109,11 @@ export async function processWeeklyPayouts(): Promise<{
   results: PayoutResult[];
 }> {
   const { start, end } = previousWeekRange();
-  const periodeDebut = start.toISOString().slice(0, 10);
-  const periodeFin = end.toISOString().slice(0, 10);
+  // periodeDebut/Fin = date civile Paris (YYYY-MM-DD), pas la date UTC. Sinon
+  // un lundi 00:00 Paris (CET = UTC+1) donnerait "...T23:00:00.000Z" la
+  // veille → slice(0, 10) = dimanche, faux côté DB.
+  const periodeDebut = formatYmdInTz(start, PAYOUT_TZ);
+  const periodeFin = formatYmdInTz(end, PAYOUT_TZ);
 
   const admin = createSupabaseAdminClient();
 

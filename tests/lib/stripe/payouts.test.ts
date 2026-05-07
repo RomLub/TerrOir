@@ -163,18 +163,23 @@ function defaultOrder() {
   };
 }
 
-// `previousWeekRange` retourne lundi N-1 → dimanche N-1 23:59.
-// On capture la date à laquelle le test tourne pour reproduire le periodeDebut.
+// `previousWeekRange` retourne lundi N-1 → dimanche N-1 23:59 en Europe/Paris
+// (bugs-P2-5). On reproduit cette logique pour matcher le periodeDebut DB.
 function expectedPeriodeDebut(): string {
-  const now = new Date();
-  const dayOfWeek = now.getUTCDay();
+  const { TZDate } = require("@date-fns/tz") as typeof import("@date-fns/tz");
+  const TZ = "Europe/Paris";
+  const nowParis = TZDate.tz(TZ);
+  const dayOfWeek = nowParis.getDay();
   const daysSinceMonday = (dayOfWeek + 6) % 7;
-  const thisMonday = new Date(now);
-  thisMonday.setUTCDate(now.getUTCDate() - daysSinceMonday);
-  thisMonday.setUTCHours(0, 0, 0, 0);
-  const start = new Date(thisMonday);
-  start.setUTCDate(thisMonday.getUTCDate() - 7);
-  return start.toISOString().slice(0, 10);
+  const thisMondayParis = new TZDate(nowParis.getTime(), TZ);
+  thisMondayParis.setDate(nowParis.getDate() - daysSinceMonday);
+  thisMondayParis.setHours(0, 0, 0, 0);
+  const startParis = new TZDate(thisMondayParis.getTime(), TZ);
+  startParis.setDate(thisMondayParis.getDate() - 7);
+  const y = startParis.getFullYear();
+  const m = String(startParis.getMonth() + 1).padStart(2, "0");
+  const d = String(startParis.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
 function expectedIdempotencyKey(): string {
