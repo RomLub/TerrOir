@@ -16,6 +16,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type Stripe from "stripe";
+import type { ChainableMockBuilder } from "./_mock-builder";
 
 vi.mock("@/lib/audit-logs/log-payment-event", () => ({
   logPaymentEvent: vi.fn(),
@@ -51,8 +52,7 @@ function makeSupabase(fixture: Fixture = {}): {
   const captured: Captured = { from: [], update: [], eq: [] };
 
   function payoutsBuilder() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const b: any = {};
+    const b: ChainableMockBuilder = {};
     let isUpdate = false;
     let inCalled = false; // marqueur lookup payouts par producer (chain .in())
     let selectCalled = false; // marqueur path source_transaction (.update().eq().select())
@@ -102,8 +102,7 @@ function makeSupabase(fixture: Fixture = {}): {
   }
 
   function producersBuilder() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const b: any = {};
+    const b: ChainableMockBuilder = {};
     b.select = () => b;
     b.eq = (col: string, val: unknown) => {
       captured.eq.push([col, val]);

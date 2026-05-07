@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type Stripe from "stripe";
+import type { ChainableMockBuilder } from "./_mock-builder";
 
 vi.hoisted(() => {
   process.env.SUPPORT_EMAIL = process.env.SUPPORT_EMAIL ?? "admin@terroir-local.fr";
@@ -45,8 +46,7 @@ function makeSupabase(fixture: Fixture = {}): {
   const captured: Captured = { from: [], update: [], insert: [], eq: [] };
 
   function disputesBuilder() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const b: any = {};
+    const b: ChainableMockBuilder = {};
     b.update = (payload: unknown) => {
       captured.update.push(payload);
       return b;
@@ -62,8 +62,7 @@ function makeSupabase(fixture: Fixture = {}): {
   }
 
   function ordersBuilder() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const b: any = {};
+    const b: ChainableMockBuilder = {};
     b.select = () => b;
     b.eq = (col: string, val: unknown) => {
       captured.eq.push([col, val]);
@@ -75,8 +74,7 @@ function makeSupabase(fixture: Fixture = {}): {
   }
 
   function notificationsBuilder() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const b: any = {};
+    const b: ChainableMockBuilder = {};
     b.insert = (payload: unknown) => {
       captured.insert.push(payload);
       return Promise.resolve(fixture.notifResp ?? { data: null, error: null });

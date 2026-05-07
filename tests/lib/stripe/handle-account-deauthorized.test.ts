@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { ChainableMockBuilder } from "./_mock-builder";
 
 vi.hoisted(() => {
   process.env.SUPPORT_EMAIL = process.env.SUPPORT_EMAIL ?? "admin@terroir-local.fr";
@@ -46,8 +47,7 @@ function makeSupabase(fixture: Fixture = {}): {
   const captured: Captured = { from: [], insert: [], update: [], eq: [] };
 
   function producersBuilder() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const b: any = {};
+    const b: ChainableMockBuilder = {};
     let isUpdate = false;
     b.select = () => b;
     b.update = (payload: unknown) => {
@@ -71,8 +71,7 @@ function makeSupabase(fixture: Fixture = {}): {
   }
 
   function notificationsBuilder() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const b: any = {};
+    const b: ChainableMockBuilder = {};
     b.insert = (payload: unknown) => {
       captured.insert.push(payload);
       return Promise.resolve(fixture.notificationsResp ?? { data: null, error: null });

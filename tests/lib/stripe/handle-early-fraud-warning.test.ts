@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type Stripe from "stripe";
+import type { ChainableMockBuilder } from "./_mock-builder";
 
 vi.hoisted(() => {
   process.env.SUPPORT_EMAIL = process.env.SUPPORT_EMAIL ?? "admin@terroir-local.fr";
@@ -71,8 +72,7 @@ function makeSupabase(fixture: Fixture = {}): {
   const captured: Captured = { from: [], update: [], eq: [] };
 
   function ordersBuilder() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const b: any = {};
+    const b: ChainableMockBuilder = {};
     let isUpdate = false;
     b.select = () => b;
     b.update = (payload: unknown) => {

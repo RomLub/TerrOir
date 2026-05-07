@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type Stripe from "stripe";
+import type { ChainableMockBuilder } from "./_mock-builder";
 
 vi.hoisted(() => {
   process.env.SUPPORT_EMAIL = process.env.SUPPORT_EMAIL ?? "admin@terroir-local.fr";
@@ -59,8 +60,7 @@ function makeSupabase(fixture: Fixture = {}): {
   const captured: Captured = { from: [], insert: [], update: [], eq: [] };
 
   function payoutsBuilder() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const b: any = {};
+    const b: ChainableMockBuilder = {};
     let isUpdate = false;
     let inCalled = false; // marqueur lookup by producer (chain .in('statut',...))
     b.update = (payload: unknown) => {
@@ -99,8 +99,7 @@ function makeSupabase(fixture: Fixture = {}): {
   }
 
   function producersBuilder() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const b: any = {};
+    const b: ChainableMockBuilder = {};
     let lookupKey: string | null = null;
     b.select = () => b;
     b.eq = (col: string, val: unknown) => {
@@ -121,8 +120,7 @@ function makeSupabase(fixture: Fixture = {}): {
   }
 
   function notificationsBuilder() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const b: any = {};
+    const b: ChainableMockBuilder = {};
     b.insert = (payload: unknown) => {
       captured.insert.push(payload);
       return Promise.resolve(fixture.notificationsResp ?? { data: null, error: null });
