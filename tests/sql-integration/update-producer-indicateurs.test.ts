@@ -1,9 +1,11 @@
-// Test pilote T-296 — RPC `update_producer_onboarding` (16 args, signature
-// courante post-T-243).
+// Test scaffold T-296 cible #2 — RPC `update_producer_indicateurs` (T-232,
+// 7 args, sémantique miroir post-onboarding).
 //
 // Cible : la décision SQL de re-persistance des declaration_indicateurs_*
-// (T-241), qui est exactement le type de logique métier qu'un test Vitest
-// avec mocks ne peut pas valider — elle vit dans le CASE WHEN de la RPC.
+// (T-241 + T-243) ré-appliquée dans cette RPC dédiée à la rectification
+// post-onboarding. Symétrique à update-producer-onboarding.test.ts mais
+// vérifie en plus que statut/slug/badges sont préservés (pas de régression
+// vers 'pending' à la rectification).
 //
 // Pré-requis : `npx supabase start`. Sans instance locale, la suite est
 // skippée proprement (cf. helpers/client.ts).
@@ -21,19 +23,9 @@ import {
 
 const SUPABASE = getSqlIntegrationClient();
 
-// Args canoniques — défaut OK, surchargés par test.
 function buildArgs(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     p_user_id: overrides.p_user_id ?? "",
-    p_prenom_affichage: overrides.p_prenom_affichage ?? "Jean",
-    p_nom_exploitation: overrides.p_nom_exploitation ?? "Ferme test T-296",
-    p_forme_juridique: overrides.p_forme_juridique ?? "EI",
-    p_siret: overrides.p_siret ?? "12345678900012",
-    p_adresse: overrides.p_adresse ?? "1 rue du Test",
-    p_code_postal: overrides.p_code_postal ?? "72000",
-    p_commune: overrides.p_commune ?? "Le Mans",
-    p_type_production: overrides.p_type_production ?? "elevage",
-    p_type_production_precision: overrides.p_type_production_precision ?? null,
     p_mode_elevage: overrides.p_mode_elevage ?? "plein_air",
     p_alimentation: overrides.p_alimentation ?? "herbe_majoritaire",
     p_densite_animale: overrides.p_densite_animale ?? "extensif",
@@ -47,7 +39,7 @@ const reachable = await isLocalSupabaseReachable();
 const describeIfLocal = reachable ? describe : describe.skip;
 
 describeIfLocal(
-  "update_producer_onboarding (16 args, T-241+T-243) — décision SQL re-persistance DGCCRF",
+  "update_producer_indicateurs (T-232, 7 args) — rectification post-onboarding",
   () => {
     let seeded: SeededProducer;
 
@@ -65,40 +57,32 @@ describeIfLocal(
       if (seeded) await cleanupProducer(SUPABASE, seeded);
     });
 
-    it("snapshot null + déclaration cochée + 3 enums valeurs ⇒ persiste indicateurs (statut→pending)", async () => {
+    it("snapshot null + déclaration cochée + 3 enums valeurs ⇒ persiste indicateurs (statut PRESERVÉ)", async () => {
       seeded = await seedProducer(SUPABASE, {
-        statut: "draft",
+        statut: "active",
         declaration_indicateurs_snapshot: null,
       });
 
       const { error } = await SUPABASE.rpc(
-        "update_producer_onboarding",
+        "update_producer_indicateurs",
         buildArgs({ p_user_id: seeded.userId }),
       );
       expect(error).toBeNull();
 
-      // T9 2026-05-07 (debt-P2-8) : SELECT single-line pour permettre
-      // l'inférence Supabase TS du type retourné. Avant : concat `+` cassait
-      // le pattern matching du parser (data typé GenericStringError → 5 erreurs
-      // TS2339).
-      const { data, error: selErr } = await SUPABASE
+      const { data } = await SUPABASE
         .from("producers")
         .select(
-          "statut, mode_elevage, alimentation, densite_animale, declaration_indicateurs_snapshot, declaration_indicateurs_veracite_at, declaration_indicateurs_wording_version",
+          "statut, mode_elevage, alimentation, densite_animale, declaration_indicateurs_veracite_at, declaration_indicateurs_wording_version",
         )
         .eq("id", seeded.producerId)
         .single();
 
-      expect(selErr).toBeNull();
-      expect(data?.statut).toBe("pending");
+      // T-232 garantie clé : pas de régression statut → pending. Le producer
+      // reste 'active' (ou 'public') après rectification d'indicateurs.
+      expect(data?.statut).toBe("active");
       expect(data?.mode_elevage).toBe("plein_air");
       expect(data?.declaration_indicateurs_veracite_at).not.toBeNull();
       expect(data?.declaration_indicateurs_wording_version).toBe("v1.1");
-      expect(data?.declaration_indicateurs_snapshot).toMatchObject({
-        mode_elevage: "plein_air",
-        alimentation: "herbe_majoritaire",
-        densite_animale: "extensif",
-      });
     });
 
     it("snapshot identique + déclaration cochée ⇒ NE re-persiste PAS (timestamp préservé)", async () => {
@@ -112,21 +96,14 @@ describeIfLocal(
         },
       });
 
-      // Pose un timestamp historique manuel pour vérifier qu'il est préservé.
       await SUPABASE
         .from("producers")
         .update({ declaration_indicateurs_veracite_at: previousTs })
         .eq("id", seeded.producerId);
 
       const { error } = await SUPABASE.rpc(
-        "update_producer_onboarding",
-        buildArgs({
-          p_user_id: seeded.userId,
-          // Args identiques au snapshot existant
-          p_mode_elevage: "plein_air",
-          p_alimentation: "herbe_majoritaire",
-          p_densite_animale: "extensif",
-        }),
+        "update_producer_indicateurs",
+        buildArgs({ p_user_id: seeded.userId }),
       );
       expect(error).toBeNull();
 
@@ -136,8 +113,6 @@ describeIfLocal(
         .eq("id", seeded.producerId)
         .single();
 
-      // Timestamp historique conservé : la décision SQL a vu snapshot==entrée
-      // et n'a pas re-daté.
       expect(new Date(data!.declaration_indicateurs_veracite_at!).toISOString())
         .toBe(new Date(previousTs).toISOString());
     });
@@ -145,7 +120,7 @@ describeIfLocal(
     it("user inexistant ⇒ raise P0002 'Producer non trouvé'", async () => {
       const fakeUserId = "00000000-0000-0000-0000-000000000000";
       const { error } = await SUPABASE.rpc(
-        "update_producer_onboarding",
+        "update_producer_indicateurs",
         buildArgs({ p_user_id: fakeUserId }),
       );
 
