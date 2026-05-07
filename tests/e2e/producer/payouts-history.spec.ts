@@ -104,15 +104,25 @@ test.describe("Producer — Revenus / Payouts (/revenus)", () => {
         page.getByRole("heading", { name: /Historique des virements/i }),
       ).toBeVisible();
 
-      // Montants nets formatés FR (virgule + symbole €).
-      await expect(page.getByText("113,27 €", { exact: false })).toBeVisible();
-      await expect(page.getByText("75,20 €", { exact: false })).toBeVisible();
+      // Montants nets formatés FR (virgule + symbole €). Locator par
+      // role=cell pour scoper à la table (anti-collision avec hero
+      // "Prochain virement" + flake résiduels run précédentes).
+      await expect(
+        page.getByRole("cell", { name: "113,27 €", exact: true }).first(),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("cell", { name: "75,20 €", exact: true }).first(),
+      ).toBeVisible();
 
       // Badges statut (cf. mapStatusToBadge) : "Viré" pour paid,
-      // "Virement en cours" pour processing.
-      await expect(page.getByText("Viré", { exact: false })).toBeVisible();
+      // "Virement en cours" pour processing. exact:true sur "Viré"
+      // sinon strict mode violation contre la colonne header "Net viré".
+      // .first() pour absorber d'éventuels résiduels d'une run précédente.
       await expect(
-        page.getByText(/Virement en cours/i),
+        page.getByText("Viré", { exact: true }).first(),
+      ).toBeVisible();
+      await expect(
+        page.getByText(/Virement en cours/i).first(),
       ).toBeVisible();
     } finally {
       await cleanupPayoutsForProducers([producer.producerId]);
@@ -164,10 +174,16 @@ test.describe("Producer — Revenus / Payouts (/revenus)", () => {
       await loginAs(page, producerA.user);
       await page.goto("/revenus");
 
-      // A voit son montant unique, jamais celui de B.
-      await expect(page.getByText("333,33 €", { exact: false })).toBeVisible();
+      // A voit son montant unique, jamais celui de B. Locator par cell
+      // (table) — résilient aux résiduels d'une run précédente où la
+      // même valeur pourrait apparaître hors-table (ex: hero "Prochain
+      // virement"). exact match empêche aussi le strict-mode violation
+      // si plusieurs nodes affichent la même string.
       await expect(
-        page.getByText("444,44 €", { exact: false }),
+        page.getByRole("cell", { name: "333,33 €", exact: true }).first(),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("cell", { name: "444,44 €", exact: true }),
       ).toHaveCount(0);
     } finally {
       await cleanupPayoutsForProducers([
