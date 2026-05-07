@@ -34,7 +34,7 @@ export async function sendReviewResponseEmail(
   const allowed = await shouldSendEmail(args.consumerId, "email_review_response");
   if (!allowed) {
     const admin = createSupabaseAdminClient();
-    await admin.from("notifications").insert({
+    const { error: notifErr } = await admin.from("notifications").insert({
       user_id: args.consumerId,
       type: "email",
       template: "review_response_notification",
@@ -45,6 +45,11 @@ export async function sendReviewResponseEmail(
         skip_reason: "user_pref_disabled",
       },
     });
+    if (notifErr) {
+      console.error(
+        `[NOTIF_INSERT_ERR] template=review_response_notification statut=skipped error=${notifErr.message}`,
+      );
+    }
     return { ok: false, skipped: true, error: "user_pref_disabled" };
   }
 

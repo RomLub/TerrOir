@@ -28,23 +28,33 @@ export async function sendSms({
 
   try {
     const message = await twilioClient.messages.create({ body, from, to });
-    await admin.from("notifications").insert({
+    const { error: notifErr } = await admin.from("notifications").insert({
       user_id: userId,
       type: "sms",
       template,
       statut: "sent",
       metadata: { ...metadata, twilio_sid: message.sid },
     });
+    if (notifErr) {
+      console.error(
+        `[NOTIF_INSERT_ERR] template=${template} type=sms statut=sent error=${notifErr.message}`,
+      );
+    }
     return { ok: true, sid: message.sid };
   } catch (err) {
     const msg = (err as Error).message;
-    await admin.from("notifications").insert({
+    const { error: notifErr } = await admin.from("notifications").insert({
       user_id: userId,
       type: "sms",
       template,
       statut: "failed",
       metadata: { ...metadata, error: msg },
     });
+    if (notifErr) {
+      console.error(
+        `[NOTIF_INSERT_ERR] template=${template} type=sms statut=failed error=${notifErr.message}`,
+      );
+    }
     return { ok: false, error: msg };
   }
 }

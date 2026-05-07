@@ -57,13 +57,18 @@ export async function sendTemplate({
     console.log(
       `[EMAIL_SEND_SKIP] template=${template} to=${maskEmail(to)} reason=suppressed`,
     );
-    await admin.from("notifications").insert({
+    const { error: notifErr } = await admin.from("notifications").insert({
       user_id: userId,
       type: "email",
       template,
       statut: "skipped",
       metadata: { ...metadata, skip_reason: "suppressed", email: to },
     });
+    if (notifErr) {
+      console.error(
+        `[NOTIF_INSERT_ERR] template=${template} statut=skipped error=${notifErr.message}`,
+      );
+    }
     return { ok: false, skipped: true, error: "suppressed" };
   }
 
@@ -76,13 +81,18 @@ export async function sendTemplate({
     console.error(
       `[EMAIL_SEND_FAIL] template=${template} to=${maskEmail(to)} error_name=${error.name} error_message=${error.message}`,
     );
-    await admin.from("notifications").insert({
+    const { error: notifErr } = await admin.from("notifications").insert({
       user_id: userId,
       type: "email",
       template,
       statut: "failed",
       metadata: { ...metadata, error: reason },
     });
+    if (notifErr) {
+      console.error(
+        `[NOTIF_INSERT_ERR] template=${template} statut=failed error=${notifErr.message}`,
+      );
+    }
     return { ok: false, error: reason };
   }
 
@@ -99,36 +109,51 @@ export async function sendTemplate({
       console.error(
         `[EMAIL_SEND_FAIL] template=${template} to=${maskEmail(to)} error_name=${error?.name ?? "unknown"} error_message=${message}`,
       );
-      await admin.from("notifications").insert({
+      const { error: notifErr } = await admin.from("notifications").insert({
         user_id: userId,
         type: "email",
         template,
         statut: "failed",
         metadata: { ...metadata, error: message },
       });
+      if (notifErr) {
+        console.error(
+          `[NOTIF_INSERT_ERR] template=${template} statut=failed error=${notifErr.message}`,
+        );
+      }
       return { ok: false, error: message };
     }
 
-    await admin.from("notifications").insert({
+    const { error: notifErr } = await admin.from("notifications").insert({
       user_id: userId,
       type: "email",
       template,
       statut: "sent",
       metadata: { ...metadata, resend_id: data.id },
     });
+    if (notifErr) {
+      console.error(
+        `[NOTIF_INSERT_ERR] template=${template} statut=sent error=${notifErr.message}`,
+      );
+    }
     return { ok: true, id: data.id };
   } catch (err) {
     const error = err as Error;
     console.error(
       `[EMAIL_SEND_FAIL] template=${template} to=${maskEmail(to)} error_name=${error.name} error_message=${error.message}`,
     );
-    await admin.from("notifications").insert({
+    const { error: notifErr } = await admin.from("notifications").insert({
       user_id: userId,
       type: "email",
       template,
       statut: "failed",
       metadata: { ...metadata, error: error.message },
     });
+    if (notifErr) {
+      console.error(
+        `[NOTIF_INSERT_ERR] template=${template} statut=failed error=${notifErr.message}`,
+      );
+    }
     return { ok: false, error: error.message };
   }
 }

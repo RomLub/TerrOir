@@ -66,7 +66,7 @@ export async function POST(request: Request) {
 
   const admin = createSupabaseAdminClient();
 
-  const { data: order } = await admin
+  const { data: order, error: orderLookupErr } = await admin
     .from("orders")
     .select(
       "id, consumer_id, producer_id, statut, stripe_payment_intent_id, montant_total, code_commande",
@@ -74,6 +74,12 @@ export async function POST(request: Request) {
     .eq("id", parsed.data.order_id)
     .maybeSingle();
 
+  if (orderLookupErr) {
+    console.error(
+      `[ORDER_LOOKUP_ERR] route=refund order_id=${parsed.data.order_id} error=${orderLookupErr.message}`,
+    );
+    return NextResponse.json({ error: "Internal database error" }, { status: 500 });
+  }
   if (!order) {
     return NextResponse.json({ error: "Order not found" }, { status: 404 });
   }
@@ -256,7 +262,7 @@ export async function POST(request: Request) {
   }
 
   if (order.consumer_id) {
-    await admin.from("notifications").insert({
+    const { error: notifErr } = await admin.from("notifications").insert({
       user_id: order.consumer_id,
       type: "email",
       template: "order_refunded",
@@ -267,6 +273,11 @@ export async function POST(request: Request) {
         amount: order.montant_total,
       },
     });
+    if (notifErr) {
+      console.error(
+        `[NOTIF_INSERT_ERR] template=order_refunded order_id=${order.id} error=${notifErr.message}`,
+      );
+    }
   }
 
   return NextResponse.json({ refund_id: refund.id });

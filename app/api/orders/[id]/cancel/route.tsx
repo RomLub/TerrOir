@@ -41,13 +41,19 @@ export async function POST(request: Request, props0: RouteContext) {
 
   const admin = createSupabaseAdminClient();
 
-  const { data: order } = await admin
+  const { data: order, error: orderLookupErr } = await admin
     .from("orders")
     .select(
       "id, producer_id, consumer_id, statut, stripe_payment_intent_id, montant_total, code_commande, created_at",
     )
     .eq("id", params.id)
     .maybeSingle();
+  if (orderLookupErr) {
+    console.error(
+      `[ORDER_LOOKUP_ERR] route=cancel order_id=${params.id} error=${orderLookupErr.message}`,
+    );
+    return NextResponse.json({ error: "Internal database error" }, { status: 500 });
+  }
   if (!order) {
     return NextResponse.json({ error: "Order not found" }, { status: 404 });
   }

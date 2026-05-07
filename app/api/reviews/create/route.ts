@@ -107,7 +107,7 @@ export async function POST(request: Request) {
   const admin = createSupabaseAdminClient();
   const { data: admins } = await admin.from("admin_users").select("id");
   if (admins && admins.length > 0) {
-    await admin.from("notifications").insert(
+    const { error: notifErr } = await admin.from("notifications").insert(
       admins.map((a) => ({
         user_id: a.id,
         type: "email",
@@ -121,6 +121,11 @@ export async function POST(request: Request) {
         },
       })),
     );
+    if (notifErr) {
+      console.error(
+        `[NOTIF_INSERT_ERR] template=admin_review_pending count=${admins.length} error=${notifErr.message}`,
+      );
+    }
   }
 
   return NextResponse.json({ review_id: review.id, statut: "pending" });
