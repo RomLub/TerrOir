@@ -77,7 +77,8 @@ export default defineConfig({
     // On les répète ici pour clarté à la lecture du config + protection
     // si quelqu'un override webServer.command vers `npm run dev` brut.
     env: {
-      NODE_ENV: 'test',
+      // Pas de NODE_ENV='test' (Next.js skip .env.local sous test → admin
+      // client crash). Next dev posera 'development' par défaut.
       RESEND_TEST_MODE: 'true',
       PLAYWRIGHT_TEST: '1',
       RATE_LIMIT_BYPASS_TESTS: 'true',

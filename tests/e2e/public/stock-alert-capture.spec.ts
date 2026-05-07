@@ -53,12 +53,15 @@ test('capture email stock-alert via RESEND_TEST_MODE', async ({ page, ctx }) => 
   const body = (await response.json()) as { status: string };
   expect(body.status).toBe('created');
 
-  // ASSERT : email capturé via flag RESEND_TEST_MODE
+  // ASSERT : email capturé via flag RESEND_TEST_MODE.
+  // Sans filter `since` : l'email est généré frais par generateTestEmail (ts
+  // unique), donc unicité garantie sans risque de match d'un email d'un run
+  // précédent (purge global-teardown idempotente). Le filter since avait
+  // un risque de drift clock client/serveur (~ms) qui causait flaky.
   const captured = await waitForCapturedEmail(ctx, {
     to: consumerEmail,
     template: 'stock-alert-confirm',
-    since: requestStartedAt,
-    timeoutMs: 10_000,
+    timeoutMs: 15_000,
   });
 
   expect(captured.to_email).toBe(consumerEmail);

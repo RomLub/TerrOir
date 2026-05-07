@@ -13,10 +13,13 @@
  *   2. Pose 4 env vars critiques inline (RESEND_TEST_MODE, PLAYWRIGHT_TEST,
  *      RATE_LIMIT_BYPASS_TESTS, NODE_ENV=test).
  *
- * NB : NODE_ENV=test peut surprendre. Next.js dev tolère 'development' OU
- * 'test' — la convention TerrOir est 'test' pour ce flow car c'est cohérent
- * avec le triple gate rate-limit qui exige NODE_ENV !== 'production'. Les
- * pages chargent normalement, juste les flags d'override e2e sont actifs.
+ * NB : on NE force PAS NODE_ENV='test'. Next.js sous NODE_ENV=test ne charge
+ * pas .env.local par convention (preserve la determinism des tests Jest).
+ * Conséquence sur ce flow : createSupabaseAdminClient() dans le webServer
+ * voit NEXT_PUBLIC_SUPABASE_URL undefined → crash silencieux dans certains
+ * routes. On laisse `next dev` poser NODE_ENV='development' par défaut.
+ * Les triple gates (rate-limit + RESEND_TEST_MODE) exigent juste
+ * NODE_ENV !== 'production' donc 'development' passe.
  */
 
 import { createServer } from 'node:net';
@@ -56,7 +59,8 @@ async function main() {
 
   const env = {
     ...process.env,
-    NODE_ENV: 'test',
+    // PAS de NODE_ENV: 'test' — cf. NB header. Next.js dev posera
+    // NODE_ENV='development' par défaut, gate strict passe (!= production).
     RESEND_TEST_MODE: 'true',
     PLAYWRIGHT_TEST: '1',
     RATE_LIMIT_BYPASS_TESTS: 'true',
