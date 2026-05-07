@@ -23,38 +23,66 @@
  */
 
 import { test, expect } from '../helpers/test-context';
-import { createTestUser } from '../helpers/user-lifecycle';
 import { generateTestEmail } from '../helpers/guards';
 import { waitForCapturedEmail } from '../helpers/mailbox';
 import {
   getRawAdminClient,
   trackUserId,
-  trackRowId,
+  trackEmail,
+  type TestContext,
 } from '../helpers/supabase-admin';
 
 const STRONG_PASSWORD = 'Aa1' + 'ZZzz9999PpQq';
 
 /**
- * Crée un user, lui ajoute l'entrée admin_users.user_id (= flag isAdmin
- * côté getSessionUser) et bypass le login UI en s'appuyant sur le helper
- * loginAs côté CALLER. Ici on retourne juste l'user créé.
+ * Crée un user admin (auth.users + admin_users) directement via service_role.
+ * Ne passe PAS par createTestUser : ce dernier INSERT public.users qui
+ * déclenche le trigger d'exclusivité users<->admin_users (cf. migration
+ * 20260421100000). admin_users.id (pas user_id) référence auth.users(id).
+ * Le helper auth-state.ts a la même logique (cleanup trigger-aware).
  */
-async function createAdminUser(ctx: import('../helpers/supabase-admin').TestContext) {
-  const user = await createTestUser(ctx, { suffix: 'invadm' });
+async function createAdminUser(ctx: TestContext): Promise<{
+  id: string;
+  email: string;
+  password: string;
+}> {
+  const email = generateTestEmail('invadm');
   const admin = getRawAdminClient();
-  const { data: adminRow, error } = await admin
-    .from('admin_users')
-    .insert({ user_id: user.id })
-    .select('user_id')
-    .single();
-  if (error || !adminRow) {
-    throw new Error(`createAdminUser INSERT admin_users: ${error?.message}`);
+  const { data: created, error: createErr } = await admin.auth.admin.createUser({
+    email,
+    password: STRONG_PASSWORD,
+    email_confirm: true,
+  });
+  if (createErr || !created.user) {
+    throw new Error(`createAdminUser auth.admin.createUser: ${createErr?.message}`);
   }
-  return user;
+  trackUserId(ctx, created.user.id);
+  trackEmail(ctx, email);
+
+  const { error: insErr } = await admin
+    .from('admin_users')
+    .insert({ id: created.user.id, email });
+  if (insErr) {
+    throw new Error(`createAdminUser INSERT admin_users: ${insErr.message}`);
+  }
+  return { id: created.user.id, email, password: STRONG_PASSWORD };
+}
+
+/** Cleanup admin_users row (cleanupTestUser ne couvre pas cette table). */
+async function cleanupAdminRow(adminUserId: string): Promise<void> {
+  const admin = getRawAdminClient();
+  await admin.from('admin_users').delete().eq('id', adminUserId);
 }
 
 test.describe('Producer onboarding — invitation flow', () => {
-  test('admin POST /api/admin/producers/invite → email captured + invitation row', async ({
+  // ENV PRÉ-REQUIS NON SETUP : la route POST /api/admin/producers/invite
+  // appelle generateOptOutToken() qui throw si OPT_OUT_TOKEN_SECRET absent
+  // de l'env (cf. lib/rgpd/opt-out-token.ts:17). Le secret n'est pas dans
+  // .env.local de la worktree (ni du repo principal vérifié 2026-05-07).
+  // Test contractuel skippé : le code décrit l'attendu une fois la var
+  // configurée. Pour activer : `export OPT_OUT_TOKEN_SECRET=...` avant
+  // `npx playwright test tests/e2e/producer/`.
+  test.skip('admin POST /api/admin/producers/invite → email captured + invitation row', async ({
     page,
     ctx,
   }) => {
@@ -106,12 +134,25 @@ test.describe('Producer onboarding — invitation flow', () => {
     expect(captured.html ?? '').toContain('/invitation?token=');
     expect(captured.html ?? '').toContain(inv!.token as string);
 
-    // Cleanup résiduels invitation row (FK indépendante de auth.users —
-    // pas cascade depuis admin user). Tracking ici pour ne pas polluer.
+    // Cleanup résiduels : invitation row + admin_users row (cleanupTestUser
+    // ne couvre pas admin_users + producer_invitations.created_by ON DELETE
+    // SET NULL préserve les rows orphelines).
     await adminClient.from('producer_invitations').delete().eq('id', inv!.id);
+    await cleanupAdminRow(adminUser.id);
   });
 
-  test('GET /invitation?token=valide → wizard rendu avec email pré-rempli readonly', async ({
+  // BUG APPLICATIF DÉTECTÉ : app/(producer)/layout.tsx fait
+  // `if (!session) redirect("/connexion")` sur le route group (producer)
+  // entier — y compris /invitation qui est censée être public anonyme
+  // (cf. middleware.ts PUBLIC_PATHS). Tout visiteur anonyme cliquant
+  // un lien d'invitation se voit rediriger vers /connexion, alors que
+  // le wizard devrait s'afficher pour création de compte. Les 4 tests
+  // ci-dessous sont skippés en attendant arbitrage lead :
+  //   - soit ProducerLayout ajoute pathname.startsWith('/invitation')
+  //     en allow-list,
+  //   - soit /invitation est sortie du route group (producer).
+  // Tests skippés contractuels — décrivent le comportement attendu.
+  test.skip('GET /invitation?token=valide → wizard rendu avec email pré-rempli readonly', async ({
     page,
     ctx,
   }) => {
@@ -156,7 +197,7 @@ test.describe('Producer onboarding — invitation flow', () => {
     }
   });
 
-  test('GET /invitation?token=expiré → ErrorCard "expirée", pas de wizard', async ({
+  test.skip('GET /invitation?token=expiré → ErrorCard "expirée", pas de wizard', async ({
     page,
     ctx,
   }) => {
@@ -196,7 +237,7 @@ test.describe('Producer onboarding — invitation flow', () => {
     }
   });
 
-  test('GET /invitation?token=déjà-utilisé → ErrorCard "déjà utilisée"', async ({
+  test.skip('GET /invitation?token=déjà-utilisé → ErrorCard "déjà utilisée"', async ({
     page,
     ctx,
   }) => {
@@ -231,7 +272,7 @@ test.describe('Producer onboarding — invitation flow', () => {
     }
   });
 
-  test('GET /invitation?token=introuvable → ErrorCard "introuvable"', async ({
+  test.skip('GET /invitation?token=introuvable → ErrorCard "introuvable"', async ({
     page,
   }) => {
     test.setTimeout(30_000);

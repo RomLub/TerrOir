@@ -149,8 +149,10 @@ test.describe('Producer products — CRUD', () => {
     await expect(page.getByRole('heading', { name: product.nom })).toBeVisible();
     // Badge "Épuisé" rendu par CatalogueClient.tsx pour stock_disponible=0
     // && stock_illimite=false (cf. const empty = !p.unlimited && p.stock === 0).
+    // .first() : strict mode peut compter 2 occurrences si le badge est
+    // dupliqué (overlay image + badge sous prix selon le layout effectif).
     const card = page.locator('article').filter({ hasText: product.nom });
-    await expect(card.getByText('Épuisé', { exact: false })).toBeVisible();
+    await expect(card.getByText('Épuisé', { exact: false }).first()).toBeVisible();
   });
 
   test('RLS isolation : producer B ne peut PATCH le product de producer A (403)', async ({
