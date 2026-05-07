@@ -1,21 +1,25 @@
 /**
- * E2E consumer/avis — soumission review consumer (depuis détail commande).
+ * E2E consumer/avis — flow /compte/mes-avis (cycle qualité 2026-05-07).
  *
- * Codebase actuelle : pas de page /mes-avis côté consumer (le concept
- * /mes-avis existe uniquement côté producer space). Le consumer laisse un
- * avis depuis /compte/commandes/[id] quand la commande est en statut
- * "completed" et qu'aucune review n'existe encore.
+ * Mini-feature livrée Phase 2 :
+ *   - /compte/mes-avis : liste mélangée "À donner" en haut + "Donnés" en bas
+ *   - /compte/mes-avis/[orderId]/nouveau : formulaire saisie avis avec
+ *     validation Zod conditionnelle (note ≤ 3 → commentaire ≥ 10 chars)
+ *   - Submit via server action → INSERT review + redirect /compte/mes-avis?success=1
  *
- * Couverture :
- *   - /compte/commandes/[id] complétée sans review : formulaire avis visible
- *     + submit POST /api/reviews/create → INSERT row reviews + 200
+ * Couverture (4 tests) :
+ *   1. POST /api/reviews/create note=5 sans commentaire → 200 INSERT (API direct)
+ *   2. POST /api/reviews/create order pending → 409 (API direct)
+ *   3. UI flow complet : navigation /compte/mes-avis → form → submit → success
+ *   4. Validation conditionnelle Zod : note=2 sans commentaire → 400
  *
- * NB envoi email producer : POST /api/reviews/create ne déclenche PAS
- * directement un envoi resend.emails.send template review-response. Il
- * insère juste une notification "admin_review_pending" pour modération.
- * Donc on ne wait PAS de captured email ici (ne pas calquer le brief :
- * "email producer envoyé via sendTemplate" est faux par rapport au code
- * actuel).
+ * NB envoi email producer : ni POST /api/reviews/create ni la server action
+ * /compte/mes-avis/[orderId]/nouveau ne déclenche un envoi resend direct.
+ * Ils insèrent juste une notification "admin_review_pending" pour modération.
+ * Donc on ne wait PAS de captured email ici.
+ *
+ * Le path /compte/mes-avis est volontaire (pas /mes-avis) pour éviter le
+ * conflit de routes parallèles avec /(producer)/mes-avis qui existe déjà.
  */
 
 import { test, expect } from '../helpers/test-context';
@@ -113,6 +117,136 @@ test.describe('Consumer — Submit review depuis /compte/commandes/[id]', () => 
         data: { order_id: order.orderId, note: 4 },
       });
       expect(res.status()).toBe(409);
+    } finally {
+      const admin = getReadOnlyAdminClient();
+      await admin.from('reviews').delete().eq('producer_id', producer.producerId);
+      await cleanupOrdersForProducers([producer.producerId]);
+    }
+  });
+
+  test('UI flow /compte/mes-avis : ordersToReview → form → submit → success', async ({
+    page,
+    ctx,
+  }) => {
+    test.setTimeout(120_000);
+
+    const consumer = await seedConsumer(ctx, { suffix: 'mes-avis-ui' });
+    const producer = await seedProducer(ctx, {
+      suffix: 'mes-avis-ui-prod',
+      statut: 'public',
+    });
+
+    try {
+      const order = await seedOrder(ctx, {
+        producerId: producer.producerId,
+        consumerId: consumer.id,
+        statut: 'completed',
+      });
+
+      await loginAs(page, consumer);
+      await page.goto('/compte/mes-avis');
+
+      // Section "À donner" affiche l'order completed sans review
+      await expect(
+        page.getByRole('heading', { name: 'À donner', exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText(order.codeCommande, { exact: false }).first(),
+      ).toBeVisible();
+
+      // Clic "Laisser un avis" → /compte/mes-avis/[orderId]/nouveau
+      await page
+        .getByRole('link', { name: /Laisser un avis/i })
+        .first()
+        .click();
+      await page.waitForURL(/\/compte\/mes-avis\/[^/]+\/nouveau/, {
+        timeout: 10_000,
+      });
+
+      // Formulaire monté avec note=5 par défaut (StarRating)
+      await expect(
+        page.getByRole('heading', { name: 'Laisser un avis', exact: true }),
+      ).toBeVisible();
+
+      // Remplir le commentaire (optionnel pour note=5, mais on en met un)
+      await page
+        .getByLabel(/Commentaire/i)
+        .fill('Excellent producteur, viande savoureuse et accueil chaleureux.');
+
+      // Submit
+      await page.getByRole('button', { name: /Publier mon avis/i }).click();
+
+      // Redirect vers /compte/mes-avis?success=1
+      await page.waitForURL(/\/compte\/mes-avis\?success=1/, {
+        timeout: 10_000,
+      });
+      await expect(
+        page.getByText(/Ton avis a bien été enregistré/i),
+      ).toBeVisible();
+
+      // Vérification DB : review inséré avec statut=pending
+      const admin = getReadOnlyAdminClient();
+      const { data: review } = await admin
+        .from('reviews')
+        .select('note, commentaire, statut, consumer_id, producer_id, order_id')
+        .eq('order_id', order.orderId)
+        .single();
+      expect(review?.note).toBe(5);
+      expect(review?.commentaire).toContain('Excellent producteur');
+      expect(review?.statut).toBe('pending');
+      expect(review?.consumer_id).toBe(consumer.id);
+      expect(review?.producer_id).toBe(producer.producerId);
+    } finally {
+      const admin = getReadOnlyAdminClient();
+      await admin.from('reviews').delete().eq('producer_id', producer.producerId);
+      await cleanupOrdersForProducers([producer.producerId]);
+    }
+  });
+
+  test('validation conditionnelle : note ≤ 3 sans commentaire ≥ 10 chars → 400', async ({
+    page,
+    ctx,
+  }) => {
+    test.setTimeout(120_000);
+
+    const consumer = await seedConsumer(ctx, { suffix: 'review-cond' });
+    const producer = await seedProducer(ctx, {
+      suffix: 'review-cond-prod',
+      statut: 'public',
+    });
+
+    try {
+      const order = await seedOrder(ctx, {
+        producerId: producer.producerId,
+        consumerId: consumer.id,
+        statut: 'completed',
+      });
+
+      await loginAs(page, consumer);
+
+      // Note ≤ 3 sans commentaire → 400 par validation Zod conditionnelle
+      const noComment = await page.request.post('/api/reviews/create', {
+        data: { order_id: order.orderId, note: 2 },
+      });
+      expect(noComment.status()).toBe(400);
+      const body1 = await noComment.json();
+      expect(body1.error).toMatch(/commentaire.*10 caractères/i);
+
+      // Note ≤ 3 avec commentaire trop court → 400
+      const tooShort = await page.request.post('/api/reviews/create', {
+        data: { order_id: order.orderId, note: 2, commentaire: 'Trop' },
+      });
+      expect(tooShort.status()).toBe(400);
+
+      // Note ≤ 3 avec commentaire ≥ 10 chars → 200 OK
+      const valid = await page.request.post('/api/reviews/create', {
+        data: {
+          order_id: order.orderId,
+          note: 2,
+          commentaire: 'Vraiment décevant cette fois, dommage.',
+        },
+      });
+      expect(valid.status()).toBe(200);
     } finally {
       const admin = getReadOnlyAdminClient();
       await admin.from('reviews').delete().eq('producer_id', producer.producerId);

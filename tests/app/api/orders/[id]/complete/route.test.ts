@@ -488,13 +488,13 @@ describe("I. Email consumer (review_request_j0)", () => {
     expect(args.metadata.code_commande).toBe("ABC123");
   });
 
-  it("I2 reviewUrl pointe sur /compte/commandes/{id}/avis (props passées au template)", async () => {
+  it("I2 reviewUrl pointe sur /compte/mes-avis/{id}/nouveau (props passées au template)", async () => {
     await POST(makeRequest(), PARAMS);
     const args = mockSendTemplate.mock.calls[0]![0] as {
       element: { props: { reviewUrl: string; dayOffset: 0 | 2 | 7 } };
     };
     expect(args.element.props.reviewUrl).toContain(
-      `/compte/commandes/${ORDER_ID}/avis`,
+      `/compte/mes-avis/${ORDER_ID}/nouveau`,
     );
     expect(args.element.props.dayOffset).toBe(0);
   });

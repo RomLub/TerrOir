@@ -18,7 +18,7 @@ import { NEXT_PUBLIC_APP_URL } from "@/lib/env/urls";
 //   - Lookup users.email + producers.nom_exploitation côté admin
 //   - Si l'un des deux manque → skip propre (pas d'erreur, pas d'email)
 //   - sendTemplate avec template='review_request_j0' + dayOffset=0
-//   - reviewUrl pointe sur /compte/commandes/{id}/avis (consumer side)
+//   - reviewUrl pointe sur /compte/mes-avis/{id}/nouveau (consumer side)
 //   - metadata.order_id + metadata.code_commande pour traçabilité
 //
 // Fail-open implicite via sendTemplate (qui swallow les erreurs Resend en
@@ -68,7 +68,7 @@ export async function sendPickupReviewEmail(
   const props = {
     codeCommande: params.codeCommande,
     exploitation: producer.nom_exploitation,
-    reviewUrl: `${NEXT_PUBLIC_APP_URL}/compte/commandes/${params.orderId}/avis`,
+    reviewUrl: `${NEXT_PUBLIC_APP_URL}/compte/mes-avis/${params.orderId}/nouveau`,
     dayOffset: 0 as const,
   };
 

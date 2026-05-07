@@ -4,11 +4,32 @@ import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
-const bodySchema = z.object({
-  order_id: z.string().guid(),
-  note: z.number().int().min(1).max(5),
-  commentaire: z.string().trim().max(2000).optional(),
-});
+// Validation conditionnelle (cycle qualité 2026-05-07) : pour les notes
+// basses (≤ 3 étoiles), un commentaire d'au moins 10 caractères est exigé.
+// Justification UX : forcer le consumer mécontent à expliquer permet au
+// producer de comprendre + admin de modérer plus efficacement.
+const bodySchema = z
+  .object({
+    order_id: z.string().guid(),
+    note: z.number().int().min(1).max(5),
+    commentaire: z.string().trim().max(500).optional(),
+  })
+  .refine(
+    (data) => {
+      if (data.note <= 3) {
+        return (
+          typeof data.commentaire === "string" &&
+          data.commentaire.length >= 10
+        );
+      }
+      return true;
+    },
+    {
+      message:
+        "Pour une note de 3 étoiles ou moins, un commentaire d'au moins 10 caractères est requis",
+      path: ["commentaire"],
+    },
+  );
 
 // Audit RPC M-2 : refacto user-client + RLS-driven (audit-rpc-edge-2026-05-05).
 // Avant : admin client + check applicatif `order.consumer_id !== session.id`

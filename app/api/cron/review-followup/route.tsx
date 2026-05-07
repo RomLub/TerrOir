@@ -172,7 +172,7 @@ async function sendBatch(dayOffset: 2 | 7): Promise<FollowupSummary> {
     const props = {
       codeCommande: order.code_commande,
       exploitation: producer.nom_exploitation,
-      reviewUrl: `${NEXT_PUBLIC_APP_URL}/compte/commandes/${order.id}/avis`,
+      reviewUrl: `${NEXT_PUBLIC_APP_URL}/compte/mes-avis/${order.id}/nouveau`,
       dayOffset,
     } as const;
 
