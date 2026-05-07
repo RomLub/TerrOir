@@ -269,12 +269,20 @@ export function NavbarPublic({
               </form>
             </>
           ) : (
-            <Link
-              href="/connexion"
-              className="text-sm text-terroir-ink transition-colors hover:text-terra-700"
-            >
-              Connexion
-            </Link>
+            <>
+              <Link
+                href="/connexion"
+                className="text-sm text-terroir-ink transition-colors hover:text-terra-700"
+              >
+                Connexion
+              </Link>
+              <Link
+                href="/auth/inscription"
+                className="inline-flex items-center rounded-md bg-terroir-green px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-terroir-green/90"
+              >
+                S&rsquo;inscrire
+              </Link>
+            </>
           )}
           {/* Toggle multi-rôle : rendu null si l'user n'a pas les deux rôles
               consumer ET producer. Position : après le bloc user, avant le
@@ -368,13 +376,22 @@ export function NavbarPublic({
               </form>
             </div>
           ) : (
-            <Link
-              href="/connexion"
-              onClick={() => setDrawerOpen(false)}
-              className="block rounded-md px-3 py-3 text-base text-terroir-ink hover:bg-terra-100 hover:text-terra-700"
-            >
-              Connexion
-            </Link>
+            <div className="flex flex-col gap-2">
+              <Link
+                href="/auth/inscription"
+                onClick={() => setDrawerOpen(false)}
+                className="block w-full rounded-md bg-terroir-green px-3 py-3 text-center text-base font-medium text-white transition-colors hover:bg-terroir-green/90"
+              >
+                S&rsquo;inscrire
+              </Link>
+              <Link
+                href="/connexion"
+                onClick={() => setDrawerOpen(false)}
+                className="block rounded-md px-3 py-3 text-base text-terroir-ink hover:bg-terra-100 hover:text-terra-700"
+              >
+                Connexion
+              </Link>
+            </div>
           )}
         </div>
       </aside>

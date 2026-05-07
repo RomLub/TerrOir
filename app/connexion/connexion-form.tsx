@@ -221,6 +221,16 @@ function PasswordForm({
       >
         Se connecter par email
       </button>
+
+      <p className="border-t border-gray-100 pt-4 text-center text-sm text-terroir-ink">
+        Pas encore de compte ?{" "}
+        <Link
+          href="/auth/inscription"
+          className="font-medium text-terroir-green hover:underline"
+        >
+          Créer un compte
+        </Link>
+      </p>
     </form>
   );
 }
@@ -297,6 +307,16 @@ function MagicLinkForm({
       >
         Retour à la connexion par mot de passe
       </button>
+
+      <p className="border-t border-gray-100 pt-4 text-center text-sm text-terroir-ink">
+        Pas encore de compte ?{" "}
+        <Link
+          href="/auth/inscription"
+          className="font-medium text-terroir-green hover:underline"
+        >
+          Créer un compte
+        </Link>
+      </p>
     </form>
   );
 }
