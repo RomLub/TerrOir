@@ -70,10 +70,19 @@ async function createAdminUser(ctx: TestContext) {
 
 /**
  * Setup helper : crée un user invité loggé sur la page /invitation à
- * l'étape StepInfos (caseKind 'consumer-loggedin' → startStep=2 atteint
- * via redirect /onboarding). Plus simple ici : on crée à la main un
- * producer.statut='draft' + on logge l'user → /invitation détecte
- * isLoggedInAsInvitee + redirect vers /onboarding (qui rend StepInfos).
+ * l'étape StepInfos (le wizard passe à l'étape 2 via useEffect onSuccess
+ * du formulaire create-account).
+ *
+ * Re-architecture Phase 3 (cycle qualité totale 07/05) : l'ancien helper
+ * faisait `auth.admin.listUsers({ perPage: 200 })` après la création UI
+ * pour retrouver l'id de l'user créé par createAccountAction. Cette
+ * approche déclenchait un timing race (eventual consistency listUsers)
+ * et finissait souvent par throw "Created user introuvable".
+ *
+ * Nouvelle stratégie : la server action `createAccountAction` insère
+ * synchronously une ligne dans `public.users` avec id = auth.users.id
+ * (cf. create-account.ts:92-96). On lit cette ligne via service_role
+ * filtrée par email — déterministe, pas de listUsers, pas de paging.
  */
 async function setupDraftProducerSession(
   page: import('@playwright/test').Page,
@@ -94,27 +103,48 @@ async function setupDraftProducerSession(
     .single();
   if (invErr || !inv) throw new Error(`invitation insert: ${invErr?.message}`);
 
-  // Création du compte via UI (StepCompteNew — passe createAccountAction).
-  // Cela poste les cookies session via signInWithPassword côté action.
+  // Création du compte via UI (StepCompteNew → createAccountAction).
+  // L'action crée auth.users + INSERT public.users + INSERT producers
+  // + signInWithPassword (cookies session). Sur succès elle return
+  // { success: true } → useEffect onSuccess() bascule le wizard step→2.
   await page.goto(`/invitation?token=${inv.token}`);
   await page.getByLabel('Mot de passe', { exact: true }).fill(STRONG_PASSWORD);
   await page.getByLabel('Confirmer le mot de passe', { exact: true }).fill(STRONG_PASSWORD);
   await page.getByRole('button', { name: 'Créer mon compte', exact: true }).click();
 
-  // Attendre que StepInfos soit monté (le wizard passe à l'étape 2 via
-  // useEffect onSuccess). Marqueur stable : champ "Nom de l'exploitation".
-  await expect(page.getByLabel(/Nom de l'exploitation/i)).toBeVisible({ timeout: 20_000 });
+  // Attendre que StepInfos soit monté (étape 2). Marqueur stable :
+  // input[name="nom_exploitation"] présent dans StepInfos uniquement.
+  // Pattern Phase 1 : les <label> de StepInfos sont siblings sans htmlFor,
+  // donc getByLabel() ne fonctionne pas — fallback locator par name.
+  await expect(page.locator('input[name="nom_exploitation"]')).toBeVisible({ timeout: 20_000 });
 
-  // Récupère userId créé pour cleanup tracking
-  const { data: { users } } = await admin.auth.admin.listUsers({ perPage: 200 });
-  const created = users.find((u) => u.email === inviteeEmail);
-  if (!created) throw new Error(`Created user ${inviteeEmail} introuvable`);
+  // Lookup id via public.users (id = auth.users.id, INSERT synchrone
+  // dans createAccountAction). Pas de listUsers — pas de race timing.
+  const { data: userRow, error: userErr } = await admin
+    .from('users')
+    .select('id')
+    .eq('email', inviteeEmail)
+    .maybeSingle();
+  if (userErr) {
+    throw new Error(`setupDraftProducerSession lookup users: ${userErr.message}`);
+  }
+  if (!userRow?.id) {
+    throw new Error(
+      `setupDraftProducerSession: public.users row absente pour ${inviteeEmail} ` +
+        `(createAccountAction n'a pas terminé l'INSERT users — investigate)`,
+    );
+  }
 
   // Track for cleanup
-  ctx.trackedUserIds.add(created.id);
+  ctx.trackedUserIds.add(userRow.id as string);
   ctx.trackedEmails.add(inviteeEmail);
 
-  return { userId: created.id, email: inviteeEmail, invitationId: inv.id, token: inv.token };
+  return {
+    userId: userRow.id as string,
+    email: inviteeEmail,
+    invitationId: inv.id,
+    token: inv.token,
+  };
 }
 
 async function deleteInvitation(invitationId: string) {
@@ -122,20 +152,13 @@ async function deleteInvitation(invitationId: string) {
   await admin.from('producer_invitations').delete().eq('id', invitationId);
 }
 
-// BUG APPLICATIF DÉTECTÉ (cf. onboarding-flow.spec.ts pour détails) :
-// app/(producer)/layout.tsx force `if (!session) redirect("/connexion")`
-// sur tout le route group (producer), incluant /invitation. Le helper
-// setupDraftProducerSession ne peut donc pas charger /invitation?token=...
-// pour create account anonyme. Les 3 tests ci-dessous sont skippés en
-// attendant arbitrage lead — ils restent contractuels (le test code décrit
-// le comportement attendu post-fix layout).
+// Phase 3 cycle qualité totale (07/05) : helper setupDraftProducerSession
+// re-architecturé pour ne plus utiliser auth.admin.listUsers (race timing).
+// Le route group bug P1 a été résolu en Phase 1 (déplacement /invitation
+// vers (public) — cf. app/(public)/invitation/page.tsx). Les 3 tests
+// ci-dessous sont maintenant exécutés.
 test.describe('Producer onboarding — multistep StepInfos + déclaration véracité', () => {
-  // Backlog Phase 3 : helper interne setupDraftProducerSession throw sur
-  // auth.admin.listUsers (timing/race avec createTestUser ou perPage limite
-  // atteinte). Les 3 tests multistep nécessitent rebuild du helper. Le BUG P1
-  // route group fix est validé par les tests onboarding-flow GET valid/expired/
-  // not-found (3 verts).
-  test.skip('affiche le wording certifié de la version courante (single source)', async ({
+  test('affiche le wording certifié de la version courante (single source)', async ({
     page,
     ctx,
   }) => {
@@ -156,8 +179,7 @@ test.describe('Producer onboarding — multistep StepInfos + déclaration vérac
     }
   });
 
-  // Backlog Phase 3 : meme cause que test wording (helper setupDraftProducerSession).
-  test.skip('submit happy path avec déclaration cochée → DB persiste wording_version + snapshot', async ({
+  test('submit happy path avec déclaration cochée → DB persiste wording_version + snapshot', async ({
     page,
     ctx,
   }) => {
@@ -166,16 +188,18 @@ test.describe('Producer onboarding — multistep StepInfos + déclaration vérac
     const { userId, invitationId } = await setupDraftProducerSession(page, ctx, 'submit');
 
     try {
-      // Remplir tous les champs business requis.
-      await page.getByLabel('Prénom').fill('Test');
-      await page.getByLabel('Nom', { exact: true }).fill('Producer');
-      await page.getByLabel('Téléphone').fill('0612345678');
-      await page.getByLabel(/Nom de l'exploitation/i).fill('Ferme Playwright');
+      // Remplir tous les champs business requis. Pattern : on utilise des
+      // locators par name= car les <label> de StepInfos sont siblings sans
+      // htmlFor association — getByLabel() retourne 0 element.
+      await page.locator('input[name="prenom"]').fill('Test');
+      await page.locator('input[name="nom"]').fill('Producer');
+      await page.locator('input[name="telephone"]').fill('0612345678');
+      await page.locator('input[name="nom_exploitation"]').fill('Ferme Playwright');
       await page.locator('select[name="forme_juridique"]').selectOption('ei');
       await page.locator('input[name="siret"]').fill('12345678901234');
-      await page.getByLabel('Adresse').fill('1 rue du Test');
+      await page.locator('input[name="adresse"]').fill('1 rue du Test');
       await page.locator('input[name="code_postal"]').fill('72000');
-      await page.getByLabel('Commune').fill('Le Mans');
+      await page.locator('input[name="commune"]').fill('Le Mans');
       await page.locator('select[name="type_production"]').selectOption('elevage');
 
       // Cocher au moins 1 enum score-carbone (déclenche refine veracite)
@@ -218,8 +242,7 @@ test.describe('Producer onboarding — multistep StepInfos + déclaration vérac
     }
   });
 
-  // Backlog Phase 3 : meme cause que tests precedents multistep.
-  test.skip('submit avec enum coché mais déclaration NON cochée → erreur Zod refine', async ({
+  test('submit avec enum coché mais déclaration NON cochée → erreur Zod refine', async ({
     page,
     ctx,
   }) => {
@@ -228,15 +251,16 @@ test.describe('Producer onboarding — multistep StepInfos + déclaration vérac
     const { invitationId } = await setupDraftProducerSession(page, ctx, 'no-decl');
 
     try {
-      await page.getByLabel('Prénom').fill('Test');
-      await page.getByLabel('Nom', { exact: true }).fill('Producer');
-      await page.getByLabel('Téléphone').fill('0612345678');
-      await page.getByLabel(/Nom de l'exploitation/i).fill('Ferme NoDecl');
+      // Pattern : locators par name= (cf. test précédent) — labels sans htmlFor.
+      await page.locator('input[name="prenom"]').fill('Test');
+      await page.locator('input[name="nom"]').fill('Producer');
+      await page.locator('input[name="telephone"]').fill('0612345678');
+      await page.locator('input[name="nom_exploitation"]').fill('Ferme NoDecl');
       await page.locator('select[name="forme_juridique"]').selectOption('ei');
       await page.locator('input[name="siret"]').fill('12345678901234');
-      await page.getByLabel('Adresse').fill('2 rue Test');
+      await page.locator('input[name="adresse"]').fill('2 rue Test');
       await page.locator('input[name="code_postal"]').fill('72000');
-      await page.getByLabel('Commune').fill('Le Mans');
+      await page.locator('input[name="commune"]').fill('Le Mans');
       await page.locator('select[name="type_production"]').selectOption('elevage');
 
       // Coche enum SANS cocher la déclaration véracité → Zod refine fail
