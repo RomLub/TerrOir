@@ -6,7 +6,11 @@ import {
   consumeRateLimit,
   getExportComptaRateLimit,
 } from "@/lib/rate-limit";
-import { parsePeriodParams, formatPeriodForFilename } from "@/lib/exports/period";
+import {
+  parsePeriodParams,
+  formatPeriodForFilename,
+  formatDateInExportTimezone,
+} from "@/lib/exports/period";
 import { serializeRowsToCsv, maskEmailForExport } from "@/lib/exports/csv";
 
 // GET /api/exports/producer/comptabilite.csv?from=YYYY-MM-DD&to=YYYY-MM-DD
@@ -117,7 +121,10 @@ export async function GET(request: Request) {
   };
   function findPayoutForDate(dateIso: string | null): string {
     if (!dateIso) return "";
-    const dateOnly = dateIso.slice(0, 10);
+    // bugs-P1-2 : date locale Europe/Paris pour aligner sur date_validation
+    // affichée en colonne CSV (cohérence rapprochement comptable).
+    const dateOnly = formatDateInExportTimezone(dateIso);
+    if (!dateOnly) return "";
     const match = (payouts ?? []).find(
       (p: Payout) => p.periode_debut <= dateOnly && p.periode_fin >= dateOnly,
     );
@@ -137,7 +144,7 @@ export async function GET(request: Request) {
     const consumer = Array.isArray(r.consumer) ? r.consumer[0] : r.consumer;
     return {
       commande_id: r.id,
-      date_validation: r.completed_at ? r.completed_at.slice(0, 10) : "",
+      date_validation: formatDateInExportTimezone(r.completed_at),
       consumer_email_masked: maskEmailForExport(consumer?.email ?? null),
       montant_produits: formatEuros(r.montant_net_producteur),
       commission_terroir_6pct: formatEuros(r.commission_terroir),

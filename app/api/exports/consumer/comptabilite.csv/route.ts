@@ -6,7 +6,11 @@ import {
   consumeRateLimit,
   getExportComptaRateLimit,
 } from "@/lib/rate-limit";
-import { parsePeriodParams, formatPeriodForFilename } from "@/lib/exports/period";
+import {
+  parsePeriodParams,
+  formatPeriodForFilename,
+  formatDateInExportTimezone,
+} from "@/lib/exports/period";
 import { serializeRowsToCsv } from "@/lib/exports/csv";
 
 // GET /api/exports/consumer/comptabilite.csv?from=YYYY-MM-DD&to=YYYY-MM-DD
@@ -98,7 +102,7 @@ export async function GET(request: Request) {
     const producer = Array.isArray(r.producer) ? r.producer[0] : r.producer;
     return {
       commande_id: r.id,
-      date_commande: r.created_at.slice(0, 10),
+      date_commande: formatDateInExportTimezone(r.created_at),
       producteur_nom: producer?.nom_exploitation ?? "",
       // Décomposition : montant_total = montant_net_producteur + commission_terroir.
       // montant_produits côté consumer = montant des produits eux-mêmes (HT
