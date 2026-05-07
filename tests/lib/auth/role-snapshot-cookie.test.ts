@@ -292,7 +292,7 @@ describe("setRoleSnapshotOnResponseCookies / clearRoleSnapshotOnResponseCookies"
     expect(parsed?.expires_at).toBeGreaterThan(Date.now());
   });
 
-  it("clear : pose nouveau ET legacy en prod (M-2 transition double-clear)", () => {
+  it("clear : pose 1 seul cookie en prod (debt-P1-3 : double-clear legacy retiré)", () => {
     const calls: { name: string; value: string; options: { maxAge?: number } }[] =
       [];
     const responseCookies = {
@@ -304,14 +304,13 @@ describe("setRoleSnapshotOnResponseCookies / clearRoleSnapshotOnResponseCookies"
       responseCookies,
       "admin.terroir-local.fr",
     );
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(1);
     expect(calls[0]!.name).toBe("__Host-sb-admin-role-snapshot");
-    expect(calls[1]!.name).toBe("sb-admin-role-snapshot");
-    expect(calls.every((c) => c.value === "")).toBe(true);
-    expect(calls.every((c) => c.options.maxAge === 0)).toBe(true);
+    expect(calls[0]!.value).toBe("");
+    expect(calls[0]!.options.maxAge).toBe(0);
   });
 
-  it("clear dev : pose 1 seul cookie (legacy = nouveau)", () => {
+  it("clear dev : pose 1 seul cookie (sans prefix)", () => {
     const calls: { name: string; value: string; options: { maxAge?: number } }[] =
       [];
     const responseCookies = {

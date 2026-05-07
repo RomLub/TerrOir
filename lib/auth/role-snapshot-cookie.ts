@@ -24,16 +24,18 @@ import type { NextRequest, NextResponse } from "next/server";
 // __Host- (admin no-domain) en prod. __Host- impose path=/ + secure=true +
 // domain non posé, déjà respecté côté admin (cookieOptionsForHost). En dev
 // (HTTP localhost), le browser rejette les préfixes __Secure-/__Host- — on
-// utilise alors les noms legacy pour rester fonctionnel.
+// conserve les noms sans prefix UNIQUEMENT pour le mode dev.
 //
-// TODO 2026-05-12 : retirer COOKIE_NAME_*_LEGACY + double-lecture après TTL
-// max écoulé (15 min role snapshot). Migration sans casser les sessions en
-// cours grâce à la double-lecture transitoire.
+// debt-P1-3 (2026-05-12) : double-lecture transitoire retirée. TTL max 15
+// minutes, donc toutes les sessions issues du flow pré-migration M-2
+// (2026-05-05) sont expirées depuis > 5 jours. Les noms sans prefix
+// "__terroir_role_snapshot" / "sb-admin-role-snapshot" restent canoniques
+// en dev (HTTP localhost) car les préfixes __Secure-/__Host- exigent HTTPS.
 
-const COOKIE_NAME_DEFAULT_LEGACY = "__terroir_role_snapshot";
-const COOKIE_NAME_ADMIN_LEGACY = "sb-admin-role-snapshot";
-const COOKIE_NAME_DEFAULT_NEW = "__Secure-terroir_role_snapshot";
-const COOKIE_NAME_ADMIN_NEW = "__Host-sb-admin-role-snapshot";
+const COOKIE_NAME_DEFAULT_DEV = "__terroir_role_snapshot";
+const COOKIE_NAME_ADMIN_DEV = "sb-admin-role-snapshot";
+const COOKIE_NAME_DEFAULT_PROD = "__Secure-terroir_role_snapshot";
+const COOKIE_NAME_ADMIN_PROD = "__Host-sb-admin-role-snapshot";
 const SHARED_DOMAIN = ".terroir-local.fr";
 const APEX = "terroir-local.fr";
 export const ROLE_SNAPSHOT_TTL_SECONDS = 15 * 60; // 15 min — staleness max acceptable.
@@ -80,15 +82,11 @@ function isProdHost(host: string | null | undefined): boolean {
 export function cookieNameForHost(host: string | null | undefined): string {
   const isAdmin = isAdminHost(host);
   if (isProdHost(host)) {
-    return isAdmin ? COOKIE_NAME_ADMIN_NEW : COOKIE_NAME_DEFAULT_NEW;
+    return isAdmin ? COOKIE_NAME_ADMIN_PROD : COOKIE_NAME_DEFAULT_PROD;
   }
   // Dev (HTTP localhost) : préfixes __Secure-/__Host- rejetés par le browser
-  // sans Secure attribute → fallback aux noms legacy pour rester fonctionnel.
-  return isAdmin ? COOKIE_NAME_ADMIN_LEGACY : COOKIE_NAME_DEFAULT_LEGACY;
-}
-
-function legacyCookieNameForHost(host: string | null | undefined): string {
-  return isAdminHost(host) ? COOKIE_NAME_ADMIN_LEGACY : COOKIE_NAME_DEFAULT_LEGACY;
+  // sans Secure attribute → noms sans prefix pour rester fonctionnel.
+  return isAdmin ? COOKIE_NAME_ADMIN_DEV : COOKIE_NAME_DEFAULT_DEV;
 }
 
 export function cookieOptionsForHost(
@@ -249,14 +247,8 @@ export async function readRoleSnapshotFromRequest(
   request: NextRequest,
   host: string | null | undefined,
 ): Promise<RoleSnapshotPayload | null> {
-  // Migration M-2 : essaie le nouveau nom (prefix __Secure-/__Host-),
-  // fallback sur le legacy. À simplifier après 2026-05-12.
-  const currentName = cookieNameForHost(host);
-  const legacyName = legacyCookieNameForHost(host);
-  let raw = request.cookies.get(currentName)?.value;
-  if (!raw && currentName !== legacyName) {
-    raw = request.cookies.get(legacyName)?.value;
-  }
+  // debt-P1-3 (2026-05-12) : double-lecture legacy retirée. TTL max 15 min.
+  const raw = request.cookies.get(cookieNameForHost(host))?.value;
   return parseAndVerifyRoleSnapshot(raw);
 }
 
@@ -293,15 +285,10 @@ export function clearRoleSnapshotOnResponseCookies(
 ): void {
   // Set maxAge=0 avec MÊMES domain/path/secure/sameSite que le set : sinon
   // le browser considère que c'est un cookie différent et ne supprime pas.
-  // Migration M-2 : clear le nouveau ET le legacy. À simplifier après 2026-05-12.
+  // debt-P1-3 (2026-05-12) : double-clear legacy retiré.
   const opts = cookieOptionsForHost(host);
   const cleared = { ...opts, maxAge: 0 };
-  const currentName = cookieNameForHost(host);
-  const legacyName = legacyCookieNameForHost(host);
-  responseCookies.set(currentName, "", cleared);
-  if (currentName !== legacyName) {
-    responseCookies.set(legacyName, "", cleared);
-  }
+  responseCookies.set(cookieNameForHost(host), "", cleared);
 }
 
 export function clearRoleSnapshotOnResponse(
@@ -346,23 +333,18 @@ export function clearRoleSnapshotOnStore(
   host: string | null | undefined,
 ): void {
   if (!isClearableStore(cookieStore)) return;
-  // Migration M-2 : clear le nouveau ET le legacy. À simplifier après 2026-05-12.
+  // debt-P1-3 (2026-05-12) : double-clear legacy retiré.
   const opts = cookieOptionsForHost(host);
   const cleared = { ...opts, maxAge: 0 };
-  const currentName = cookieNameForHost(host);
-  const legacyName = legacyCookieNameForHost(host);
-  cookieStore.set(currentName, "", cleared);
-  if (currentName !== legacyName) {
-    cookieStore.set(legacyName, "", cleared);
-  }
+  cookieStore.set(cookieNameForHost(host), "", cleared);
 }
 
 // Exposé pour tests unitaires (override secret).
 export const __test__ = {
-  COOKIE_NAME_DEFAULT_LEGACY,
-  COOKIE_NAME_ADMIN_LEGACY,
-  COOKIE_NAME_DEFAULT_NEW,
-  COOKIE_NAME_ADMIN_NEW,
+  COOKIE_NAME_DEFAULT_DEV,
+  COOKIE_NAME_ADMIN_DEV,
+  COOKIE_NAME_DEFAULT_PROD,
+  COOKIE_NAME_ADMIN_PROD,
   SHARED_DOMAIN,
   APEX,
 };

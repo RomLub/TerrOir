@@ -16,7 +16,7 @@ import {
   clearRedirectAfterAuth,
 } from "@/lib/auth/redirect-cookie";
 
-const { cookieOptionsForHost, cookieNameForHost, COOKIE_NAME_LEGACY, COOKIE_NAME_NEW } = __test__;
+const { cookieOptionsForHost, cookieNameForHost, COOKIE_NAME_DEV, COOKIE_NAME_PROD } = __test__;
 
 describe("cookieOptionsForHost", () => {
   it("retourne domain partagé en prod (apex terroir-local.fr)", () => {
@@ -81,7 +81,7 @@ describe("setRedirectAfterAuth", () => {
 
     expect(setSpy).toHaveBeenCalledTimes(1);
     expect(setSpy).toHaveBeenCalledWith(
-      COOKIE_NAME_NEW,
+      COOKIE_NAME_PROD,
       "/panier",
       expect.objectContaining({
         domain: ".terroir-local.fr",
@@ -133,18 +133,37 @@ describe("readRedirectAfterAuth", () => {
     } as unknown as Parameters<typeof readRedirectAfterAuth>[0];
   }
 
-  it("retourne le path du cookie quand il est valide (nouveau nom prod)", () => {
+  it("retourne le path du cookie quand il est valide (prod __Secure- prefix)", () => {
     expect(
       readRedirectAfterAuth(makeRequest({ cookieValue: "/panier" })),
     ).toBe("/panier");
   });
 
-  it("fallback legacy : lit l'ancien nom si le nouveau est absent (transition M-2)", () => {
+  it("retourne le path du cookie en dev (nom sans prefix)", () => {
     expect(
       readRedirectAfterAuth(
-        makeRequest({ cookieName: COOKIE_NAME_LEGACY, cookieValue: "/panier" }),
+        makeRequest({
+          host: "localhost:3000",
+          cookieName: COOKIE_NAME_DEV,
+          cookieValue: "/panier",
+        }),
       ),
     ).toBe("/panier");
+  });
+
+  it("debt-P1-3 : ne lit PAS le cookie sans prefix en prod (double-lecture legacy retirée)", () => {
+    // Avant 2026-05-12 : fallback transitoire vers le nom sans prefix.
+    // Désormais : un cookie sans prefix sur un host prod est ignoré (TTL
+    // 1h écoulé depuis migration M-2 le 2026-05-05).
+    expect(
+      readRedirectAfterAuth(
+        makeRequest({
+          host: "www.terroir-local.fr",
+          cookieName: COOKIE_NAME_DEV,
+          cookieValue: "/panier",
+        }),
+      ),
+    ).toBeNull();
   });
 
   it("retourne null quand le cookie est absent", () => {
@@ -169,7 +188,7 @@ describe("readRedirectAfterAuth", () => {
 });
 
 describe("clearRedirectAfterAuth", () => {
-  it("pose 2 cookies expirés (nouveau + legacy) avec mêmes domain/path en prod (M-2 transition)", () => {
+  it("pose 1 seul cookie expiré en prod (debt-P1-3 : double-clear legacy retiré)", () => {
     const setSpy = vi.fn();
     const fakeResponse = {
       cookies: { set: setSpy },
@@ -177,10 +196,9 @@ describe("clearRedirectAfterAuth", () => {
 
     clearRedirectAfterAuth(fakeResponse, "www.terroir-local.fr");
 
-    // Prod : new + legacy = 2 calls (transition M-2 jusqu'à 2026-05-12).
-    expect(setSpy).toHaveBeenCalledTimes(2);
+    expect(setSpy).toHaveBeenCalledTimes(1);
     expect(setSpy).toHaveBeenCalledWith(
-      COOKIE_NAME_NEW,
+      COOKIE_NAME_PROD,
       "",
       expect.objectContaining({
         domain: ".terroir-local.fr",
@@ -190,14 +208,9 @@ describe("clearRedirectAfterAuth", () => {
         sameSite: "lax",
       }),
     );
-    expect(setSpy).toHaveBeenCalledWith(
-      COOKIE_NAME_LEGACY,
-      "",
-      expect.objectContaining({ maxAge: 0 }),
-    );
   });
 
-  it("pose 1 seul cookie en dev (legacy = nouveau, pas de double-clear)", () => {
+  it("pose 1 seul cookie en dev (sans prefix)", () => {
     const setSpy = vi.fn();
     const fakeResponse = {
       cookies: { set: setSpy },
@@ -207,7 +220,7 @@ describe("clearRedirectAfterAuth", () => {
 
     expect(setSpy).toHaveBeenCalledTimes(1);
     expect(setSpy).toHaveBeenCalledWith(
-      COOKIE_NAME_LEGACY,
+      COOKIE_NAME_DEV,
       "",
       expect.objectContaining({ maxAge: 0 }),
     );
