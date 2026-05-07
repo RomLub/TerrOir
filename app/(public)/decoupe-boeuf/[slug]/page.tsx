@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import Script from 'next/script';
 import { notFound } from 'next/navigation';
-import { CowDiagram } from '@/components/beef/CowDiagram';
+import { CowDiagramMini } from '@/components/beef/CowDiagramMini';
 import { loadCowSvg } from '@/lib/beef/load-cow-svg';
 import {
   ALL_CUT_SLUGS,
@@ -130,10 +130,9 @@ export default async function CutDetailPage({
           </section>
 
           <aside className="md:sticky md:top-24">
-            <CowDiagram
+            <CowDiagramMini
               svgMarkup={svgMarkup}
-              highlightedCut={slug as BeefCutSlug}
-              showPanel={false}
+              slug={slug as BeefCutSlug}
             />
           </aside>
         </div>

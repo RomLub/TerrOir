@@ -89,3 +89,30 @@ body {
 .cow-diagram__svg path[data-cut][data-highlighted='true'] {
   fill: rgba(184, 113, 62, 0.6); /* terra-500 @ 60% */
 }
+
+/* Variante statique (page detail) : pas d'interactivite, taille compacte. */
+.cow-diagram--mini .cow-diagram__svg svg {
+  max-width: 200px;
+}
+
+@media (min-width: 768px) {
+  .cow-diagram--mini .cow-diagram__svg svg {
+    max-width: 280px;
+  }
+}
+
+.cow-diagram--static .cow-diagram__svg path[data-cut] {
+  pointer-events: none;
+  cursor: default;
+}
+
+.cow-diagram--static .cow-diagram__svg path[data-cut]:hover {
+  /* Override de l'effet hover pour la variante statique. */
+  fill: transparent;
+}
+
+.cow-diagram--static
+  .cow-diagram__svg
+  path[data-cut][data-highlighted='true'] {
+  fill: rgba(184, 113, 62, 0.7); /* terra-500 @ 70% (un peu plus dense en mini) */
+}
