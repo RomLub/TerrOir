@@ -75,9 +75,9 @@ export const BEEF_CUTS: Record<BeefCutSlug, BeefCut> = {
     name: 'Basses-côtes',
     category: 'noble',
     shortDescription:
-      'Côtes du milieu du dos, persillées. Grillade ou braisé selon la coupe.',
+      'Premières côtes derrière le collier, persillées. Grillade en pavé ou braisé.',
     description:
-      "Situées entre le collier et les côtes hautes, les basses-côtes sont persillées et savoureuses. Tendres une fois grillées en pavé, elles font aussi merveille en braisé prolongé pour révéler leur fondant.",
+      "Issues des cinq premières côtes du train avant, les basses-côtes sont persillées et goûteuses. Coupées en pavé épais, elles se grillent comme une entrecôte ; détaillées en morceaux, elles deviennent fondantes après une cuisson lente.",
     cookingMethods: ['Grill', 'Poêle', 'Braisé'],
     signatureDishes: ['Pavé de basse-côte', 'Basse-côte braisée'],
   },
