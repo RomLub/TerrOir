@@ -31,8 +31,8 @@ export type NotificationsStatut = (typeof NOTIFICATIONS_STATUT_VALUES)[number];
 export const NOTIFICATIONS_TYPE_VALUES = ["email", "sms"] as const;
 export type NotificationsType = (typeof NOTIFICATIONS_TYPE_VALUES)[number];
 
-// orders.statut (source: in, last migration: 20260419000000_initial_schema.sql)
-export const ORDERS_STATUT_VALUES = ["pending", "confirmed", "ready", "completed", "cancelled", "refunded"] as const;
+// orders.statut (source: in, last migration: 20260507B00000_cluster_c_drop_ready_status.sql)
+export const ORDERS_STATUT_VALUES = ["pending", "confirmed", "completed", "cancelled", "refunded"] as const;
 export type OrdersStatut = (typeof ORDERS_STATUT_VALUES)[number];
 
 // payouts.statut (source: in, last migration: 20260429010000_payouts_statut_enum_extend.sql)
@@ -99,8 +99,8 @@ export type ProductsUnite = (typeof PRODUCTS_UNITE_VALUES)[number];
 export const REFUND_INCIDENT_ATTEMPTS_OUTCOME_VALUES = ["failed", "succeeded"] as const;
 export type RefundIncidentAttemptsOutcome = (typeof REFUND_INCIDENT_ATTEMPTS_OUTCOME_VALUES)[number];
 
-// refund_incidents.kind (source: in, last migration: 20260501231300_t102_1_refund_incidents.sql)
-export const REFUND_INCIDENTS_KIND_VALUES = ["revival", "admin", "timeout"] as const;
+// refund_incidents.kind (source: in, last migration: 20260507120000_t102_2_manual_cancel_kind.sql)
+export const REFUND_INCIDENTS_KIND_VALUES = ["revival", "admin", "timeout", "manual_cancel"] as const;
 export type RefundIncidentsKind = (typeof REFUND_INCIDENTS_KIND_VALUES)[number];
 
 // refund_incidents.status (source: in, last migration: 20260501231300_t102_1_refund_incidents.sql)
