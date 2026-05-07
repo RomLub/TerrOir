@@ -20,6 +20,8 @@
  */
 
 import { test, expect } from '../helpers/test-context';
+import { seedConsumer } from '../helpers/db-seed';
+import { loginAs } from '../helpers/user-lifecycle';
 
 const CART_KEY = 'terroir_cart';
 
@@ -74,20 +76,35 @@ function fakeItem(overrides: Partial<StoredCartItem> = {}): StoredCartItem {
 }
 
 test.describe('Consumer — /compte/panier', () => {
-  test('panier vide : affiche le message "Ton panier est vide"', async ({ page }) => {
+  // Le layout (consumer)/compte/layout.tsx fait redirect /connexion si pas
+  // de session. On crée et logge un user fresh par test pour garantir
+  // l'accès à /compte/panier (le panier reste zero-knowledge serveur,
+  // mais l'auth est requise pour atteindre la page).
+  test('panier vide : affiche le message "Ton panier est vide"', async ({
+    page,
+    ctx,
+  }) => {
     test.setTimeout(60_000);
 
+    const user = await seedConsumer(ctx, { suffix: 'panier-empty' });
+    // setCart pose un addInitScript qui s'applique à TOUTES les navigations
+    // ultérieures (incluant /connexion via loginAs). On le pose AVANT loginAs.
     await setCart(page, []);
+    await loginAs(page, user);
     await page.goto('/compte/panier');
 
-    await expect(page.getByText(/Ton panier est vide/i)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/Ton panier est vide/i)).toBeVisible({
+      timeout: 10_000,
+    });
   });
 
   test('ajout localStorage : 2 items affichés + groupement par producer + récap', async ({
     page,
+    ctx,
   }) => {
     test.setTimeout(60_000);
 
+    const user = await seedConsumer(ctx, { suffix: 'panier-2items' });
     const ts = Date.now();
     const items = [
       fakeItem({
@@ -106,6 +123,7 @@ test.describe('Consumer — /compte/panier', () => {
       }),
     ];
     await setCart(page, items);
+    await loginAs(page, user);
     await page.goto('/compte/panier');
 
     await expect(page.getByText(items[0].nom, { exact: false })).toBeVisible({
@@ -113,13 +131,18 @@ test.describe('Consumer — /compte/panier', () => {
     });
     await expect(page.getByText(items[1].nom, { exact: false })).toBeVisible();
 
-    // Récap : sous-total = 4.5*2 + 2*3 = 15
-    await expect(page.getByText(/15,00\s*€/)).toBeVisible();
+    // Récap : sous-total = 4.5*2 + 2*3 = 15. Le panier rend 2 fois "15,00 €"
+    // (sous-total <dd> + total <span>), on cible le premier match suffisant.
+    await expect(page.getByText(/15,00\s*€/).first()).toBeVisible();
   });
 
-  test('modif quantité via bouton +/- : sous-total mis à jour', async ({ page }) => {
+  test('modif quantité via bouton +/- : sous-total mis à jour', async ({
+    page,
+    ctx,
+  }) => {
     test.setTimeout(60_000);
 
+    const user = await seedConsumer(ctx, { suffix: 'panier-qty' });
     const ts = Date.now();
     const item = fakeItem({
       productId: `pid-${ts}-Q`,
@@ -129,6 +152,7 @@ test.describe('Consumer — /compte/panier', () => {
       unite: 'piece',
     });
     await setCart(page, [item]);
+    await loginAs(page, user);
     await page.goto('/compte/panier');
 
     await expect(page.getByText(item.nom, { exact: false })).toBeVisible({
@@ -147,9 +171,13 @@ test.describe('Consumer — /compte/panier', () => {
     });
   });
 
-  test('suppression item : disparaît du panier (état vide)', async ({ page }) => {
+  test('suppression item : disparaît du panier (état vide)', async ({
+    page,
+    ctx,
+  }) => {
     test.setTimeout(60_000);
 
+    const user = await seedConsumer(ctx, { suffix: 'panier-del' });
     const ts = Date.now();
     const item = fakeItem({
       productId: `pid-${ts}-DEL`,
@@ -158,6 +186,7 @@ test.describe('Consumer — /compte/panier', () => {
       quantite: 1,
     });
     await setCart(page, [item]);
+    await loginAs(page, user);
     await page.goto('/compte/panier');
 
     await expect(page.getByText(item.nom, { exact: false })).toBeVisible();
@@ -170,9 +199,13 @@ test.describe('Consumer — /compte/panier', () => {
     });
   });
 
-  test('persistance localStorage : refresh garde l\'item', async ({ page }) => {
+  test('persistance localStorage : refresh garde l\'item', async ({
+    page,
+    ctx,
+  }) => {
     test.setTimeout(60_000);
 
+    const user = await seedConsumer(ctx, { suffix: 'panier-persist' });
     const ts = Date.now();
     const item = fakeItem({
       productId: `pid-${ts}-PERSIST`,
@@ -181,6 +214,7 @@ test.describe('Consumer — /compte/panier', () => {
       quantite: 1,
     });
     await setCart(page, [item]);
+    await loginAs(page, user);
     await page.goto('/compte/panier');
     await expect(page.getByText(item.nom, { exact: false })).toBeVisible({
       timeout: 10_000,
