@@ -29,6 +29,26 @@ export type SendTemplateResult =
   | { ok: true; id: string }
   | { ok: false; error: string; skipped?: true };
 
+// Flag e2e capture : court-circuite resend.emails.send() et écrit l'email
+// dans test_emails_captured pour assertions Playwright sans consommer le
+// quota Resend (3000/mois).
+//
+// Gate STRICT NODE_ENV !== 'production' pour rendre toute activation
+// accidentelle en prod impossible : même si RESEND_TEST_MODE=true se
+// retrouve dans Vercel prod env (humain ou CI mal configuré), le flag est
+// ignoré dès lors que NODE_ENV='production'. NODE_ENV est posé par Next.js
+// build (non override-able trivialement côté Vercel).
+//
+// Conservé : pre-send canSendTo (suppressions) et render HTML — parité
+// fonctionnelle avec le path normal pour ne pas masquer un bug. Seule la
+// transmission Resend est remplacée par INSERT test_emails_captured.
+function isE2ETestCaptureMode(): boolean {
+  return (
+    process.env.RESEND_TEST_MODE === "true" &&
+    process.env.NODE_ENV !== "production"
+  );
+}
+
 // Envoie un email via Resend et log l'envoi dans public.notifications.
 // Ne throw pas : renvoie un statut pour que l'appelant puisse continuer
 // à traiter les autres destinataires. Tout échec produit un log Vercel
@@ -94,6 +114,63 @@ export async function sendTemplate({
       );
     }
     return { ok: false, error: reason };
+  }
+
+  // E2E capture mode (gated NODE_ENV !== 'production'). On INSERT le mail
+  // dans test_emails_captured + on garde la parité notifications statut=sent
+  // (les tests qui assert sur notifications doivent voir la même row qu'en
+  // path normal, à part metadata.captured_id vs metadata.resend_id).
+  if (isE2ETestCaptureMode()) {
+    const { data: capture, error: captureErr } = await admin
+      .from("test_emails_captured")
+      .insert({
+        to_email: to,
+        from_email: resendFromEmail,
+        subject,
+        template,
+        html,
+        metadata: { ...metadata, e2e_capture: true },
+        user_id: userId,
+      })
+      .select("id")
+      .single();
+
+    if (captureErr || !capture) {
+      const reason = captureErr?.message ?? "test_emails_captured insert returned no row";
+      console.error(
+        `[EMAIL_TEST_CAPTURE_FAIL] template=${template} to=${maskEmail(to)} error=${reason}`,
+      );
+      const { error: notifErr } = await admin.from("notifications").insert({
+        user_id: userId,
+        type: "email",
+        template,
+        statut: "failed",
+        metadata: { ...metadata, error: reason, e2e_capture: true },
+      });
+      if (notifErr) {
+        console.error(
+          `[NOTIF_INSERT_ERR] template=${template} statut=failed error=${notifErr.message}`,
+        );
+      }
+      return { ok: false, error: reason };
+    }
+
+    const { error: notifErr } = await admin.from("notifications").insert({
+      user_id: userId,
+      type: "email",
+      template,
+      statut: "sent",
+      metadata: { ...metadata, captured_id: capture.id, e2e_capture: true },
+    });
+    if (notifErr) {
+      console.error(
+        `[NOTIF_INSERT_ERR] template=${template} statut=sent error=${notifErr.message}`,
+      );
+    }
+    console.log(
+      `[EMAIL_TEST_CAPTURE] template=${template} to=${maskEmail(to)} captured_id=${capture.id}`,
+    );
+    return { ok: true, id: capture.id };
   }
 
   try {
