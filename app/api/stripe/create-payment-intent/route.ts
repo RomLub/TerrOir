@@ -245,16 +245,12 @@ export async function POST(request: Request) {
   }
 
   if (!updatedRows || updatedRows.length === 0) {
-    // Race detectee : cancel best-effort le PI orphelin pour ne pas laisser
-    // un PI non-confirmable trainer cote Stripe (cohabitation 2 PI sur 1 order).
-    try {
-      await stripe.paymentIntents.cancel(pi.id);
-    } catch (cancelErr) {
-      // Best-effort : log greppable mais on continue vers retrieve PI gagnant.
-      console.warn(
-        `[CREATE_PI_RACE_ROLLBACK] order=${order.id} pi=${pi.id} reason=${(cancelErr as Error).message}`,
-      );
-    }
+    // Race detectee. Avant de cancel notre PI, on refresh DB pour identifier
+    // le PI gagnant : si Stripe a renvoye le MEME PI (idempotency_key match
+    // avec MEMES params -> stripe.paymentIntents.create renvoie le PI deja
+    // cree sans erreur, cf. doc Stripe), alors `pi.id === refreshed.id` et
+    // on NE DOIT PAS cancel (sinon on cancel le PI gagnant lui-meme — bug
+    // detecte par e2e/concurrency/checkout-idempotency 2026-05-07).
     const { data: refreshed } = await admin
       .from("orders")
       .select("stripe_payment_intent_id")
@@ -266,9 +262,23 @@ export async function POST(request: Request) {
         { status: 500 },
       );
     }
-    const winning = await stripe.paymentIntents.retrieve(
-      refreshed.stripe_payment_intent_id,
-    );
+    const winningPiId = refreshed.stripe_payment_intent_id;
+
+    // Cancel only si notre PI est REELLEMENT orphelin (id different du gagnant).
+    // Cas params differents -> Stripe a leve StripeIdempotencyError (capture par
+    // le catch ligne 205) et on n'arrive pas ici. Cas params identiques -> notre
+    // pi.id === winningPiId, pas d'orphelin a canceler.
+    if (pi.id !== winningPiId) {
+      try {
+        await stripe.paymentIntents.cancel(pi.id);
+      } catch (cancelErr) {
+        // Best-effort : log greppable mais on continue vers retrieve PI gagnant.
+        console.warn(
+          `[CREATE_PI_RACE_ROLLBACK] order=${order.id} pi=${pi.id} reason=${(cancelErr as Error).message}`,
+        );
+      }
+    }
+    const winning = await stripe.paymentIntents.retrieve(winningPiId);
     return NextResponse.json({ client_secret: winning.client_secret });
   }
 
