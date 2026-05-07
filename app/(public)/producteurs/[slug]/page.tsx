@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { unstable_cache } from 'next/cache';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { labelEspece, labelLabel } from '@/lib/producers/labels';
+import { STOCK_UNLIMITED_SENTINEL } from '@/lib/products/constants';
 import {
   fetchPublicProducerBySlug,
   type ProducerPublic,
@@ -126,7 +127,7 @@ export default async function ProducteurPage(props: { params: Promise<{ slug: st
     name: p.nom,
     price: Number(p.prix),
     unit: p.unite ?? 'kg',
-    stockLeft: p.stock_illimite ? 999 : (p.stock_disponible ?? 0),
+    stockLeft: p.stock_illimite ? STOCK_UNLIMITED_SENTINEL : (p.stock_disponible ?? 0),
     image: Array.isArray(p.photos) && p.photos.length > 0 ? p.photos[0] : null,
     producer: productName,
   }));

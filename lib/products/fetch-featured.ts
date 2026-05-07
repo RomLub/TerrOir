@@ -2,6 +2,7 @@ import "server-only";
 import { unstable_cache } from "next/cache";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { ProductCardData } from "@/components/ui/product-card";
+import { STOCK_UNLIMITED_SENTINEL } from "@/lib/products/constants";
 
 // Audit Vercel H-6 (2026-05-05) : remplace lib/mocks/featured-products.
 //
@@ -68,7 +69,7 @@ async function fetchFeaturedRaw(): Promise<ProductCardData[]> {
       const cut = pickFirst(p.cuts);
       const animal = pickFirst(p.animals);
       const category = pickFirst(p.product_categories);
-      const stockLeft = p.stock_illimite ? 999 : (p.stock_disponible ?? 0);
+      const stockLeft = p.stock_illimite ? STOCK_UNLIMITED_SENTINEL : (p.stock_disponible ?? 0);
       const producerLabel = producer
         ? `${producer.nom_exploitation}${producer.commune ? ` — ${producer.commune}` : ""}`
         : undefined;

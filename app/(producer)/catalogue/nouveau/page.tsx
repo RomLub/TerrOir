@@ -18,6 +18,7 @@ import {
   fetchCuts,
 } from '@/lib/products/fetch-references';
 import { CATEGORIES_WITH_ANIMAL } from '@/lib/products/categories-with-animal';
+import { STOCK_UNLIMITED_SENTINEL } from '@/lib/products/constants';
 import type { Animal, Cut, ProductCategory } from '@/lib/products/types';
 
 type Form = {
@@ -160,7 +161,7 @@ export default function ProductNewPage() {
     id: 'preview', name: form.name || 'Nom du produit',
     category: selectedCategory?.name,
     price: parseFloat(form.price) || 0, unit: form.unit,
-    stockLeft: form.stockUnlimited ? 999 : parseInt(form.stock) || 0, producer: producerName || 'Votre ferme',
+    stockLeft: form.stockUnlimited ? STOCK_UNLIMITED_SENTINEL : parseInt(form.stock) || 0, producer: producerName || 'Votre ferme',
     image: previewUrls[0] ?? null,
   };
 

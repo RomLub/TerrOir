@@ -4,6 +4,7 @@ import { generateSlotsForProducer } from '@/lib/slots/generate';
 import { fetchPublicProducerBySlug } from '@/lib/producers/fetch-public';
 import { getProducerDisplayName } from '@/lib/producers/get-display-name';
 import { ACTIVE_ORDER_STATUTS } from '@/lib/orders/stateMachine';
+import { STOCK_UNLIMITED_SENTINEL } from '@/lib/products/constants';
 import {
   ProductPageClient,
   type ProducerSummary,
@@ -129,7 +130,7 @@ export default async function ProductPage(props: { params: Promise<{ slug: strin
     price: Number(productRow.prix),
     unit: productRow.unite ?? 'kg',
     weightStep: weightStepFor(productRow.unite),
-    stockLeft: productRow.stock_illimite ? 999 : (productRow.stock_disponible ?? 0),
+    stockLeft: productRow.stock_illimite ? STOCK_UNLIMITED_SENTINEL : (productRow.stock_disponible ?? 0),
     stockUnlimited: !!productRow.stock_illimite,
     delaiJours: productRow.delai_preparation_jours ?? 0,
     photos: Array.isArray(productRow.photos) ? productRow.photos : [],
@@ -153,7 +154,7 @@ export default async function ProductPage(props: { params: Promise<{ slug: strin
     name: p.nom,
     price: Number(p.prix),
     unit: p.unite ?? 'kg',
-    stockLeft: p.stock_illimite ? 999 : (p.stock_disponible ?? 0),
+    stockLeft: p.stock_illimite ? STOCK_UNLIMITED_SENTINEL : (p.stock_disponible ?? 0),
     producer: producerRow.nom_exploitation,
     image: Array.isArray(p.photos) && p.photos.length > 0 ? p.photos[0] : null,
   }));

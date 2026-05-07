@@ -7,6 +7,7 @@ import {
 } from '@/lib/products/fetch-products-public';
 import { getPublicProducts } from '@/lib/products/fetch-products-public-cached';
 import { parseProductsSearchParams } from '@/lib/products/parse-search-params';
+import { STOCK_UNLIMITED_SENTINEL } from '@/lib/products/constants';
 
 // Page catalogue produits public (T-220 PR-C).
 //
@@ -134,12 +135,12 @@ export default async function ProduitsPage(
           {products.map((p) => {
             // ProductCard considère stockLeft<=0 comme épuisé et <=5 comme
             // low stock. Pour un produit illimité, on passe la sentinelle
-            // 999 pour échapper aux deux seuils. Pattern hérité de
-            // catalogue/nouveau et catalogue/[id]/modifier (form preview).
-            // Dette : refacto ProductCard pour accepter
-            // `stockLeft: number | 'unlimited'` — ticket T-XXX à ouvrir.
+            // STOCK_UNLIMITED_SENTINEL pour échapper aux deux seuils.
+            // Pattern hérité de catalogue/nouveau et catalogue/[id]/modifier
+            // (form preview). Backlog : refacto ProductCard pour accepter
+            // `stockLeft: number | 'unlimited'`.
             const stockLeft = p.stock_illimite
-              ? 999
+              ? STOCK_UNLIMITED_SENTINEL
               : p.stock_disponible ?? 0;
             return (
               <Link

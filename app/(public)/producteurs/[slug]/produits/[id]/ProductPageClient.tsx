@@ -7,6 +7,7 @@ import { Button, Badge, ProductCard } from '@/components/ui';
 import { useCartStore } from '@/lib/store/cart';
 import { formatSlotTime, formatSlotRange } from '@/lib/slots/format-slot-time';
 import { useUserContext } from '@/components/providers/user-provider';
+import { STOCK_UNLIMITED_SENTINEL } from '@/lib/products/constants';
 import { StockAlertForm } from './_components/StockAlertForm';
 import { MiniMapLazy } from './_components/MiniMapLazy';
 
@@ -133,7 +134,7 @@ export function ProductPageClient({
   const step = product.weightStep || 1;
   const weight = quantity * step;
   const total = weight * product.price;
-  const maxQty = product.stockUnlimited ? 999 : Math.max(1, Math.floor(product.stockLeft / step));
+  const maxQty = product.stockUnlimited ? STOCK_UNLIMITED_SENTINEL : Math.max(1, Math.floor(product.stockLeft / step));
 
   const stockBadge = useMemo(() => {
     if (product.stockUnlimited) return { variant: 'green' as const, text: 'Stock illimité' };
