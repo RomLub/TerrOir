@@ -90,9 +90,3 @@ export {
 } from "./role-toggle";
 export { PostIt, type PostItProps } from "./post-it";
 export { MapSarthe, type MapSartheProps } from "./map-sarthe";
-export {
-  CircuitVisualizer,
-  type CircuitVisualizerProps,
-  type CircuitMode,
-  type CircuitMaillon,
-} from "./circuit-visualizer";
