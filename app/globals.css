@@ -22,7 +22,7 @@
   --color-terroir-terracotta: #a0522d;
   --color-terroir-bg: #f7f4ef;
 
-  --terra-50: #fbf6f1;
+  --terra-50: #fbf3ec;
   --terra-100: #f5e6dc;
   --terra-200: #e8c9b5;
   --terra-300: #d4a373;
@@ -32,6 +32,24 @@
   --terra-700: #a0522d;
   --terra-800: #804a20;
   --terra-900: #6b3620;
+
+  /* Sage : nouvelle teinte introduite par le DS V2 (Claude Design)
+     pour la famille "A mijoter" du schema decoupe-boeuf. */
+  --sage-50: #f4f6f0;
+  --sage-100: #e5ead9;
+  --sage-300: #a8b89a;
+  --sage-500: #6b7c5c;
+  --sage-700: #4f5d43;
+  --sage-900: #2d3624;
+
+  /* Familles de morceaux (decoupe-boeuf V2) — code couleur partage
+     entre listing interactif (CowSchemaInteractive) et page detail
+     (CowSchemaMini). Reference HANDOFF Claude Design 2026-05-08. */
+  --cat-nobles: var(--terra-500);
+  --cat-boucher: var(--terra-700);
+  --cat-polyvalent: var(--terra-300);
+  --cat-mijoter: var(--sage-500);
+  --cat-tradition: var(--terra-900);
 
   --postit-bg: #fff7d6;
   --postit-fill: #fef3c7;
@@ -47,72 +65,105 @@ body {
   color: #1a1a1a;
 }
 
-/*
-  Schéma anatomique des morceaux du bœuf (CowDiagram).
-  Le SVG est injecté tel quel ; on stylise les paths interactifs ici
-  parce qu'ils n'ont pas de classes Tailwind (dangerouslySetInnerHTML).
-*/
-.cow-diagram__svg svg {
+/* ────────────────────────────────────────────────────────────────────
+   Decoupe-boeuf V2 (Claude Design refonte 2026-05-08)
+   Schema interactif decoupe-boeuf : zones colorees par famille,
+   selection in-place avec dim des autres zones.
+   ──────────────────────────────────────────────────────────────────── */
+
+.cow-schema svg {
   display: block;
   width: 100%;
   height: auto;
-  max-width: 800px;
+  max-width: 880px;
   margin-inline: auto;
 }
 
-.cow-diagram__svg path[data-cut] {
-  /*
-    pointer-events: all force le path a capturer hover/click meme avec
-    fill: transparent. Sans ca, le default visiblePainted ignore les
-    paths non peints et le curseur "main" ne s'affiche pas (les events
-    bubble alors via le wrapper, mais sans cursor visible sur la zone).
-  */
+/* Zones interactives : couleur par famille. Le post-processing serveur
+   (loadCowSvgV2) injecte data-cat et retire le style inline. */
+.cow-schema path[data-cut] {
   pointer-events: all;
   cursor: pointer;
-  fill: transparent;
-  opacity: 1;
+  fill-opacity: 1;
+  stroke: rgba(107, 54, 32, 0.5);
+  stroke-width: 1;
   transition:
-    fill 120ms ease-out,
-    opacity 120ms ease-out;
-  outline: none;
+    filter 220ms ease,
+    opacity 220ms ease,
+    stroke-width 220ms ease;
 }
 
-.cow-diagram__svg path[data-cut]:hover {
-  fill: rgba(184, 113, 62, 0.4); /* terra-500 @ 40% */
+.cow-schema path[data-cut][data-cat='nobles'] {
+  fill: var(--cat-nobles);
+}
+.cow-schema path[data-cut][data-cat='boucher'] {
+  fill: var(--cat-boucher);
+}
+.cow-schema path[data-cut][data-cat='polyvalent'] {
+  fill: var(--cat-polyvalent);
+}
+.cow-schema path[data-cut][data-cat='mijoter'] {
+  fill: var(--cat-mijoter);
+}
+.cow-schema path[data-cut][data-cat='tradition'] {
+  fill: var(--cat-tradition);
 }
 
-.cow-diagram__svg path[data-cut]:focus-visible {
+/* Hover (pas de selection en cours) */
+.cow-schema--interactive svg:not([data-has-selection]) path[data-cut]:hover {
+  filter: brightness(1.08) saturate(1.15);
+}
+
+/* Focus visible pour la navigation clavier */
+.cow-schema--interactive path[data-cut]:focus-visible {
   outline: 2px solid var(--terra-700);
   outline-offset: 2px;
 }
 
-.cow-diagram__svg path[data-cut][data-highlighted='true'] {
-  fill: rgba(184, 113, 62, 0.6); /* terra-500 @ 60% */
+/* Selection active : dim les non-selectionnees */
+.cow-schema--interactive
+  svg[data-has-selection]
+  path[data-cut]:not([data-selected]) {
+  opacity: 0.35;
 }
 
-/* Variante statique (page detail) : pas d'interactivite, taille compacte. */
-.cow-diagram--mini .cow-diagram__svg svg {
-  max-width: 200px;
+/* Path selectionne */
+.cow-schema--interactive path[data-cut][data-selected] {
+  stroke: var(--terroir-ink);
+  stroke-width: 2.5;
+  filter: brightness(1.12) saturate(1.2);
 }
 
-@media (min-width: 768px) {
-  .cow-diagram--mini .cow-diagram__svg svg {
-    max-width: 280px;
-  }
-}
-
-.cow-diagram--static .cow-diagram__svg path[data-cut] {
+/* Variante mini (page detail) : pas d'interactivite, dim tout sauf le
+   highlight, et highlight au max d'opacite. */
+.cow-schema--mini path[data-cut] {
   pointer-events: none;
   cursor: default;
+  opacity: 0.32;
+  stroke-width: 0.8;
+}
+.cow-schema--mini path[data-cut][data-highlighted='true'] {
+  opacity: 1;
+  stroke: var(--terroir-ink);
+  stroke-width: 2.5;
+  filter: brightness(1.1) saturate(1.15);
+}
+.cow-schema--mini svg {
+  max-width: 100%;
 }
 
-.cow-diagram--static .cow-diagram__svg path[data-cut]:hover {
-  /* Override de l'effet hover pour la variante statique. */
-  fill: transparent;
+/* Skeleton bars utilises par le panneau empty state */
+.ghost-bar {
+  background: linear-gradient(90deg, #e6e1d6 0%, #efeae0 50%, #e6e1d6 100%);
+  border-radius: 4px;
 }
 
-.cow-diagram--static
-  .cow-diagram__svg
-  path[data-cut][data-highlighted='true'] {
-  fill: rgba(184, 113, 62, 0.7); /* terra-500 @ 70% (un peu plus dense en mini) */
+/* Post-it conseil de l'eleveur (page detail) */
+.postit {
+  background: var(--postit-bg);
+  border: 1px solid var(--postit-border);
+  border-radius: 14px;
+  padding: 18px 20px;
+  transform: rotate(-1deg);
+  box-shadow: 0 4px 12px rgba(107, 54, 32, 0.08);
 }
