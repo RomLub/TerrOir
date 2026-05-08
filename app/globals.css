@@ -134,3 +134,96 @@ body {
   path[data-cut][data-highlighted='true'] {
   fill: rgba(184, 113, 62, 0.7); /* terra-500 @ 70% (un peu plus dense en mini) */
 }
+
+/* ────────────────────────────────────────────────────────────────────
+   V2 (Claude Design refonte 2026-05-08)
+   Schema interactif decoupe-boeuf : zones colorees par famille,
+   selection in-place avec dim des autres zones.
+   ──────────────────────────────────────────────────────────────────── */
+
+.cow-schema svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 880px;
+  margin-inline: auto;
+}
+
+/* Zones interactives : couleur par famille. Le post-processing serveur
+   (loadCowSvgV2) injecte data-cat et retire le style inline. */
+.cow-schema path[data-cut] {
+  pointer-events: all;
+  cursor: pointer;
+  fill-opacity: 1;
+  stroke: rgba(107, 54, 32, 0.5);
+  stroke-width: 1;
+  transition:
+    filter 220ms ease,
+    opacity 220ms ease,
+    stroke-width 220ms ease;
+}
+
+.cow-schema path[data-cut][data-cat='nobles'] {
+  fill: var(--cat-nobles);
+}
+.cow-schema path[data-cut][data-cat='boucher'] {
+  fill: var(--cat-boucher);
+}
+.cow-schema path[data-cut][data-cat='polyvalent'] {
+  fill: var(--cat-polyvalent);
+}
+.cow-schema path[data-cut][data-cat='mijoter'] {
+  fill: var(--cat-mijoter);
+}
+.cow-schema path[data-cut][data-cat='tradition'] {
+  fill: var(--cat-tradition);
+}
+
+/* Hover (pas de selection en cours) */
+.cow-schema--interactive svg:not([data-has-selection]) path[data-cut]:hover {
+  filter: brightness(1.08) saturate(1.15);
+}
+
+/* Focus visible pour la navigation clavier */
+.cow-schema--interactive path[data-cut]:focus-visible {
+  outline: 2px solid var(--terra-700);
+  outline-offset: 2px;
+}
+
+/* Selection active : dim les non-selectionnees */
+.cow-schema--interactive
+  svg[data-has-selection]
+  path[data-cut]:not([data-selected]) {
+  opacity: 0.35;
+}
+
+/* Path selectionne */
+.cow-schema--interactive path[data-cut][data-selected] {
+  stroke: var(--terroir-ink);
+  stroke-width: 2.5;
+  filter: brightness(1.12) saturate(1.2);
+}
+
+/* Variante mini (page detail) : pas d'interactivite, dim tout sauf le
+   highlight, et highlight au max d'opacite. */
+.cow-schema--mini path[data-cut] {
+  pointer-events: none;
+  cursor: default;
+  opacity: 0.32;
+  stroke-width: 0.8;
+}
+.cow-schema--mini path[data-cut][data-highlighted='true'] {
+  opacity: 1;
+  stroke: var(--terroir-ink);
+  stroke-width: 2.5;
+  filter: brightness(1.1) saturate(1.15);
+}
+.cow-schema--mini svg {
+  max-width: 100%;
+}
+
+/* Skeleton bars utilises par le panneau empty state */
+.ghost-bar {
+  background: linear-gradient(90deg, #e6e1d6 0%, #efeae0 50%, #e6e1d6 100%);
+  border-radius: 4px;
+}
