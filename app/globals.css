@@ -46,3 +46,73 @@ body {
   background-color: var(--color-terroir-bg);
   color: #1a1a1a;
 }
+
+/*
+  Schéma anatomique des morceaux du bœuf (CowDiagram).
+  Le SVG est injecté tel quel ; on stylise les paths interactifs ici
+  parce qu'ils n'ont pas de classes Tailwind (dangerouslySetInnerHTML).
+*/
+.cow-diagram__svg svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 800px;
+  margin-inline: auto;
+}
+
+.cow-diagram__svg path[data-cut] {
+  /*
+    pointer-events: all force le path a capturer hover/click meme avec
+    fill: transparent. Sans ca, le default visiblePainted ignore les
+    paths non peints et le curseur "main" ne s'affiche pas (les events
+    bubble alors via le wrapper, mais sans cursor visible sur la zone).
+  */
+  pointer-events: all;
+  cursor: pointer;
+  fill: transparent;
+  opacity: 1;
+  transition:
+    fill 120ms ease-out,
+    opacity 120ms ease-out;
+  outline: none;
+}
+
+.cow-diagram__svg path[data-cut]:hover {
+  fill: rgba(184, 113, 62, 0.4); /* terra-500 @ 40% */
+}
+
+.cow-diagram__svg path[data-cut]:focus-visible {
+  outline: 2px solid var(--terra-700);
+  outline-offset: 2px;
+}
+
+.cow-diagram__svg path[data-cut][data-highlighted='true'] {
+  fill: rgba(184, 113, 62, 0.6); /* terra-500 @ 60% */
+}
+
+/* Variante statique (page detail) : pas d'interactivite, taille compacte. */
+.cow-diagram--mini .cow-diagram__svg svg {
+  max-width: 200px;
+}
+
+@media (min-width: 768px) {
+  .cow-diagram--mini .cow-diagram__svg svg {
+    max-width: 280px;
+  }
+}
+
+.cow-diagram--static .cow-diagram__svg path[data-cut] {
+  pointer-events: none;
+  cursor: default;
+}
+
+.cow-diagram--static .cow-diagram__svg path[data-cut]:hover {
+  /* Override de l'effet hover pour la variante statique. */
+  fill: transparent;
+}
+
+.cow-diagram--static
+  .cow-diagram__svg
+  path[data-cut][data-highlighted='true'] {
+  fill: rgba(184, 113, 62, 0.7); /* terra-500 @ 70% (un peu plus dense en mini) */
+}
