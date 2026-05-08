@@ -9,8 +9,6 @@
  * sous licence CC-BY-SA 3.0. Voir https://commons.wikimedia.org/wiki/File:Beef_cuts_France.svg
  */
 
-import { CUT_IMAGES } from '@/scripts/cut-images.generated';
-
 export type BeefCutCategory =
   | 'noble'
   | 'piece-du-boucher'
@@ -414,19 +412,7 @@ const BEEF_CUTS_BASE: Record<BeefCutSlug, BeefCut> = {
   },
 };
 
-/**
- * BEEF_CUTS final : fusionne BEEF_CUTS_BASE avec les metadonnees image
- * generees par scripts/fetch-cut-images.ts. Pour les slugs sans image,
- * la valeur reste celle de BEEF_CUTS_BASE (sans imageUrl/Alt/Credit).
- */
-export const BEEF_CUTS: Record<BeefCutSlug, BeefCut> = Object.fromEntries(
-  (Object.entries(BEEF_CUTS_BASE) as [BeefCutSlug, BeefCut][]).map(
-    ([slug, cut]) => {
-      const image = CUT_IMAGES[slug];
-      return [slug, image ? { ...cut, ...image } : cut];
-    },
-  ),
-) as Record<BeefCutSlug, BeefCut>;
+export const BEEF_CUTS: Record<BeefCutSlug, BeefCut> = BEEF_CUTS_BASE;
 
 /**
  * Liste de tous les slugs valides — utile pour les routes [slug] et la validation.
