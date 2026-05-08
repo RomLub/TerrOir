@@ -9,6 +9,6 @@
  *   PIXABAY_API_KEY=xxx npx tsx scripts/fetch-cut-images.ts --only filet
  */
 
-import type { BeefCutImage, BeefCutSlug } from '@/lib/beef-cuts';
+import type { BeefCutImage, BeefCutSlug } from '../lib/beef-cuts';
 
 export const CUT_IMAGES: Partial<Record<BeefCutSlug, BeefCutImage>> = {};
