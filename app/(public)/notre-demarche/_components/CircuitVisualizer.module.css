@@ -431,26 +431,41 @@ button.nodeDisc {
   }
 }
 
-/* ── scroll-in animation (déclenchée via classe .isAnimating sur .cv) ──
- * Stratégie : les paths SVG ont stroke-dasharray/dashoffset = longueur
- * totale (état "non tracé"), puis on anime dashoffset → 0. La classe
- * isAnimating est ajoutée par le composant via IntersectionObserver.
- * prefers-reduced-motion : skip totalement (paths visibles d'emblée). */
+/* ── scroll-in animation ───────────────────────────────────────────
+ * Trois états :
+ *   1. .cv.preAnim          → paths invisibles (dashoffset: longueur)
+ *   2. .cv.isAnimating      → animation cubic-bezier 1.2s, forwards
+ *      garde dashoffset: 0 à la fin
+ *   3. (aucune classe)      → paths visibles statiques (dashoffset: 0)
+ *
+ * Le composant ajoute .preAnim au mount client, puis bascule vers
+ * .isAnimating quand l'IntersectionObserver détecte ≥ 25% visible.
+ * Sans IO support, .preAnim → .isAnimating immédiat (no-flash fallback).
+ * SSR initial : aucune classe → paths visibles (graceful degradation
+ * pour no-JS / pre-hydration).
+ *
+ * prefers-reduced-motion : skip total, paths toujours visibles. */
 .river {
   stroke-dasharray: 2000;
   stroke-dashoffset: 0;
 }
-.cv.isAnimating .river {
+.cv.preAnim .river {
   stroke-dashoffset: 2000;
+}
+.cv.isAnimating .river {
   animation: cv-river 1.2s cubic-bezier(0.65, 0, 0.35, 1) forwards;
 }
 @keyframes cv-river {
+  from {
+    stroke-dashoffset: 2000;
+  }
   to {
     stroke-dashoffset: 0;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .cv.preAnim .river,
   .cv.isAnimating .river {
     animation: none;
     stroke-dashoffset: 0;

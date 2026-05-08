@@ -2,6 +2,7 @@
 
 import {
   useCallback,
+  useEffect,
   useId,
   useMemo,
   useRef,
@@ -51,6 +52,35 @@ export function CircuitVisualizer() {
   );
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
   const [pulseTick, setPulseTick] = useState(0);
+  const [triggered, setTriggered] = useState(false);
+
+  // Animation scroll-in déclenchée à la première intersection (≥ 25%)
+  // — une seule fois. preAnim = paths cachés (initial), isAnimating
+  // = animation 1.2s qui les trace. Sans IntersectionObserver, fallback
+  // immediate trigger pour ne jamais rester invisible.
+  // prefers-reduced-motion : neutralisé via @media du module CSS.
+  useEffect(() => {
+    if (triggered) return;
+    const el = cvRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") {
+      setTriggered(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            setTriggered(true);
+            observer.disconnect();
+            break;
+          }
+        }
+      },
+      { threshold: 0.25 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [triggered]);
 
   const eleveurShareGMS = useMemo(
     () => computeEleveurShareGMS(CV_DATA.gms, disabledIds),
@@ -106,7 +136,14 @@ export function CircuitVisualizer() {
     : null;
 
   return (
-    <section className={styles.cv} aria-labelledby={titleId} ref={cvRef}>
+    <section
+      className={[
+        styles.cv,
+        triggered ? styles.isAnimating : styles.preAnim,
+      ].join(" ")}
+      aria-labelledby={titleId}
+      ref={cvRef}
+    >
       <header className={styles.header}>
         <div className={styles.eyebrow}>La chaîne de valeur</div>
         <h2 className={styles.title} id={titleId}>
