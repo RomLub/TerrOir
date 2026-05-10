@@ -320,14 +320,17 @@ const CATEGORIES: Category[] = [
         q: "Quelle commission TerrOir prend-il sur les ventes ?",
         a: (
           <>
-            TerrOir prend une commission de 6% TTC sur le montant total des
-            ventes au démarrage de la plateforme. Cette transparence est un
-            engagement fort vis-à-vis des consommateurs et des producteurs.{" "}
-            <span className="text-violet-500">
-              [PLACEHOLDER : ce tarif est susceptible d&apos;évoluer selon
-              les paliers de croissance — formulation finale à arrêter en
-              accord avec la stratégie commerciale.]
-            </span>
+            <p>
+              TerrOir prélève une commission de 6% TTC sur chaque vente,
+              identique pour tous les producteurs. C&apos;est notre tarif
+              de lancement, sans frais cachés ni paliers : ce que tu vois
+              est ce qui est prélevé.
+            </p>
+            <p className="mt-3">
+              Les conditions tarifaires applicables sont détaillées dans
+              nos CGV, qui prévoient un préavis raisonnable en cas
+              d&apos;évolution.
+            </p>
           </>
         ),
       },
@@ -404,12 +407,36 @@ const CATEGORIES: Category[] = [
       {
         q: "Que devient mon argent si TerrOir ferme ?",
         a: (
-          <span className="text-violet-500">
-            [PLACEHOLDER : à formuler — fonds versés via Stripe distribués
-            au producteur après commande honorée, donc pas de risque de
-            perte. Modalités Stripe Connect en cas de fermeture plateforme
-            à vérifier.]
-          </span>
+          <>
+            <p>
+              Tes paiements transitent par Stripe, opérateur de paiement
+              régulé en Europe. TerrOir ne stocke aucune donnée bancaire
+              et n&apos;intervient qu&apos;en tant que plateforme de mise
+              en relation. Trois situations selon le moment :
+            </p>
+            <p className="mt-3">
+              Tu es client et tu n&apos;as pas encore retiré ta commande.
+              Ton paiement a été encaissé par Stripe mais pas encore
+              reversé au producteur. En cas d&apos;incident grave, tu
+              restes protégé par la procédure d&apos;opposition de ta
+              carte bancaire (chargeback) — c&apos;est ta banque qui te
+              rembourse. Cette protection est garantie par les règles
+              cartes bancaires, indépendamment de TerrOir.
+            </p>
+            <p className="mt-3">
+              Tu es producteur et ton versement hebdomadaire a été
+              effectué. Les fonds sont sur ton compte Stripe Connect,
+              qui t&apos;appartient juridiquement et qui est indépendant
+              de TerrOir. Tu y accèdes directement depuis ton espace
+              producteur.
+            </p>
+            <p className="mt-3">
+              Tu es producteur et un versement est encore en attente.
+              Stripe conserve la trace complète de chaque transaction.
+              Les modalités de restitution en cas de cessation sont
+              détaillées dans nos CGV.
+            </p>
+          </>
         ),
       },
     ],
@@ -419,32 +446,6 @@ const CATEGORIES: Category[] = [
 export default function FaqPage() {
   return (
     <div className="bg-bg">
-      {/* Bandeau placeholder global — TRÈS visible en haut, à retirer
-          par Romain lors de la passe de relecture pré-launch. */}
-      <div
-        role="status"
-        className="bg-violet-50 border-b-2 border-violet-300 text-violet-900"
-      >
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-start gap-3">
-          <span
-            aria-hidden
-            className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-500 text-white text-[13px] font-bold"
-          >
-            !
-          </span>
-          <div>
-            <p className="font-semibold text-[14px] uppercase tracking-[0.12em]">
-              [PLACEHOLDER] FAQ en cours de validation
-            </p>
-            <p className="mt-1 text-[14px] leading-relaxed">
-              Cette FAQ est en cours de validation. Toutes les questions et
-              réponses doivent être vérifiées et complétées avant le
-              lancement officiel de la plateforme.
-            </p>
-          </div>
-        </div>
-      </div>
-
       {/* HERO */}
       <section className="max-w-3xl mx-auto px-6 pt-16 md:pt-20 pb-12 text-center">
         <span className="text-[11px] uppercase tracking-[0.2em] text-terra-700 font-semibold">

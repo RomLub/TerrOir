@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { Inter, Cormorant_Garamond, Caveat } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
@@ -73,10 +74,23 @@ export default async function RootLayout({
   // bon état dès le SSR (extension du pattern initialUser, commit 6a9ebd3).
   const initial = await getInitialUserPayload();
 
+  // F-005a (audit P0-TC 2026-05-10) : nonce CSP injecté par middleware.ts
+  // dans le header `x-nonce`. Lu ici et exposé via attribute data-csp-nonce
+  // sur <html> pour que les composants client custom puissent le
+  // récupérer via document.documentElement.dataset.cspNonce si besoin.
+  //
+  // Note : SpeedInsights et Analytics de Vercel ne typent pas la prop
+  // nonce (typings actuels) — le nonce CSP n'est donc pas passé à ces
+  // composants. Next.js auto-inject le nonce sur ses propres scripts
+  // RSC/hydratation via le request header `Content-Security-Policy`
+  // posé par middleware.ts.
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+
   return (
     <html
       lang="fr"
       className={`${inter.variable} ${cormorant.variable} ${caveat.variable}`}
+      data-csp-nonce={nonce}
     >
       <body className="min-h-screen bg-terroir-bg font-sans text-terroir-ink antialiased">
         <UserProvider initial={initial}>{children}</UserProvider>

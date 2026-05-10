@@ -9,80 +9,21 @@ const withBundleAnalyzer = require("@next/bundle-analyzer")({
 });
 
 // =============================================================================
-// Headers de sécurité — Audit PCI SAQ-A W-1 (2026-05-05)
+// Headers de sécurité — Audit PCI SAQ-A W-1 (2026-05-05) + F-005a/F-070
+// (audit P0-TC 2026-05-10)
 // =============================================================================
 // HSTS est posé automatiquement par Vercel sur les domaines custom
 // (max-age=63072000; includeSubDomains). On ajoute ici les headers que ni Next
 // ni Vercel ne posent par défaut : X-Frame-Options, X-Content-Type-Options,
-// Referrer-Policy, Permissions-Policy, et CSP enforce mode.
+// Referrer-Policy, Permissions-Policy, COOP, CORP.
 //
-// CSP : démarrée en `Content-Security-Policy-Report-Only` pour observer 7 jours
-// les violations Vercel logs (pattern `[CSPRO]` dans browser console côté
-// users) sans casser la prod si la policy a un trou. Bascule en mode enforce
-// (`Content-Security-Policy`) effective 2026-05-12 (sec-P2-1) après période
-// d'observation. Voir `docs/conventions/security-headers.md`.
-
-function buildCSP() {
-  // Construction dynamique : on lit NEXT_PUBLIC_SUPABASE_URL pour whitelister
-  // précisément le projet Supabase TerrOir au lieu d'un wildcard *.supabase.co
-  // trop large. Fallback wildcard si l'env var est absente (build local sans
-  // .env.local — édition de docs, etc.).
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-  let supabaseHttps = "https://*.supabase.co";
-  let supabaseWss = "wss://*.supabase.co";
-  if (supabaseUrl) {
-    try {
-      const u = new URL(supabaseUrl);
-      supabaseHttps = `https://${u.host}`;
-      supabaseWss = `wss://${u.host}`;
-    } catch {
-      // URL invalide → on garde le fallback wildcard.
-    }
-  }
-
-  // Notes par directive :
-  //  - default-src 'self' : tout ce qui n'est pas listé explicitement → self.
-  //  - script-src : 'unsafe-inline' nécessaire pour les bootstrap scripts
-  //    Next.js (hydratation, RSC payload). 'unsafe-eval' nécessaire pour
-  //    Stripe.js (eval dynamique sur certains chemins) et le runtime Next dev.
-  //    js.stripe.com = Elements/PaymentElement. m.stripe.network = scripts
-  //    Stripe internes. va.vercel-scripts.com = Vercel Analytics. blob: pour
-  //    workers Mapbox-gl (web worker chargé en blob URL).
-  //  - style-src 'unsafe-inline' : Tailwind + next/font + mapbox-gl utilisent
-  //    de l'inline-style pour les styles dynamiques.
-  //  - img-src https: data: blob: : photos producteurs (Supabase Storage,
-  //    Unsplash, picsum), tiles Mapbox, data URIs SVG.
-  //  - font-src 'self' data: : next/font local + fallback data URI.
-  //  - connect-src : Stripe (api.stripe.com), Mapbox (api/tiles/events),
-  //    Vercel Analytics (vitals + scripts), Supabase (REST + Realtime wss).
-  //  - frame-src : iframes Stripe Elements + 3DS (hooks.stripe.com,
-  //    js.stripe.com, m.stripe.network).
-  //  - worker-src 'self' blob: : Mapbox-gl spawn un worker en blob: URL.
-  //  - object-src 'none' : pas de <object>/<embed>/<applet>, anti-Flash.
-  //  - base-uri 'self' : interdit injection de <base href="...">.
-  //  - form-action 'self' : interdit POST cross-origin sortant.
-  //  - frame-ancestors 'none' : équivalent X-Frame-Options DENY pour CSP-aware
-  //    browsers (anti-clickjacking).
-  //  - upgrade-insecure-requests : auto-upgrade http→https sur sous-ressources.
-
-  const directives = [
-    "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://m.stripe.network https://va.vercel-scripts.com blob:",
-    "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob: https:",
-    "font-src 'self' data:",
-    `connect-src 'self' https://api.stripe.com https://api.mapbox.com https://*.tiles.mapbox.com https://events.mapbox.com https://va.vercel-scripts.com https://vitals.vercel-analytics.com ${supabaseHttps} ${supabaseWss}`,
-    "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://m.stripe.network",
-    "worker-src 'self' blob:",
-    "object-src 'none'",
-    "base-uri 'self'",
-    "form-action 'self'",
-    "frame-ancestors 'none'",
-    "upgrade-insecure-requests",
-  ];
-
-  return directives.join("; ");
-}
+// CSP : F-005a (audit P0-TC 2026-05-10) bascule la CSP en mode nonce-based
+// Report-Only, posée DYNAMIQUEMENT par middleware.ts (nonce crypto par
+// requête, incompatible avec un header statique). La CSP enforce statique
+// précédente (`unsafe-inline` + `unsafe-eval`) a été retirée d'ici pour éviter
+// la double CSP qui rendrait le nonce inutile (intersection des permissions
+// browser). Bascule en mode enforce différée (~24-48 h d'observation preview)
+// cf. middleware.ts + docs/conventions/security-headers.md.
 
 const SECURITY_HEADERS = [
   // Anti-clickjacking : DENY plutôt que SAMEORIGIN car aucune feature TerrOir
@@ -107,15 +48,21 @@ const SECURITY_HEADERS = [
     value:
       "camera=(), microphone=(), geolocation=(self), payment=(self), interest-cohort=()",
   },
-  // CSP enforce mode (sec-P2-1, bascule 2026-05-12 après 7+ jours
-  // d'observation Report-Only). Toute violation = ressource bloquée par
-  // le browser. Si une page critique casse en prod, rollback temporaire
-  // via revert du nom de header → `Content-Security-Policy-Report-Only`.
-  // Cf. doc `docs/conventions/security-headers.md`.
-  {
-    key: "Content-Security-Policy",
-    value: buildCSP(),
-  },
+  // F-070 (audit P0-TC 2026-05-10) — Cross-Origin isolation.
+  // COOP same-origin-allow-popups : isole le top-level browsing context
+  // des popups cross-origin par défaut, MAIS préserve la communication
+  // window.opener pour les popups que TerrOir ouvre intentionnellement
+  // (ex: Stripe 3DS challenge ACS de certaines banques émettrices qui
+  // ouvrent un popup au lieu d'iframe). Bénéfice partiel anti-Spectre,
+  // compromis pragmatique avant tests preview pour durcir éventuellement
+  // à same-origin.
+  { key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" },
+  // CORP same-origin : restreint qui peut load les ressources de TerrOir
+  // depuis cross-origin. Pages HTML uniquement (assets statiques bypass
+  // via matcher middleware + headers Vercel). Pas d'impact Stripe vu que
+  // les ressources Stripe sont chargées DEPUIS stripe.com, pas depuis
+  // TerrOir. Bénéfice : anti-Spectre côté ressource.
+  { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
 ];
 
 /** @type {import('next').NextConfig} */
