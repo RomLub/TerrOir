@@ -79,6 +79,12 @@ export const PAYMENT_EVENT_TYPES = [
   // (default 100).
   "order_producer_refund_succeeded",
   "order_producer_refund_failed",
+  // F-014 (audit pré-launch 2026-05-10) — cap dur (default 500€, env
+  // PRODUCER_REFUND_CAP_EUR) sur le path producer self-refund. Émis avant
+  // le call stripe.refunds.create quand le montant dépasse le cap. La
+  // requête est rejetée en 403 + email alerte admin (action requise).
+  // Metadata : attempted_amount, cap, order_id, producer_id.
+  "producer_refund_cap_exceeded",
   "order_timeout_refund_failed",
   // Path cron timeout sur order pending non payée (PI status !== 'succeeded').
   // T-409 : skip refund Stripe + audit forensique pour ne pas polluer le
