@@ -221,6 +221,15 @@ let _adminInviteLimiter: Ratelimit | null | undefined;
 // applicatif (écriture audit log + run de validation Zod) justifie le cap.
 let _producerInterestLimiter: Ratelimit | null | undefined;
 
+// F-003 (audit pré-launch 2026-05-10) — Webhook Stripe POST. Cap 100/min/IP :
+// généreux pour absorber les retries Stripe (même event peut être rejoué
+// 4-5x sur 5xx, ack 200 reset le compteur côté Stripe). Au-delà = soit
+// flood post-leak signing secret (defense-in-depth derrière la signature
+// HMAC), soit script abusif. La signature HMAC reste la défense principale
+// (signing secret unique par endpoint Stripe). Fail-open obligatoire :
+// JAMAIS bloquer un webhook légitime sur un incident infra Upstash.
+let _stripeWebhookLimiter: Ratelimit | null | undefined;
+
 export function getSignupRateLimit(): Ratelimit | null {
   if (_signupLimiter === undefined) {
     _signupLimiter = createRateLimiter(5, "60 s", "signup");
@@ -348,4 +357,15 @@ export function getProducerInterestRateLimit(): Ratelimit | null {
     );
   }
   return _producerInterestLimiter;
+}
+
+export function getStripeWebhookRateLimit(): Ratelimit | null {
+  if (_stripeWebhookLimiter === undefined) {
+    _stripeWebhookLimiter = createRateLimiter(
+      100,
+      "60 s",
+      "stripe_webhook",
+    );
+  }
+  return _stripeWebhookLimiter;
 }

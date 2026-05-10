@@ -46,6 +46,8 @@ const {
   mockSendSms,
   mockWaitUntil,
   mockLogPaymentEvent,
+  mockConsumeRateLimit,
+  mockGetStripeWebhookRateLimit,
 } = vi.hoisted(() => ({
   mockConstructEvent: vi.fn(),
   mockCheckOrMarkProcessed: vi.fn(),
@@ -62,6 +64,14 @@ const {
   mockSendSms: vi.fn(),
   mockWaitUntil: vi.fn(),
   mockLogPaymentEvent: vi.fn(),
+  // F-003 : rate-limit mock par défaut fail-open (success=true).
+  mockConsumeRateLimit: vi.fn(async () => ({
+    success: true,
+    limit: 100,
+    remaining: 99,
+    reset: 0,
+  })),
+  mockGetStripeWebhookRateLimit: vi.fn(() => null),
 }));
 
 vi.mock("@/lib/stripe/server", () => ({
@@ -127,6 +137,11 @@ vi.mock("@vercel/functions", () => ({
 
 vi.mock("@/lib/audit-logs/log-payment-event", () => ({
   logPaymentEvent: mockLogPaymentEvent,
+}));
+
+vi.mock("@/lib/rate-limit", () => ({
+  consumeRateLimit: mockConsumeRateLimit,
+  getStripeWebhookRateLimit: mockGetStripeWebhookRateLimit,
 }));
 
 // React templates : la route les passe à sendTemplate (mocké), donc
@@ -793,6 +808,137 @@ describe("POST /api/stripe/webhook — IP allowlist soft-warn (F-015)", () => {
     );
 
     expect(res.status).toBe(200);
+    expect(mockConstructEvent).toHaveBeenCalledTimes(1);
+  });
+});
+
+// =============================================================================
+// F-003 (audit pré-launch 2026-05-10) — Rate-limit IP-keyed sur webhook
+// =============================================================================
+//
+// Cap 100/min/IP, fail-open si Upstash KO. La signature HMAC + IP allowlist
+// soft-warn restent les défenses principales.
+describe("POST /api/stripe/webhook — rate-limit IP-keyed (F-003)", () => {
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    // Reset compteur d'appels accumulé par les autres suites du fichier.
+    mockConsumeRateLimit.mockClear();
+    mockConsumeRateLimit.mockResolvedValue({
+      success: true,
+      limit: 100,
+      remaining: 99,
+      reset: 0,
+    });
+  });
+
+  afterEach(() => {
+    consoleWarnSpy.mockRestore();
+  });
+
+  function makeRequestWithIp(ip: string): Request {
+    return new Request("http://localhost/api/stripe/webhook", {
+      method: "POST",
+      headers: {
+        "stripe-signature": "t=123,v1=abc",
+        "x-forwarded-for": ip,
+        "user-agent": "stripe-webhook-test",
+      },
+      body: '{"id":"evt_rl_test","type":"payment_intent.succeeded"}',
+    });
+  }
+
+  it("rate-limit success=true → handler exécuté normalement", async () => {
+    mockConstructEvent.mockReturnValue(
+      makeStripeEvent("payment_intent.succeeded", "evt_rl_pass"),
+    );
+    mockCheckOrMarkProcessed.mockResolvedValue({ alreadyProcessed: false });
+    mockSyncSucceeded.mockResolvedValue({
+      result: "no_metadata",
+      orderId: null,
+    });
+
+    const res = await POST(makeRequestWithIp("3.18.12.63"));
+
+    expect(res.status).toBe(200);
+    expect(mockConsumeRateLimit).toHaveBeenCalledTimes(1);
+    expect(mockConsumeRateLimit).toHaveBeenCalledWith(null, "3.18.12.63");
+    expect(mockConstructEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("rate-limit success=false → 429 + log RATE_LIMITED + AUCUN appel handler", async () => {
+    mockConsumeRateLimit.mockResolvedValueOnce({
+      success: false,
+      limit: 100,
+      remaining: 0,
+      reset: 1234567890,
+    });
+
+    const res = await POST(makeRequestWithIp("203.0.113.10"));
+    const body = await res.json();
+
+    expect(res.status).toBe(429);
+    expect(body.error).toBe("Too many requests");
+    expect(mockConstructEvent).not.toHaveBeenCalled();
+    expect(mockCheckOrMarkProcessed).not.toHaveBeenCalled();
+    expect(mockSyncSucceeded).not.toHaveBeenCalled();
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[STRIPE_WEBHOOK_RATE_LIMITED]"),
+    );
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("ip=203.0.113.10"),
+    );
+  });
+
+  it("rate-limit fail-open (Upstash KO renvoie success=true) → handler exécuté", async () => {
+    // Pattern fail-open : consumeRateLimit catch les erreurs Redis et
+    // renvoie success=true. La route ne distingue pas et continue.
+    mockConsumeRateLimit.mockResolvedValueOnce({
+      success: true,
+      limit: 0,
+      remaining: 0,
+      reset: 0,
+    });
+    mockConstructEvent.mockReturnValue(
+      makeStripeEvent("payment_intent.succeeded", "evt_rl_failopen"),
+    );
+    mockCheckOrMarkProcessed.mockResolvedValue({ alreadyProcessed: false });
+    mockSyncSucceeded.mockResolvedValue({
+      result: "no_metadata",
+      orderId: null,
+    });
+
+    const res = await POST(makeRequestWithIp("3.18.12.63"));
+
+    expect(res.status).toBe(200);
+    expect(mockConstructEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("aucun header IP → rate-limit skip (pas d'identifier valable) + handler exécuté", async () => {
+    // Comportement défini : si on ne peut pas extraire d'IP, on n'applique
+    // pas de rate-limit (pas de clé valable). La signature HMAC reste la
+    // défense principale, et le rate-limit Upstash applicatif côté autres
+    // routes Stripe couvre les call sites avec session.
+    mockConstructEvent.mockReturnValue(
+      makeStripeEvent("payment_intent.succeeded", "evt_no_ip"),
+    );
+    mockCheckOrMarkProcessed.mockResolvedValue({ alreadyProcessed: false });
+    mockSyncSucceeded.mockResolvedValue({
+      result: "no_metadata",
+      orderId: null,
+    });
+
+    const res = await POST(
+      new Request("http://localhost/api/stripe/webhook", {
+        method: "POST",
+        headers: { "stripe-signature": "t=123,v1=abc" },
+        body: '{"id":"evt_no_ip","type":"payment_intent.succeeded"}',
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockConsumeRateLimit).not.toHaveBeenCalled();
     expect(mockConstructEvent).toHaveBeenCalledTimes(1);
   });
 });
