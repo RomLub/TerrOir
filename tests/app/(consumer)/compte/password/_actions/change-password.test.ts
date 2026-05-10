@@ -25,6 +25,8 @@ let getSessionUserMock: Mock<AnyAsyncFn>;
 let tempSignInMock: Mock<AnyAsyncFn>;
 let adminUpdateUserMock: Mock<AnyAsyncFn>;
 let logAuthEventMock: Mock<AnyAsyncFn>;
+// F-025 : rate-limit mock — par défaut success=true (pas de throttle).
+let consumeRateLimitMock: Mock<AnyAsyncFn>;
 
 vi.mock("@/lib/auth/session", () => ({
   getSessionUser: (...args: unknown[]) => getSessionUserMock(...args),
@@ -50,6 +52,11 @@ vi.mock("@/lib/supabase/admin", () => ({
 
 vi.mock("@/lib/audit-logs/log-auth-event", () => ({
   logAuthEvent: (...args: unknown[]) => logAuthEventMock(...args),
+}));
+
+vi.mock("@/lib/rate-limit", () => ({
+  consumeRateLimit: (...args: unknown[]) => consumeRateLimitMock(...args),
+  getLoginRateLimit: () => ({ /* stub limiter, not introspected */ }),
 }));
 
 import { changePasswordAction } from "@/app/(consumer)/compte/password/_actions/change-password";
@@ -86,6 +93,13 @@ beforeEach(() => {
     error: null,
   });
   logAuthEventMock = vi.fn<AnyAsyncFn>().mockResolvedValue(undefined);
+  // F-025 default : rate-limit always pass.
+  consumeRateLimitMock = vi.fn<AnyAsyncFn>().mockResolvedValue({
+    success: true,
+    limit: 5,
+    remaining: 4,
+    reset: Date.now() + 60_000,
+  });
 });
 
 afterEach(() => {
@@ -172,6 +186,67 @@ describe("changePasswordAction", () => {
     expect(res.error).toMatch(/correspondent pas/);
     expect(tempSignInMock).not.toHaveBeenCalled();
     expect(adminUpdateUserMock).not.toHaveBeenCalled();
+  });
+
+  it("F-025 rate-limit miss → rateLimited=true, signIn NON appelé, audit rate_limit_exceeded posé", async () => {
+    consumeRateLimitMock = vi.fn<AnyAsyncFn>().mockResolvedValue({
+      success: false,
+      limit: 5,
+      remaining: 0,
+      reset: Date.now() + 30_000,
+    });
+
+    const res = await changePasswordAction({}, makeFormData());
+
+    expect(res.rateLimited).toBe(true);
+    expect(res.error).toMatch(/Trop de tentatives/);
+    expect(res.retryAfterSeconds).toBeGreaterThan(0);
+    // Pas de re-auth, pas d'update : on bloque AVANT le tempClient signIn.
+    expect(tempSignInMock).not.toHaveBeenCalled();
+    expect(adminUpdateUserMock).not.toHaveBeenCalled();
+    // Audit log rate_limit_exceeded posé pour détection forensique.
+    expect(logAuthEventMock).toHaveBeenCalledWith({
+      eventType: "rate_limit_exceeded",
+      userId: "user-1",
+      metadata: expect.objectContaining({
+        route: "change_password",
+        cap: 5,
+      }),
+    });
+  });
+
+  it("F-025 rate-limit 6 calls successifs → 6e est rate-limited", async () => {
+    // Simulation : 5 premiers OK (consume retourne success=true), 6e bloqué.
+    let callIndex = 0;
+    consumeRateLimitMock = vi.fn<AnyAsyncFn>().mockImplementation(() => {
+      callIndex += 1;
+      if (callIndex <= 5) {
+        return Promise.resolve({
+          success: true,
+          limit: 5,
+          remaining: 5 - callIndex,
+          reset: Date.now() + 60_000,
+        });
+      }
+      return Promise.resolve({
+        success: false,
+        limit: 5,
+        remaining: 0,
+        reset: Date.now() + 45_000,
+      });
+    });
+
+    // 5 premiers calls : happy path (current correct, update success).
+    for (let i = 1; i <= 5; i++) {
+      const r = await changePasswordAction({}, makeFormData());
+      expect(r.success).toBe(true);
+    }
+    // 6e call : rate-limited avant même la re-auth.
+    const r6 = await changePasswordAction({}, makeFormData());
+    expect(r6.rateLimited).toBe(true);
+    expect(r6.error).toMatch(/Trop de tentatives/);
+    // Total signIn calls : 5 (pas 6 — le 6e est court-circuité).
+    expect(tempSignInMock).toHaveBeenCalledTimes(5);
   });
 
   it("updateUser Supabase rejette → error mappé FR + logAuthEvent NON appelé", async () => {

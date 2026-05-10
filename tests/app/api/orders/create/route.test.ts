@@ -138,6 +138,18 @@ vi.mock("@/lib/audit-logs/log-payment-event", () => ({
   logPaymentEvent: vi.fn(),
 }));
 
+// F-034 : rate-limit mock — par défaut success=true (pas de throttle).
+// logAuthEvent mocké pour assertion rate_limit_exceeded.
+const consumeRateLimitMock = vi.fn();
+const logAuthEventMock = vi.fn();
+vi.mock("@/lib/rate-limit", () => ({
+  consumeRateLimit: (...args: unknown[]) => consumeRateLimitMock(...args),
+  getOrdersCreateRateLimit: () => ({}),
+}));
+vi.mock("@/lib/audit-logs/log-auth-event", () => ({
+  logAuthEvent: (...args: unknown[]) => logAuthEventMock(...args),
+}));
+
 // --- Import APRÈS les mocks ----------------------------------------------
 
 import { POST } from "@/app/api/orders/create/route";
@@ -237,6 +249,16 @@ beforeEach(() => {
   pushRpc("create_order_with_items", { data: ORDER_ID, error: null });
   // T-429 : reset le compteur d'appels audit log entre chaque test.
   vi.mocked(logPaymentEvent).mockClear();
+  // F-034 : reset + default rate-limit success.
+  consumeRateLimitMock.mockReset();
+  consumeRateLimitMock.mockResolvedValue({
+    success: true,
+    limit: 10,
+    remaining: 9,
+    reset: Date.now() + 60_000,
+  });
+  logAuthEventMock.mockReset();
+  logAuthEventMock.mockResolvedValue(undefined);
   // T-427 : spy console.warn pour assert log greppable [ORDER_CREATE_ENRICH_FAIL]
   // sur paths SELECT post-RPC fail (cf F3 enrichi + F4 nouveau).
   consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -918,5 +940,86 @@ describe("H. CGV persistance", () => {
     // re-UPDATE sur ce path (idempotent : décision YAGNI, edge case
     // double-clic 5 min).
     expect(captured.updateCalls).toEqual([]);
+  });
+});
+
+// --- I. Rate-limit F-034 ------------------------------------------------
+
+describe("I. Rate-limit F-034", () => {
+  it("I1 — rate-limit miss → 429 + Retry-After + audit rate_limit_exceeded, aucun I/O DB", async () => {
+    consumeRateLimitMock.mockResolvedValue({
+      success: false,
+      limit: 10,
+      remaining: 0,
+      reset: Date.now() + 30_000,
+    });
+
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBeTruthy();
+    const body = (await res.json()) as { error: string; retry_after: number };
+    expect(body.error).toBe("rate_limited");
+    expect(body.retry_after).toBeGreaterThan(0);
+
+    // Audit log forensique.
+    expect(logAuthEventMock).toHaveBeenCalledWith({
+      eventType: "rate_limit_exceeded",
+      userId: CONSUMER_ID,
+      metadata: expect.objectContaining({
+        route: "orders_create",
+        cap: 10,
+      }),
+    });
+    // Aucun I/O DB (court-circuit avant SELECT slots et RPC).
+    expect(captured.fromCalls).toEqual([]);
+    expect(captured.rpcCalls).toEqual([]);
+    expect(logPaymentEvent).not.toHaveBeenCalled();
+  });
+
+  it("I2 — 11 calls successifs : 10 OK, 11e rate-limited", async () => {
+    let callIndex = 0;
+    consumeRateLimitMock.mockImplementation(() => {
+      callIndex += 1;
+      if (callIndex <= 10) {
+        return Promise.resolve({
+          success: true,
+          limit: 10,
+          remaining: 10 - callIndex,
+          reset: Date.now() + 60_000,
+        });
+      }
+      return Promise.resolve({
+        success: false,
+        limit: 10,
+        remaining: 0,
+        reset: Date.now() + 45_000,
+      });
+    });
+
+    // Pré-charge les responses pour 10 happy paths consécutifs.
+    for (let i = 0; i < 10; i++) {
+      pushSlotSelect({ data: { starts_at: SLOT_STARTS_AT }, error: null });
+      pushOrderSelect(
+        { data: null, error: null },
+        { data: DEFAULT_ORDER, error: null },
+      );
+      pushOrderUpdate({ data: null, error: null });
+      pushRpc("create_order_with_items", { data: ORDER_ID, error: null });
+    }
+
+    // Reset des défaults beforeEach déjà push (1 set) — on consomme d'abord,
+    // les 10 calls vont chacun consommer 1 entrée des queues.
+    // Le beforeEach a déjà push 1 set par défaut, on en a 11 total ; les
+    // 10 premiers calls happy path consomment 10. OK.
+
+    let okCount = 0;
+    let rlCount = 0;
+    for (let i = 1; i <= 11; i++) {
+      const res = await POST(makeRequest());
+      if (res.status === 200) okCount++;
+      else if (res.status === 429) rlCount++;
+    }
+    expect(okCount).toBe(10);
+    expect(rlCount).toBe(1);
   });
 });

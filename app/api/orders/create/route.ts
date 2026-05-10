@@ -5,7 +5,12 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { extractHeureRetrait } from "@/lib/slots/format-slot-time";
 import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
+import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 import { LEGAL_VERSIONS } from "@/lib/legal/versions";
+import {
+  consumeRateLimit,
+  getOrdersCreateRateLimit,
+} from "@/lib/rate-limit";
 
 const bodySchema = z.object({
   producer_id: z.string().guid(),
@@ -73,6 +78,33 @@ export async function POST(request: Request) {
   const session = await getSessionUser();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // F-034 (audit P0 sweep 2026-05-11) : rate-limit applicatif 10/60s/userId.
+  // Cap aligne getStripeCreatePaymentIntentRateLimit (1 order ≈ 1 PI dans le
+  // flow nominal). Au-delà = énumération automatisée (script saturation slots,
+  // probe side-channels stock_depleted). La dedup T-428 ci-dessous absorbe
+  // déjà les retries légitimes (5min fenêtre) — le rate-limit est defensive
+  // layer en plus, pas en remplacement.
+  const rl = await consumeRateLimit(
+    getOrdersCreateRateLimit(),
+    session.id,
+  );
+  if (!rl.success) {
+    const retryAfter = Math.max(1, Math.ceil((rl.reset - Date.now()) / 1000));
+    await logAuthEvent({
+      eventType: "rate_limit_exceeded",
+      userId: session.id,
+      metadata: {
+        route: "orders_create",
+        cap: rl.limit,
+        reset: rl.reset,
+      },
+    });
+    return NextResponse.json(
+      { error: "rate_limited", retry_after: retryAfter },
+      { status: 429, headers: { "Retry-After": String(retryAfter) } },
+    );
   }
 
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));

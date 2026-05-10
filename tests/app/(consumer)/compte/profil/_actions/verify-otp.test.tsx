@@ -21,8 +21,15 @@ let sessionMock: Mock<AnyAsyncFn>;
 let verifyHashMock: Mock<AnyAsyncFn>;
 let logAuthEventMock: Mock<AnyAsyncFn>;
 let updateSpy: Mock<AnySyncFn>;
+let rpcSpy: Mock<AnySyncFn>;
 let selectResponse: { data: Record<string, unknown> | null; error: { message: string } | null };
 let updateResponse: { error: { message: string } | null };
+// F-024 : la RPC increment_otp_attempts_if_below_cap retourne
+// { data: [{new_attempts, consumed}], error } ou { data: null, error: {...} }.
+let rpcResponse: {
+  data: Array<{ new_attempts: number | null; consumed: boolean }> | null;
+  error: { message: string } | null;
+};
 
 vi.mock("@/lib/auth/session", () => ({
   getSessionUser: (...args: unknown[]) => sessionMock(...args),
@@ -60,6 +67,10 @@ vi.mock("@/lib/supabase/admin", () => ({
         };
       },
     }),
+    rpc: (name: string, args: unknown) => {
+      rpcSpy(name, args);
+      return Promise.resolve(rpcResponse);
+    },
   }),
 }));
 
@@ -97,8 +108,12 @@ beforeEach(() => {
   verifyHashMock = vi.fn<AnyAsyncFn>().mockResolvedValue(true);
   logAuthEventMock = vi.fn<AnyAsyncFn>().mockResolvedValue(undefined);
   updateSpy = vi.fn<AnySyncFn>();
+  rpcSpy = vi.fn<AnySyncFn>();
   selectResponse = { data: makeRow(), error: null };
   updateResponse = { error: null };
+  // F-024 default : RPC returns new_attempts=1, consumed=false (premier
+  // increment, pas de cap). Override par test pour exercer guard miss / cap.
+  rpcResponse = { data: [{ new_attempts: 1, consumed: false }], error: null };
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
@@ -197,16 +212,22 @@ describe("verifyOtpAction — flow states", () => {
   });
 });
 
-describe("verifyOtpAction — wrong code", () => {
-  it("code faux row attempts=0 → newAttempts=1, audit invalid, attemptsRemaining=4", async () => {
+describe("verifyOtpAction — wrong code (F-024 atomic RPC)", () => {
+  it("code faux row attempts=0 → RPC retourne new_attempts=1, audit invalid, attemptsRemaining=4", async () => {
     verifyHashMock = vi.fn<AnyAsyncFn>().mockResolvedValue(false);
+    rpcResponse = { data: [{ new_attempts: 1, consumed: false }], error: null };
     const res = await verifyOtpAction({}, makeFormData("current", "999999"));
     expect(res).toEqual({
       ok: false,
       reason: "invalid",
       attemptsRemaining: 4,
     });
-    expect(updateSpy).toHaveBeenCalledWith({ attempts: 1 });
+    // F-024 : plus de UPDATE direct côté TS sur le branch invalid, c'est la
+    // RPC qui a fait l'increment atomique.
+    expect(rpcSpy).toHaveBeenCalledWith(
+      "increment_otp_attempts_if_below_cap",
+      { p_row_id: "row-uuid-1", p_cap: 5 },
+    );
     expect(logAuthEventMock).toHaveBeenCalledWith({
       eventType: "account_otp_invalid",
       userId: "user-1",
@@ -214,9 +235,10 @@ describe("verifyOtpAction — wrong code", () => {
     });
   });
 
-  it("code faux row attempts=3 → newAttempts=4, attemptsRemaining=1", async () => {
+  it("code faux RPC retourne new_attempts=4 → attemptsRemaining=1", async () => {
     verifyHashMock = vi.fn<AnyAsyncFn>().mockResolvedValue(false);
     selectResponse = { data: makeRow({ attempts: 3 }), error: null };
+    rpcResponse = { data: [{ new_attempts: 4, consumed: false }], error: null };
     const res = await verifyOtpAction({}, makeFormData("current", "999999"));
     expect(res).toEqual({
       ok: false,
@@ -225,21 +247,58 @@ describe("verifyOtpAction — wrong code", () => {
     });
   });
 
-  it("code faux row attempts=4 → newAttempts=5 cap → invalidate + reason=attempts_exceeded", async () => {
+  it("code faux RPC retourne new_attempts=5 (cap atteint) → consumed côté RPC + reason=attempts_exceeded", async () => {
     verifyHashMock = vi.fn<AnyAsyncFn>().mockResolvedValue(false);
     selectResponse = { data: makeRow({ attempts: 4 }), error: null };
+    // F-024 : la RPC marque elle-même consumed_at quand cap atteint.
+    rpcResponse = { data: [{ new_attempts: 5, consumed: true }], error: null };
     const res = await verifyOtpAction({}, makeFormData("current", "999999"));
     expect(res).toEqual({ ok: false, reason: "attempts_exceeded" });
-    expect(updateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        attempts: 5,
-        consumed_at: expect.any(String),
-      }),
-    );
     expect(logAuthEventMock).toHaveBeenCalledWith({
       eventType: "account_otp_attempts_exceeded",
       userId: "user-1",
       metadata: { step: "current", attempts: 5 },
+    });
+  });
+
+  it("F-024 race : code faux RPC guard miss (new_attempts=null) → reason=attempts_exceeded forced", async () => {
+    // Simulation race condition : le SELECT initial a lu attempts=4 mais une
+    // tentative concurrente est passée entre temps, l'UPDATE atomique côté
+    // RPC échoue son guard (attempts < 5 faux) → new_attempts=null retourné.
+    verifyHashMock = vi.fn<AnyAsyncFn>().mockResolvedValue(false);
+    selectResponse = { data: makeRow({ attempts: 4 }), error: null };
+    rpcResponse = {
+      data: [{ new_attempts: null, consumed: true }],
+      error: null,
+    };
+    const res = await verifyOtpAction({}, makeFormData("current", "999999"));
+    expect(res).toEqual({ ok: false, reason: "attempts_exceeded" });
+    expect(logAuthEventMock).toHaveBeenCalledWith({
+      eventType: "account_otp_attempts_exceeded",
+      userId: "user-1",
+      metadata: {
+        step: "current",
+        attempts: 5,
+        reason: "guard_miss",
+      },
+    });
+  });
+
+  it("F-024 RPC error transient → fail-closed reason=attempts_exceeded + audit reason=rpc_error", async () => {
+    verifyHashMock = vi.fn<AnyAsyncFn>().mockResolvedValue(false);
+    selectResponse = { data: makeRow({ attempts: 2 }), error: null };
+    rpcResponse = { data: null, error: { message: "connection timeout" } };
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await verifyOtpAction({}, makeFormData("current", "999999"));
+    expect(res).toEqual({ ok: false, reason: "attempts_exceeded" });
+    expect(logAuthEventMock).toHaveBeenCalledWith({
+      eventType: "account_otp_attempts_exceeded",
+      userId: "user-1",
+      metadata: {
+        step: "current",
+        attempts: 2,
+        reason: "rpc_error",
+      },
     });
   });
 });
