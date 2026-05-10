@@ -230,6 +230,14 @@ let _producerInterestLimiter: Ratelimit | null | undefined;
 // JAMAIS bloquer un webhook légitime sur un incident infra Upstash.
 let _stripeWebhookLimiter: Ratelimit | null | undefined;
 
+// F-011 (audit pré-launch 2026-05-10) — Server action exportMyDataAction
+// (RGPD art. 20 portabilité). Cap 5/24h keying userId : un user légitime
+// exerce son droit ponctuellement (1-2 exports/an typique). Au-delà =
+// scripting, abus, ou compromise de session. Coût élevé du build zip
+// (5 queries DB + sérialisation CSV + zip) justifie un cap strict. Keying
+// userId pour éviter NAT-collision et pour aligner avec exportComptaLimiter.
+let _rgpdExportLimiter: Ratelimit | null | undefined;
+
 export function getSignupRateLimit(): Ratelimit | null {
   if (_signupLimiter === undefined) {
     _signupLimiter = createRateLimiter(5, "60 s", "signup");
@@ -368,4 +376,11 @@ export function getStripeWebhookRateLimit(): Ratelimit | null {
     );
   }
   return _stripeWebhookLimiter;
+}
+
+export function getRgpdExportRateLimit(): Ratelimit | null {
+  if (_rgpdExportLimiter === undefined) {
+    _rgpdExportLimiter = createRateLimiter(5, "24 h", "rgpd_export");
+  }
+  return _rgpdExportLimiter;
 }

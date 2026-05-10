@@ -47,6 +47,9 @@ export const AUDIT_EVENT_LABELS: Record<string, string> = {
   admin_invite_blocked_producer: "Invitation bloquée (producteur déjà inscrit)",
   admin_invite_expired: "Invitation expirée (clic)",
 
+  // ─── RGPD ───────────────────────────────────────────────────────────
+  user_data_exported: "Export RGPD téléchargé",
+
   // ─── Commandes ──────────────────────────────────────────────────────
   order_created: "Commande créée",
   order_payment_succeeded: "Paiement réussi",

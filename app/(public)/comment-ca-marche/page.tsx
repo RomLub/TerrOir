@@ -13,7 +13,7 @@ const STEPS_CONSO = [
 const STEPS_PROD = [
   { n: '01', title: 'Créez votre fiche exploitation', text: "Présentez votre ferme, vos valeurs, vos labels. Une page dédiée pour raconter votre travail." },
   { n: '02', title: 'Gérez votre catalogue et vos créneaux', text: "Mettez à jour stocks et prix en temps réel. Définissez vos créneaux de retrait selon votre activité." },
-  { n: '03', title: 'Recevez les commandes et vendez direct', text: "Notification à chaque commande, paiement garanti, et seulement 6% de commission. Pas d'intermédiaire en plus." },
+  { n: '03', title: 'Recevez les commandes et vendez direct', text: "Notification à chaque commande, paiement garanti, et seulement 6% de commission. Une seule commission, transparente : 6 %." },
 ];
 
 const FAQ = [
@@ -35,7 +35,7 @@ export default function CommentCaMarchePage() {
           Du pré à ta table,<br/>en trois étapes.
         </h1>
         <p className="mt-5 text-[17px] text-dark/70 max-w-2xl mx-auto leading-relaxed">
-          TerrOir met en relation directe les éleveurs de la Sarthe et les amateurs de viande de qualité. Pas d&apos;intermédiaire, pas de stock, pas de gâchis.
+          TerrOir met en relation directe les éleveurs de la Sarthe et les amateurs de viande de qualité. Pas de centrale d&apos;achat, pas de stock, pas de gâchis.
         </p>
       </section>
 

@@ -5,10 +5,12 @@
 // Icônes SVG inline stroke terra-700 (cohérent règle DS : icônes en
 // terra dans cette section, vs green dans Steps).
 //
-// Important copy : éviter "sans intermédiaire" pour parler du flux
-// d'argent (TerrOir prélève une commission). Ici "Pas de centrale
-// d'achat, pas de plateforme intermédiaire" est OK car parle de
-// distribution physique humaine, pas de paiement.
+// Important copy : éviter "intermédiaire" tout court pour décrire
+// le circuit court (post-audit DGCCRF 2026-05-10, F-016). TerrOir
+// est elle-même intermédiaire de paiement (Stripe Connect platform)
+// et prélève 6 % commission — la négation expose à L121-2. Préférer
+// "grossiste" / "centrale d'achat" qui ciblent un acteur précis du
+// circuit long.
 
 type Item = {
   icon: React.ReactNode;
@@ -68,7 +70,7 @@ const ITEMS: Item[] = [
   {
     icon: <PeopleIcon />,
     title: "Circuit court, humain",
-    body: "Pas de centrale d'achat, pas de plateforme intermédiaire. Tu achètes à un éleveur, il te remet ta commande lui-même.",
+    body: "Pas de centrale d'achat, pas de grossiste qui marge. Tu achètes à un éleveur, il te remet ta commande lui-même.",
   },
   {
     icon: <BasketLockIcon />,
