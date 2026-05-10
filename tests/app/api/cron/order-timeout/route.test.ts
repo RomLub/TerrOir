@@ -342,7 +342,7 @@ describe("POST /api/cron/order-timeout — auth", () => {
 // 4-5. SELECT orders — erreur PostgREST + cas no-op (cutoff filter)
 // =============================================================================
 describe("POST /api/cron/order-timeout — DB select", () => {
-  it("returns 500 with the PostgREST error message when SELECT fails", async () => {
+  it("returns 500 with a generic message when SELECT fails (F-029 leak-prevention)", async () => {
     const { client } = makeSupabase({
       selectOrders: { data: null, error: { message: "RLS denied" } },
     });
@@ -351,7 +351,8 @@ describe("POST /api/cron/order-timeout — DB select", () => {
     const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
     expect(res.status).toBe(500);
     const body = (await res.json()) as { error: string };
-    expect(body.error).toBe("RLS denied");
+    // F-029 : dbErrorResponse masque le message brut Postgres.
+    expect(body.error).toBe("Internal database error");
   });
 
   it("returns processed=0 with no side effects when no pending orders match the cutoff", async () => {

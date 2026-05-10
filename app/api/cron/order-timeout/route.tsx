@@ -18,6 +18,7 @@ import OrderTimeoutCancelled, {
   subject as timeoutSubject,
 } from "@/lib/resend/templates/order-timeout-cancelled";
 import { mapWithConcurrency } from "@/lib/concurrency/p-limit";
+import { dbErrorResponse } from "@/lib/api/db-error-response";
 
 // Quotidien à 9h UTC (cf. vercel.json schedule "0 9 * * *") : annule +
 // rembourse les commandes pending depuis +24h. Audit Stripe L-4 (2026-05-05)
@@ -61,7 +62,7 @@ export async function POST(request: Request) {
     .eq("statut", "pending")
     .lt("created_at", cutoff);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return dbErrorResponse(error, "CRON_ORDER_TIMEOUT_SELECT");
   if (!orders || orders.length === 0) {
     return NextResponse.json({ processed: 0 });
   }

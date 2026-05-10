@@ -44,9 +44,12 @@ export async function requestNewOptOutLinkAction(
     .maybeSingle();
 
   if (lead) {
+    // F-027 : generateOptOutToken retourne maintenant { token, expiresAt }.
+    // Le token embarque TTL 30j ; aucun storage DB côté serveur.
+    const { token: optOutToken } = generateOptOutToken(email);
     const unsubscribeUrl = `${NEXT_PUBLIC_APP_URL}/desabonnement?email=${encodeURIComponent(
       email,
-    )}&token=${generateOptOutToken(email)}`;
+    )}&token=${optOutToken}`;
 
     await sendTemplate({
       to: email,

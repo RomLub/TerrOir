@@ -55,10 +55,26 @@ vi.mock("@/lib/supabase/admin", () => ({
 }));
 
 // generateOptOutToken / verifyOptOutToken — on stubbe la vérif pour passer
-// en happy path sans avoir à signer un token réel.
+// en happy path sans avoir à signer un token réel. F-027 : la signature
+// retourne maintenant des objets ({ valid, email, expiresAt } /
+// { token, expiresAt }).
 vi.mock("@/lib/rgpd/opt-out-token", () => ({
-  verifyOptOutToken: () => true,
-  generateOptOutToken: () => "stub-token",
+  verifyOptOutToken: () => ({
+    valid: true,
+    email: "user@example.com",
+    expiresAt: new Date("2099-01-01T00:00:00Z"),
+  }),
+  generateOptOutToken: () => ({
+    token: "stub-token",
+    expiresAt: new Date("2099-01-01T00:00:00Z"),
+  }),
+}));
+
+// F-027 : audit log forensique opt_out_unsubscribed. Stub la fonction pour
+// vérifier qu'elle est appelée avec event_type correct.
+const logAuthEventMock = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock("@/lib/audit-logs/log-auth-event", () => ({
+  logAuthEvent: logAuthEventMock,
 }));
 
 // sendTemplate : on n'a pas besoin de l'évaluer dans ces tests T-110.
@@ -91,7 +107,7 @@ afterEach(() => {
 
 describe("unsubscribeAction (T-110 — match email .ilike)", () => {
   it("DELETE producer_interests via .ilike sur email (case-insensitive)", async () => {
-    responses.producer_interests = [{ data: null, error: null }];
+    responses.producer_interests = [{ data: [{ id: "row-1" }], error: null }];
     const fd = new FormData();
     // Email saisi en mixed-case côté formulaire ; après .toLowerCase()
     // côté action, le match .ilike doit toujours fonctionner contre une
@@ -114,6 +130,15 @@ describe("unsubscribeAction (T-110 — match email .ilike)", () => {
         (c) => c.table === "producer_interests" && c.col === "email",
       ),
     ).toBeUndefined();
+    // F-027 : audit log opt_out_unsubscribed émis avec event_type correct
+    expect(logAuthEventMock).toHaveBeenCalledOnce();
+    const eventArg = logAuthEventMock.mock.calls[0]?.[0] as {
+      eventType: string;
+      metadata?: { email_masked?: string; rows_deleted?: number };
+    };
+    expect(eventArg.eventType).toBe("opt_out_unsubscribed");
+    expect(eventArg.metadata?.email_masked).toContain("***@example.com");
+    expect(eventArg.metadata?.rows_deleted).toBe(1);
   });
 });
 

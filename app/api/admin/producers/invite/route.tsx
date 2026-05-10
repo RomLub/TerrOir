@@ -9,6 +9,7 @@ import { generateOptOutToken } from "@/lib/rgpd/opt-out-token";
 import { maskEmail } from "@/lib/rgpd/mask-email";
 import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 import { logAdminInviteEvent } from "@/lib/audit-logs/log-admin-invite-event";
+import { dbErrorResponse } from "@/lib/api/db-error-response";
 import {
   consumeRateLimit,
   getAdminInviteRateLimit,
@@ -81,7 +82,9 @@ export async function POST(request: Request) {
     .ilike("email", escapeIlikeEmail(input.email))
     .maybeSingle();
   if (adminCheckError) {
-    return NextResponse.json({ error: adminCheckError.message }, { status: 500 });
+    return dbErrorResponse(adminCheckError, "ADMIN_INVITE_ADMIN_CHECK", {
+      admin_id: session.id,
+    });
   }
   if (existingAdmin) {
     // T-081 — audit log forensique : un admin a tenté d'inviter un email
@@ -111,7 +114,9 @@ export async function POST(request: Request) {
     .ilike("email", escapeIlikeEmail(input.email))
     .maybeSingle();
   if (userCheckError) {
-    return NextResponse.json({ error: userCheckError.message }, { status: 500 });
+    return dbErrorResponse(userCheckError, "ADMIN_INVITE_USER_CHECK", {
+      admin_id: session.id,
+    });
   }
   // Si users.roles contient 'producer', on regarde producer.statut pour
   // distinguer :
@@ -242,11 +247,14 @@ export async function POST(request: Request) {
   //    on 500 proprement sans laisser d'invitation orpheline en base.
   const token = randomBytes(32).toString("hex");
 
-  // Lien opt-out RGPD embarqué dans le pied de l'email (token HMAC
-  // déterministe, pointe sur www).
+  // Lien opt-out RGPD embarqué dans le pied de l'email (token HMAC signé
+  // avec TTL 30j, pointe sur www). F-027 : la signature retourne
+  // maintenant { token, expiresAt } — on n'utilise que `token` ici, le
+  // recipient verra l'expiration côté page /desabonnement.
+  const { token: optOutToken } = generateOptOutToken(input.email);
   const unsubscribeUrl = `${NEXT_PUBLIC_APP_URL}/desabonnement?email=${encodeURIComponent(
     input.email,
-  )}&token=${generateOptOutToken(input.email)}`;
+  )}&token=${optOutToken}`;
 
   // 3. Invitation (token + expiry gérés par la table)
   const { data: invitation, error: invitationError } = await admin

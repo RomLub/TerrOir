@@ -31,6 +31,15 @@ import { extractRequestContext } from "@/lib/audit-logs/log-auth-event";
 // .max(), un attaquant authentifié (rate-limit anon 5/min/IP) pouvait
 // bloater la table avec entrées multi-MB (colonnes Postgres `text` =
 // illimité). Pattern aligné sur app/api/contact/route.tsx.
+//
+// F-038 (audit 2026-05-10) :
+//   - `consent: z.literal(true)` : checkbox CGU/contact obligatoire côté UI,
+//     vérifiée serveur. Sans consent : 400. RGPD art. 6(1)(a) : consentement
+//     informé requis pour traitement données candidature.
+//   - `website: z.string().max(0).optional()` : honeypot anti-bot. Champ
+//     caché par CSS, jamais visible/typable par un humain. Si rempli, le
+//     POST est rejeté en silence (200 fake-success pour ne pas signaler
+//     au bot que sa soumission a été détectée — pattern enumeration-resistant).
 const bodySchema = z.object({
   prenom: z.string().trim().min(1, "Prénom requis").max(120),
   nom: z.string().trim().min(1, "Nom requis").max(120),
@@ -43,6 +52,8 @@ const bodySchema = z.object({
     .max(180),
   commune: z.string().trim().min(1, "Commune requise").max(120),
   message: z.string().trim().max(2000).optional(),
+  consent: z.literal(true, { message: "Consentement requis" }),
+  website: z.string().max(0).optional(),
 });
 
 export async function POST(request: Request) {
@@ -66,7 +77,22 @@ export async function POST(request: Request) {
     );
   }
 
-  const parsed = bodySchema.safeParse(await request.json().catch(() => null));
+  const rawBody = (await request.json().catch(() => null)) as
+    | (Record<string, unknown> | null)
+    | null;
+
+  // F-038 : honeypot court-circuit AVANT la validation Zod. Si le champ
+  // `website` est rempli, c'est un bot — on retourne un faux succès
+  // (200 { status: 'created' }) pour ne pas lui signaler la détection.
+  // On log [PRODUCER_INTEREST_HONEYPOT_HIT] pour observabilité forensique.
+  if (rawBody && typeof rawBody.website === "string" && rawBody.website.length > 0) {
+    console.warn(
+      `[PRODUCER_INTEREST_HONEYPOT_HIT] ip=${ipAddress ?? "(none)"} website_len=${rawBody.website.length}`,
+    );
+    return NextResponse.json({ status: "created" });
+  }
+
+  const parsed = bodySchema.safeParse(rawBody);
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.issues[0]?.message ?? "Invalid body" },

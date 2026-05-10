@@ -49,6 +49,7 @@ export const AUDIT_EVENT_LABELS: Record<string, string> = {
 
   // ─── RGPD ───────────────────────────────────────────────────────────
   user_data_exported: "Export RGPD téléchargé",
+  opt_out_unsubscribed: "Désabonnement opt-out lead (RGPD)",
 
   // ─── Commandes ──────────────────────────────────────────────────────
   order_created: "Commande créée",
@@ -87,6 +88,8 @@ export const AUDIT_EVENT_LABELS: Record<string, string> = {
   stripe_account_deauthorized: "Stripe : compte déconnecté",
   stripe_transfer_reversed: "Stripe : transfer reversé (clawback)",
   stripe_transfer_reversal_failed: "Stripe : échec reversal transfer",
+  stripe_dispute_funds_withdrawn: "Stripe : fonds dispute retirés (provisoire)",
+  stripe_dispute_funds_reinstated: "Stripe : fonds dispute restitués (won)",
 
   // ─── Email delivery ─────────────────────────────────────────────────
   email_complaint_received: "Plainte spam reçue",

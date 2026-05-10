@@ -20,8 +20,16 @@ export default async function DesabonnementPage(
   const email = (searchParams.email ?? '').trim().toLowerCase();
   const token = (searchParams.token ?? '').trim();
 
-  const valid = email && token && verifyOptOutToken(email, token);
+  // F-027 : verifyOptOutToken retourne { valid, expired? } pour distinguer
+  // "lien invalide" (HMAC fail, format cassé) de "lien expiré" (TTL 30j
+  // dépassé). On affiche un message différent dans le fallback RequestLinkForm.
+  const verification =
+    email && token
+      ? verifyOptOutToken(email, token)
+      : { valid: false as const, expired: false };
+  const valid = verification.valid;
   const hasToken = Boolean(token);
+  const wasExpired = !verification.valid && verification.expired;
 
   return (
     <section className="bg-bg">
@@ -39,9 +47,11 @@ export default async function DesabonnementPage(
           ) : (
             <RequestLinkForm
               helperText={
-                hasToken
-                  ? "Votre lien n'est plus valide ou a expiré. Renseignez votre email pour recevoir un nouveau lien de désabonnement."
-                  : undefined
+                wasExpired
+                  ? "Votre lien a expiré (durée de validité 30 jours). Renseignez votre email pour recevoir un nouveau lien de désabonnement."
+                  : hasToken
+                    ? "Votre lien n'est plus valide. Renseignez votre email pour recevoir un nouveau lien de désabonnement."
+                    : undefined
               }
             />
           )}

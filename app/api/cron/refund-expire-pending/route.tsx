@@ -7,6 +7,7 @@ import { SUPPORT_EMAIL } from "@/lib/env/support-email";
 import ProducerRefundPendingDecision, {
   subject as producerRefundDecisionSubject,
 } from "@/lib/resend/templates/producer-refund-pending-decision";
+import { dbErrorResponse } from "@/lib/api/db-error-response";
 
 // F-014 v2 (audit P0 sweep 2026-05-11) — Cron daily : auto-expire les
 // pending_refunds non décidés sous 7 jours. Émet email producer +
@@ -36,10 +37,7 @@ export async function POST(request: Request) {
     .limit(50);
 
   if (fetchErr) {
-    console.error(
-      `[REFUND_EXPIRE_PENDING_FETCH_ERR] ${fetchErr.message}`,
-    );
-    return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+    return dbErrorResponse(fetchErr, "CRON_REFUND_EXPIRE_PENDING_FETCH");
   }
 
   if (!candidates || candidates.length === 0) {

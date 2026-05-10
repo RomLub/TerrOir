@@ -13,7 +13,8 @@ const ADVANTAGES = [
 type SubmitStatus = 'created' | 'updated';
 
 export default function DevenirProducteurPage() {
-  const [form, setForm] = useState({ prenom: '', nom: '', email: '', phone: '', exploitation: '', commune: '', message: '' });
+  const [form, setForm] = useState({ prenom: '', nom: '', email: '', phone: '', exploitation: '', commune: '', message: '', website: '' });
+  const [consent, setConsent] = useState(false);
   const [sent, setSent] = useState<SubmitStatus | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -21,7 +22,8 @@ export default function DevenirProducteurPage() {
   const update = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
-  const valid = form.prenom && form.nom && form.email && form.phone && form.exploitation && form.commune;
+  // F-038 : consent CGU obligatoire côté UI (et côté serveur via Zod literal).
+  const valid = form.prenom && form.nom && form.email && form.phone && form.exploitation && form.commune && consent;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,6 +43,9 @@ export default function DevenirProducteurPage() {
         nom_exploitation: form.exploitation.trim(),
         commune: form.commune.trim(),
         ...(message ? { message } : {}),
+        consent: true,
+        // F-038 honeypot anti-bot : champ caché par CSS, doit rester vide.
+        website: form.website,
       }),
     });
 
@@ -152,6 +157,34 @@ export default function DevenirProducteurPage() {
             <Textarea label="Ton message (optionnel)" rows={5} value={form.message} onChange={update('message')}
                       placeholder="Parle-nous de ton activité, tes labels, tes volumes…" />
 
+            {/* F-038 honeypot anti-bot : caché en CSS, jamais visible/typable
+                par un humain. Si rempli côté serveur, requête rejetée silently. */}
+            <input
+              type="text"
+              name="website"
+              tabIndex={-1}
+              autoComplete="off"
+              value={form.website}
+              onChange={update('website')}
+              aria-hidden="true"
+              style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }}
+            />
+
+            {/* F-038 consent RGPD art. 6(1)(a) : checkbox CGU explicite. */}
+            <label className="flex items-start gap-3 text-[13px] text-dark/75 leading-relaxed cursor-pointer">
+              <input
+                type="checkbox"
+                name="consent"
+                checked={consent}
+                onChange={(e) => setConsent(e.target.checked)}
+                required
+                className="mt-1 h-4 w-4 rounded border-dark/20 text-terra-700 focus:ring-terra-700/40"
+              />
+              <span>
+                J&apos;accepte d&apos;être recontacté par l&apos;équipe TerrOir au sujet de ma candidature et que mes données soient stockées le temps du traitement de ma demande.
+              </span>
+            </label>
+
             <div className="pt-2">
               <Button type="submit" size="lg" className="w-full" disabled={!valid || submitting}>
                 {submitting ? 'Envoi…' : 'Envoyer ma demande →'}
@@ -159,9 +192,6 @@ export default function DevenirProducteurPage() {
               {error && (
                 <p className="text-[13px] text-terra-700 text-center mt-3">{error}</p>
               )}
-              <p className="text-[12px] text-dark/55 text-center mt-3">
-                En envoyant ce formulaire, tu acceptes d&apos;être recontacté par l&apos;équipe TerrOir.
-              </p>
             </div>
           </form>
         </div>

@@ -31,6 +31,7 @@ const VALID_BODY = {
   nom_exploitation: "Ferme du Pré",
   commune: "Le Mans",
   message: "Je veux rejoindre",
+  consent: true,
 };
 
 function buildRequest(body: unknown): Request {
@@ -148,5 +149,50 @@ describe("POST /api/producer-interests — propagation helper", () => {
     // Email masqué : "ja***@example.com" pas "jean.dupont"
     expect(logArg).toContain("***@example.com");
     expect(logArg).not.toContain("jean.dupont");
+  });
+});
+
+describe("POST /api/producer-interests — F-038 consent + honeypot", () => {
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  it("consent absent → 400 + helper jamais appelé", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { consent, ...withoutConsent } = VALID_BODY;
+    const res = await POST(buildRequest(withoutConsent));
+    expect(res.status).toBe(400);
+    expect(mockUpsert).not.toHaveBeenCalled();
+  });
+
+  it("consent=false → 400 + helper jamais appelé", async () => {
+    const res = await POST(buildRequest({ ...VALID_BODY, consent: false }));
+    expect(res.status).toBe(400);
+    expect(mockUpsert).not.toHaveBeenCalled();
+  });
+
+  it("honeypot rempli → 200 fake-success + helper jamais appelé + log warn", async () => {
+    const res = await POST(
+      buildRequest({ ...VALID_BODY, website: "https://spam-bot.example" }),
+    );
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { status: string };
+    expect(json.status).toBe("created");
+    expect(mockUpsert).not.toHaveBeenCalled();
+    // Log forensique observable
+    expect(consoleWarnSpy).toHaveBeenCalled();
+    const logArg = String(consoleWarnSpy.mock.calls[0]?.[0] ?? "");
+    expect(logArg).toContain("[PRODUCER_INTEREST_HONEYPOT_HIT]");
+  });
+
+  it("honeypot vide explicite → 200 nominal (helper appelé)", async () => {
+    mockUpsert.mockResolvedValue({
+      ok: true,
+      data: { id: "row-1", status: "created" },
+    });
+    const res = await POST(buildRequest({ ...VALID_BODY, website: "" }));
+    expect(res.status).toBe(200);
+    expect(mockUpsert).toHaveBeenCalledOnce();
   });
 });

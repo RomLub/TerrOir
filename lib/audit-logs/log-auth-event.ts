@@ -117,6 +117,13 @@ export const AUTH_EVENT_TYPES = [
   // CNIL ("prouvez que l'user X a bien pu exercer son droit"). userId =
   // session.id, metadata embarque counts (orders, reviews, notifications).
   "user_data_exported",
+  // F-027 (audit pré-launch 2026-05-10) : opt-out RGPD lead producer_interests.
+  // Émis par unsubscribeAction quand un lead clique sur le lien désabonnement
+  // d'un email TerrOir et confirme la suppression. userId = null (lead pas
+  // user authentifié), metadata embarque email_masked + token_expires_at +
+  // rows_deleted pour traçabilité forensique. Permet de prouver la demande
+  // CNIL ("nous avons bien supprimé les coordonnées de X à la date Y").
+  "opt_out_unsubscribed",
 ] as const;
 
 export type AuthEventType = (typeof AUTH_EVENT_TYPES)[number];
