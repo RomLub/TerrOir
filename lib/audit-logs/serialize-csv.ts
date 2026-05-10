@@ -48,11 +48,32 @@ export type AuditLogCsvRow = {
 
 const NEEDS_QUOTING_RE = /[";\r\n]/;
 
-export function escapeCsvField(value: string): string {
-  if (NEEDS_QUOTING_RE.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`;
+// F-023 (audit pré-launch 2026-05) — Mitigation CSV formula injection.
+// Cf. lib/exports/csv.ts pour le détail. Préfixe apostrophe ASCII si
+// la valeur commence par `=`, `+`, `-`, `@`, `\t` ou `\r` pour éviter
+// l'évaluation de formule au double-clic Excel/LibreOffice/Sheets.
+export function escapeCsvFormula(value: string): string {
+  if (value.length === 0) return value;
+  const first = value.charCodeAt(0);
+  if (
+    first === 0x3d ||
+    first === 0x2b ||
+    first === 0x2d ||
+    first === 0x40 ||
+    first === 0x09 ||
+    first === 0x0d
+  ) {
+    return "'" + value;
   }
   return value;
+}
+
+export function escapeCsvField(value: string): string {
+  const safe = escapeCsvFormula(value);
+  if (NEEDS_QUOTING_RE.test(safe)) {
+    return `"${safe.replace(/"/g, '""')}"`;
+  }
+  return safe;
 }
 
 function serializeRow(row: AuditLogCsvRow): string {

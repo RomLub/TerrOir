@@ -3,8 +3,8 @@ import { unstable_cache } from "next/cache";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   fetchPublicProducts,
-  type PublicProductRow,
-  type ResolvedFilters,
+  type FetchPublicProductsOpts,
+  type FetchPublicProductsResult,
 } from "./fetch-products-public";
 import type { ProductsFilters } from "./parse-search-params";
 
@@ -25,12 +25,20 @@ import type { ProductsFilters } from "./parse-search-params";
 
 export async function getPublicProducts(
   filters: ProductsFilters,
-): Promise<{ products: PublicProductRow[]; resolved: ResolvedFilters }> {
-  const cacheKey = ["public-products", JSON.stringify(filters)];
+  opts: FetchPublicProductsOpts = {},
+): Promise<FetchPublicProductsResult> {
+  // F-049 : cursor + limit incluent la clé de cache pour permettre des
+  // pages distinctes en cache (sinon page 2 servirait page 1 stale).
+  const cacheKey = [
+    "public-products",
+    JSON.stringify(filters),
+    opts.cursor ?? "head",
+    String(opts.limit ?? "default"),
+  ];
   const cached = unstable_cache(
     async () => {
       const admin = createSupabaseAdminClient();
-      return fetchPublicProducts(admin, filters);
+      return fetchPublicProducts(admin, filters, opts);
     },
     cacheKey,
     {

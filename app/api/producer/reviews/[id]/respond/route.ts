@@ -5,7 +5,10 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { logReviewEvent } from "@/lib/audit-logs/log-review-event";
 import { sendReviewResponseEmail } from "@/lib/notifications/send-review-response-email";
-import { revalidateProducerCard } from "@/lib/stats/revalidate";
+import {
+  revalidateProducerCard,
+  revalidateProducerReviews,
+} from "@/lib/stats/revalidate";
 
 // Droit de réponse Producer aux avis (CGU 6.4) — publication immédiate,
 // éditable + supprimable pendant 24h, puis figée.
@@ -148,6 +151,11 @@ export async function POST(request: Request, props: RouteContext) {
       slug: producerSlug,
       source: "producer-reviews-respond-update",
     });
+    // F-047 : invalide aussi le cache des reviews de la fiche producteur.
+    await revalidateProducerReviews({
+      slug: producerSlug,
+      source: "producer-reviews-respond-update",
+    });
 
     return NextResponse.json({ ok: true, mode: "updated" });
   }
@@ -197,6 +205,11 @@ export async function POST(request: Request, props: RouteContext) {
   // bugs-P2-3 : invalidation cache `producer:<slug>` après create producer_response.
   // Cf commentaire path update plus haut.
   await revalidateProducerCard({
+    slug: producerSlug,
+    source: "producer-reviews-respond-create",
+  });
+  // F-047 : invalide aussi le cache des reviews de la fiche producteur.
+  await revalidateProducerReviews({
     slug: producerSlug,
     source: "producer-reviews-respond-create",
   });
@@ -267,6 +280,11 @@ export async function DELETE(_request: Request, props: RouteContext) {
 
   // bugs-P2-3 : invalidation cache `producer:<slug>` après delete producer_response.
   await revalidateProducerCard({
+    slug: producerSlug,
+    source: "producer-reviews-respond-delete",
+  });
+  // F-047 : invalide aussi le cache des reviews de la fiche producteur.
+  await revalidateProducerReviews({
     slug: producerSlug,
     source: "producer-reviews-respond-delete",
   });

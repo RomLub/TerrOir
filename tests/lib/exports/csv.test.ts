@@ -1,9 +1,75 @@
 import { describe, it, expect } from "vitest";
 import {
   escapeCsvField,
+  escapeCsvFormula,
   serializeRowsToCsv,
   maskEmailForExport,
 } from "@/lib/exports/csv";
+
+describe("escapeCsvFormula (F-023 CSV injection)", () => {
+  it("préfixe apostrophe sur '=cmd' (formule)", () => {
+    expect(escapeCsvFormula("=cmd")).toBe("'=cmd");
+  });
+
+  it("préfixe apostrophe sur '=SUM(A1:A10)' (formule complexe)", () => {
+    expect(escapeCsvFormula("=SUM(A1:A10)")).toBe("'=SUM(A1:A10)");
+  });
+
+  it("préfixe apostrophe sur '+avg' (formule + prefix)", () => {
+    expect(escapeCsvFormula("+avg")).toBe("'+avg");
+  });
+
+  it("préfixe apostrophe sur '-1' (formule - prefix)", () => {
+    expect(escapeCsvFormula("-1")).toBe("'-1");
+  });
+
+  it("préfixe apostrophe sur '@SUM(1)' (@ prefix)", () => {
+    expect(escapeCsvFormula("@SUM(1)")).toBe("'@SUM(1)");
+  });
+
+  it("préfixe apostrophe sur tab leading (\\t)", () => {
+    expect(escapeCsvFormula("\tinjected")).toBe("'\tinjected");
+  });
+
+  it("préfixe apostrophe sur CR leading (\\r)", () => {
+    expect(escapeCsvFormula("\rinjected")).toBe("'\rinjected");
+  });
+
+  it("ne modifie pas une valeur normale", () => {
+    expect(escapeCsvFormula("Acme Foo")).toBe("Acme Foo");
+  });
+
+  it("ne modifie pas une valeur vide", () => {
+    expect(escapeCsvFormula("")).toBe("");
+  });
+
+  it("ne modifie pas une valeur avec '=' au milieu", () => {
+    expect(escapeCsvFormula("nom=valeur")).toBe("nom=valeur");
+  });
+});
+
+describe("escapeCsvField avec formula injection", () => {
+  it("préfixe apostrophe puis quote si la formule contient virgule", () => {
+    // "=cmd,foo" → préfixe '=cmd,foo → contient ',' → quoting RFC 4180
+    expect(escapeCsvField("=cmd,foo")).toBe(`"'=cmd,foo"`);
+  });
+
+  it("préfixe apostrophe sans quoting si pas de caractère spécial", () => {
+    expect(escapeCsvField("=cmd")).toBe("'=cmd");
+  });
+
+  it("retourne null/undefined comme chaîne vide (pas d'apostrophe)", () => {
+    expect(escapeCsvField(null)).toBe("");
+    expect(escapeCsvField(undefined)).toBe("");
+  });
+
+  it("ne traite pas un nombre négatif String(-1) comme inoffensif (préfix apostrophe)", () => {
+    // String(-1) === "-1" qui commence par "-" → apostrophe ajouté.
+    // Acceptable : le destinataire voit "-1" dans Excel, l'apostrophe
+    // est invisible mais conservée à la copie. Trade-off documenté.
+    expect(escapeCsvField(-1)).toBe("'-1");
+  });
+});
 
 describe("escapeCsvField", () => {
   it("retourne null/undefined comme chaîne vide", () => {

@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { fetchPublicProducts } from '@/lib/products/fetch-products-public';
+import {
+  fetchPublicProducts,
+  PRODUCTS_PAGE_LIMIT_DEFAULT,
+  PRODUCTS_PAGE_LIMIT_MAX,
+} from '@/lib/products/fetch-products-public';
 
 // Mock Supabase multi-from pour fetchPublicProducts.
 //
@@ -16,6 +20,8 @@ type Captured = {
   select: string[];
   eq: Array<[string, unknown]>;
   order: Array<[string, { ascending?: boolean }]>;
+  lt: Array<[string, unknown]>;
+  limit: number[];
 };
 
 function makeMultiFromSupabase(responses: Response[]): {
@@ -23,7 +29,7 @@ function makeMultiFromSupabase(responses: Response[]): {
   captured: Captured;
 } {
   let callIdx = 0;
-  const captured: Captured = { from: [], select: [], eq: [], order: [] };
+  const captured: Captured = { from: [], select: [], eq: [], order: [], lt: [], limit: [] };
 
   const makeBuilder = (response: Response) => {
     const builder: any = {};
@@ -37,6 +43,14 @@ function makeMultiFromSupabase(responses: Response[]): {
     };
     builder.order = (col: string, opts: { ascending?: boolean }) => {
       captured.order.push([col, opts]);
+      return builder;
+    };
+    builder.lt = (col: string, val: unknown) => {
+      captured.lt.push([col, val]);
+      return builder;
+    };
+    builder.limit = (n: number) => {
+      captured.limit.push(n);
       return builder;
     };
     builder.maybeSingle = () => Promise.resolve(response);
@@ -235,5 +249,93 @@ describe('fetchPublicProducts — contrat sécurité', () => {
     await fetchPublicProducts(client, NULL_FILTERS);
 
     expect(captured.order).toContainEqual(['created_at', { ascending: false }]);
+  });
+});
+
+// ---------- F-049 Pagination ---------------------------------------------
+
+describe('fetchPublicProducts — pagination cursor (F-049)', () => {
+  it('sans cursor : premier batch, limit default appliqué, nextCursor null si page partielle', async () => {
+    const products = [
+      { id: 'p1', nom: 'A', created_at: '2026-05-10T10:00:00Z' },
+      { id: 'p2', nom: 'B', created_at: '2026-05-09T10:00:00Z' },
+    ];
+    const { client, captured } = makeMultiFromSupabase([
+      { data: products, error: null },
+    ]);
+
+    const result = await fetchPublicProducts(client, NULL_FILTERS);
+
+    expect(result.products).toHaveLength(2);
+    expect(result.nextCursor).toBeNull();
+    expect(captured.limit).toEqual([PRODUCTS_PAGE_LIMIT_DEFAULT]);
+    expect(captured.lt).toEqual([]);
+  });
+
+  it('cursor fourni : applique .lt("created_at", cursor)', async () => {
+    const { client, captured } = makeMultiFromSupabase([
+      { data: [], error: null },
+    ]);
+
+    await fetchPublicProducts(client, NULL_FILTERS, {
+      cursor: '2026-05-01T00:00:00Z',
+      limit: 30,
+    });
+
+    expect(captured.lt).toContainEqual(['created_at', '2026-05-01T00:00:00Z']);
+    expect(captured.limit).toEqual([30]);
+  });
+
+  it('page pleine (count === limit) : nextCursor = created_at du dernier item', async () => {
+    const products = Array.from({ length: 5 }, (_, i) => ({
+      id: `p${i}`,
+      nom: `prod ${i}`,
+      created_at: `2026-05-${String(10 - i).padStart(2, '0')}T10:00:00Z`,
+    }));
+    const { client } = makeMultiFromSupabase([{ data: products, error: null }]);
+
+    const result = await fetchPublicProducts(client, NULL_FILTERS, { limit: 5 });
+
+    expect(result.products).toHaveLength(5);
+    expect(result.nextCursor).toBe('2026-05-06T10:00:00Z');
+  });
+
+  it('limite > MAX clampée à MAX', async () => {
+    const { client, captured } = makeMultiFromSupabase([
+      { data: [], error: null },
+    ]);
+
+    await fetchPublicProducts(client, NULL_FILTERS, { limit: 9999 });
+
+    expect(captured.limit).toEqual([PRODUCTS_PAGE_LIMIT_MAX]);
+  });
+});
+
+// ---------- F-051 Parallélisation slug resolution ------------------------
+
+describe('fetchPublicProducts — résolutions slug parallèles (F-051)', () => {
+  it('3 filtres actifs : les 3 SELECT slug sont lancés AVANT le SELECT products', async () => {
+    // On valide la séquence : product_categories, animals, cuts puis products.
+    // (Promise.all préserve l'ordre de spawn, qui correspond à l'ordre cat/animal/cut.)
+    const { client, captured } = makeMultiFromSupabase([
+      { data: { id: 'cat-uuid', name: 'Viande' }, error: null },
+      { data: { id: 'animal-uuid', name: 'Bœuf' }, error: null },
+      { data: { id: 'cut-uuid', name: 'Entrecôte' }, error: null },
+      { data: [], error: null },
+    ]);
+
+    await fetchPublicProducts(client, {
+      cut: 'entrecote',
+      animal: 'boeuf',
+      category: 'viande',
+    });
+
+    // Ordre exact préservé via Promise.all sequential spawn.
+    expect(captured.from).toEqual([
+      'product_categories',
+      'animals',
+      'cuts',
+      'products',
+    ]);
   });
 });

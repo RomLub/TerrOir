@@ -10,6 +10,7 @@ import { promoteProducerToPublicIfActive } from '@/lib/producers/promote-to-publ
 import {
   revalidatePublicStats,
   revalidatePublicProducts,
+  revalidateProducerProducts,
 } from '@/lib/stats/revalidate';
 import { ProducerLayout } from '../../_components/ProducerLayout';
 import {
@@ -48,6 +49,9 @@ export default function ProductNewPage() {
   const [dragging, setDragging] = useState(false);
   const [producerId, setProducerId] = useState<string | null>(null);
   const [producerName, setProducerName] = useState('');
+  // F-047 : slug en state pour permettre l'invalidation tag-based du cache
+  // `producer-products:<slug>` après création produit.
+  const [producerSlug, setProducerSlug] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -68,13 +72,14 @@ export default function ProductNewPage() {
       if (!user) { if (active) setError('Non connecté.'); return; }
       const { data: prod } = await supabase
         .from('producers')
-        .select('id, nom_exploitation')
+        .select('id, nom_exploitation, slug')
         .eq('user_id', user.id)
         .maybeSingle();
       if (!active) return;
       if (!prod) { setError('Profil producteur introuvable.'); return; }
       setProducerId(prod.id);
       setProducerName(prod.nom_exploitation);
+      setProducerSlug(prod.slug);
     })();
     return () => { active = false; };
   }, []);
@@ -227,6 +232,14 @@ export default function ProductNewPage() {
           source: 'producer-catalogue-create',
           productId: inserted.id,
         });
+        // F-047 : invalide le cache `producer-products:<slug>` pour la
+        // fiche /producteurs/[slug] (best-effort, no-op si slug absent).
+        if (producerSlug) {
+          await revalidateProducerProducts({
+            slug: producerSlug,
+            source: 'producer-catalogue-create',
+          });
+        }
       }
       router.push('/catalogue');
     } catch (err) {

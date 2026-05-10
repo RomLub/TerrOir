@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { notifyBackInStock } from "@/lib/stock-alerts/notify-back-in-stock";
+import { revalidateProducerProducts } from "@/lib/stats/revalidate";
 
 // PATCH /api/producer/products/[id]
 //
@@ -70,10 +71,11 @@ export async function PATCH(request: Request, props: RouteContext) {
 
   const admin = createSupabaseAdminClient();
 
-  // 1. Lookup producer pour la session courante
+  // 1. Lookup producer pour la session courante. F-047 : ajout du slug pour
+  // invalidation cache `producer-products:<slug>` après UPDATE.
   const { data: producerData, error: producerError } = await admin
     .from("producers")
-    .select("id")
+    .select("id, slug")
     .eq("user_id", session.id)
     .maybeSingle();
 
@@ -86,7 +88,8 @@ export async function PATCH(request: Request, props: RouteContext) {
   if (!producerData) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-  const producerId = (producerData as { id: string }).id;
+  const producerId = (producerData as { id: string; slug: string }).id;
+  const producerSlug = (producerData as { id: string; slug: string }).slug;
 
   // 2. Lookup product + ownership check
   const { data: productData, error: productError } = await admin
@@ -158,8 +161,15 @@ export async function PATCH(request: Request, props: RouteContext) {
     }
   }
 
-  return NextResponse.json({
-    id: params.id,
+  // F-047 : invalide le cache `producer-products:<slug>` après UPDATE
+  // produit (stock/active flip affectent la liste produits affichée sur
+  // la fiche /producteurs/[slug]).
+  await revalidateProducerProducts({
+    slug: producerSlug,
+    source: "producer-products-patch",
+  });
+
+  return NextResponse.json({ id: params.id,
     stock_disponible: newStockDisponible,
     stock_illimite: newStockIllimite,
     active: parsed.data.active ?? null,

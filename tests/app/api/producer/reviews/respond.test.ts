@@ -59,6 +59,8 @@ vi.mock("@/lib/notifications/send-review-response-email", () => ({
 // create/update/delete (cf assertions plus bas).
 vi.mock("@/lib/stats/revalidate", () => ({
   revalidateProducerCard: mockRevalidateProducerCard,
+  revalidateProducerReviews: vi.fn(),
+  revalidateProducerProducts: vi.fn(),
 }));
 
 import { POST, DELETE } from "@/app/api/producer/reviews/[id]/respond/route";
