@@ -17,6 +17,7 @@ import { sendTemplate } from "@/lib/resend/send";
 import { classifyRefundError } from "@/lib/refund-incidents/classify-error";
 import { recordRefundAttempt } from "@/lib/refund-incidents/record-refund-attempt";
 import { sendOpsAlert } from "@/lib/ops/alert";
+import { reverseTransferIfNeeded } from "@/lib/stripe/reverse-transfer";
 import OrderTimeoutCancelled, {
   subject as timeoutSubject,
 } from "@/lib/resend/templates/order-timeout-cancelled";
@@ -116,9 +117,27 @@ export async function POST(request: Request, props0: RouteContext) {
   // context discriminator). Distinct de `refund_${order_id}_${attempt}`
   // (cron retry-failed-refunds, retry-failed-refund.ts:80) et des autres
   // contexts (admin, timeout) — pas de collision keys.
+  //
+  // F-004 — Reversal AVANT refund (Option A, atomicité d'échec).
+  // Comportement kind='failed' sur ce path manual-cancel automatique :
+  //   - On CONTINUE le refund quand même (pas de bloquer 502).
+  // Rationnel : cancel manuel est un path utilisateur direct (admin/producer/
+  // consumer en self-cancel). Bloquer laisserait l'order stuck en pending
+  // sans recours UX. On absorbe la perte platform (rare : transfer_id requiert
+  // statut='completed' qui n'est PAS atteignable depuis ce path car cancel
+  // bloque sur isTerminal). En pratique le helper noop_no_transfer_id sur
+  // 99%+ des appels — la branche failed reste un filet défensif.
+  // Refacto futur : si tu uniformises ce comportement, vérifie l'invariant
+  // par caller dans le commit de référence F-004 sub-2.
   let refundError: string | undefined;
   let refundEmitted = false;
   if (order.stripe_payment_intent_id) {
+    await reverseTransferIfNeeded({
+      admin,
+      orderId: order.id,
+      amountEur: Number(order.montant_total),
+      source: "refund_cancel",
+    });
     try {
       await stripe.refunds.create(
         { payment_intent: order.stripe_payment_intent_id },

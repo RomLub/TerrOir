@@ -163,6 +163,17 @@ export const PAYMENT_EVENT_TYPES = [
   "stripe_early_fraud_warning_received",
   "stripe_charge_refunded_settled",
   "stripe_account_deauthorized",
+  // F-004 (audit pré-launch 2026-05-10) — clawback proportionnel via
+  // stripe.transfers.createReversal sur dispute lost / refund post-completion.
+  // Émis par lib/stripe/reverse-transfer.ts. Source discrimine le caller
+  // (refund_admin, refund_producer, refund_cancel, refund_timeout,
+  // refund_revival_blocked, refund_efw, refund_retry, dispute_lost).
+  // Metadata : order_id, producer_id, transfer_id, reversal_id, amount_cents.
+  "stripe_transfer_reversed",
+  // Path échec : Stripe API throw sur createReversal (transfer_id obsolète,
+  // Connect account suspendu, etc.). Audit forensique pour réconciliation
+  // manuelle Dashboard. Le caller continue son flow (fail-safe).
+  "stripe_transfer_reversal_failed",
   // Audit Email phase 2 H-3 (2026-05-05) — webhook Resend entrant. Trace
   // forensique des events delivery sensibles côté légal/compliance.
   //   - email_complaint_received : email.complained → suppression IMMÉDIATE

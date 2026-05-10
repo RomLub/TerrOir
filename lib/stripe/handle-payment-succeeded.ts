@@ -6,6 +6,7 @@ import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
 import { classifyRefundError } from "@/lib/refund-incidents/classify-error";
 import { recordRefundAttempt } from "@/lib/refund-incidents/record-refund-attempt";
 import { sendOpsAlert } from "@/lib/ops/alert";
+import { reverseTransferIfNeeded } from "@/lib/stripe/reverse-transfer";
 
 // Extrait du handler webhook `payment_intent.succeeded` (cf
 // app/api/stripe/webhook/route.tsx). Sortie en module séparé pour pouvoir
@@ -208,6 +209,26 @@ export async function syncStripePaymentSucceeded(
           : "order_revival_blocked_slot";
 
       try {
+        // F-004 — Reversal AVANT refund (Option A, atomicité d'échec).
+        // Comportement kind='failed' sur ce path résurrection bloquée :
+        //   - On CONTINUE le refund quand même (pas de bloquer).
+        // Rationnel : le client a déjà été débité par le `payment_intent.
+        // succeeded` qui nous a amené ici, et l'order est cancelled+payment_
+        // failed (résurrection bloquée par stock/slot pris entre temps).
+        // Bloquer le refund laisserait le client débité sans recours auto
+        // (le helper retry T-102 ne reprend que les refund_incidents). On
+        // absorbe la perte platform si reversal échoue (cas pathologique :
+        // les orders cancelled+payment_failed n'ont jamais été completed
+        // donc transfer_id NULL en pratique → helper noop_no_transfer_id
+        // 99%+ du temps). La branche failed reste un filet défensif.
+        // Refacto futur : si tu uniformises ce comportement, vérifie
+        // l'invariant par caller dans le commit de référence F-004 sub-2.
+        await reverseTransferIfNeeded({
+          admin,
+          orderId,
+          amountEur: Number(paymentIntent.amount) / 100,
+          source: "refund_revival_blocked",
+        });
         // T-408 idempotencyKey : `refund_${orderId}_revival` (context
         // discriminator distinct des paths admin / timeout / retry).
         // Defense-in-depth : la dédup webhook_events_processed évite déjà

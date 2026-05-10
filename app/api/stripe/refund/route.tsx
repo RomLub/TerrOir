@@ -27,6 +27,7 @@ import {
   getStripeRefundRateLimit,
 } from "@/lib/rate-limit";
 import { extractRequestContext } from "@/lib/audit-logs/log-auth-event";
+import { reverseTransferIfNeeded } from "@/lib/stripe/reverse-transfer";
 
 const bodySchema = z.object({ order_id: z.string().guid() });
 
@@ -205,6 +206,49 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: e.message }, { status: 409 });
     }
     throw e;
+  }
+
+  // F-004 — Reversal AVANT refund (Option A, atomicité d'échec).
+  // Doctrine : refund Stripe irrévocable + reversal faillible → si on émet
+  // le refund d'abord et le reversal échoue ensuite, la perte platform est
+  // garantie sans rollback possible. En appelant le helper d'abord :
+  //   - noop_no_transfer_id (order pre-completion / pas encore payoutée) → continue refund
+  //   - noop_lookup_failed (DB transitoire) → continue refund + log forensique
+  //   - reversed → continue refund (clawback effectué)
+  //   - failed → BLOQUE le refund (Connect vidé après payout banque, capabilities révoquées, etc.)
+  //
+  // Comportement kind='failed' sur ce path admin/producer :
+  //   1. On bloque le refund pour ne pas créer de drift platform.
+  //   2. L'admin investigue manuellement via Dashboard Stripe (Connect status,
+  //      balance, capabilities) puis re-tente ou émet refund manuel + reversal.
+  //   3. sendOpsAlert (Sentry + email ops) pour signal critique.
+  // Refacto futur : si tu uniformises ce comportement, vérifie l'invariant
+  // par caller dans le commit de référence F-004 sub-2.
+  const reversal = await reverseTransferIfNeeded({
+    admin,
+    orderId: order.id,
+    amountEur: Number(order.montant_total),
+    source: refundedByProducer ? "refund_producer" : "refund_admin",
+  });
+  if (reversal.kind === "failed") {
+    await sendOpsAlert(
+      "[TRANSFER_REVERSAL_BLOCKED_REFUND]",
+      new Error(reversal.error),
+      {
+        order_id: order.id,
+        transfer_id: reversal.transferId,
+        producer_id: order.producer_id,
+        path: refundedByProducer ? "refund_producer" : "refund_admin",
+        amount: Number(order.montant_total),
+      },
+    );
+    return NextResponse.json(
+      {
+        error: "reversal_failed",
+        transfer_id: reversal.transferId,
+      },
+      { status: 502 },
+    );
   }
 
   // Instrumentation T-107 : capture l'échec Stripe dans audit_logs avant

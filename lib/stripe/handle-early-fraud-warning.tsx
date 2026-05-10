@@ -5,6 +5,7 @@ import { stripe } from "@/lib/stripe/server";
 import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
 import { classifyRefundError } from "@/lib/refund-incidents/classify-error";
 import { recordRefundAttempt } from "@/lib/refund-incidents/record-refund-attempt";
+import { reverseTransferIfNeeded } from "@/lib/stripe/reverse-transfer";
 import { sendTemplate } from "@/lib/resend/send";
 import { SUPPORT_EMAIL } from "@/lib/env/support-email";
 import AdminEarlyFraudWarning, {
@@ -153,6 +154,25 @@ export async function syncStripeEarlyFraudWarning(
     });
     return { result: "no_order_match", orderId };
   }
+
+  // F-004 — Reversal AVANT refund (Option A, atomicité d'échec).
+  // Comportement kind='failed' sur ce path EFW préemptif :
+  //   - On CONTINUE le refund quand même (pas de bloquer).
+  // Rationnel : EFW = Visa/MC signalent une fraude AVANT dispute. Le refund
+  // pré-emptif évite le chargeback fee et la perte commerce. Bloquer ici
+  // laisserait le compte exposé au futur chargeback (Stripe va débiter de
+  // toute façon ~7-10j plus tard). En pratique le helper noop_no_transfer_id
+  // sur 99%+ des appels (l'EFW arrive typiquement quelques heures après la
+  // charge, donc avant le cron weekly-payout → transfer_id NULL). La branche
+  // failed reste un filet défensif (audit log + Sentry pour reconcile manuel).
+  // Refacto futur : si tu uniformises ce comportement, vérifie l'invariant
+  // par caller dans le commit de référence F-004 sub-2.
+  await reverseTransferIfNeeded({
+    admin,
+    orderId,
+    amountEur: Number(order?.montant_total ?? 0),
+    source: "refund_efw",
+  });
 
   // 3. Refund pré-emptif. Idempotency-key spécifique au path EFW.
   let refund: Stripe.Refund | null = null;
