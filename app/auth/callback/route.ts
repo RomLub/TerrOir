@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { revalidatePath } from "next/cache";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import type { EmailOtpType } from "@supabase/supabase-js";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { cookieConfigForHost } from "@/lib/supabase/cookie-domain";
 import {
   canonicalPostLoginUrlWithRedirect,
@@ -206,7 +207,15 @@ export async function GET(request: NextRequest) {
         // poursuit — l'audit log et la session restent valides, la sync
         // pourra être réconciliée hors-bande.
         if (user.email) {
-          const { error: syncError } = await supabase
+          // F-009 (audit P0 sweep 2026-05-11) : users.email est verrouillée
+          // par trigger BEFORE UPDATE pour authenticated non-admin. Le sync
+          // doit passer par admin client (service_role bypass). Le canonical
+          // change-email flow (complete-email-change.tsx) utilise déjà admin.
+          // Ce code path est un safety net pour emails legacy en transit
+          // (template Supabase pré-T-013 PR2). Idempotent — si déjà sync
+          // côté complete-email-change, l'UPDATE est un no-op (même valeur).
+          const admin = createSupabaseAdminClient();
+          const { error: syncError } = await admin
             .from("users")
             .update({ email: user.email })
             .eq("id", user.id);
