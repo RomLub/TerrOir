@@ -125,6 +125,12 @@ function makeAdminClient() {
         eq(_col: string, _val: unknown) {
           return builder;
         },
+        // F-004 : .in("id", orderIds) utilisé par markOrdersTransferred dans
+        // lib/stripe/payouts.tsx pour écrire transfer_id sur les orders du
+        // batch après UPDATE payouts.statut='paid'.
+        in(_col: string, _vals: unknown) {
+          return builder;
+        },
         gte(_col: string, _val: unknown) {
           return builder;
         },
@@ -260,11 +266,16 @@ describe("processWeeklyPayouts — path nominal (0 existing row)", () => {
       },
     ]);
 
-    // UPDATE final = statut='paid' + stripe_transfer_id renseigné.
+    // UPDATE final = statut='paid' + stripe_transfer_id renseigné, suivi
+    // par F-004 write-back transfer_id sur les orders du batch.
     expect(captured.updates).toEqual([
       {
         table: "payouts",
         payload: { statut: "paid", stripe_transfer_id: "tr_new_1" },
+      },
+      {
+        table: "orders",
+        payload: { transfer_id: "tr_new_1" },
       },
     ]);
 
@@ -445,11 +456,15 @@ describe("processWeeklyPayouts — resume existing 'processing' (cas b)", () => 
 
     // Pas d'INSERT (le row existait déjà).
     expect(captured.inserts).toEqual([]);
-    // UPDATE statut='paid' + transfer.id.
+    // UPDATE statut='paid' + transfer.id, suivi par F-004 write-back orders.
     expect(captured.updates).toEqual([
       {
         table: "payouts",
         payload: { statut: "paid", stripe_transfer_id: "tr_resume_b" },
+      },
+      {
+        table: "orders",
+        payload: { transfer_id: "tr_resume_b" },
       },
     ]);
     // idempotencyKey passée.
@@ -954,6 +969,157 @@ describe("processWeeklyPayouts — T-415-suite précision aggregations sumCents"
           resumed: false,
         }),
       }),
+    );
+  });
+});
+
+// =============================================================================
+// F-004 (audit pré-launch 2026-05-10) — write-back transfer_id sur les orders
+// =============================================================================
+describe("processWeeklyPayouts — F-004 write-back orders.transfer_id", () => {
+  it("path nominal : UPDATE orders SET transfer_id appliqué après UPDATE payouts paid", async () => {
+    responses = {
+      orders: { select: [{ data: [defaultOrder()], error: null }] },
+      payouts: {
+        select: [{ data: null, error: null }],
+        insert: [{ data: { id: "payout-f004-1" }, error: null }],
+        update: [{ data: null, error: null }],
+      },
+      producers: {
+        select: [
+          {
+            data: {
+              stripe_account_id: "acct_test",
+              stripe_payouts_enabled: true,
+            },
+            error: null,
+          },
+        ],
+      },
+    };
+
+    mockTransferCreate.mockResolvedValue({ id: "tr_f004" } as never);
+
+    await processWeeklyPayouts();
+
+    // L'UPDATE orders apparaît APRÈS le UPDATE payouts (ordre d'invocation).
+    const ordersUpdate = captured.updates.find(
+      (u) => u.table === "orders",
+    );
+    expect(ordersUpdate).toEqual({
+      table: "orders",
+      payload: { transfer_id: "tr_f004" },
+    });
+  });
+
+  it("écrit le même transfer_id sur les N orders du batch d'un producer", async () => {
+    const batch = [
+      { ...defaultOrder(), id: "order-1" },
+      { ...defaultOrder(), id: "order-2" },
+      { ...defaultOrder(), id: "order-3" },
+    ];
+    responses = {
+      orders: { select: [{ data: batch, error: null }] },
+      payouts: {
+        select: [{ data: null, error: null }],
+        insert: [{ data: { id: "payout-batch" }, error: null }],
+        update: [{ data: null, error: null }],
+      },
+      producers: {
+        select: [
+          {
+            data: {
+              stripe_account_id: "acct_test",
+              stripe_payouts_enabled: true,
+            },
+            error: null,
+          },
+        ],
+      },
+    };
+
+    mockTransferCreate.mockResolvedValue({ id: "tr_batch" } as never);
+
+    await processWeeklyPayouts();
+
+    const ordersUpdate = captured.updates.find(
+      (u) => u.table === "orders",
+    );
+    expect(ordersUpdate).toEqual({
+      table: "orders",
+      payload: { transfer_id: "tr_batch" },
+    });
+  });
+
+  it("UPDATE orders échoue → log warn + flow continue (pas de throw)", async () => {
+    responses = {
+      orders: { select: [{ data: [defaultOrder()], error: null }] },
+      payouts: {
+        select: [{ data: null, error: null }],
+        insert: [{ data: { id: "payout-warn" }, error: null }],
+        update: [{ data: null, error: null }],
+      },
+      producers: {
+        select: [
+          {
+            data: {
+              stripe_account_id: "acct_test",
+              stripe_payouts_enabled: true,
+            },
+            error: null,
+          },
+        ],
+      },
+    };
+
+    // Surcharge le mock makeAdminClient pour orders.update : retourne erreur.
+    const realFromFactory = makeAdminClient;
+    mockCreateAdminClient.mockReset().mockImplementationOnce(() => {
+      const real = realFromFactory();
+      const origFrom = real.from.bind(real);
+      real.from = (table: string) => {
+        const builder = origFrom(table);
+        if (table === "orders") {
+          const origUpdate = builder.update.bind(builder);
+          builder.update = (payload: unknown) => {
+            const b = origUpdate(payload);
+            // Le terminal then() de UPDATE orders renvoie l'erreur.
+            const origThen = b.then.bind(b);
+            b.then = (onFulfilled: (r: Resp) => unknown) =>
+              origThen((r: Resp) => {
+                // Si update orders → injecter erreur
+                if ("payload" in (b as object) || true) {
+                  return onFulfilled({
+                    data: null,
+                    error: { message: "RLS update orders denied" },
+                  });
+                }
+                return onFulfilled(r);
+              });
+            return b;
+          };
+        }
+        return builder;
+      };
+      return real;
+    });
+
+    mockTransferCreate.mockResolvedValue({ id: "tr_warn" } as never);
+
+    const { results } = await processWeeklyPayouts();
+
+    // Le flow ne throw pas : results contient le succès payout, error=undefined.
+    expect(results[0].error).toBeUndefined();
+    expect(results[0].stripe_transfer_id).toBe("tr_warn");
+
+    // Log greppable [WEEKLY_PAYOUT_ORDERS_TRANSFER_ID_UPDATE_FAILED] émis.
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "[WEEKLY_PAYOUT_ORDERS_TRANSFER_ID_UPDATE_FAILED]",
+      ),
+    );
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("transfer=tr_warn"),
     );
   });
 });
