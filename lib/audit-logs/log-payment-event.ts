@@ -85,6 +85,18 @@ export const PAYMENT_EVENT_TYPES = [
   // requête est rejetée en 403 + email alerte admin (action requise).
   // Metadata : attempted_amount, cap, order_id, producer_id.
   "producer_refund_cap_exceeded",
+  // F-014 v2 (audit P0 sweep 2026-05-11) — workflow approval admin :
+  // producer POST refund > cap crée un pending_refund au lieu du 403.
+  // Cluster `producer_refund_pending_*` :
+  //   - created : INSERT pending_refunds par producer request
+  //   - admin_approved : admin approve → déclenche flow Stripe refund
+  //   - admin_denied : admin deny → email producer + clos
+  //   - expired : cron auto-expire après 7j sans décision
+  // Metadata : pending_refund_id, order_id, producer_id, amount, reason.
+  "producer_refund_pending_created",
+  "producer_refund_admin_approved",
+  "producer_refund_admin_denied",
+  "producer_refund_pending_expired",
   "order_timeout_refund_failed",
   // Path cron timeout sur order pending non payée (PI status !== 'succeeded').
   // T-409 : skip refund Stripe + audit forensique pour ne pas polluer le

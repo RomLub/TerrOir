@@ -65,6 +65,10 @@ export const AUDIT_EVENT_LABELS: Record<string, string> = {
   order_producer_refund_succeeded: "Refund producteur effectué",
   order_producer_refund_failed: "Échec refund producteur",
   producer_refund_cap_exceeded: "Refund producteur bloqué (cap dépassé)",
+  producer_refund_pending_created: "Refund producteur : demande approbation admin",
+  producer_refund_admin_approved: "Refund producteur approuvé par admin",
+  producer_refund_admin_denied: "Refund producteur refusé par admin",
+  producer_refund_pending_expired: "Refund producteur expiré (7j sans décision)",
   order_timeout_refund_failed: "Échec refund timeout",
   order_timeout_no_payment: "Timeout commande sans paiement",
 

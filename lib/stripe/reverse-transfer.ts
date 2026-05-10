@@ -36,6 +36,7 @@ import { eurosToCents } from "@/lib/money/cents";
 export type ReverseTransferSource =
   | "refund_admin"
   | "refund_producer"
+  | "refund_admin_approved_pending"
   | "refund_cancel"
   | "refund_timeout"
   | "refund_revival_blocked"
