@@ -171,29 +171,29 @@ export async function POST(request: Request) {
     throw e;
   }
 
-  const { error: updateError } = await admin
-    .from("orders")
-    .update({
-      statut: "refunded",
-      closure_reason: "admin_refund",
-      cancelled_at: new Date().toISOString(),
-    })
-    .eq("id", order.id);
+  // F-001 P0-TA : transition * → refunded via RPC SECDEF cancel_order.
+  // p_reason='admin_refund' ∈ skip-list audit RPC (l'audit `order_admin_*
+  // _refund_succeeded` ci-dessous porte le contexte Stripe complet).
+  // Drift Stripe/DB : refund émis chez Stripe mais RPC ratée → log
+  // [REFUND_DB_DRIFT] grep-able + sendOpsAlert (alerte critique).
+  const { error: rpcError } = await admin.rpc("cancel_order", {
+    p_order_id: order.id,
+    p_reason: "admin_refund",
+    p_target_status: "refunded",
+  });
 
-  if (updateError) {
-    // Drift Stripe/DB : refund émis chez Stripe mais statut DB non mis à
-    // jour. Préfixe grep-able pour réconciliation manuelle en prod.
-    // Cluster B Phase 3 (bugs-P1-3) — alerte ops critique : Sentry + email.
-    await sendOpsAlert("[REFUND_DB_DRIFT]", updateError, {
+  if (rpcError) {
+    await sendOpsAlert("[REFUND_DB_DRIFT]", new Error(rpcError.message), {
       order_id: order.id,
       refund_id: refund.id,
       path: "admin_refund",
-      db_error: updateError.message,
+      db_error: rpcError.message,
+      rpc_code: rpcError.code ?? "none",
     });
     return NextResponse.json(
       {
         refund_id: refund.id,
-        warning: `[REFUND_DB_DRIFT] order=${order.id} refund_id=${refund.id} ${updateError.message}`,
+        warning: `[REFUND_DB_DRIFT] order=${order.id} refund_id=${refund.id} ${rpcError.message}`,
       },
       { status: 500 },
     );

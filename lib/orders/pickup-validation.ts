@@ -273,42 +273,75 @@ export async function validatePickup(
   }
 
   const completedAt = new Date().toISOString();
-  const { data: updateData, error: updateError } = await admin
-    .from("orders")
-    .update({ statut: "completed", completed_at: completedAt })
-    .eq("id", row.id)
-    .eq("statut", "confirmed")
-    .select(ORDER_SELECT)
-    .maybeSingle();
 
-  if (updateError) {
-    throw updateError;
-  }
+  // F-001 P0-TA : transition confirmed → completed via RPC SECDEF
+  // complete_pickup_by_producer (auth dispatch interne owner > admin >
+  // service_role + assertTransition + UPDATE atomique race-safe + audit
+  // log `pickup_validated` cluster pickup_* dans la même transaction).
+  // p_submitted_code passé pour double-vérif SQL-side defense-in-depth.
+  const { error: rpcError } = await admin.rpc("complete_pickup_by_producer", {
+    p_order_id: row.id,
+    p_submitted_code: rawCode,
+  });
 
-  const updated = updateData as RawOrderRow | null;
-  if (!updated) {
-    // Race perdue : un autre tab du même producer a complété entre SELECT
-    // et UPDATE. Re-caractériser l'état actuel.
-    const { data: refetchData } = await admin
-      .from("orders")
-      .select("id, statut, completed_at")
-      .eq("id", row.id)
-      .maybeSingle();
-
-    const refetched = refetchData as
-      | { id: string; statut: OrderStatus; completed_at: string | null }
-      | null;
-    if (!refetched) {
+  if (rpcError) {
+    // Mapper SQLSTATE → PickupValidationError.
+    // 22023 = invalid_pickup_code (RPC line 225, single cause confirmée
+    // par grep migration F-001). Defense-in-depth : le SELECT initial a
+    // déjà filtré, on n'arrive ici qu'en cas de race ultra-rare.
+    if (rpcError.code === "22023") {
       return { ok: false, error: { kind: "code_unknown" } };
     }
-    return {
-      ok: false,
-      error: nonConfirmedStatusToError(
-        refetched.statut,
-        refetched.id,
-        refetched.completed_at,
-      ),
-    };
+    // 42501 = forbidden (la RPC re-vérifie owns_producer même si la
+    // route a déjà filtré côté caller — defense-in-depth).
+    if (rpcError.code === "42501") {
+      return { ok: false, error: { kind: "wrong_producer" } };
+    }
+    // 02000 = order_not_found (la RPC SELECT INTO miss).
+    if (rpcError.code === "02000") {
+      return { ok: false, error: { kind: "code_unknown" } };
+    }
+    // P0001 = illegal transition (race : statut a bougé entre SELECT
+    // initial et appel RPC). Re-caractériser l'état actuel.
+    if (rpcError.code === "P0001" || rpcError.code === "40001") {
+      const { data: refetchData } = await admin
+        .from("orders")
+        .select("id, statut, completed_at")
+        .eq("id", row.id)
+        .maybeSingle();
+      const refetched = refetchData as
+        | { id: string; statut: OrderStatus; completed_at: string | null }
+        | null;
+      if (!refetched) {
+        return { ok: false, error: { kind: "code_unknown" } };
+      }
+      return {
+        ok: false,
+        error: nonConfirmedStatusToError(
+          refetched.statut,
+          refetched.id,
+          refetched.completed_at,
+        ),
+      };
+    }
+    // Autres SQLSTATE inattendus : propage comme avant (caller route
+    // gère le 500 forensique).
+    throw rpcError;
+  }
+
+  // Re-lire l'order post-RPC pour rebuild le preview (la RPC retourne
+  // juste l'uuid, pas la row complète — choix sécurité : exposer le RETURNING
+  // via PostgREST leakerait montant_total etc. à tout caller authenticated
+  // qui aurait l'UUID). 1 SELECT supplémentaire acceptable (pas hot path).
+  const { data: refreshedData } = await admin
+    .from("orders")
+    .select(ORDER_SELECT)
+    .eq("id", row.id)
+    .maybeSingle();
+
+  const updated = refreshedData as RawOrderRow | null;
+  if (!updated) {
+    return { ok: false, error: { kind: "code_unknown" } };
   }
 
   const preview = buildPreview(updated);

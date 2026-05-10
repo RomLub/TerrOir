@@ -63,13 +63,14 @@ type Captured = {
   from: string[];
   update: unknown[];
   eq: Array<[string, unknown]>;
+  rpcCalls: Array<{ name: string; params: unknown }>;
 };
 
 function makeSupabase(fixture: Fixture = {}): {
   client: SupabaseClient;
   captured: Captured;
 } {
-  const captured: Captured = { from: [], update: [], eq: [] };
+  const captured: Captured = { from: [], update: [], eq: [], rpcCalls: [] };
 
   function ordersBuilder() {
     const b: ChainableMockBuilder = {};
@@ -100,6 +101,13 @@ function makeSupabase(fixture: Fixture = {}): {
       captured.from.push(table);
       if (table === "orders") return ordersBuilder();
       throw new Error(`unexpected from(${table})`);
+    },
+    // F-001 P0-TA : RPC cancel_order remplace l'UPDATE direct côté caller
+    // EFW. fixture.updateResp réutilisé pour préserver les tests qui
+    // injectaient des erreurs via cette key (mapping rpcResp).
+    rpc: (name: string, params: unknown) => {
+      captured.rpcCalls.push({ name, params });
+      return Promise.resolve(fixture.updateResp ?? { data: null, error: null });
     },
   } as unknown as SupabaseClient;
 
@@ -166,11 +174,18 @@ describe("syncStripeEarlyFraudWarning — path nominal (refunded)", () => {
       { idempotencyKey: "refund_order-42_efw" },
     );
 
-    // UPDATE order avec statut=refunded + closure_reason=efw_preemptive.
-    const orderUpdate = captured.update[0] as Record<string, unknown>;
-    expect(orderUpdate.statut).toBe("refunded");
-    expect(orderUpdate.closure_reason).toBe("efw_preemptive");
-    expect(orderUpdate.cancelled_at).toBeTruthy();
+    // F-001 P0-TA : transition refunded via RPC SECDEF cancel_order
+    // (reason='efw_preemptive' ∈ skip-list audit RPC, audit Stripe-aware
+    // côté caller posé via logPaymentEvent ci-dessous).
+    expect(captured.rpcCalls).toContainEqual({
+      name: "cancel_order",
+      params: {
+        p_order_id: "order-42",
+        p_reason: "efw_preemptive",
+        p_target_status: "refunded",
+      },
+    });
+    expect(captured.update).toEqual([]);
 
     // Audit log avec metadata enrichie.
     expect(vi.mocked(logPaymentEvent)).toHaveBeenCalledWith({

@@ -32,20 +32,27 @@ type Captured = {
   eq: Array<[string, unknown]>;
   select: string[];
   maybeSingle: number;
+  rpcCalls: Array<{ name: string; params: unknown }>;
 };
 
 const DEFAULT_FETCH: Resp = {
   data: { id: "order-42", statut: "pending", consumer_id: "user-7" },
   error: null,
 };
-const DEFAULT_UPDATE: Resp = { data: null, error: null };
+const DEFAULT_RPC_RESP: Resp = { data: null, error: null };
 
 function makeSupabase(opts: {
   fetchResp?: Resp;
+  // F-001 P0-TA : refetch post-RPC P0001 pour discriminer race vs anomalie.
+  refetchResp?: Resp;
+  // F-001 P0-TA : retour RPC cancel_order configurable (replace updateResp).
+  rpcResp?: Resp;
+  // Legacy (kept for backward compat with old tests calling updateResp).
   updateResp?: Resp;
 } = {}): { client: SupabaseClient; captured: Captured } {
   const fetchResp = opts.fetchResp ?? DEFAULT_FETCH;
-  const updateResp = opts.updateResp ?? DEFAULT_UPDATE;
+  const refetchResp = opts.refetchResp;
+  const rpcResp = opts.rpcResp ?? opts.updateResp ?? DEFAULT_RPC_RESP;
 
   const captured: Captured = {
     from: [],
@@ -53,11 +60,13 @@ function makeSupabase(opts: {
     eq: [],
     select: [],
     maybeSingle: 0,
+    rpcCalls: [],
   };
 
-  // Le helper appelle from('orders') 1 ou 2 fois (fetch puis update).
-  // Premier appel = fetch (chaîne avec maybeSingle), deuxième = update
-  // (chaîne thenable sans maybeSingle).
+  // F-001 P0-TA : la route appelle `from('orders').select(...).eq(id).maybeSingle()`
+  // pour le lookup initial, puis `.rpc('cancel_order', ...)`. Sur P0001, elle
+  // re-fetch via `from('orders').select('statut').eq(id).maybeSingle()` pour
+  // discriminer race webhook vs vraie anomalie.
   let ordersCallCount = 0;
 
   function makeBuilder(getResp: () => Resp) {
@@ -87,8 +96,14 @@ function makeSupabase(opts: {
     from: (table: string) => {
       captured.from.push(table);
       ordersCallCount += 1;
-      const isFirst = ordersCallCount === 1;
-      return makeBuilder(() => (isFirst ? fetchResp : updateResp));
+      // 1er appel from('orders') = lookup initial → fetchResp
+      // 2e appel from('orders') = refetch post-RPC P0001 → refetchResp
+      const resp = ordersCallCount === 1 ? fetchResp : refetchResp ?? fetchResp;
+      return makeBuilder(() => resp);
+    },
+    rpc: (name: string, params: unknown) => {
+      captured.rpcCalls.push({ name, params });
+      return Promise.resolve(rpcResp);
     },
   } as unknown as SupabaseClient;
 
@@ -205,8 +220,8 @@ describe("syncStripePaymentFailed — Cas 5 : guard_confirmed (statut=confirmed)
   });
 });
 
-describe("syncStripePaymentFailed — Cas 6 : cancelled (cas nominal pending)", () => {
-  it("order pending → UPDATE avec closure_reason='payment_failed' + revalidatePublicStats", async () => {
+describe("syncStripePaymentFailed — Cas 6 : cancelled (cas nominal pending, F-001 P0-TA RPC)", () => {
+  it("order pending → RPC cancel_order(payment_failed/cancelled) + revalidatePublicStats", async () => {
     const { client, captured } = makeSupabase();
     const pi = makePaymentIntent({ orderId: "order-42" });
 
@@ -214,31 +229,74 @@ describe("syncStripePaymentFailed — Cas 6 : cancelled (cas nominal pending)", 
 
     expect(res).toEqual({ result: "cancelled", orderId: "order-42" });
 
-    // Doit avoir émis 2 chaînes from('orders') : fetch + update.
-    expect(captured.from).toEqual(["orders", "orders"]);
+    // F-001 P0-TA : 1 chaîne from('orders') pour le lookup initial,
+    // puis .rpc('cancel_order') au lieu de from('orders').update().
+    expect(captured.from).toEqual(["orders"]);
+    expect(captured.update).toEqual([]);
 
-    // Le payload UPDATE contient bien les 3 champs attendus.
-    expect(captured.update).toHaveLength(1);
-    const payload = captured.update[0] as Record<string, unknown>;
-    expect(payload.statut).toBe("cancelled");
-    expect(payload.closure_reason).toBe("payment_failed");
-    expect(payload.cancelled_at).toEqual(expect.any(String));
-    expect(() => new Date(payload.cancelled_at as string)).not.toThrow();
-
-    // Le filtre WHERE est bien posé sur l'order_id (1 fetch + 1 update).
-    expect(captured.eq).toEqual([
-      ["id", "order-42"],
-      ["id", "order-42"],
-    ]);
+    // RPC cancel_order avec params attendus.
+    expect(captured.rpcCalls).toHaveLength(1);
+    expect(captured.rpcCalls[0]).toEqual({
+      name: "cancel_order",
+      params: {
+        p_order_id: "order-42",
+        p_reason: "payment_failed",
+        p_target_status: "cancelled",
+      },
+    });
 
     // Cache public-stats invalidé (count public dépend du statut).
-    // T-100 C2 : signature enrichie {source, orderId} obligatoire.
     expect(vi.mocked(revalidatePublicStats)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(revalidatePublicStats)).toHaveBeenCalledWith({
       source: "stripe-payment-failed",
       orderId: "order-42",
     });
     expect(consoleWarnSpy).not.toHaveBeenCalled();
+  });
+
+  // F-001 P0-TA : variante fail-loud sur P0001 + refetch.
+  it("RPC P0001 + refetch statut=cancelled (race) → already_terminal idempotent", async () => {
+    const { client } = makeSupabase({
+      rpcResp: {
+        data: null,
+        error: { code: "P0001", message: "illegal_transition" },
+      },
+      refetchResp: {
+        data: { statut: "cancelled" },
+        error: null,
+      },
+    });
+    const pi = makePaymentIntent({ orderId: "order-race" });
+
+    const res = await syncStripePaymentFailed(pi, client);
+
+    expect(res).toEqual({ result: "already_terminal", orderId: "order-race" });
+    expect(vi.mocked(revalidatePublicStats)).not.toHaveBeenCalled();
+    expect(vi.mocked(logPaymentEvent)).not.toHaveBeenCalled();
+  });
+
+  it("RPC P0001 + refetch statut=pending (vraie anomalie) → rpc_error + log error", async () => {
+    const { client } = makeSupabase({
+      rpcResp: {
+        data: null,
+        error: { code: "P0001", message: "illegal_transition_unexpected" },
+      },
+      refetchResp: {
+        data: { statut: "pending" },
+        error: null,
+      },
+    });
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const pi = makePaymentIntent({ orderId: "order-anomaly" });
+
+    const res = await syncStripePaymentFailed(pi, client);
+
+    expect(res).toEqual({ result: "rpc_error", orderId: "order-anomaly" });
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
+    expect(String(consoleErrorSpy.mock.calls[0]?.[0])).toContain(
+      "[WEBHOOK_FAILED_RPC_UNEXPECTED]",
+    );
+    consoleErrorSpy.mockRestore();
   });
 });
 

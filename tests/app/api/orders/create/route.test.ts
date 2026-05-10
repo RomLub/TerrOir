@@ -74,8 +74,11 @@ function consumeRpc(name: string): Resp {
   return { data: null, error: null };
 }
 
-vi.mock("@/lib/supabase/server", () => ({
-  createSupabaseServerClient: async () => ({
+// Builder partagé entre createSupabaseServerClient (RPC + SELECT post-RPC)
+// et createSupabaseAdminClient (UPDATE CGV F-001 P0-TA bascule). Les capture
+// sont mutualisés pour préserver les assertions existantes.
+function buildSupabaseClient() {
+  return {
     from: (table: string) => {
       captured.fromCalls.push(table);
       const t = table as "slots" | "orders";
@@ -92,11 +95,6 @@ vi.mock("@/lib/supabase/server", () => ({
       };
       builder.eq = (col: string, val: unknown) => {
         captured.eqCalls.push({ table, col, val });
-        // Pour les UPDATE, .eq() est terminal et résout directement
-        // (pas de .maybeSingle()/.single() après). Le builder reste
-        // thenable pour await direct. On ne consomme la réponse qu'au
-        // moment du await pour ne pas la consommer 2x si une chaîne
-        // appelle .eq() plusieurs fois.
         return builder;
       };
       builder.gt = (col: string, val: unknown) => {
@@ -109,8 +107,6 @@ vi.mock("@/lib/supabase/server", () => ({
       };
       builder.maybeSingle = () => Promise.resolve(consumeFrom(t, builder._op));
       builder.single = () => Promise.resolve(consumeFrom(t, builder._op));
-      // Thenable : le UPDATE final (sans maybeSingle/single) est await
-      // direct. PromiseLike consume la queue du _op courant à ce moment.
       builder.then = (resolve: (r: Resp) => unknown) => {
         return Promise.resolve(consumeFrom(t, builder._op)).then(resolve);
       };
@@ -120,7 +116,18 @@ vi.mock("@/lib/supabase/server", () => ({
       captured.rpcCalls.push({ name, args });
       return Promise.resolve(consumeRpc(name));
     },
-  }),
+  };
+}
+
+vi.mock("@/lib/supabase/server", () => ({
+  createSupabaseServerClient: async () => buildSupabaseClient(),
+}));
+
+// F-001 P0-TA : la route bascule sur admin client pour l'UPDATE CGV
+// (la policy "orders parties update" est retirée → user-context retourne
+// 0 rows). Mock symétrique au server client pour préserver les capture.
+vi.mock("@/lib/supabase/admin", () => ({
+  createSupabaseAdminClient: () => buildSupabaseClient(),
 }));
 
 // --- Audit log mock (T-429) ---------------------------------------------

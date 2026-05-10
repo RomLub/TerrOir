@@ -124,13 +124,14 @@ type Captured = {
   updates: Array<{ table: string; payload: unknown }>;
   inserts: Array<{ table: string; payload: unknown }>;
   eqCalls: Array<{ table: string; col: string; val: unknown }>;
+  rpcCalls: Array<{ name: string; params: unknown }>;
 };
 
 let captured: Captured;
 let responses: Record<
   string,
   Partial<Record<"select" | "update" | "insert", Resp[]>>
->;
+> & { rpc?: Record<string, Resp[]> };
 
 const ORDER_ID = "11111111-1111-4111-8111-111111111111";
 const PRODUCER_ID = "prod-1";
@@ -193,6 +194,12 @@ vi.mock("@/lib/supabase/admin", () => ({
         onFulfilled(consume(table, builder._op));
       return builder;
     },
+    rpc: (name: string, params: unknown) => {
+      captured.rpcCalls.push({ name, params });
+      const queue = responses.rpc?.[name];
+      if (queue && queue.length > 0) return Promise.resolve(queue.shift()!);
+      return Promise.resolve({ data: null, error: null });
+    },
   }),
 }));
 
@@ -244,6 +251,7 @@ beforeEach(() => {
     updates: [],
     inserts: [],
     eqCalls: [],
+    rpcCalls: [],
   };
   responses = {};
   // Default : admin valide → flow nominal possible.
@@ -409,34 +417,32 @@ describe("D. État commande + filet assertTransition", () => {
 // --- E. Happy path + side effects ----------------------------------------
 
 describe("E. Happy path + side effects", () => {
-  it("E1 admin pending → refunded : Stripe refund + UPDATE refunded + notification consumer + revalidateTag", async () => {
+  it("E1 admin pending → refunded : Stripe refund + RPC cancel_order(admin_refund/refunded) + notification + revalidateTag", async () => {
     const res = await POST(makeRequest());
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ refund_id: "re_test_123" });
 
     // 1. Stripe refund émis sur le bon PI.
     expect(mockRefundCreate).toHaveBeenCalledTimes(1);
-    // T-408 : 1er arg params metier, 2e arg options idempotency.
     expect(mockRefundCreate).toHaveBeenCalledWith(
       { payment_intent: PI_ID },
       { idempotencyKey: `refund_${ORDER_ID}_admin` },
     );
 
-    // 2. UPDATE orders avec statut+reason+timestamp.
-    const orderUpdate = captured.updates.find((u) => u.table === "orders");
-    expect(orderUpdate).toBeDefined();
-    const payload = orderUpdate!.payload as Record<string, unknown>;
-    expect(payload.statut).toBe("refunded");
-    expect(payload.closure_reason).toBe("admin_refund");
-    expect(payload.cancelled_at).toEqual(expect.any(String));
-    expect(() =>
-      new Date(payload.cancelled_at as string).toISOString(),
-    ).not.toThrow();
+    // 2. F-001 P0-TA : transition via RPC SECDEF cancel_order
+    // (reason='admin_refund' ∈ skip-list audit RPC, l'audit Stripe-aware
+    // côté caller est posé par logPaymentEvent ci-dessous).
+    const rpcCall = captured.rpcCalls.find((r) => r.name === "cancel_order");
+    expect(rpcCall).toBeDefined();
+    const params = rpcCall!.params as Record<string, unknown>;
+    expect(params.p_order_id).toBe(ORDER_ID);
+    expect(params.p_reason).toBe("admin_refund");
+    expect(params.p_target_status).toBe("refunded");
+    expect(captured.updates.find((u) => u.table === "orders")).toBeUndefined();
 
     // 3. revalidateTag('public-stats') appelé une fois (via helper).
     expect(mockRevalidateTag).toHaveBeenCalledTimes(1);
     expect(mockRevalidateTag).toHaveBeenCalledWith("public-stats", "max");
-    // T-100 C2 : helper invoque avec signature {source, orderId}.
     expect(mockRevalidatePublicStats).toHaveBeenCalledTimes(1);
     expect(mockRevalidatePublicStats).toHaveBeenCalledWith({
       source: "stripe-refund",
@@ -456,10 +462,11 @@ describe("E. Happy path + side effects", () => {
     expect(meta.amount).toBe(12.34);
   });
 
-  it("E2 UPDATE error après refund Stripe → 500, refund_id retourné, warning [REFUND_DB_DRIFT] grep-able", async () => {
-    responses.orders = {
-      select: [{ data: DEFAULT_ORDER, error: null }],
-      update: [{ data: null, error: { message: "RLS denied" } }],
+  it("E2 RPC error après refund Stripe → 500, refund_id retourné, warning [REFUND_DB_DRIFT] grep-able", async () => {
+    responses.rpc = {
+      cancel_order: [
+        { data: null, error: { code: "40001", message: "RLS denied" } },
+      ],
     };
     const res = await POST(makeRequest());
     expect(res.status).toBe(500);
@@ -472,7 +479,6 @@ describe("E. Happy path + side effects", () => {
     expect(body.warning).toContain(ORDER_ID);
     expect(body.warning).toContain("re_test_123");
     expect(body.warning).toContain("RLS denied");
-    // revalidateTag + helper NON appelés puisqu'on retourne 500 avant.
     expect(mockRevalidateTag).not.toHaveBeenCalled();
     expect(mockRevalidatePublicStats).not.toHaveBeenCalled();
   });
@@ -499,8 +505,8 @@ describe("E. Happy path + side effects", () => {
     expect(
       captured.inserts.find((i) => i.table === "notifications"),
     ).toBeUndefined();
-    // Le reste du flow (UPDATE + revalidateTag) reste appelé.
-    expect(captured.updates.find((u) => u.table === "orders")).toBeDefined();
+    // F-001 P0-TA : RPC cancel_order remplace l'UPDATE direct.
+    expect(captured.rpcCalls.find((r) => r.name === "cancel_order")).toBeDefined();
     expect(mockRevalidateTag).toHaveBeenCalledTimes(1);
   });
 });

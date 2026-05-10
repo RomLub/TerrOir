@@ -30,10 +30,14 @@ interface Captured {
   selects: Array<{ table: string; cols: string }>;
   updates: Array<{ table: string; payload: unknown }>;
   eqCalls: Array<{ table: string; col: string; val: unknown }>;
+  rpcCalls: Array<{ name: string; params: unknown }>;
 }
 
 let captured: Captured;
 let responses: MockResp[]; // FIFO : maybeSingle() consomme la première
+// F-001 P0-TA : queue de retours RPC (FIFO comme responses).
+// `complete_pickup_by_producer` consomme la 1re entrée. Default = success.
+let rpcResponses: MockResp[];
 
 function makeAdmin(): SupabaseClient {
   const admin = {
@@ -57,6 +61,11 @@ function makeAdmin(): SupabaseClient {
         return Promise.resolve(r);
       };
       return builder;
+    },
+    rpc: (name: string, params: unknown) => {
+      captured.rpcCalls.push({ name, params });
+      const r = rpcResponses.shift() ?? { data: null, error: null };
+      return Promise.resolve(r);
     },
   };
   return admin as unknown as SupabaseClient;
@@ -97,8 +106,15 @@ const baseRow = {
 };
 
 beforeEach(() => {
-  captured = { fromCalls: [], selects: [], updates: [], eqCalls: [] };
+  captured = {
+    fromCalls: [],
+    selects: [],
+    updates: [],
+    eqCalls: [],
+    rpcCalls: [],
+  };
   responses = [];
+  rpcResponses = [];
 });
 
 // --- A. pickupCodeSchema (format strict) --------------------------------
@@ -263,14 +279,15 @@ describe("previewPickup", () => {
 // --- C. validatePickup --------------------------------------------------
 
 describe("validatePickup", () => {
-  it("C1 nominal confirmed → completed avec UPDATE atomique", async () => {
+  it("C1 nominal confirmed → completed via RPC SECDEF (F-001 P0-TA)", async () => {
     const completedAt = "2026-05-06T11:00:00Z";
     responses = [
-      { data: baseRow }, // SELECT lookup
+      { data: baseRow }, // SELECT lookup initial
       {
         data: { ...baseRow, statut: "completed", completed_at: completedAt },
-      }, // UPDATE returning
+      }, // SELECT post-RPC pour rebuild preview
     ];
+    // RPC default success (data: null, error: null).
     const result = await validatePickup(makeAdmin(), CODE, PRODUCER_ID);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -278,14 +295,15 @@ describe("validatePickup", () => {
     expect(result.order.completed_at).toBe(completedAt);
     expect(result.order.id).toBe(ORDER_ID);
 
-    const orderUpdate = captured.updates.find((u) => u.table === "orders");
-    expect(orderUpdate).toBeDefined();
-    const payload = orderUpdate!.payload as Record<string, unknown>;
-    expect(payload.statut).toBe("completed");
-    expect(typeof payload.completed_at).toBe("string");
+    // F-001 P0-TA : .rpc('complete_pickup_by_producer') au lieu d'.update().
+    expect(captured.rpcCalls).toContainEqual({
+      name: "complete_pickup_by_producer",
+      params: { p_order_id: ORDER_ID, p_submitted_code: CODE },
+    });
+    expect(captured.updates).toEqual([]);
   });
 
-  it("C2 UPDATE atomique conditionné WHERE statut='confirmed' (race-safe)", async () => {
+  it("C2 RPC complete_pickup_by_producer atomicité SQL-side (race-safe garantie côté SQL)", async () => {
     responses = [
       { data: baseRow },
       {
@@ -297,12 +315,15 @@ describe("validatePickup", () => {
       },
     ];
     await validatePickup(makeAdmin(), CODE, PRODUCER_ID);
-    // Le UPDATE doit avoir un eq('statut', 'confirmed') pour la garde
-    // atomique contre la double-saisie concurrente.
-    const statutEq = captured.eqCalls.find(
-      (e) => e.col === "statut" && e.val === "confirmed",
-    );
-    expect(statutEq).toBeDefined();
+    // F-001 P0-TA : la garde atomique `.eq("statut","confirmed")` est
+    // désormais SQL-side dans la RPC SECDEF (cf migration F-001 ligne 247).
+    // Pas observable depuis ce mock vitest — la RPC encapsule. On vérifie
+    // juste que la RPC est bien appelée (la garde atomique est testée
+    // indirectement par les tests C6/C7 qui simulent la race via SQLSTATE).
+    expect(captured.rpcCalls).toContainEqual({
+      name: "complete_pickup_by_producer",
+      params: { p_order_id: ORDER_ID, p_submitted_code: CODE },
+    });
   });
 
   it("C3 code introuvable → code_unknown sans UPDATE", async () => {
@@ -337,18 +358,23 @@ describe("validatePickup", () => {
     expect(captured.updates).toEqual([]);
   });
 
-  it("C6 race perdue (UPDATE 0 rows) → re-fetch caractérise already_completed", async () => {
+  it("C6 race perdue (RPC P0001) → re-fetch caractérise already_completed", async () => {
     const raceCompletedAt = "2026-05-06T11:30:00Z";
     responses = [
       { data: baseRow }, // SELECT lookup → confirmed
-      { data: null }, // UPDATE returning null = WHERE statut='confirmed' n'a rien matché
       {
         data: {
           id: ORDER_ID,
           statut: "completed",
           completed_at: raceCompletedAt,
         },
-      }, // re-fetch
+      }, // re-fetch post-P0001
+    ];
+    rpcResponses = [
+      {
+        data: null,
+        error: { code: "P0001", message: "illegal_transition" },
+      },
     ];
     const result = await validatePickup(makeAdmin(), CODE, PRODUCER_ID);
     expect(result.ok).toBe(false);
@@ -361,8 +387,13 @@ describe("validatePickup", () => {
   it("C7 race perdue + re-fetch null → code_unknown (cas dégénéré)", async () => {
     responses = [
       { data: baseRow }, // SELECT lookup
-      { data: null }, // UPDATE 0 rows
       { data: null }, // re-fetch null (cas extrême : DELETE entre temps)
+    ];
+    rpcResponses = [
+      {
+        data: null,
+        error: { code: "P0001", message: "illegal_transition" },
+      },
     ];
     const result = await validatePickup(makeAdmin(), CODE, PRODUCER_ID);
     expect(result.ok).toBe(false);
@@ -388,13 +419,17 @@ describe("validatePickup", () => {
     expect(captured.updates).toEqual([]);
   });
 
-  it("C10 erreur DB lors UPDATE → throw remonté au caller (500-grade)", async () => {
-    responses = [
-      { data: baseRow },
-      { data: null, error: new Error("DB connection lost") },
+  it("C10 erreur DB inattendue lors RPC → throw remonté au caller (500-grade)", async () => {
+    responses = [{ data: baseRow }];
+    // F-001 P0-TA : SQLSTATE inconnu (hors mapping kind) → throw rpcError.
+    rpcResponses = [
+      {
+        data: null,
+        error: { code: "XX000", message: "DB connection lost" },
+      },
     ];
     await expect(
       validatePickup(makeAdmin(), CODE, PRODUCER_ID),
-    ).rejects.toThrow("DB connection lost");
+    ).rejects.toMatchObject({ message: "DB connection lost" });
   });
 });
