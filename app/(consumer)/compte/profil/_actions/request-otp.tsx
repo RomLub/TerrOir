@@ -32,6 +32,7 @@ import {
   extractRequestContext,
 } from "@/lib/audit-logs/log-auth-event";
 import { maskEmail } from "@/lib/rgpd/mask-email";
+import { maskIp } from "@/lib/rgpd/mask-ip";
 import { sendTemplate } from "@/lib/resend/send";
 import { generateOtp } from "@/lib/email-change/otp";
 import { hashOtp } from "@/lib/email-change/hmac";
@@ -133,7 +134,10 @@ export async function requestOtpAction(
       code_hash: codeHash,
       expires_at: expiresAt,
       attempts: 0,
-      ip_address: ipAddress,
+      // F-010 (audit pré-launch 2026-05-10) : doctrine T-200 r1 — pas
+      // d'IP en clair en DB. /24 IPv4 / /64 IPv6 reste corrélable forensique
+      // (signal brute-force OTP par sous-réseau) sans identifier la personne.
+      ip_address: maskIp(ipAddress),
       user_agent: userAgent,
     });
   if (insertError) {

@@ -84,7 +84,7 @@ describe("logAuthEvent", () => {
     );
   });
 
-  it("ipAddress + userAgent explicites passés tels quels", async () => {
+  it("masque l'IP explicite via maskIp() avant INSERT (F-010 doctrine T-200)", async () => {
     await logAuthEvent({
       eventType: "password_changed",
       userId: "user-7",
@@ -95,13 +95,26 @@ describe("logAuthEvent", () => {
     expect(insertSpy).toHaveBeenCalledWith(
       "audit_logs",
       expect.objectContaining({
-        ip_address: "203.0.113.42",
+        ip_address: "203.0.113.0",
         user_agent: "Mozilla/5.0",
       }),
     );
   });
 
-  it("auto-extrait IP + UA via next/headers() quand non fournis", async () => {
+  it("masque l'IP IPv6 via maskIp() (F-010)", async () => {
+    await logAuthEvent({
+      eventType: "password_changed",
+      userId: "user-7",
+      ipAddress: "2001:db8:abcd:1234:5678:9abc:def0:1234",
+    });
+
+    expect(insertSpy).toHaveBeenCalledWith(
+      "audit_logs",
+      expect.objectContaining({ ip_address: "2001:db8:abcd:1234::" }),
+    );
+  });
+
+  it("auto-extrait IP + UA via next/headers() puis masque (F-010)", async () => {
     headersMock.mockReturnValue(
       new Headers({
         "x-forwarded-for": "198.51.100.7, 10.0.0.1",
@@ -117,9 +130,22 @@ describe("logAuthEvent", () => {
     expect(insertSpy).toHaveBeenCalledWith(
       "audit_logs",
       expect.objectContaining({
-        ip_address: "198.51.100.7",
+        ip_address: "198.51.100.0",
         user_agent: "TestAgent/1.0",
       }),
+    );
+  });
+
+  it("IP malformée passe en null après maskIp (F-010 fail-safe)", async () => {
+    await logAuthEvent({
+      eventType: "account_login_password",
+      userId: "user-1",
+      ipAddress: "not-an-ip",
+    });
+
+    expect(insertSpy).toHaveBeenCalledWith(
+      "audit_logs",
+      expect.objectContaining({ ip_address: null }),
     );
   });
 

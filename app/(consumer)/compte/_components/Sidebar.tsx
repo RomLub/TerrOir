@@ -12,6 +12,7 @@ const NAV: { href: string; label: string }[] = [
   { href: "/compte/paiements", label: "Moyens de paiement" },
   { href: "/compte/password", label: "Mot de passe" },
   { href: "/compte/notifications", label: "Notifications" },
+  { href: "/compte/exporter-mes-donnees", label: "Exporter mes données" },
 ];
 
 function isActive(pathname: string | null, href: string): boolean {

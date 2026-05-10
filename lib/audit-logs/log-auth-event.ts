@@ -1,6 +1,7 @@
 import "server-only";
 import { headers } from "next/headers";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { maskIp } from "@/lib/rgpd/mask-ip";
 
 // Helper unifié pour pousser un event sensible auth dans public.audit_logs
 // (cf. migration 20260427100000_create_audit_logs.sql).
@@ -110,6 +111,12 @@ export const AUTH_EVENT_TYPES = [
   "admin_invite_blocked_admin",
   "admin_invite_blocked_producer",
   "admin_invite_expired",
+  // F-011 (audit pré-launch 2026-05-10) : RGPD art. 20 portabilité user-side.
+  // Émis par exportMyDataAction à chaque téléchargement zip réussi. Permet
+  // de tracer forensique un abus (volume anormal d'exports) ou une demande
+  // CNIL ("prouvez que l'user X a bien pu exercer son droit"). userId =
+  // session.id, metadata embarque counts (orders, reviews, notifications).
+  "user_data_exported",
 ] as const;
 
 export type AuthEventType = (typeof AUTH_EVENT_TYPES)[number];
@@ -128,12 +135,17 @@ type LogAuthEventParams = {
 export async function logAuthEvent(params: LogAuthEventParams): Promise<void> {
   try {
     const { ipAddress, userAgent } = await resolveRequestContext(params);
+    // F-010 (audit pré-launch 2026-05-10) : doctrine T-200 r1 — on ne stocke
+    // jamais l'IP en clair dans audit_logs. /24 IPv4 / /64 IPv6 reste
+    // exploitable forensique (corrélation sous-réseau attaquant) sans
+    // identifier directement la personne.
+    const maskedIp = maskIp(ipAddress);
     const admin = createSupabaseAdminClient();
     const { error } = await admin.from("audit_logs").insert({
       user_id: params.userId ?? null,
       event_type: params.eventType,
       metadata: params.metadata ?? {},
-      ip_address: ipAddress,
+      ip_address: maskedIp,
       user_agent: userAgent,
     });
     if (error) {
