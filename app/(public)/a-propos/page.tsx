@@ -40,7 +40,7 @@ export default function AProposPage() {
           <div className="space-y-5 text-[16px] text-dark/80 leading-relaxed">
             <p>En 2024, à force d&apos;écouter les éleveurs de la Sarthe, un même refrain revenait : ils n&apos;avaient plus la main sur leur prix de vente. Pris entre les centrales d&apos;achat et la grande distribution, beaucoup peinaient à vivre de leur métier.</p>
             <p>De l&apos;autre côté, des consommateurs cherchaient à manger mieux mais ne savaient plus où trouver une viande dont ils connaissaient l&apos;origine. Les circuits courts existaient, mais restaient confidentiels et compliqués à organiser.</p>
-            <p>TerrOir est né de cette double frustration. Une plateforme simple, dédiée à la Sarthe, qui remet l&apos;éleveur et le consommateur en contact direct. Sans intermédiaire qui marge, sans logistique lourde, sans promesse marketing.</p>
+            <p>TerrOir est né de cette double frustration. Une plateforme simple, dédiée à la Sarthe, qui remet l&apos;éleveur et le consommateur en contact direct. Sans grossiste qui marge, sans logistique lourde, sans promesse marketing.</p>
             <p className="font-serif text-[22px] text-green-900 italic">« Notre vision : que chaque famille sarthoise connaisse l&apos;éleveur qui la nourrit. »</p>
           </div>
         </div>
@@ -65,7 +65,7 @@ export default function AProposPage() {
       </section>
 
       <section className="max-w-5xl mx-auto px-6 py-20 grid sm:grid-cols-3 gap-8 text-center">
-        {[{ n: '23', l: 'Éleveurs partenaires' }, { n: '6%', l: 'Commission unique' }, { n: '0', l: 'Intermédiaire' }].map((s) => (
+        {[{ n: '23', l: 'Éleveurs partenaires' }, { n: '6%', l: 'Commission unique' }, { n: '0', l: 'Grossiste' }].map((s) => (
           <div key={s.l}>
             <div className="font-serif text-[64px] md:text-[80px] text-green-900 leading-none tabular-nums">{s.n}</div>
             <div className="mt-2 text-[12px] uppercase tracking-[0.14em] text-dark/60 font-semibold">{s.l}</div>

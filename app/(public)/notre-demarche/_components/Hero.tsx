@@ -34,8 +34,8 @@ export function Hero({ className = "" }: NotreDemarcheHeroProps) {
           </p>
           <p className="mt-8 max-w-[640px] text-base leading-[1.55] text-terroir-ink/[0.78] md:text-[19px]">
             TerrOir met en relation directe les éleveurs sarthois et les
-            consommateurs. Pas de centrale d&apos;achat, pas d&apos;intermédiaire
-            superflu : la quasi-totalité du prix repart vers la ferme.
+            consommateurs. Pas de centrale d&apos;achat, pas de grossiste qui
+            marge : la quasi-totalité du prix repart vers la ferme.
           </p>
         </div>
       </div>
