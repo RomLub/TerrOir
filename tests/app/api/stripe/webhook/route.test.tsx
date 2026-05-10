@@ -644,20 +644,20 @@ describe("POST /api/stripe/webhook — Bundle 3 (T-403 extended dispute.updated 
 });
 
 // =============================================================================
-// Audit Stripe phase B L-1 — IP allowlist webhook
+// F-015 (audit pré-launch 2026-05-10) — IP allowlist soft-warn
 // =============================================================================
 //
 // Rappel : isStripeWebhookIp bypass quand VERCEL_ENV !== 'production'. Les
 // tests existants ci-dessus tournent sans VERCEL_ENV (= bypass implicite),
 // donc ne sont pas affectés. Cette suite force VERCEL_ENV='production' et
 // vérifie que :
-//  - IP Stripe valide → handler exécuté normalement
-//  - IP non-Stripe → 403 + log [STRIPE_WEBHOOK_IP_REJECTED] + NI signature ni
-//    DB ni handler de domaine appelés
+//  - IP Stripe valide → handler exécuté normalement, AUCUN log DRIFT
+//  - IP non-Stripe → log warn [STRIPE_WEBHOOK_IP_DRIFT] mais handler exécuté
+//    (la signature HMAC reste la défense principale)
 //  - x-real-ip seul → fallback OK
-//  - missing IP header → 403
+//  - missing IP header → log warn ip=null mais handler exécuté
 
-describe("POST /api/stripe/webhook — IP allowlist (audit phase B L-1)", () => {
+describe("POST /api/stripe/webhook — IP allowlist soft-warn (F-015)", () => {
   let originalVercelEnv: string | undefined;
   let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
@@ -702,26 +702,32 @@ describe("POST /api/stripe/webhook — IP allowlist (audit phase B L-1)", () => 
     expect(mockConstructEvent).toHaveBeenCalledTimes(1);
     expect(mockSyncSucceeded).toHaveBeenCalledTimes(1);
     expect(consoleWarnSpy).not.toHaveBeenCalledWith(
-      expect.stringContaining("[STRIPE_WEBHOOK_IP_REJECTED]"),
+      expect.stringContaining("[STRIPE_WEBHOOK_IP_DRIFT]"),
     );
   });
 
-  it("IP non-Stripe (203.0.113.10) → 403 + log + AUCUN appel constructEvent/dédup/handler", async () => {
+  it("IP non-Stripe (203.0.113.10) → log DRIFT + handler exécuté quand même (F-015)", async () => {
+    mockConstructEvent.mockReturnValue(
+      makeStripeEvent("payment_intent.succeeded", "evt_drift_handled"),
+    );
+    mockCheckOrMarkProcessed.mockResolvedValue({ alreadyProcessed: false });
+    mockSyncSucceeded.mockResolvedValue({
+      result: "no_metadata",
+      orderId: null,
+    });
+
     const res = await POST(
       makeRequestWithHeaders({
         "x-forwarded-for": "203.0.113.10",
         "user-agent": "curl/8.0",
       }),
     );
-    const body = await res.json();
 
-    expect(res.status).toBe(403);
-    expect(body.error).toBe("Forbidden");
-    expect(mockConstructEvent).not.toHaveBeenCalled();
-    expect(mockCheckOrMarkProcessed).not.toHaveBeenCalled();
-    expect(mockSyncSucceeded).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(mockConstructEvent).toHaveBeenCalledTimes(1);
+    expect(mockSyncSucceeded).toHaveBeenCalledTimes(1);
     expect(consoleWarnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("[STRIPE_WEBHOOK_IP_REJECTED]"),
+      expect.stringContaining("[STRIPE_WEBHOOK_IP_DRIFT]"),
     );
     expect(consoleWarnSpy).toHaveBeenCalledWith(
       expect.stringContaining("ip=203.0.113.10"),
@@ -749,11 +755,23 @@ describe("POST /api/stripe/webhook — IP allowlist (audit phase B L-1)", () => 
     expect(mockConstructEvent).toHaveBeenCalledTimes(1);
   });
 
-  it("aucun header IP en production → 403 + log ip=null", async () => {
+  it("aucun header IP en production → log DRIFT ip=null + handler exécuté (F-015)", async () => {
+    mockConstructEvent.mockReturnValue(
+      makeStripeEvent("payment_intent.succeeded", "evt_drift_null"),
+    );
+    mockCheckOrMarkProcessed.mockResolvedValue({ alreadyProcessed: false });
+    mockSyncSucceeded.mockResolvedValue({
+      result: "no_metadata",
+      orderId: null,
+    });
+
     const res = await POST(makeRequestWithHeaders({}));
 
-    expect(res.status).toBe(403);
-    expect(mockConstructEvent).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(mockConstructEvent).toHaveBeenCalledTimes(1);
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[STRIPE_WEBHOOK_IP_DRIFT]"),
+    );
     expect(consoleWarnSpy).toHaveBeenCalledWith(
       expect.stringContaining("ip=null"),
     );

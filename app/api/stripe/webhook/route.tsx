@@ -24,18 +24,19 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 // Route Handler: on lit le body brut avec request.text() pour que
 // stripe.webhooks.constructEvent puisse vérifier la signature.
 export async function POST(request: Request) {
-  // Audit Stripe phase B L-1 : IP allowlist en défense en profondeur AVANT
-  // la vérif signature. Bypass implicite en non-production via
-  // isStripeWebhookIp (cf lib/stripe/ip-allowlist.ts) — les scans/floods
-  // hors prod ne touchent pas cette route, et `stripe listen` en dev
-  // continue de marcher sans config.
+  // F-015 (audit pré-launch 2026-05-10) : IP allowlist en mode soft-warn.
+  // La signature HMAC reste la défense principale ; la liste d'IP officielles
+  // évolue (Stripe ajoute périodiquement des IPs régionales) et un 403 dur
+  // crée un drift silencieux (events Live tombent en 403 → Stripe retry 4× →
+  // giveup → DB désynchronisée). On log [STRIPE_WEBHOOK_IP_DRIFT] pour
+  // permettre alerting ops sans bloquer un webhook légitime. Le rate-limit
+  // ci-dessous (F-003) couvre le risque DoW / flood post-leak signing secret.
   const clientIp = extractWebhookClientIp(request.headers);
   if (!isStripeWebhookIp(clientIp)) {
     const userAgent = request.headers.get("user-agent") ?? "unknown";
     console.warn(
-      `[STRIPE_WEBHOOK_IP_REJECTED] ip=${clientIp ?? "null"} ua=${userAgent}`,
+      `[STRIPE_WEBHOOK_IP_DRIFT] ip=${clientIp ?? "null"} ua=${userAgent}`,
     );
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const signature = request.headers.get("stripe-signature");
