@@ -1,99 +1,194 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type Stripe from "stripe";
+
+// F-042 (audit pré-launch 2026-05-11) — la fonction lit désormais l'état
+// précédent côté DB AVANT l'UPDATE pour détecter la transition
+// `charges_enabled: true → false`. Le mock distingue les chaînes :
+//   - SELECT : from('producers').select(...).eq('stripe_account_id', X).maybeSingle()
+//   - UPDATE : from('producers').update({...}).eq('stripe_account_id', X).select('id')
+//   - SELECT users : from('users').select('email').eq('id', X).maybeSingle()
+//     (uniquement en cas de transition détectée, pour fetch email producer)
+
+// Hoisted mocks pour ops alert + sendTemplate (Resend) + waitUntil.
+const { mockSendOpsAlert, mockSendTemplate, mockWaitUntil } = vi.hoisted(() => ({
+  mockSendOpsAlert: vi.fn(async () => undefined),
+  mockSendTemplate: vi.fn(async () => ({ ok: true, id: "email_1" })),
+  mockWaitUntil: vi.fn((p: Promise<unknown>) => {
+    void p;
+  }),
+}));
+
+vi.mock("@/lib/ops/alert", () => ({
+  sendOpsAlert: mockSendOpsAlert,
+}));
+
+vi.mock("@/lib/resend/send", () => ({
+  sendTemplate: mockSendTemplate,
+}));
+
+vi.mock("@vercel/functions", () => ({
+  waitUntil: mockWaitUntil,
+}));
+
+vi.mock("@/lib/env/urls", () => ({
+  NEXT_PUBLIC_APP_URL: "http://localhost:3000",
+}));
+
+// Stub template (jamais rendu, mockSendTemplate intercepte).
+vi.mock("@/lib/resend/templates/producer-kyc-blocked", () => ({
+  default: () => null,
+  subject: () => "[TerrOir] KYC blocked",
+}));
+
 import { syncStripeAccountFlags } from "@/lib/stripe/sync-account-flags";
 
-// Mock Supabase modélisé par chaîne unique :
-//   admin.from('producers').update({...}).eq('stripe_account_id', X).select('id')
-//
-// Le builder est thenable (méthode `.then`) pour qu'un `await` direct sur la
-// chaîne (sans `.maybeSingle()`) résolve la réponse stubée.
 type Resp = { data?: unknown; error?: unknown };
 
 type Captured = {
-  // Tables visitées via `from(...)` — attendu : ['producers'] uniquement.
-  from: string[];
-  // Payloads d'update — attendu : un seul objet contenant les 3 flags Stripe.
-  update: unknown[];
-  // Filtres .eq — attendu : un seul ['stripe_account_id', account.id].
-  eq: Array<[string, unknown]>;
-  // Args .select — attendu : ['id'] (pour récupérer les rows touchées).
-  select: string[];
+  fromCalls: string[];
+  updates: unknown[];
+  // Filtres .eq sur la chaîne SELECT (producer prev) — tuple [col, val].
+  selectEqs: Array<[string, unknown]>;
+  // Filtres .eq sur la chaîne UPDATE — tuple [col, val].
+  updateEqs: Array<[string, unknown]>;
+  // .select args sur chaîne UPDATE (post-.eq).
+  updateSelectCols: string[];
 };
 
-const DEFAULT_RESP: Resp = {
-  data: [{ id: "producer-42" }],
-  error: null,
-};
-
-function makeSupabase(response: Resp = DEFAULT_RESP): {
-  client: SupabaseClient;
-  captured: Captured;
-} {
+function makeSupabase(opts: {
+  producerPrev?: Resp;
+  userEmail?: Resp;
+  updateResp?: Resp;
+}): { client: SupabaseClient; captured: Captured } {
   const captured: Captured = {
-    from: [],
-    update: [],
-    eq: [],
-    select: [],
+    fromCalls: [],
+    updates: [],
+    selectEqs: [],
+    updateEqs: [],
+    updateSelectCols: [],
   };
 
-  const builder: any = {};
-  builder.update = (payload: unknown) => {
-    captured.update.push(payload);
-    return builder;
+  const producerPrev = opts.producerPrev ?? {
+    data: { id: "producer-42", user_id: "user-42", nom_exploitation: "Ferme Test", stripe_charges_enabled: false },
+    error: null,
   };
-  builder.eq = (col: string, val: unknown) => {
-    captured.eq.push([col, val]);
-    return builder;
+  const userEmail = opts.userEmail ?? {
+    data: { email: "producer@example.com" },
+    error: null,
   };
-  builder.select = (cols: string) => {
-    captured.select.push(cols);
-    return builder;
+  const updateResp = opts.updateResp ?? {
+    data: [{ id: "producer-42" }],
+    error: null,
   };
-  builder.then = (onFulfilled: (r: Resp) => unknown) => onFulfilled(response);
 
   const client = {
     from: (table: string) => {
-      captured.from.push(table);
-      return builder;
+      captured.fromCalls.push(table);
+
+      if (table === "producers") {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const root: any = {};
+        // SELECT path : select(...).eq(...).maybeSingle()
+        root.select = () => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const sel: any = {};
+          sel.eq = (col: string, val: unknown) => {
+            captured.selectEqs.push([col, val]);
+            return sel;
+          };
+          sel.maybeSingle = () => Promise.resolve(producerPrev);
+          return sel;
+        };
+        // UPDATE path : update(...).eq(...).select('id') [thenable]
+        root.update = (payload: unknown) => {
+          captured.updates.push(payload);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const upd: any = {};
+          upd.eq = (col: string, val: unknown) => {
+            captured.updateEqs.push([col, val]);
+            return upd;
+          };
+          upd.select = (cols: string) => {
+            captured.updateSelectCols.push(cols);
+            return upd;
+          };
+          upd.then = (onFulfilled: (r: Resp) => unknown) =>
+            onFulfilled(updateResp);
+          return upd;
+        };
+        return root;
+      }
+
+      if (table === "users") {
+        // SELECT path users : select('email').eq('id', X).maybeSingle()
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const root: any = {};
+        root.select = () => ({
+          eq: () => ({
+            maybeSingle: () => Promise.resolve(userEmail),
+          }),
+        });
+        return root;
+      }
+
+      // Fallback no-op.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const fb: any = {};
+      fb.select = () => fb;
+      fb.eq = () => fb;
+      fb.maybeSingle = () => Promise.resolve({ data: null, error: null });
+      fb.update = () => fb;
+      fb.then = (onFulfilled: (r: Resp) => unknown) =>
+        onFulfilled({ data: null, error: null });
+      return fb;
     },
   } as unknown as SupabaseClient;
 
   return { client, captured };
 }
 
-// Fabrique un Stripe.Account minimal — seuls les 3 booléens lus par la
-// fonction sont expressifs ; le reste est cast pour satisfaire le type.
 function makeAccount(opts: {
   id?: string;
   chargesEnabled: boolean;
   payoutsEnabled: boolean;
   detailsSubmitted: boolean;
+  requirements?: {
+    disabled_reason?: string | null;
+    currently_due?: string[];
+  };
 }): Stripe.Account {
   return {
     id: opts.id ?? "acct_test",
     charges_enabled: opts.chargesEnabled,
     payouts_enabled: opts.payoutsEnabled,
     details_submitted: opts.detailsSubmitted,
+    requirements: opts.requirements,
   } as unknown as Stripe.Account;
 }
 
 let consoleLogSpy: ReturnType<typeof vi.spyOn>;
 let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
   consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  mockSendOpsAlert.mockClear();
+  mockSendTemplate.mockClear();
+  mockWaitUntil.mockClear();
 });
 
 afterEach(() => {
   consoleLogSpy.mockRestore();
   consoleWarnSpy.mockRestore();
+  consoleErrorSpy.mockRestore();
 });
 
 describe("syncStripeAccountFlags — account fully onboarded", () => {
   it("UPDATE les 3 flags à true et retourne updated=true + producerId", async () => {
-    const { client, captured } = makeSupabase();
+    const { client, captured } = makeSupabase({});
     const account = makeAccount({
       id: "acct_full",
       chargesEnabled: true,
@@ -104,20 +199,21 @@ describe("syncStripeAccountFlags — account fully onboarded", () => {
     const result = await syncStripeAccountFlags(account, client);
 
     expect(result).toEqual({ updated: true, producerId: "producer-42" });
-    expect(captured.from).toEqual(["producers"]);
-    expect(captured.update).toEqual([
+    // 1 SELECT (prev state) + 1 UPDATE — les deux ciblent 'producers'.
+    expect(captured.fromCalls.filter((t) => t === "producers")).toHaveLength(2);
+    expect(captured.updates).toEqual([
       {
         stripe_charges_enabled: true,
         stripe_payouts_enabled: true,
         stripe_details_submitted: true,
       },
     ]);
-    expect(captured.eq).toEqual([["stripe_account_id", "acct_full"]]);
-    expect(captured.select).toEqual(["id"]);
+    expect(captured.updateEqs).toEqual([["stripe_account_id", "acct_full"]]);
+    expect(captured.updateSelectCols).toEqual(["id"]);
   });
 
   it("émet le log [STRIPE_ACCOUNT_UPDATED] avec account.id et les 3 flags", async () => {
-    const { client } = makeSupabase();
+    const { client } = makeSupabase({});
     const account = makeAccount({
       id: "acct_full",
       chargesEnabled: true,
@@ -127,7 +223,7 @@ describe("syncStripeAccountFlags — account fully onboarded", () => {
 
     await syncStripeAccountFlags(account, client);
 
-    expect(consoleLogSpy).toHaveBeenCalledTimes(1);
+    expect(consoleLogSpy).toHaveBeenCalled();
     const logged = String(consoleLogSpy.mock.calls[0]?.[0] ?? "");
     expect(logged).toContain("[STRIPE_ACCOUNT_UPDATED]");
     expect(logged).toContain("account=acct_full");
@@ -139,7 +235,7 @@ describe("syncStripeAccountFlags — account fully onboarded", () => {
 
 describe("syncStripeAccountFlags — account partial (KYC soumis mais charges KO)", () => {
   it("écrit les flags conformes aux valeurs Stripe, pas d'agrégat onboarding_completed", async () => {
-    const { client, captured } = makeSupabase();
+    const { client, captured } = makeSupabase({});
     const account = makeAccount({
       id: "acct_partial",
       chargesEnabled: false,
@@ -150,7 +246,7 @@ describe("syncStripeAccountFlags — account partial (KYC soumis mais charges KO
     const result = await syncStripeAccountFlags(account, client);
 
     expect(result.updated).toBe(true);
-    expect(captured.update).toEqual([
+    expect(captured.updates).toEqual([
       {
         stripe_charges_enabled: false,
         stripe_payouts_enabled: false,
@@ -162,7 +258,7 @@ describe("syncStripeAccountFlags — account partial (KYC soumis mais charges KO
 
 describe("syncStripeAccountFlags — account réinitialisé (3 flags Stripe à false)", () => {
   it("UPDATE les 3 flags à false (cas reset Stripe ou compte créé sans onboarding)", async () => {
-    const { client, captured } = makeSupabase();
+    const { client, captured } = makeSupabase({});
     const account = makeAccount({
       id: "acct_reset",
       chargesEnabled: false,
@@ -173,7 +269,7 @@ describe("syncStripeAccountFlags — account réinitialisé (3 flags Stripe à f
     const result = await syncStripeAccountFlags(account, client);
 
     expect(result.updated).toBe(true);
-    expect(captured.update).toEqual([
+    expect(captured.updates).toEqual([
       {
         stripe_charges_enabled: false,
         stripe_payouts_enabled: false,
@@ -185,7 +281,7 @@ describe("syncStripeAccountFlags — account réinitialisé (3 flags Stripe à f
 
 describe("syncStripeAccountFlags — coercion booléenne défensive", () => {
   it("traite undefined / null des champs Stripe.Account comme false (jamais NaN, jamais throw)", async () => {
-    const { client, captured } = makeSupabase();
+    const { client, captured } = makeSupabase({});
     // Stripe SDK type ces 3 champs comme `boolean` mais le runtime peut
     // retourner undefined sur des comptes très neufs ou dans des états de
     // transition — la double-négation (!!) garantit qu'on n'écrit jamais
@@ -198,7 +294,7 @@ describe("syncStripeAccountFlags — coercion booléenne défensive", () => {
     const result = await syncStripeAccountFlags(account, client);
 
     expect(result.updated).toBe(true);
-    expect(captured.update).toEqual([
+    expect(captured.updates).toEqual([
       {
         stripe_charges_enabled: false,
         stripe_payouts_enabled: false,
@@ -211,8 +307,8 @@ describe("syncStripeAccountFlags — coercion booléenne défensive", () => {
 describe("syncStripeAccountFlags — producer absent (UPDATE 0 rows)", () => {
   it("retourne updated=false + producerId=null sans throw (cas orphelin / RGPD)", async () => {
     const { client, captured } = makeSupabase({
-      data: [],
-      error: null,
+      producerPrev: { data: null, error: null },
+      updateResp: { data: [], error: null },
     });
     const account = makeAccount({
       id: "acct_orphan",
@@ -224,11 +320,8 @@ describe("syncStripeAccountFlags — producer absent (UPDATE 0 rows)", () => {
     const result = await syncStripeAccountFlags(account, client);
 
     expect(result).toEqual({ updated: false, producerId: null });
-    // L'UPDATE est tout de même émis (Supabase ne sait pas a priori si la
-    // WHERE matchera). T-419 : warn greppable [STRIPE_ACCOUNT_NOT_FOUND]
-    // pour permettre l'intervention manuelle admin sur les orphelins.
-    expect(captured.update).toHaveLength(1);
-    expect(consoleWarnSpy).toHaveBeenCalledTimes(1);
+    expect(captured.updates).toHaveLength(1);
+    expect(consoleWarnSpy).toHaveBeenCalled();
     const warned = String(consoleWarnSpy.mock.calls[0]?.[0] ?? "");
     expect(warned).toContain("[STRIPE_ACCOUNT_NOT_FOUND]");
     expect(warned).toContain("account=acct_orphan");
@@ -238,8 +331,7 @@ describe("syncStripeAccountFlags — producer absent (UPDATE 0 rows)", () => {
 describe("syncStripeAccountFlags — erreur PostgREST", () => {
   it("log [STRIPE_ACCOUNT_UPDATED_ERR] et retourne updated=false sans throw", async () => {
     const { client } = makeSupabase({
-      data: null,
-      error: { message: "RLS policy violation" },
+      updateResp: { data: null, error: { message: "RLS policy violation" } },
     });
     const account = makeAccount({
       id: "acct_rls_denied",
@@ -251,17 +343,18 @@ describe("syncStripeAccountFlags — erreur PostgREST", () => {
     const result = await syncStripeAccountFlags(account, client);
 
     expect(result).toEqual({ updated: false, producerId: null });
-    expect(consoleWarnSpy).toHaveBeenCalledTimes(1);
-    const warned = String(consoleWarnSpy.mock.calls[0]?.[0] ?? "");
-    expect(warned).toContain("[STRIPE_ACCOUNT_UPDATED_ERR]");
+    expect(consoleWarnSpy).toHaveBeenCalled();
+    const warned = consoleWarnSpy.mock.calls
+      .map((c: unknown[]) => String(c?.[0] ?? ""))
+      .find((s: string) => s.includes("[STRIPE_ACCOUNT_UPDATED_ERR]"));
+    expect(warned).toBeDefined();
     expect(warned).toContain("account=acct_rls_denied");
     expect(warned).toContain("RLS policy violation");
   });
 
   it("ne throw PAS même si error.message est absent (defensive)", async () => {
     const { client } = makeSupabase({
-      data: null,
-      error: {} as Record<string, unknown>,
+      updateResp: { data: null, error: {} as Record<string, unknown> },
     });
     const account = makeAccount({
       id: "acct_unknown_err",
@@ -273,6 +366,173 @@ describe("syncStripeAccountFlags — erreur PostgREST", () => {
     await expect(
       syncStripeAccountFlags(account, client),
     ).resolves.toEqual({ updated: false, producerId: null });
-    expect(consoleWarnSpy).toHaveBeenCalledTimes(1);
+    expect(consoleWarnSpy).toHaveBeenCalled();
+  });
+});
+
+// =============================================================================
+// F-042 (audit pré-launch 2026-05-11) — détection transition charges_enabled
+// true → false : ops alert + email producer.
+// =============================================================================
+
+describe("syncStripeAccountFlags — F-042 transition charges_enabled true→false", () => {
+  it("transition true→false → sendOpsAlert + sendTemplate(producer_kyc_blocked) déclenchés", async () => {
+    const { client } = makeSupabase({
+      producerPrev: {
+        data: {
+          id: "producer-42",
+          user_id: "user-42",
+          nom_exploitation: "Ferme Test",
+          stripe_charges_enabled: true,
+        },
+        error: null,
+      },
+    });
+    const account = makeAccount({
+      id: "acct_blocked",
+      chargesEnabled: false,
+      payoutsEnabled: true,
+      detailsSubmitted: true,
+      requirements: {
+        disabled_reason: "requirements.past_due",
+        currently_due: ["individual.id_number", "tos_acceptance.date"],
+      },
+    });
+
+    const result = await syncStripeAccountFlags(account, client);
+
+    expect(result).toEqual({ updated: true, producerId: "producer-42" });
+    // waitUntil appelé 2 fois (ops alert + email producer).
+    expect(mockWaitUntil).toHaveBeenCalledTimes(2);
+    expect(mockSendOpsAlert).toHaveBeenCalledTimes(1);
+    const opsCall = mockSendOpsAlert.mock.calls[0] as unknown[];
+    expect(opsCall?.[0]).toBe("[STRIPE_CHARGES_DISABLED]");
+    expect(opsCall?.[2]).toMatchObject({
+      producer_id: "producer-42",
+      stripe_account_id: "acct_blocked",
+      disabled_reason: "requirements.past_due",
+      currently_due: ["individual.id_number", "tos_acceptance.date"],
+    });
+    expect(mockSendTemplate).toHaveBeenCalledTimes(1);
+    expect(mockSendTemplate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "producer@example.com",
+        template: "producer_kyc_blocked",
+        userId: "user-42",
+      }),
+    );
+  });
+
+  it("transition false→true (déblocage) → AUCUN ops alert, AUCUN email", async () => {
+    const { client } = makeSupabase({
+      producerPrev: {
+        data: {
+          id: "producer-42",
+          user_id: "user-42",
+          nom_exploitation: "Ferme Test",
+          stripe_charges_enabled: false,
+        },
+        error: null,
+      },
+    });
+    const account = makeAccount({
+      id: "acct_unblocked",
+      chargesEnabled: true,
+      payoutsEnabled: true,
+      detailsSubmitted: true,
+    });
+
+    const result = await syncStripeAccountFlags(account, client);
+
+    expect(result.updated).toBe(true);
+    expect(mockSendOpsAlert).not.toHaveBeenCalled();
+    expect(mockSendTemplate).not.toHaveBeenCalled();
+  });
+
+  it("transition true→true (no-op) → AUCUN ops alert, AUCUN email", async () => {
+    const { client } = makeSupabase({
+      producerPrev: {
+        data: {
+          id: "producer-42",
+          user_id: "user-42",
+          nom_exploitation: "Ferme Test",
+          stripe_charges_enabled: true,
+        },
+        error: null,
+      },
+    });
+    const account = makeAccount({
+      id: "acct_steady",
+      chargesEnabled: true,
+      payoutsEnabled: true,
+      detailsSubmitted: true,
+    });
+
+    const result = await syncStripeAccountFlags(account, client);
+
+    expect(result.updated).toBe(true);
+    expect(mockSendOpsAlert).not.toHaveBeenCalled();
+    expect(mockSendTemplate).not.toHaveBeenCalled();
+  });
+
+  it("transition false→false (déjà bloqué) → AUCUN ops alert (anti-spam rejouage)", async () => {
+    const { client } = makeSupabase({
+      producerPrev: {
+        data: {
+          id: "producer-42",
+          user_id: "user-42",
+          nom_exploitation: "Ferme Test",
+          stripe_charges_enabled: false,
+        },
+        error: null,
+      },
+    });
+    const account = makeAccount({
+      id: "acct_still_blocked",
+      chargesEnabled: false,
+      payoutsEnabled: false,
+      detailsSubmitted: true,
+      requirements: {
+        disabled_reason: "requirements.past_due",
+        currently_due: ["individual.id_number"],
+      },
+    });
+
+    const result = await syncStripeAccountFlags(account, client);
+
+    expect(result.updated).toBe(true);
+    expect(mockSendOpsAlert).not.toHaveBeenCalled();
+    expect(mockSendTemplate).not.toHaveBeenCalled();
+  });
+
+  it("transition true→false avec producer.user_id null → ops alert posé, email skip + log", async () => {
+    const { client } = makeSupabase({
+      producerPrev: {
+        data: {
+          id: "producer-orphan",
+          user_id: null,
+          nom_exploitation: "Producteur legacy",
+          stripe_charges_enabled: true,
+        },
+        error: null,
+      },
+    });
+    const account = makeAccount({
+      id: "acct_no_user",
+      chargesEnabled: false,
+      payoutsEnabled: false,
+      detailsSubmitted: true,
+      requirements: {
+        disabled_reason: "rejected.fraud",
+        currently_due: [],
+      },
+    });
+
+    await syncStripeAccountFlags(account, client);
+
+    expect(mockSendOpsAlert).toHaveBeenCalledTimes(1);
+    // Email tentative déclenchée mais court-circuitée par user_id null.
+    // sendTemplate ne doit pas être appelé.
+    expect(mockSendTemplate).not.toHaveBeenCalled();
   });
 });

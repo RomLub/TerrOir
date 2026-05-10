@@ -598,6 +598,99 @@ describe("POST /api/stripe/webhook — Bundle 3 (T-401 payout.failed)", () => {
 // délégation route → helper. La logique fallback elle-même est testée en
 // isolation côté helper.
 
+// =============================================================================
+// F-039 (audit pré-launch 2026-05-11) — events charge.dispute.funds_*
+// =============================================================================
+//
+// Audit log forensique uniquement (pas d'effet de bord business). Vérifie
+// que les 2 events sont bien dans DEDUP_TARGETS (pas de double-log au
+// rejouage) et que logPaymentEvent est appelé avec le bon event_type +
+// metadata structurée (dispute_id, charge_id, payment_intent_id, amount,
+// currency, reason, status).
+
+describe("POST /api/stripe/webhook — F-039 charge.dispute.funds_* (audit forensique)", () => {
+  it("charge.dispute.funds_withdrawn nouveau → logPaymentEvent('stripe_dispute_funds_withdrawn') avec metadata complète", async () => {
+    mockConstructEvent.mockReturnValue(
+      makeStripeEvent("charge.dispute.funds_withdrawn", "evt_funds_w_1", {
+        id: "dp_funds_w_1",
+        charge: "ch_w_1",
+        payment_intent: "pi_w_1",
+        amount: 4500,
+        currency: "eur",
+        reason: "fraudulent",
+        status: "needs_response",
+      }),
+    );
+    mockCheckOrMarkProcessed.mockResolvedValue({ alreadyProcessed: false });
+
+    const res = await POST(makeRequest());
+
+    expect(res.status).toBe(200);
+    expect(mockCheckOrMarkProcessed).toHaveBeenCalledWith(
+      expect.anything(),
+      "evt_funds_w_1",
+      "charge.dispute.funds_withdrawn",
+    );
+    expect(mockLogPaymentEvent).toHaveBeenCalledWith({
+      eventType: "stripe_dispute_funds_withdrawn",
+      metadata: {
+        dispute_id: "dp_funds_w_1",
+        charge_id: "ch_w_1",
+        payment_intent_id: "pi_w_1",
+        amount: 4500,
+        currency: "eur",
+        reason: "fraudulent",
+        status: "needs_response",
+      },
+    });
+    // Pas d'effet de bord business : pas d'appel aux autres handlers.
+    expect(mockSyncDisputeCreated).not.toHaveBeenCalled();
+    expect(mockSyncDisputeUpdated).not.toHaveBeenCalled();
+    expect(mockSyncDisputeClosed).not.toHaveBeenCalled();
+  });
+
+  it("charge.dispute.funds_reinstated nouveau → logPaymentEvent('stripe_dispute_funds_reinstated')", async () => {
+    mockConstructEvent.mockReturnValue(
+      makeStripeEvent("charge.dispute.funds_reinstated", "evt_funds_r_1", {
+        id: "dp_funds_r_1",
+        charge: "ch_r_1",
+        payment_intent: "pi_r_1",
+        amount: 4500,
+        currency: "eur",
+        reason: "fraudulent",
+        status: "won",
+      }),
+    );
+    mockCheckOrMarkProcessed.mockResolvedValue({ alreadyProcessed: false });
+
+    const res = await POST(makeRequest());
+
+    expect(res.status).toBe(200);
+    expect(mockLogPaymentEvent).toHaveBeenCalledWith({
+      eventType: "stripe_dispute_funds_reinstated",
+      metadata: expect.objectContaining({
+        dispute_id: "dp_funds_r_1",
+        status: "won",
+      }),
+    });
+  });
+
+  it("charge.dispute.funds_withdrawn rejoué (dédup hit) → 200 deduped:true, logPaymentEvent NON appelé", async () => {
+    mockConstructEvent.mockReturnValue(
+      makeStripeEvent("charge.dispute.funds_withdrawn", "evt_funds_replay", {
+        id: "dp_replay",
+      }),
+    );
+    mockCheckOrMarkProcessed.mockResolvedValue({ alreadyProcessed: true });
+
+    const res = await POST(makeRequest());
+    const body = await res.json();
+
+    expect(body).toEqual({ received: true, deduped: true });
+    expect(mockLogPaymentEvent).not.toHaveBeenCalled();
+  });
+});
+
 describe("POST /api/stripe/webhook — Bundle 3 (T-403 extended dispute.updated + dispute.closed)", () => {
   it("charge.dispute.updated nouveau → syncStripeDisputeUpdated appelé", async () => {
     mockConstructEvent.mockReturnValue(

@@ -37,6 +37,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getSessionUser } from "@/lib/auth/session";
 import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 import { maskEmail } from "@/lib/rgpd/mask-email";
+import { stripe } from "@/lib/stripe/server";
 
 export type CompleteEmailChangeReason =
   | "session"
@@ -134,11 +135,16 @@ export async function completeEmailChangeAction(
     return { ok: false, reason: "auth_update_failed" };
   }
 
-  // Sync public.users.email (cohérent flow change-password.ts pattern admin)
-  const { error: usersUpdateError } = await admin
+  // Sync public.users.email (cohérent flow change-password.ts pattern admin).
+  // F-041 (audit pré-launch 2026-05-11) — on récupère aussi stripe_customer_id
+  // dans le RETURNING pour re-synchroniser l'email Stripe ↔ DB après
+  // l'UPDATE (cf. bloc ci-dessous).
+  const { data: updatedUser, error: usersUpdateError } = await admin
     .from("users")
     .update({ email: newEmail })
-    .eq("id", session.id);
+    .eq("id", session.id)
+    .select("stripe_customer_id")
+    .maybeSingle();
   if (usersUpdateError) {
     // CRITIQUE : auth.users ↔ public.users désynchro. Trace forensique
     // explicite pour reconciliation manuelle. Le UNIQUE INDEX sur
@@ -148,6 +154,25 @@ export async function completeEmailChangeAction(
       `COMPLETE_EMAIL_CHANGE_USERS_UPDATE_ERROR user=${session.id} new_email_masked=${maskEmail(newEmail)} message=${usersUpdateError.message}`,
     );
     return { ok: false, reason: "users_update_failed" };
+  }
+
+  // F-041 (audit pré-launch 2026-05-11) — re-sync email Stripe Customer.
+  // Sans ça, le Customer Stripe garde l'ancien email (visible Dashboard
+  // Stripe pour ops + receipts cards envoyés à l'ancienne adresse). Pattern
+  // fail-open : si Stripe API down ou customer_id obsolète, on log greppable
+  // [STRIPE_CUSTOMER_EMAIL_SYNC_ERROR] mais le flow continue (l'email DB
+  // est déjà à jour, c'est l'essentiel pour la session/auth).
+  const stripeCustomerId =
+    (updatedUser as { stripe_customer_id: string | null } | null)
+      ?.stripe_customer_id ?? null;
+  if (stripeCustomerId) {
+    try {
+      await stripe.customers.update(stripeCustomerId, { email: newEmail });
+    } catch (stripeErr) {
+      console.warn(
+        `[STRIPE_CUSTOMER_EMAIL_SYNC_ERROR] user=${session.id} customer=${stripeCustomerId} message=${(stripeErr as Error).message}`,
+      );
+    }
   }
 
   // Force logout other devices (Q3 PHASE 2.A : scope 'others'). Utilise

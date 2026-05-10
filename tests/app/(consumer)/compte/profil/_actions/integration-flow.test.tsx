@@ -27,6 +27,18 @@ vi.hoisted(() => {
   process.env.EMAIL_CHANGE_OTP_SECRET =
     process.env.EMAIL_CHANGE_OTP_SECRET ??
     "test-only-secret-do-not-use-in-prod-32bytes-min";
+  // F-041 (audit P0 sweep) : complete-email-change importe lib/stripe/server.
+  process.env.STRIPE_SECRET_KEY =
+    process.env.STRIPE_SECRET_KEY ?? "sk_test_stub";
+});
+
+vi.mock("@/lib/stripe/server", () => ({
+  stripe: {
+    customers: { update: vi.fn().mockResolvedValue({}) },
+  },
+}));
+
+vi.hoisted(() => {
   process.env.NEXT_PUBLIC_APP_URL =
     process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
   process.env.NEXT_PUBLIC_PRODUCER_URL =
@@ -91,6 +103,9 @@ vi.mock("@/lib/supabase/server", () => ({
   }),
 }));
 
+// F-024 (audit P0 sweep) : verify-otp utilise RPC SECDEF atomique.
+let incrementOtpRpcQueue: { data: unknown; error: unknown }[] = [];
+
 vi.mock("@/lib/supabase/admin", () => ({
   createSupabaseAdminClient: () => ({
     auth: {
@@ -98,6 +113,10 @@ vi.mock("@/lib/supabase/admin", () => ({
         updateUserById: (...args: unknown[]) => adminUpdateUserByIdMock(...args),
       },
     },
+    rpc: (_name: string, _params: unknown) =>
+      Promise.resolve(
+        incrementOtpRpcQueue.shift() ?? { data: null, error: null },
+      ),
     from: () => ({
       select: () => ({
         eq: () => ({
@@ -134,9 +153,23 @@ vi.mock("@/lib/supabase/admin", () => ({
         return {
           eq: (col: string, val: unknown) => {
             // Pour invalidate (UPDATE ... .eq().eq().is()) — chain
-            // Pour complete users update (UPDATE .eq("id", ...)) — terminal
+            // Pour complete users update (UPDATE .eq("id", ...).select().maybeSingle())
             if (col === "id") {
-              return Promise.resolve(updateResponse);
+              // F-041 (audit P0 sweep) : complete-email-change retourne
+              // stripe_customer_id via .select("stripe_customer_id").maybeSingle()
+              // pour re-sync Stripe Customer. Branche chainable.
+              return {
+                select: () => ({
+                  maybeSingle: () =>
+                    Promise.resolve({
+                      data: { stripe_customer_id: null },
+                      error: updateResponse.error,
+                    }),
+                }),
+                // Path historique : UPDATE ... .eq("id", ...) terminal
+                then: (onFulfilled: (r: unknown) => unknown) =>
+                  onFulfilled(updateResponse),
+              };
             }
             return {
               eq: () => ({
@@ -398,6 +431,8 @@ describe("Integration flow — edge cases cross-actions", () => {
       { data: makeOtpRow({ attempts: 0 }), error: null },
     ];
     verifyHashMock = vi.fn<AnyAsyncFn>().mockResolvedValue(false);
+    // F-024 (audit P0 sweep) : RPC SECDEF retourne new_attempts=1 pour ce wrong attempt.
+    incrementOtpRpcQueue = [{ data: [{ new_attempts: 1 }], error: null }];
     const res = await verifyOtpAction({}, makeVerifyFD("current", "999999"));
     expect(res).toEqual({
       ok: false,

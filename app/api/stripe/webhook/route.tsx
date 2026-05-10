@@ -127,6 +127,12 @@ export async function POST(request: Request) {
     "radar.early_fraud_warning.created",
     "charge.refunded",
     "account.application.deauthorized",
+    // F-039 (audit pré-launch 2026-05-11) — dispute funds events. Pas
+    // d'effet de bord business (audit log forensique uniquement), mais
+    // dédup obligatoire : un rejouage Stripe poserait une 2e ligne audit
+    // identique qui polluerait la chronologie comptable.
+    "charge.dispute.funds_withdrawn",
+    "charge.dispute.funds_reinstated",
   ]);
 
   if (DEDUP_TARGETS.has(event.type)) {
@@ -299,6 +305,37 @@ export async function POST(request: Request) {
         break;
       }
 
+      case "charge.dispute.funds_withdrawn":
+      case "charge.dispute.funds_reinstated": {
+        // F-039 (audit pré-launch 2026-05-11) — Audit log forensique pour
+        // reconstitution chronologie comptable (débit / re-crédit platform
+        // balance pendant un dispute). Pas d'effet de bord business : pas
+        // d'UPDATE DB orders/refunds (l'instruction du dispute est gérée
+        // via charge.dispute.created/updated/closed). Volume négligeable
+        // (1 paire withdrawn+reinstated max par dispute won, 1 withdrawn
+        // seul par dispute lost).
+        const dispute = event.data.object as Stripe.Dispute;
+        await logPaymentEvent({
+          eventType:
+            event.type === "charge.dispute.funds_withdrawn"
+              ? "stripe_dispute_funds_withdrawn"
+              : "stripe_dispute_funds_reinstated",
+          metadata: {
+            dispute_id: dispute.id,
+            charge_id: typeof dispute.charge === "string" ? dispute.charge : null,
+            payment_intent_id:
+              typeof dispute.payment_intent === "string"
+                ? dispute.payment_intent
+                : null,
+            amount: dispute.amount,
+            currency: dispute.currency,
+            reason: dispute.reason,
+            status: dispute.status,
+          },
+        });
+        break;
+      }
+
       case "account.application.deauthorized": {
         // Audit Stripe phase 2 M-3 — producer disconnecte son Connect account
         // depuis Dashboard Stripe. Sans handler, producer.stripe_account_id
@@ -317,6 +354,14 @@ export async function POST(request: Request) {
       }
 
       default:
+        // F-043 (audit pré-launch 2026-05-11) — log greppable des events
+        // Stripe non handlés (ack 200 silencieux historiquement). Permet à
+        // ops de détecter de nouveaux event_types abonnés côté Dashboard
+        // sans handler côté code, ou de vieux events qu'on aurait oubliés.
+        // Cosmetic logging : pas de DB write, pas d'effet de bord.
+        console.log(
+          `[STRIPE_WEBHOOK_UNHANDLED] type=${event.type} id=${event.id}`,
+        );
         break;
     }
   } catch (err) {
