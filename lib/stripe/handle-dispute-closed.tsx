@@ -4,6 +4,8 @@ import { waitUntil } from "@vercel/functions";
 import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
 import { sendTemplate } from "@/lib/resend/send";
 import { SUPPORT_EMAIL } from "@/lib/env/support-email";
+import { reverseTransferIfNeeded } from "@/lib/stripe/reverse-transfer";
+import { sendOpsAlert } from "@/lib/ops/alert";
 import AdminDisputeClosed, {
   subject as adminDisputeClosedSubject,
   type DisputeOutcome,
@@ -106,6 +108,45 @@ export async function syncStripeDisputeClosed(
       .maybeSingle();
     codeCommande =
       (order as { code_commande?: string | null } | null)?.code_commande ?? null;
+  }
+
+  // F-004 sub-3 (audit pré-launch 2026-05-10) — Reversal automatique sur
+  // dispute lost. Standalone, pas de refund derrière : le chargeback Stripe
+  // a DÉJÀ débité la platform balance au moment où Stripe a marqué le dispute
+  // 'lost'. Le reversal récupère le montant côté Connect account producer
+  // (qui avait reçu son net via le cron weekly-payout post-completion) pour
+  // que la perte commerciale ne soit pas absorbée par TerrOir.
+  //
+  // Logique :
+  //   - outcome !== 'lost' → noop (won = on garde les fonds, warning_closed = pas de débit)
+  //   - outcome === 'lost' + orderId NULL → noop (dispute orphelin sans match)
+  //   - outcome === 'lost' + orderId présent → appel helper (qui re-fetch transfer_id DB) :
+  //       reversed | noop_no_transfer_id | noop_lookup_failed | failed
+  //
+  // Comportement kind='failed' sur ce path dispute lost :
+  //   - sendOpsAlert [DISPUTE_LOST_REVERSAL_FAILED] → admin investigue manuellement.
+  //   - Pas de "refund à bloquer" ici (le chargeback est définitif côté Stripe).
+  // Refacto futur : si tu uniformises ce comportement, vérifie l'invariant
+  // par caller dans le commit de référence F-004 sub-3.
+  if (outcome === "lost" && orderId && row) {
+    const reversal = await reverseTransferIfNeeded({
+      admin,
+      orderId,
+      amountEur: Number(row.amount),
+      source: "dispute_lost",
+    });
+    if (reversal.kind === "failed") {
+      await sendOpsAlert(
+        "[DISPUTE_LOST_REVERSAL_FAILED]",
+        new Error(reversal.error),
+        {
+          order_id: orderId,
+          dispute_id: dispute.id,
+          transfer_id: reversal.transferId,
+          amount: Number(row.amount),
+        },
+      );
+    }
   }
 
   // Audit log forensique.

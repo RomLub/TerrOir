@@ -44,7 +44,15 @@ export type OpsAlertPrefix =
   // capabilities révoquées). Le caller a bloqué le refund pour ne pas créer
   // un drift platform sans rollback. Admin action requise : investiguer
   // Dashboard Stripe (Connect status + balance) puis refund manuel + reversal.
-  | "[TRANSFER_REVERSAL_BLOCKED_REFUND]";
+  | "[TRANSFER_REVERSAL_BLOCKED_REFUND]"
+  // F-004 sub-3 (audit pré-launch 2026-05-10) — Reversal automatique sur
+  // dispute closed status='lost' a échoué. Le chargeback Stripe a déjà débité
+  // la platform balance ; le reversal devait récupérer les fonds côté
+  // Connect account producer mais a échoué (Connect vidé, suspended, etc.).
+  // Pas de "refund à bloquer" ici (le débit chargeback est définitif côté
+  // Stripe). Admin action requise : ouvrir investigation producteur +
+  // reversal manuel Dashboard quand Connect remédié.
+  | "[DISPUTE_LOST_REVERSAL_FAILED]";
 
 export type OpsAlertMetadata = Record<string, unknown>;
 
