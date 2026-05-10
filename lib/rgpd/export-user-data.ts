@@ -211,7 +211,12 @@ export async function buildExportPayload(
     producers: { nom_exploitation: string | null; commune: string | null } | null;
   };
 
-  const ordersJoined = (ordersRes.data ?? []) as OrderJoin[];
+  // Cast via unknown : Supabase 2 type les relations many-to-one comme arrays
+  // dans le retour inféré, mais le runtime retourne des objets singles (FK
+  // côté orders → producer / FK côté order_items → product). On garde notre
+  // forme typée propre et on assume au runtime — pattern aligné avec le
+  // reste du codebase (cf. lib/products/fetch-products-public.ts).
+  const ordersJoined = (ordersRes.data ?? []) as unknown as OrderJoin[];
   const commandes: ExportedOrder[] = ordersJoined.map((o) => ({
     id: o.id,
     code_commande: o.code_commande,
@@ -250,7 +255,7 @@ export async function buildExportPayload(
     producers: { nom_exploitation: string | null } | null;
   };
 
-  const reviewsJoined = (reviewsRes.data ?? []) as ReviewJoin[];
+  const reviewsJoined = (reviewsRes.data ?? []) as unknown as ReviewJoin[];
   const avis: ExportedReview[] = reviewsJoined.map((r) => ({
     id: r.id,
     note: r.note,
