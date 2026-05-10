@@ -65,6 +65,12 @@ vi.mock("@/lib/resend/templates/admin-producer-refund-alert", () => ({
   subject: (p: { amount: number }) => `subject-${p.amount}`,
 }));
 
+vi.mock("@/lib/resend/templates/admin-producer-refund-cap-exceeded", () => ({
+  default: () => null,
+  subject: (p: { attemptedAmount: number; cap: number }) =>
+    `cap-exceeded-${p.attemptedAmount}-cap${p.cap}`,
+}));
+
 vi.mock("next/cache", () => ({
   revalidateTag: mockRevalidateTag,
 }));
@@ -277,6 +283,7 @@ beforeEach(() => {
     reset: Date.now() + 60_000,
   });
   delete process.env.SUPPORT_REFUND_THRESHOLD_EUR;
+  delete process.env.PRODUCER_REFUND_CAP_EUR;
   consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
   savedCronSecret = process.env.CRON_SECRET;
   delete process.env.CRON_SECRET;
@@ -678,6 +685,101 @@ describe("F'. Audit Stripe L-5 — refund producer audit + email admin", () => {
     const res = await POST(makeRequest());
     expect(res.status).toBe(200);
     expect(mockSendTemplate).not.toHaveBeenCalled();
+  });
+});
+
+// --- F''. F-014 (audit pré-launch 2026-05-10) — cap dur producer ---------
+
+describe("F''. F-014 — cap DUR producer self-refund", () => {
+  function setProducerSession() {
+    sessionUser = {
+      id: PRODUCER_USER_ID,
+      email: "prod@example.com",
+      roles: ["producer"],
+      isAdmin: false,
+    };
+    pushProducerSelect({ data: { id: PRODUCER_ID }, error: null });
+  }
+
+  it("F-014-A producer + amount <= cap default (500€) → flow nominal 200, AUCUN block", async () => {
+    setProducerSession();
+    setOrderFetch({ montant_total: 499.99 });
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(200);
+    expect(mockRefundCreate).toHaveBeenCalledTimes(1);
+    expect(mockLogPaymentEvent).not.toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "producer_refund_cap_exceeded" }),
+    );
+  });
+
+  it("F-014-B producer + amount > cap default → 403 refund_cap_exceeded + audit log + email admin URGENT, AUCUN refund Stripe", async () => {
+    setProducerSession();
+    setOrderFetch({ montant_total: 750 });
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({
+      error: "refund_cap_exceeded",
+      attempted_amount: 750,
+      cap: 500,
+    });
+    expect(mockRefundCreate).not.toHaveBeenCalled();
+    expect(captured.updates).toEqual([]);
+    expect(mockLogPaymentEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: "producer_refund_cap_exceeded",
+        userId: CONSUMER_ID,
+        metadata: expect.objectContaining({
+          order_id: ORDER_ID,
+          producer_id: PRODUCER_ID,
+          attempted_amount: 750,
+          cap: 500,
+        }),
+      }),
+    );
+    expect(mockSendTemplate).toHaveBeenCalledTimes(1);
+    expect(mockSendTemplate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "admin@terroir-local.fr",
+        template: "admin_producer_refund_cap_exceeded",
+      }),
+    );
+  });
+
+  it("F-014-C admin path n'est PAS soumis au cap (amount > cap → flow nominal 200)", async () => {
+    // sessionUser = admin par défaut
+    setOrderFetch({ montant_total: 9999 });
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(200);
+    expect(mockRefundCreate).toHaveBeenCalledTimes(1);
+    expect(mockLogPaymentEvent).not.toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: "producer_refund_cap_exceeded" }),
+    );
+  });
+
+  it("F-014-D PRODUCER_REFUND_CAP_EUR=200 + amount=300 → 403 avec cap=200", async () => {
+    process.env.PRODUCER_REFUND_CAP_EUR = "200";
+    setProducerSession();
+    setOrderFetch({ montant_total: 300 });
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({
+      error: "refund_cap_exceeded",
+      attempted_amount: 300,
+      cap: 200,
+    });
+  });
+
+  it("F-014-E PRODUCER_REFUND_CAP_EUR invalide (<=0 ou non-numérique) → fallback default 500", async () => {
+    process.env.PRODUCER_REFUND_CAP_EUR = "abc";
+    setProducerSession();
+    setOrderFetch({ montant_total: 600 });
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({
+      error: "refund_cap_exceeded",
+      attempted_amount: 600,
+      cap: 500,
+    });
   });
 });
 

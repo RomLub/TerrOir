@@ -38,7 +38,21 @@ export type OpsAlertPrefix =
   | "[STRIPE_WEBHOOK_BG_ERR]"
   | "[REFUND_TRANSITION_DRIFT]"
   | "[STRIPE_CHARGE_REFUNDED_NO_ORDER]"
-  | "[WEBHOOK_SUCCEEDED_REFUND_FAILED]";
+  | "[WEBHOOK_SUCCEEDED_REFUND_FAILED]"
+  // F-004 sub-2 (audit pré-launch 2026-05-10) — Reversal Stripe Connect a
+  // échoué (transfer obsolète, Connect account suspended, payouté banque,
+  // capabilities révoquées). Le caller a bloqué le refund pour ne pas créer
+  // un drift platform sans rollback. Admin action requise : investiguer
+  // Dashboard Stripe (Connect status + balance) puis refund manuel + reversal.
+  | "[TRANSFER_REVERSAL_BLOCKED_REFUND]"
+  // F-004 sub-3 (audit pré-launch 2026-05-10) — Reversal automatique sur
+  // dispute closed status='lost' a échoué. Le chargeback Stripe a déjà débité
+  // la platform balance ; le reversal devait récupérer les fonds côté
+  // Connect account producer mais a échoué (Connect vidé, suspended, etc.).
+  // Pas de "refund à bloquer" ici (le débit chargeback est définitif côté
+  // Stripe). Admin action requise : ouvrir investigation producteur +
+  // reversal manuel Dashboard quand Connect remédié.
+  | "[DISPUTE_LOST_REVERSAL_FAILED]";
 
 export type OpsAlertMetadata = Record<string, unknown>;
 

@@ -101,6 +101,16 @@ export async function retryIncident(
   const attemptNumber = retryCount + 1;
   const idempotencyKey = `refund_${orderId}_${kind}_${attemptNumber}`;
 
+  // F-004 sub-2 : pas d'appel reverseTransferIfNeeded sur ce path.
+  // Rationnel : le retry concerne un refund qui a déjà échoué côté Stripe.
+  // Le path INITIAL (cancel/timeout/revival/admin) a déjà appelé le helper
+  // AVANT son refund initial (Option A) — donc le reversal a déjà été tenté
+  // une fois. Refaire un reversal au retry est de la defense-in-depth
+  // marginale (cas : remédiation Connect entre l'init et le retry) et ajoute
+  // un SELECT orders.montant_total par retry. Bénéfice/coût pas P0.
+  // TODO V1.x si abus observé : repasser le helper ici avec amountEur passé
+  // en param (changement signature retryIncident, ajout amount au caller cron).
+
   let refund: { id: string };
   try {
     refund = await stripe.refunds.create(

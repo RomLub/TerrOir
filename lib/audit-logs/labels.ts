@@ -64,6 +64,7 @@ export const AUDIT_EVENT_LABELS: Record<string, string> = {
   order_admin_refund_succeeded: "Refund admin effectué",
   order_producer_refund_succeeded: "Refund producteur effectué",
   order_producer_refund_failed: "Échec refund producteur",
+  producer_refund_cap_exceeded: "Refund producteur bloqué (cap dépassé)",
   order_timeout_refund_failed: "Échec refund timeout",
   order_timeout_no_payment: "Timeout commande sans paiement",
 
@@ -80,6 +81,8 @@ export const AUDIT_EVENT_LABELS: Record<string, string> = {
   stripe_early_fraud_warning_received: "Stripe : alerte fraude précoce",
   stripe_charge_refunded_settled: "Stripe : refund settlement confirmé",
   stripe_account_deauthorized: "Stripe : compte déconnecté",
+  stripe_transfer_reversed: "Stripe : transfer reversé (clawback)",
+  stripe_transfer_reversal_failed: "Stripe : échec reversal transfer",
 
   // ─── Email delivery ─────────────────────────────────────────────────
   email_complaint_received: "Plainte spam reçue",

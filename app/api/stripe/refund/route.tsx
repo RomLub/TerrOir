@@ -14,6 +14,9 @@ import { SUPPORT_EMAIL } from "@/lib/env/support-email";
 import AdminProducerRefundAlert, {
   subject as producerRefundAlertSubject,
 } from "@/lib/resend/templates/admin-producer-refund-alert";
+import AdminProducerRefundCapExceeded, {
+  subject as producerRefundCapExceededSubject,
+} from "@/lib/resend/templates/admin-producer-refund-cap-exceeded";
 import {
   InvalidOrderTransitionError,
   assertTransition,
@@ -24,6 +27,7 @@ import {
   getStripeRefundRateLimit,
 } from "@/lib/rate-limit";
 import { extractRequestContext } from "@/lib/audit-logs/log-auth-event";
+import { reverseTransferIfNeeded } from "@/lib/stripe/reverse-transfer";
 
 const bodySchema = z.object({ order_id: z.string().guid() });
 
@@ -35,6 +39,23 @@ function producerRefundThreshold(): number {
   if (!raw) return 100;
   const parsed = Number.parseFloat(raw);
   if (!Number.isFinite(parsed) || parsed <= 0) return 100;
+  return parsed;
+}
+
+// F-014 (audit pré-launch 2026-05-10) : cap DUR au-delà duquel un refund
+// producer est rejeté en 403 + alerte admin. Default 500€, configurable via
+// PRODUCER_REFUND_CAP_EUR. Combiné avec F-004 clawback : protège contre un
+// producer compromis qui drainerait la platform balance avant détection.
+// Le seuil "soft" producerRefundThreshold (alerte email post-succès) reste
+// indépendant — il signale les refunds en zone [threshold..cap] sans bloquer.
+const PRODUCER_REFUND_CAP_EUR_DEFAULT = 500;
+function producerRefundCap(): number {
+  const raw = process.env.PRODUCER_REFUND_CAP_EUR;
+  if (!raw) return PRODUCER_REFUND_CAP_EUR_DEFAULT;
+  const parsed = Number.parseFloat(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return PRODUCER_REFUND_CAP_EUR_DEFAULT;
+  }
   return parsed;
 }
 
@@ -114,6 +135,66 @@ export async function POST(request: Request) {
     );
   }
 
+  // F-014 : cap DUR producer self-refund. Bloque AVANT toute action Stripe.
+  // L'admin n'est PAS soumis au cap (path historique, approval implicite par
+  // le rôle admin lui-même). Le cap protège contre un producer compromis qui
+  // drainerait la platform balance avant détection (cf. F-004 clawback).
+  if (refundedByProducer) {
+    const cap = producerRefundCap();
+    const attempted = Number(order.montant_total);
+    if (Number.isFinite(attempted) && attempted > cap) {
+      console.warn(
+        `[PRODUCER_REFUND_CAP_EXCEEDED] order=${order.id} producer=${order.producer_id} attempted=${attempted} cap=${cap}`,
+      );
+      await logPaymentEvent({
+        eventType: "producer_refund_cap_exceeded",
+        userId: order.consumer_id,
+        metadata: {
+          order_id: order.id,
+          producer_id: order.producer_id,
+          attempted_amount: attempted,
+          cap,
+        },
+      }).catch(() => {});
+
+      const props = {
+        codeCommande: order.code_commande,
+        attemptedAmount: attempted,
+        cap,
+        orderId: order.id,
+        producerId: order.producer_id,
+      };
+      waitUntil(
+        sendTemplate({
+          to: SUPPORT_EMAIL,
+          userId: null,
+          template: "admin_producer_refund_cap_exceeded",
+          subject: producerRefundCapExceededSubject(props),
+          element: <AdminProducerRefundCapExceeded {...props} />,
+          metadata: {
+            order_id: order.id,
+            producer_id: order.producer_id,
+            attempted_amount: attempted,
+            cap,
+          },
+        }).catch((err) => {
+          console.error(
+            `[PRODUCER_REFUND_CAP_EXCEEDED_EMAIL_ERR] order=${order.id} error=${(err as Error).message}`,
+          );
+        }),
+      );
+
+      return NextResponse.json(
+        {
+          error: "refund_cap_exceeded",
+          attempted_amount: attempted,
+          cap,
+        },
+        { status: 403 },
+      );
+    }
+  }
+
   // Filet état machine AVANT le refund Stripe : refuser une transition
   // invalide ici évite d'émettre un refund Stripe irrécupérable. Refund
   // admin = action explicite ; pas de fallback cancelled comme la route
@@ -125,6 +206,49 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: e.message }, { status: 409 });
     }
     throw e;
+  }
+
+  // F-004 — Reversal AVANT refund (Option A, atomicité d'échec).
+  // Doctrine : refund Stripe irrévocable + reversal faillible → si on émet
+  // le refund d'abord et le reversal échoue ensuite, la perte platform est
+  // garantie sans rollback possible. En appelant le helper d'abord :
+  //   - noop_no_transfer_id (order pre-completion / pas encore payoutée) → continue refund
+  //   - noop_lookup_failed (DB transitoire) → continue refund + log forensique
+  //   - reversed → continue refund (clawback effectué)
+  //   - failed → BLOQUE le refund (Connect vidé après payout banque, capabilities révoquées, etc.)
+  //
+  // Comportement kind='failed' sur ce path admin/producer :
+  //   1. On bloque le refund pour ne pas créer de drift platform.
+  //   2. L'admin investigue manuellement via Dashboard Stripe (Connect status,
+  //      balance, capabilities) puis re-tente ou émet refund manuel + reversal.
+  //   3. sendOpsAlert (Sentry + email ops) pour signal critique.
+  // Refacto futur : si tu uniformises ce comportement, vérifie l'invariant
+  // par caller dans le commit de référence F-004 sub-2.
+  const reversal = await reverseTransferIfNeeded({
+    admin,
+    orderId: order.id,
+    amountEur: Number(order.montant_total),
+    source: refundedByProducer ? "refund_producer" : "refund_admin",
+  });
+  if (reversal.kind === "failed") {
+    await sendOpsAlert(
+      "[TRANSFER_REVERSAL_BLOCKED_REFUND]",
+      new Error(reversal.error),
+      {
+        order_id: order.id,
+        transfer_id: reversal.transferId,
+        producer_id: order.producer_id,
+        path: refundedByProducer ? "refund_producer" : "refund_admin",
+        amount: Number(order.montant_total),
+      },
+    );
+    return NextResponse.json(
+      {
+        error: "reversal_failed",
+        transfer_id: reversal.transferId,
+      },
+      { status: 502 },
+    );
   }
 
   // Instrumentation T-107 : capture l'échec Stripe dans audit_logs avant

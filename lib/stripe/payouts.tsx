@@ -103,6 +103,33 @@ export interface PayoutResult {
 //                                                          UPDATE 'paid' OK
 //   (d) Crash après UPDATE 'paid'                       → check trouve 'paid' → skip
 // =============================================================================
+
+// F-004 (audit pré-launch 2026-05-10) — write-back transfer_id sur les
+// orders aggrégées. Permet le clawback proportionnel
+// stripe.transfers.createReversal(transfer_id, {amount}) côté refund
+// post-completion ou dispute lost (cf. lib/stripe/reverse-transfer.ts).
+//
+// Pas de throw : si l'UPDATE échoue, le transfer Stripe est déjà émis et
+// payouts.statut='paid' est déjà posé — c'est un drift mineur (clawback
+// peut être fait manuellement via Dashboard Stripe). Le log greppable
+// permet la réconciliation.
+async function markOrdersTransferred(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  transferId: string,
+  orderIds: string[],
+): Promise<void> {
+  if (orderIds.length === 0) return;
+  const { error } = await admin
+    .from("orders")
+    .update({ transfer_id: transferId })
+    .in("id", orderIds);
+  if (error) {
+    console.warn(
+      `[WEEKLY_PAYOUT_ORDERS_TRANSFER_ID_UPDATE_FAILED] transfer=${transferId} count=${orderIds.length} reason=${error.message}`,
+    );
+  }
+}
+
 export async function processWeeklyPayouts(): Promise<{
   start: Date;
   end: Date;
@@ -298,6 +325,12 @@ export async function processWeeklyPayouts(): Promise<{
           });
           continue;
         }
+        // F-004 : write-back transfer_id sur les orders du batch resume.
+        await markOrdersTransferred(
+          admin,
+          transfer.id,
+          producerOrders.map((o) => o.id),
+        );
         // T-416 audit log forensique post-UPDATE 'paid' succès resume.
         // Montants depuis existing (source of truth DB, immune aux changements
         // d'orders entre INSERT initial et resume).
@@ -510,6 +543,13 @@ export async function processWeeklyPayouts(): Promise<{
       });
       continue;
     }
+
+    // F-004 : write-back transfer_id sur les orders du batch path nominal.
+    await markOrdersTransferred(
+      admin,
+      transferId,
+      producerOrders.map((o) => o.id),
+    );
 
     // T-416 audit log forensique post-UPDATE 'paid' succès path nominal.
     // Montants depuis recomputation locale = ceux qui viennent d'être

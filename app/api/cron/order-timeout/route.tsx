@@ -6,6 +6,7 @@ import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
 import { classifyRefundError } from "@/lib/refund-incidents/classify-error";
 import { recordRefundAttempt } from "@/lib/refund-incidents/record-refund-attempt";
 import { sendOpsAlert } from "@/lib/ops/alert";
+import { reverseTransferIfNeeded } from "@/lib/stripe/reverse-transfer";
 import { revalidatePublicStats } from "@/lib/stats/revalidate";
 import {
   assertTransition,
@@ -117,6 +118,23 @@ export async function POST(request: Request) {
             },
           });
         } else {
+          // F-004 — Reversal AVANT refund (Option A, atomicité d'échec).
+          // Comportement kind='failed' sur ce path cron timeout automatique :
+          //   - On CONTINUE le refund quand même (pas de bloquer).
+          // Rationnel : cron timeout est un path automatique sans intervention
+          // user. Bloquer laisserait l'order stuck en pending et le consumer
+          // débité. En pratique le helper noop_no_transfer_id sur 99%+ des
+          // appels (timeout cible des orders pending, jamais aggrégées en
+          // payout). La branche failed reste un filet défensif (l'admin verra
+          // dans audit_logs + Sentry et reconcilie manuellement Dashboard).
+          // Refacto futur : si tu uniformises ce comportement, vérifie
+          // l'invariant par caller dans le commit de référence F-004 sub-2.
+          await reverseTransferIfNeeded({
+            admin,
+            orderId: order.id,
+            amountEur: Number(order.montant_total),
+            source: "refund_timeout",
+          });
           try {
             // T-408 idempotencyKey : `refund_${order.id}_timeout` (context
             // discriminator distinct des paths manual_cancel / admin / retry).
