@@ -27,17 +27,22 @@ import { extractRequestContext } from "@/lib/audit-logs/log-auth-event";
 //     à reconsidérer si abus détecté)
 //   - aucune session requise (POST anonyme)
 
+// sec-P0-TC F-007 (audit 2026-05-10) : bornes max sur champs texte. Sans
+// .max(), un attaquant authentifié (rate-limit anon 5/min/IP) pouvait
+// bloater la table avec entrées multi-MB (colonnes Postgres `text` =
+// illimité). Pattern aligné sur app/api/contact/route.tsx.
 const bodySchema = z.object({
-  prenom: z.string().trim().min(1, "Prénom requis"),
-  nom: z.string().trim().min(1, "Nom requis"),
+  prenom: z.string().trim().min(1, "Prénom requis").max(120),
+  nom: z.string().trim().min(1, "Nom requis").max(120),
   email: z.string().trim().toLowerCase().email("Email invalide"),
-  telephone: z.string().trim().min(1, "Téléphone requis"),
+  telephone: z.string().trim().min(1, "Téléphone requis").max(40),
   nom_exploitation: z
     .string()
     .trim()
-    .min(1, "Nom de l'exploitation requis"),
-  commune: z.string().trim().min(1, "Commune requise"),
-  message: z.string().trim().optional(),
+    .min(1, "Nom de l'exploitation requis")
+    .max(180),
+  commune: z.string().trim().min(1, "Commune requise").max(120),
+  message: z.string().trim().max(2000).optional(),
 });
 
 export async function POST(request: Request) {
