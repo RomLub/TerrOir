@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { extractHeureRetrait } from "@/lib/slots/format-slot-time";
 import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
 import { LEGAL_VERSIONS } from "@/lib/legal/versions";
@@ -177,7 +178,14 @@ export async function POST(request: Request) {
   // [ORDER_CGV_PERSIST_FAIL] pour détection forensique. Le check zod en
   // amont (cgv_accepted=true) suffit déjà à matérialiser le consentement —
   // les colonnes DB sont la trace forensique stable.
-  const { error: cgvError } = await supabase
+  //
+  // F-001 P0-TA : bascule admin client (la policy "orders parties update"
+  // est retirée, le UPDATE user-context retournerait 0 rows). Validation
+  // applicative déjà faite (zod cgv_accepted=true ligne 26 + RPC
+  // create_order_with_items qui exige p_consumer_id = auth.uid() côté
+  // SECDEF). Pas une transition de statut, pas de RPC SECDEF dédiée.
+  const admin = createSupabaseAdminClient();
+  const { error: cgvError } = await admin
     .from("orders")
     .update({
       cgv_accepted_at: new Date().toISOString(),

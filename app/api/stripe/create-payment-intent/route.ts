@@ -230,7 +230,13 @@ export async function POST(request: Request) {
   // un PI entre notre SELECT initial et cet UPDATE. 0 lignes touchees =
   // race confirmee → on cancel notre PI orphelin (compensation symetrique)
   // puis retrieve le PI gagnant via requery DB.
-  const { data: updatedRows, error: updateError } = await supabase
+  //
+  // F-001 P0-TA : bascule admin client (la policy "orders parties update"
+  // est retiree, le UPDATE user-context retournerait 0 rows). Auth
+  // applicative deja faite (session + ownership consumer ligne 69 +
+  // statut='pending' check ligne 76). Anti-race `.is(stripe_payment_intent_id,
+  // null)` preserve. Pas une transition de statut, pas de RPC SECDEF dediee.
+  const { data: updatedRows, error: updateError } = await admin
     .from("orders")
     .update({ stripe_payment_intent_id: pi.id })
     .eq("id", order.id)
