@@ -351,6 +351,50 @@ Mode pré-30/04/2026 (CLI Supabase non configurée à l'époque). Reste un fallb
 
 Toujours inclure les GRANT sur `supabase_auth_admin` quand une migration touche une FK vers `auth.users` (USAGE schema + ALL PRIVILEGES sur `public.*`). Sinon GoTrue renvoie « Database error querying schema » sur `/token` et `/recover`.
 
+## Doctrine transitions DB sensibles
+
+> Section consolidée post-audit pré-launch 2026-05 (F-001 P0-TA). Toute table avec policy owner UPDATE qui expose des colonnes sensibles (statut, montants, claims forensiques) doit suivre une des deux disciplines ci-dessous, jamais aucune. Doctrine opposable.
+
+### Règle 1 — Owner UPDATE policy = trigger column-guard OU RPC SECDEF
+
+Toute table avec policy `owner UPDATE` doit avoir soit un trigger column-guard (modèle T-218 : raise 42501 sur colonnes protégées sauf service_role/admin) soit une migration des transitions vers RPC SECDEF dédiées. Justifier le choix dans le PR description.
+
+Référence : F-001 (orders) a opté pour les RPC SECDEF (`cancel_order`, `confirm_order_by_producer`, `complete_pickup_by_producer`) avec policy UPDATE retirée intégralement. F-009 (users) et T-218 (producers) ont opté pour le trigger column-guard parce que le périmètre des transitions est plus simple (single-row metadata vs state machine multi-statut).
+
+### Règle 2 — Anatomie RPC SECDEF de transition
+
+Toute RPC SECDEF de transition doit :
+
+- Vérifier l'autorisation (auth dispatch interne admin > producer > consumer via `auth.uid()` + helpers `is_admin()` / `owns_producer()`)
+- Bypass explicite pour `service_role` (`auth.role() = 'service_role'`) destiné aux crons et webhooks
+- Vérifier la légalité de la transition via assertTransition SQL (helper miroir TRANSITIONS state machine TS — modèle `_assert_order_transition` de F-001)
+- Écrire l'audit log dans la même transaction que l'UPDATE (atomicité forensique)
+- `REVOKE EXECUTE` de PUBLIC, `GRANT EXECUTE` à `authenticated` et `service_role` explicitement
+- Raise SQLSTATE typés (42501 unauth, P0001 illegal transition, 02000 not_found, 22023 invalid input, 40001 race) plutôt que return enum
+- Retourner `uuid` uniquement (pas `RETURNING *` — éviter leak via PostgREST sur columns sensibles montant_total, code_commande, etc.)
+- Documenter la skip-list audit_log si certains reasons ne posent pas l'audit RPC (ex: contexte Stripe-aware déjà loggé côté caller — cf F-001 `cancel_order` skip pour reason ∈ `{admin_refund, timeout, efw_preemptive}`)
+
+### Règle 3 — Table sans GRANT SELECT direct
+
+Toute table sans GRANT SELECT direct (ex: `producers`, accès via `search_producers` RPC exclusif) doit :
+
+- Documenter l'accès canonique (quelle RPC, quelle finalité) en commentaire SQL sur la table
+- Pas de policy SELECT morte qui suggère un accès direct fantôme
+- Le PR qui retire le GRANT doit aussi DROP les policies devenues mortes (cf F-031)
+
+### Checklist PR migrations RLS / triggers
+
+Pour toute migration touchant RLS ou triggers :
+
+- [ ] Inventaire des call sites UPDATE/INSERT/DELETE existants (grep applicatif `\.from\("<table>"\).*\.update\(` + recherche `pg_policies` côté DB)
+- [ ] Décision documentée : trigger column-guard OU RPC SECDEF (justifier dans le PR)
+- [ ] Helper SQLSTATE → HTTP côté caller centralisé (`lib/api/sqlstate-to-status.ts`)
+- [ ] Tests vitest mockent `.rpc()` + cas SQLSTATE ↔ Result.error.kind ou HTTP status
+- [ ] Test régression policy UPDATE retirée (defense-in-depth CI, modèle `tests/lib/orders/policy-update-blocked.test.ts`)
+- [ ] Rollback SQL préparé dans `docs/runbooks/` (forward-only doctrine T-297, fichier dédié pas une migration timestamped)
+- [ ] Smoke tests SQL Studio post-apply documentés (incluant test régression explicite — modèle test 7 F-001 : `SET ROLE authenticated + UPDATE direct → 0 rows`)
+- [ ] Pré-commit obligatoire : `npm run build` + `npx vitest run` avant push
+
 ## Gestion de la dette technique
 
 ### Pendant un chantier en cours
