@@ -111,6 +111,12 @@ export const AUTH_EVENT_TYPES = [
   "admin_invite_blocked_admin",
   "admin_invite_blocked_producer",
   "admin_invite_expired",
+  // F-011 (audit pré-launch 2026-05-10) : RGPD art. 20 portabilité user-side.
+  // Émis par exportMyDataAction à chaque téléchargement zip réussi. Permet
+  // de tracer forensique un abus (volume anormal d'exports) ou une demande
+  // CNIL ("prouvez que l'user X a bien pu exercer son droit"). userId =
+  // session.id, metadata embarque counts (orders, reviews, notifications).
+  "user_data_exported",
 ] as const;
 
 export type AuthEventType = (typeof AUTH_EVENT_TYPES)[number];
