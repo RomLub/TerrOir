@@ -104,13 +104,14 @@ type Captured = {
   inserts: Array<{ table: string; payload: unknown }>;
   eqCalls: Array<{ table: string; col: string; val: unknown }>;
   gteCalls: Array<{ table: string; col: string; val: unknown }>;
+  rpcCalls: Array<{ name: string; params: unknown }>;
 };
 
 let captured: Captured;
 let responses: Record<
   string,
   Partial<Record<"select" | "update" | "insert", Resp[]>>
->;
+> & { rpc?: Record<string, Resp[]> };
 
 const ORDER_ID = "order-1";
 const PRODUCER_ID = "prod-1";
@@ -179,6 +180,12 @@ vi.mock("@/lib/supabase/admin", () => ({
         onFulfilled(consume(table, builder._op));
       return builder;
     },
+    rpc: (name: string, params: unknown) => {
+      captured.rpcCalls.push({ name, params });
+      const queue = responses.rpc?.[name];
+      if (queue && queue.length > 0) return Promise.resolve(queue.shift()!);
+      return Promise.resolve({ data: null, error: null });
+    },
   }),
 }));
 
@@ -229,6 +236,7 @@ beforeEach(() => {
     inserts: [],
     eqCalls: [],
     gteCalls: [],
+    rpcCalls: [],
   };
   responses = {};
   sessionUser = {
@@ -345,37 +353,75 @@ describe("D. Autorisation (getOwnedProducerId)", () => {
 
 // --- E. Transition (state machine) ---------------------------------------
 
-describe("E. Transition state machine — completed depuis confirmed (modèle 3 états)", () => {
-  it("E1 statut pending + code valide → 409 InvalidOrderTransitionError", async () => {
+describe("E. Transition state machine — completed depuis confirmed (RPC SECDEF F-001)", () => {
+  // F-001 P0-TA : transitions illégales détectées côté RPC SECDEF (raise
+  // SQLSTATE P0001). Tests injectent un retour error pour simuler le RAISE.
+  // Note F4 (sous-section F) : l'ordre code-check vs transition-check est
+  // désormais "code mismatch first" côté route (fail-fast applicatif sur
+  // input client), puis RPC pour la transition. Voir F4 ci-dessous.
+  it("E1 statut pending + code valide → 409 illegal transition (RPC P0001)", async () => {
     setOrderFetch({ statut: "pending" });
+    responses.rpc = {
+      complete_pickup_by_producer: [
+        {
+          data: null,
+          error: {
+            code: "P0001",
+            message: "illegal_transition_from_pending_to_completed",
+          },
+        },
+      ],
+    };
     const res = await POST(makeRequest(), PARAMS);
     expect(res.status).toBe(409);
-    const json = (await res.json()) as { error?: string };
-    expect(json.error).toContain("pending");
-    expect(json.error).toContain("completed");
+    const json = (await res.json()) as { error?: string; code?: string };
+    expect(json.error).toContain("illegal_transition");
+    expect(json.code).toBe("P0001");
     expect(captured.updates).toEqual([]);
   });
 
-  it("E2 statut confirmed + code valide → 200 (pickup direct, modèle 3 états)", async () => {
+  it("E2 statut confirmed + code valide → 200 (.rpc('complete_pickup_by_producer'))", async () => {
     setOrderFetch({ statut: "confirmed" });
     const res = await POST(makeRequest(), PARAMS);
     expect(res.status).toBe(200);
-    const orderUpdate = captured.updates.find((u) => u.table === "orders");
-    expect(orderUpdate).toBeDefined();
-    expect((orderUpdate!.payload as Record<string, unknown>).statut).toBe(
-      "completed",
-    );
+    expect(captured.rpcCalls).toContainEqual({
+      name: "complete_pickup_by_producer",
+      params: { p_order_id: ORDER_ID, p_submitted_code: "ABC123" },
+    });
+    expect(captured.updates.find((u) => u.table === "orders")).toBeUndefined();
   });
 
-  it("E3 statut cancelled → 409", async () => {
+  it("E3 statut cancelled → 409 illegal transition (RPC P0001)", async () => {
     setOrderFetch({ statut: "cancelled" });
+    responses.rpc = {
+      complete_pickup_by_producer: [
+        {
+          data: null,
+          error: {
+            code: "P0001",
+            message: "illegal_transition_from_cancelled_to_completed",
+          },
+        },
+      ],
+    };
     const res = await POST(makeRequest(), PARAMS);
     expect(res.status).toBe(409);
     expect(captured.updates).toEqual([]);
   });
 
-  it("E4 statut refunded → 409", async () => {
+  it("E4 statut refunded → 409 illegal transition (RPC P0001)", async () => {
     setOrderFetch({ statut: "refunded" });
+    responses.rpc = {
+      complete_pickup_by_producer: [
+        {
+          data: null,
+          error: {
+            code: "P0001",
+            message: "illegal_transition_from_refunded_to_completed",
+          },
+        },
+      ],
+    };
     const res = await POST(makeRequest(), PARAMS);
     expect(res.status).toBe(409);
     expect(captured.updates).toEqual([]);
@@ -402,10 +448,12 @@ describe("F. Code commande check (case-insensitive trim)", () => {
       PARAMS,
     );
     expect(res.status).toBe(200);
-    const orderUpdate = captured.updates.find((u) => u.table === "orders");
-    expect((orderUpdate!.payload as Record<string, unknown>).statut).toBe(
-      "completed",
-    );
+    expect(captured.rpcCalls).toContainEqual({
+      name: "complete_pickup_by_producer",
+      // code submitted preserved (route normalise pour compare seulement,
+      // RPC re-normalise côté SQL pour double validation defense-in-depth)
+      params: { p_order_id: ORDER_ID, p_submitted_code: "abc123" },
+    });
   });
 
   it("F3 statut confirmed + code avec espaces → 200 (trim côté zod et check)", async () => {
@@ -416,22 +464,25 @@ describe("F. Code commande check (case-insensitive trim)", () => {
     expect(res.status).toBe(200);
   });
 
-  it("F4 statut pending + code mismatch → 409 (transition checked AVANT code)", async () => {
+  it("F4 statut pending + code mismatch → 400 (code-check first, F-001 P0-TA)", async () => {
     setOrderFetch({ statut: "pending" });
     const res = await POST(
       makeRequest({ body: { code_commande: "WRONG1" } }),
       PARAMS,
     );
-    // Si l'ordre changeait (code check first), on aurait 400. La vérif
-    // verrouille l'ordre actuel : statut → code.
-    expect(res.status).toBe(409);
+    // F-001 P0-TA : la route effectue le code-check (normalisation alphanum)
+    // AVANT l'appel RPC. Code mismatch shortcircuit en 400 fail-fast côté
+    // route, sans atteindre la RPC. Si statut était confirmed, code mismatch
+    // donnerait aussi 400 (cf F1). La transition pending est SECONDAIRE :
+    // elle aurait été détectée par RPC avec P0001 → 409 si le code matchait.
+    expect(res.status).toBe(400);
   });
 });
 
 // --- G. Cas nominal confirmed → completed --------------------------------
 
-describe("G. Cas nominal confirmed → completed", () => {
-  it("G1 confirmed + code valide → 200 + UPDATE orders { statut, completed_at }", async () => {
+describe("G. Cas nominal confirmed → completed (RPC SECDEF F-001 P0-TA)", () => {
+  it("G1 confirmed + code valide → 200 + .rpc('complete_pickup_by_producer')", async () => {
     const res = await POST(makeRequest(), PARAMS);
     expect(res.status).toBe(200);
     const json = (await res.json()) as { ok: boolean; completed_at: string };
@@ -439,16 +490,11 @@ describe("G. Cas nominal confirmed → completed", () => {
     expect(json.completed_at).toEqual(expect.any(String));
     expect(() => new Date(json.completed_at).toISOString()).not.toThrow();
 
-    const orderUpdate = captured.updates.find((u) => u.table === "orders");
-    expect(orderUpdate).toBeDefined();
-    const payload = orderUpdate!.payload as Record<string, unknown>;
-    expect(payload.statut).toBe("completed");
-    expect(payload.completed_at).toEqual(expect.any(String));
-
-    const idEqs = captured.eqCalls.filter(
-      (e) => e.table === "orders" && e.col === "id" && e.val === ORDER_ID,
-    );
-    expect(idEqs.length).toBeGreaterThanOrEqual(2);
+    expect(captured.rpcCalls).toContainEqual({
+      name: "complete_pickup_by_producer",
+      params: { p_order_id: ORDER_ID, p_submitted_code: "ABC123" },
+    });
+    expect(captured.updates.find((u) => u.table === "orders")).toBeUndefined();
   });
 
   it("G2 réponse contient completed_at en ISO string", async () => {
@@ -520,24 +566,23 @@ describe("I. Email consumer (review_request_j0)", () => {
 
 // --- J. LOT 5 — Audit log cluster pickup_* + rate-limit ----------------
 
-describe("J. Audit log cluster pickup_* (LOT 5)", () => {
-  it("J1 nominal confirmed → audit pickup_validated avec metadata complet", async () => {
+describe("J. Audit log cluster pickup_* (LOT 5 + F-001 P0-TA)", () => {
+  it("J1 nominal confirmed → audit pickup_validated posé SQL-side par RPC (PAS côté caller)", async () => {
     await POST(makeRequest(), PARAMS);
+    // F-001 P0-TA : la RPC complete_pickup_by_producer pose pickup_validated
+    // dans la même transaction que l'UPDATE (cf migration). La route NE
+    // POSE PLUS l'audit côté caller pour éviter le double log. Audit log
+    // SQL-side n'est pas observable depuis ce mock vitest (helper côté JS
+    // jamais appelé sur path success).
     const validatedCalls = mockLogPickupEvent.mock.calls.filter(
       (c) => (c[0] as { eventType: string }).eventType === "pickup_validated",
     );
-    expect(validatedCalls).toHaveLength(1);
-    const meta = (
-      validatedCalls[0]![0] as {
-        userId: string;
-        metadata: Record<string, unknown>;
-      }
-    );
-    expect(meta.userId).toBe(SESSION_USER_ID);
-    expect(meta.metadata.producer_id).toBe(PRODUCER_ID);
-    expect(meta.metadata.order_id).toBe(ORDER_ID);
-    expect(meta.metadata.route).toBe("complete_id_based");
-    expect(typeof meta.metadata.completed_at).toBe("string");
+    expect(validatedCalls).toHaveLength(0);
+    // En revanche la RPC est bien appelée :
+    expect(captured.rpcCalls).toContainEqual({
+      name: "complete_pickup_by_producer",
+      params: { p_order_id: ORDER_ID, p_submitted_code: "ABC123" },
+    });
   });
 
   it("J2 already completed (idempotent) → audit pickup_attempt_invalid reason=already_completed", async () => {
@@ -556,14 +601,28 @@ describe("J. Audit log cluster pickup_* (LOT 5)", () => {
     expect(meta.route).toBe("complete_id_based");
   });
 
-  it("J3 assertTransition fail (pending) → audit reason=order_not_confirmed:pending", async () => {
+  it("J3 transition refusée par RPC (pending → P0001) → audit reason=rpc_P0001", async () => {
     setOrderFetch({ statut: "pending" });
+    responses.rpc = {
+      complete_pickup_by_producer: [
+        {
+          data: null,
+          error: {
+            code: "P0001",
+            message: "illegal_transition_from_pending_to_completed",
+          },
+        },
+      ],
+    };
     await POST(makeRequest(), PARAMS);
+    // F-001 P0-TA : la transition refusée vient désormais de la RPC SQL-side.
+    // La route log `pickup_attempt_invalid` avec reason=`rpc_${code}` pour
+    // forensique grep-able.
     const meta = mockLogPickupEvent.mock.calls.find(
       (c) =>
         (c[0] as { eventType: string }).eventType === "pickup_attempt_invalid",
     )?.[0] as { metadata: Record<string, unknown> } | undefined;
-    expect(meta?.metadata.reason).toBe("order_not_confirmed:pending");
+    expect(meta?.metadata.reason).toBe("rpc_P0001");
   });
 
   it("J4 code mismatch → audit reason=code_mismatch (et pas de UPDATE/email)", async () => {

@@ -135,13 +135,14 @@ type Captured = {
   inserts: Array<{ table: string; payload: unknown }>;
   eqCalls: Array<{ table: string; col: string; val: unknown }>;
   gteCalls: Array<{ table: string; col: string; val: unknown }>;
+  rpcCalls: Array<{ name: string; params: unknown }>;
 };
 
 let captured: Captured;
 let responses: Record<
   string,
   Partial<Record<"select" | "update" | "insert", Resp[]>>
->;
+> & { rpc?: Record<string, Resp[]> };
 
 const ORDER_ID = "order-1";
 const PRODUCER_ID = "prod-1";
@@ -215,6 +216,12 @@ vi.mock("@/lib/supabase/admin", () => ({
         onFulfilled(consume(table, builder._op));
       return builder;
     },
+    rpc: (name: string, params: unknown) => {
+      captured.rpcCalls.push({ name, params });
+      const queue = responses.rpc?.[name];
+      if (queue && queue.length > 0) return Promise.resolve(queue.shift()!);
+      return Promise.resolve({ data: null, error: null });
+    },
   }),
 }));
 
@@ -263,6 +270,7 @@ beforeEach(() => {
     inserts: [],
     eqCalls: [],
     gteCalls: [],
+    rpcCalls: [],
   };
   responses = {};
   // Default : admin valide, flow nominal complet possible.
@@ -309,13 +317,14 @@ describe("A. Body validation (zod)", () => {
     expect(mockSendTemplate).not.toHaveBeenCalled();
   });
 
-  it("A2 body vide → reason défaut 'other', flow normal continue jusqu'au UPDATE", async () => {
+  it("A2 body vide → reason défaut 'other', flow normal continue jusqu'à RPC cancel_order", async () => {
     const res = await POST(makeRequest({ body: {} }), PARAMS);
     expect(res.status).toBe(200);
-    const orderUpdate = captured.updates.find((u) => u.table === "orders");
-    expect(
-      (orderUpdate!.payload as Record<string, unknown>).closure_reason,
-    ).toBe("other");
+    // F-001 P0-TA : le UPDATE direct est remplacé par .rpc('cancel_order',
+    // { p_reason, p_target_status }). On vérifie le param p_reason.
+    const rpcCall = captured.rpcCalls.find((r) => r.name === "cancel_order");
+    expect(rpcCall).toBeDefined();
+    expect((rpcCall!.params as Record<string, unknown>).p_reason).toBe("other");
   });
 });
 
@@ -379,7 +388,7 @@ describe("D. Auth — utilisateur", () => {
   // pending (producteur pas confirmé → zéro engagement). Après
   // 'confirmed' → 403 (passage par contact direct producteur). reason
   // forcée à "consumer_cancel" côté route (analytics + défense).
-  it("D1a consumer-owner + statut=pending → 200 + statut cancelled", async () => {
+  it("D1a consumer-owner + statut=pending → 200 + RPC cancel_order(target=cancelled)", async () => {
     sessionUser = {
       id: CONSUMER_ID,
       email: "c@example.com",
@@ -390,9 +399,10 @@ describe("D. Auth — utilisateur", () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.statut).toBe("cancelled");
-    const orderUpdate = captured.updates.find((u) => u.table === "orders");
-    expect(orderUpdate).toBeDefined();
-    expect((orderUpdate!.payload as Record<string, unknown>).statut).toBe(
+    // F-001 P0-TA : transition via RPC SECDEF cancel_order.
+    const rpcCall = captured.rpcCalls.find((r) => r.name === "cancel_order");
+    expect(rpcCall).toBeDefined();
+    expect((rpcCall!.params as Record<string, unknown>).p_target_status).toBe(
       "cancelled",
     );
     // Pas de badge recalculé (authorizedByProducer reste false côté consumer).
@@ -476,10 +486,10 @@ describe("D. Auth — utilisateur", () => {
       PARAMS,
     );
     expect(res.status).toBe(200);
-    const orderUpdate = captured.updates.find((u) => u.table === "orders");
-    expect(
-      (orderUpdate!.payload as Record<string, unknown>).closure_reason,
-    ).toBe("consumer_cancel");
+    const rpcCall = captured.rpcCalls.find((r) => r.name === "cancel_order");
+    expect((rpcCall!.params as Record<string, unknown>).p_reason).toBe(
+      "consumer_cancel",
+    );
     // Le bloc d'alerte stock ne doit pas avoir été déclenché (count
     // SELECT puis INSERT notifications) — la reason a été écrasée AVANT
     // le bloc reason==='stock'.
@@ -549,7 +559,7 @@ describe("E. Stripe refund + finalStatus dynamique", () => {
     expect((await res.json()).statut).toBe("cancelled");
   });
 
-  it("E2 stripe_pi + refund OK + pending → finalStatus refunded, payload UPDATE statut=refunded", async () => {
+  it("E2 stripe_pi + refund OK + pending → RPC cancel_order(target=refunded)", async () => {
     setOrderFetch({ stripe_payment_intent_id: PI_ID });
     mockRefundCreate.mockResolvedValue({ id: "re_1" });
     const res = await POST(makeRequest(), PARAMS);
@@ -563,13 +573,15 @@ describe("E. Stripe refund + finalStatus dynamique", () => {
     const json = await res.json();
     expect(json.statut).toBe("refunded");
     expect(json.refund_error).toBeUndefined();
-    const orderUpdate = captured.updates.find((u) => u.table === "orders");
-    expect((orderUpdate!.payload as Record<string, unknown>).statut).toBe(
+    // F-001 P0-TA : transition via RPC SECDEF cancel_order.
+    const rpcCall = captured.rpcCalls.find((r) => r.name === "cancel_order");
+    expect(rpcCall).toBeDefined();
+    expect((rpcCall!.params as Record<string, unknown>).p_target_status).toBe(
       "refunded",
     );
   });
 
-  it("E3 stripe_pi + refund throw → refund_error renvoyé, finalStatus cancelled", async () => {
+  it("E3 stripe_pi + refund throw → refund_error renvoyé, RPC cancel_order(target=cancelled)", async () => {
     setOrderFetch({ stripe_payment_intent_id: PI_ID });
     mockRefundCreate.mockRejectedValue(new Error("stripe down"));
     const res = await POST(makeRequest(), PARAMS);
@@ -577,13 +589,13 @@ describe("E. Stripe refund + finalStatus dynamique", () => {
     const json = await res.json();
     expect(json.statut).toBe("cancelled");
     expect(json.refund_error).toBe("stripe down");
-    const orderUpdate = captured.updates.find((u) => u.table === "orders");
-    expect((orderUpdate!.payload as Record<string, unknown>).statut).toBe(
+    const rpcCall = captured.rpcCalls.find((r) => r.name === "cancel_order");
+    expect((rpcCall!.params as Record<string, unknown>).p_target_status).toBe(
       "cancelled",
     );
   });
 
-  it("E4 stripe_pi + refund OK + statut confirmed → finalStatus refunded (T-151 transition autorisée, drift Stripe/DB résolu)", async () => {
+  it("E4 stripe_pi + refund OK + statut confirmed → RPC cancel_order(target=refunded) (T-151)", async () => {
     setOrderFetch({ statut: "confirmed", stripe_payment_intent_id: PI_ID });
     mockRefundCreate.mockResolvedValue({ id: "re_1" });
     const res = await POST(makeRequest(), PARAMS);
@@ -591,8 +603,8 @@ describe("E. Stripe refund + finalStatus dynamique", () => {
     expect(mockRefundCreate).toHaveBeenCalledTimes(1);
     const json = await res.json();
     expect(json.statut).toBe("refunded");
-    const orderUpdate = captured.updates.find((u) => u.table === "orders");
-    expect((orderUpdate!.payload as Record<string, unknown>).statut).toBe(
+    const rpcCall = captured.rpcCalls.find((r) => r.name === "cancel_order");
+    expect((rpcCall!.params as Record<string, unknown>).p_target_status).toBe(
       "refunded",
     );
   });
@@ -600,36 +612,30 @@ describe("E. Stripe refund + finalStatus dynamique", () => {
 
 // --- F. UPDATE payload ---------------------------------------------------
 
-describe("F. UPDATE payload", () => {
-  it("F1 cas nominal admin pending → cancelled : statut + closure_reason + cancelled_at ISO", async () => {
+describe("F. RPC cancel_order params (F-001 P0-TA)", () => {
+  it("F1 cas nominal admin pending → RPC cancel_order(reason=consumer_cancel, target=cancelled)", async () => {
     const res = await POST(
       makeRequest({ body: { reason: "consumer_cancel" } }),
       PARAMS,
     );
     expect(res.status).toBe(200);
-    const orderUpdate = captured.updates.find((u) => u.table === "orders");
-    expect(orderUpdate).toBeDefined();
-    const payload = orderUpdate!.payload as Record<string, unknown>;
-    expect(payload.statut).toBe("cancelled");
-    expect(payload.closure_reason).toBe("consumer_cancel");
-    expect(payload.cancelled_at).toEqual(expect.any(String));
-    expect(() =>
-      new Date(payload.cancelled_at as string).toISOString(),
-    ).not.toThrow();
-    // WHERE filter posé sur l'order_id (fetch + update).
-    const idEqs = captured.eqCalls.filter(
-      (e) => e.table === "orders" && e.col === "id" && e.val === ORDER_ID,
-    );
-    expect(idEqs.length).toBeGreaterThanOrEqual(2);
+    // F-001 P0-TA : la transition + UPDATE atomique + audit log sont SQL-side
+    // dans la RPC SECDEF (assertTransition + UPDATE atomique race-safe +
+    // audit `order_cancelled` cluster). Plus d'UPDATE direct côté caller.
+    const rpcCall = captured.rpcCalls.find((r) => r.name === "cancel_order");
+    expect(rpcCall).toBeDefined();
+    const params = rpcCall!.params as Record<string, unknown>;
+    expect(params.p_order_id).toBe(ORDER_ID);
+    expect(params.p_reason).toBe("consumer_cancel");
+    expect(params.p_target_status).toBe("cancelled");
+    expect(captured.updates.find((u) => u.table === "orders")).toBeUndefined();
   });
 
-  it("F2 reason défaut 'other' remonte dans le payload UPDATE", async () => {
+  it("F2 reason défaut 'other' remonte dans p_reason de la RPC", async () => {
     const res = await POST(makeRequest({ body: {} }), PARAMS);
     expect(res.status).toBe(200);
-    const orderUpdate = captured.updates.find((u) => u.table === "orders");
-    expect(
-      (orderUpdate!.payload as Record<string, unknown>).closure_reason,
-    ).toBe("other");
+    const rpcCall = captured.rpcCalls.find((r) => r.name === "cancel_order");
+    expect((rpcCall!.params as Record<string, unknown>).p_reason).toBe("other");
   });
 });
 
@@ -808,7 +814,7 @@ describe("K. T-410 — assertTransition AVANT refund Stripe (filet anti-refund-i
     expect(mockAssertTransition).toHaveBeenCalledWith("pending", "refunded");
   });
 
-  it("T-410-B pending sans PI : assertTransition('pending','cancelled') AVANT UPDATE, refund Stripe non appele", async () => {
+  it("T-410-B pending sans PI : assertTransition('pending','cancelled') AVANT RPC, refund Stripe non appele", async () => {
     // Default DEFAULT_ORDER stripe_payment_intent_id = null → pas de refund Stripe.
     const res = await POST(makeRequest(), PARAMS);
     expect(res.status).toBe(200);
@@ -818,14 +824,13 @@ describe("K. T-410 — assertTransition AVANT refund Stripe (filet anti-refund-i
     // assertTransition appele avec cible "cancelled" (pas de PI → tentative=cancelled).
     expect(mockAssertTransition).toHaveBeenCalledWith("pending", "cancelled");
 
-    // Verifie ordre : assertTransition AVANT le UPDATE orders.
+    // Verifie ordre : assertTransition AVANT la RPC cancel_order.
     const assertCallOrder = mockAssertTransition.mock.invocationCallOrder[0]!;
-    // captured.updates ne stocke pas l'invocationCallOrder, mais on peut deduire
-    // que le UPDATE a eu lieu car la route a abouti 200.
     expect(assertCallOrder).toBeGreaterThan(0);
-    // L'UPDATE final est applique avec cancelled.
-    const orderUpdate = captured.updates.find((u) => u.table === "orders");
-    expect((orderUpdate!.payload as Record<string, unknown>).statut).toBe(
+    // F-001 P0-TA : transition appliquée via RPC avec target=cancelled.
+    const rpcCall = captured.rpcCalls.find((r) => r.name === "cancel_order");
+    expect(rpcCall).toBeDefined();
+    expect((rpcCall!.params as Record<string, unknown>).p_target_status).toBe(
       "cancelled",
     );
   });

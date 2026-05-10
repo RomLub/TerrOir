@@ -77,13 +77,14 @@ interface Captured {
   updates: Array<{ table: string; payload: unknown }>;
   inserts: Array<{ table: string; payload: unknown }>;
   eqCalls: Array<{ table: string; col: string; val: unknown }>;
+  rpcCalls: Array<{ name: string; params: unknown }>;
 }
 
 let captured: Captured;
 let responses: Record<
   string,
   Partial<Record<"select" | "update" | "insert", ChainResp[]>>
->;
+> & { rpc?: Record<string, ChainResp[]> };
 
 function defaultResp(table: string, op: string): ChainResp {
   if (op === "update" || op === "insert") return { data: null, error: null };
@@ -130,6 +131,12 @@ vi.mock("@/lib/supabase/admin", () => ({
       builder.then = (onFulfilled: (r: ChainResp) => unknown) =>
         onFulfilled(consume(table, builder._op as "select" | "update"));
       return builder;
+    },
+    rpc: (name: string, params: unknown) => {
+      captured.rpcCalls.push({ name, params });
+      const queue = responses.rpc?.[name];
+      if (queue && queue.length > 0) return Promise.resolve(queue.shift()!);
+      return Promise.resolve({ data: null, error: null });
     },
   }),
 }));
@@ -197,6 +204,7 @@ beforeEach(() => {
     updates: [],
     inserts: [],
     eqCalls: [],
+    rpcCalls: [],
   };
   responses = {};
   sessionUserId = USER_ID;
@@ -238,32 +246,19 @@ describe("Intégration e2e — flow nominal pickup", () => {
     expect(body.order.status).toBe("completed");
     expect(body.order.completed_at).toBeTruthy();
 
-    // UPDATE orders {statut, completed_at} avec eq('statut','confirmed') atomic
-    const orderUpdate = captured.updates.find((u) => u.table === "orders");
-    expect(orderUpdate).toBeDefined();
-    const payload = orderUpdate!.payload as Record<string, unknown>;
-    expect(payload.statut).toBe("completed");
-    expect(typeof payload.completed_at).toBe("string");
-    const statutEq = captured.eqCalls.find(
-      (e) => e.table === "orders" && e.col === "statut" && e.val === "confirmed",
+    // F-001 P0-TA : transition + UPDATE atomique + audit log SQL-side via
+    // RPC SECDEF complete_pickup_by_producer (cf migration F-001).
+    expect(captured.rpcCalls).toContainEqual(
+      expect.objectContaining({
+        name: "complete_pickup_by_producer",
+        params: expect.objectContaining({ p_order_id: ORDER_ID }),
+      }),
     );
-    expect(statutEq).toBeDefined();
+    expect(captured.updates.find((u) => u.table === "orders")).toBeUndefined();
 
-    // audit_logs.insert avec event_type='pickup_validated'
-    const auditInserts = captured.inserts.filter(
-      (i) => i.table === "audit_logs",
-    );
-    expect(auditInserts.length).toBeGreaterThanOrEqual(1);
-    const validatedInsert = auditInserts.find(
-      (i) =>
-        (i.payload as Record<string, unknown>).event_type ===
-        "pickup_validated",
-    );
-    expect(validatedInsert).toBeDefined();
-    const meta = (validatedInsert!.payload as Record<string, unknown>)
-      .metadata as Record<string, unknown>;
-    expect(meta.producer_id).toBe(PRODUCER_ID);
-    expect(meta.order_id).toBe(ORDER_ID);
+    // audit_logs `pickup_validated` posé SQL-side par la RPC dans la même
+    // transaction. Pas observable depuis le mock vitest. Le caller route
+    // ne pose pas l'audit côté JS pour éviter le double log.
 
     // sendTemplate appelé pour review_request_j0
     expect(mockSendTemplate).toHaveBeenCalledTimes(1);
@@ -403,7 +398,7 @@ describe("Intégration e2e — edge cases", () => {
     expect(auditInsert).toBeDefined();
   });
 
-  it("2.5 Race condition : UPDATE atomic 0 rows → re-fetch caractérise already_completed", async () => {
+  it("2.5 Race condition : RPC P0001 → re-fetch caractérise already_completed (F-001 P0-TA)", async () => {
     const orderRow = makeOrderRow();
     const refetchRow = {
       id: ORDER_ID,
@@ -413,8 +408,15 @@ describe("Intégration e2e — edge cases", () => {
     responses.orders = {
       select: [
         { data: orderRow, error: null }, // 1er SELECT lookup → confirmed
-        { data: null, error: null }, // UPDATE returning null = race perdue
-        { data: refetchRow, error: null }, // re-fetch → completed par autre tab
+        { data: refetchRow, error: null }, // re-fetch post-P0001 → completed
+      ],
+    };
+    responses.rpc = {
+      complete_pickup_by_producer: [
+        {
+          data: null,
+          error: { code: "P0001", message: "illegal_transition" },
+        },
       ],
     };
 
@@ -427,13 +429,10 @@ describe("Intégration e2e — edge cases", () => {
     expect(body.error).toBe("pickup_already_completed");
     expect(body.completed_at).toBe(refetchRow.completed_at);
 
-    // Le UPDATE a bien été tenté (avec eq('statut','confirmed') atomic)
-    const orderUpdate = captured.updates.find((u) => u.table === "orders");
-    expect(orderUpdate).toBeDefined();
-    const statutEq = captured.eqCalls.find(
-      (e) => e.table === "orders" && e.col === "statut" && e.val === "confirmed",
+    // F-001 P0-TA : RPC complete_pickup_by_producer appelée.
+    expect(captured.rpcCalls).toContainEqual(
+      expect.objectContaining({ name: "complete_pickup_by_producer" }),
     );
-    expect(statutEq).toBeDefined();
 
     // Pas d'email (la transition n'a pas eu lieu côté nous)
     expect(mockSendTemplate).not.toHaveBeenCalled();

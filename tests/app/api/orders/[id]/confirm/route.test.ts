@@ -70,13 +70,14 @@ type Captured = {
   inserts: Array<{ table: string; payload: unknown }>;
   eqCalls: Array<{ table: string; col: string; val: unknown }>;
   gteCalls: Array<{ table: string; col: string; val: unknown }>;
+  rpcCalls: Array<{ name: string; params: unknown }>;
 };
 
 let captured: Captured;
 let responses: Record<
   string,
   Partial<Record<"select" | "update" | "insert", Resp[]>>
->;
+> & { rpc?: Record<string, Resp[]> };
 
 const ORDER_ID = "order-1";
 const PRODUCER_ID = "prod-1";
@@ -156,6 +157,12 @@ vi.mock("@/lib/supabase/admin", () => ({
         onFulfilled(consume(table, builder._op));
       return builder;
     },
+    rpc: (name: string, params: unknown) => {
+      captured.rpcCalls.push({ name, params });
+      const queue = responses.rpc?.[name];
+      if (queue && queue.length > 0) return Promise.resolve(queue.shift()!);
+      return Promise.resolve({ data: null, error: null });
+    },
   }),
 }));
 
@@ -200,6 +207,7 @@ beforeEach(() => {
     inserts: [],
     eqCalls: [],
     gteCalls: [],
+    rpcCalls: [],
   };
   responses = {};
   // Default : session producer owner d'un producer existant.
@@ -271,30 +279,62 @@ describe("C. Autorisation (userOwnsProducer)", () => {
 
 // --- D. Transition (state machine) ---------------------------------------
 
-describe("D. Transition state machine — confirmed depuis pending only", () => {
-  it("D1 statut completed → 409 InvalidOrderTransitionError", async () => {
-    // Cluster C — T6 cleanup : ce test couvrait historiquement statut=ready
-    // (transition ready → confirmed interdite). 'ready' a été retiré du
-    // modèle ; on bascule sur 'completed' (terminal, transition vers
-    // 'confirmed' interdite par la state machine).
+describe("D. Transition state machine — confirmed depuis pending only (RPC SECDEF)", () => {
+  // F-001 P0-TA : la transition est validée côté RPC (assertTransition SQL
+  // miroir state machine). Tests injectent un retour SQLSTATE P0001 pour
+  // simuler le RAISE EXCEPTION 'illegal_transition_from_X_to_confirmed'.
+  it("D1 statut completed → 409 illegal transition (RPC P0001)", async () => {
     setOrderFetch({ statut: "completed" });
+    responses.rpc = {
+      confirm_order_by_producer: [
+        {
+          data: null,
+          error: {
+            code: "P0001",
+            message: "illegal_transition_from_completed_to_confirmed",
+          },
+        },
+      ],
+    };
     const res = await POST(makeRequest(), PARAMS);
     expect(res.status).toBe(409);
-    const json = (await res.json()) as { error?: string };
-    expect(json.error).toContain("completed");
-    expect(json.error).toContain("confirmed");
+    const json = (await res.json()) as { error?: string; code?: string };
+    expect(json.error).toContain("illegal_transition");
+    expect(json.code).toBe("P0001");
     expect(captured.updates).toEqual([]);
   });
 
-  it("D2 statut cancelled → 409", async () => {
+  it("D2 statut cancelled → 409 illegal transition (RPC P0001)", async () => {
     setOrderFetch({ statut: "cancelled" });
+    responses.rpc = {
+      confirm_order_by_producer: [
+        {
+          data: null,
+          error: {
+            code: "P0001",
+            message: "illegal_transition_from_cancelled_to_confirmed",
+          },
+        },
+      ],
+    };
     const res = await POST(makeRequest(), PARAMS);
     expect(res.status).toBe(409);
     expect(captured.updates).toEqual([]);
   });
 
-  it("D3 statut refunded → 409", async () => {
+  it("D3 statut refunded → 409 illegal transition (RPC P0001)", async () => {
     setOrderFetch({ statut: "refunded" });
+    responses.rpc = {
+      confirm_order_by_producer: [
+        {
+          data: null,
+          error: {
+            code: "P0001",
+            message: "illegal_transition_from_refunded_to_confirmed",
+          },
+        },
+      ],
+    };
     const res = await POST(makeRequest(), PARAMS);
     expect(res.status).toBe(409);
     expect(captured.updates).toEqual([]);
@@ -303,8 +343,8 @@ describe("D. Transition state machine — confirmed depuis pending only", () => 
 
 // --- E. Cas nominal pending → confirmed ----------------------------------
 
-describe("E. Cas nominal pending → confirmed (UPDATE payload)", () => {
-  it("E1 pending → 200 + UPDATE orders { statut, confirmed_at } + eq sur id", async () => {
+describe("E. Cas nominal pending → confirmed (RPC SECDEF F-001 P0-TA)", () => {
+  it("E1 pending → 200 + .rpc('confirm_order_by_producer', { p_order_id })", async () => {
     const res = await POST(makeRequest(), PARAMS);
     expect(res.status).toBe(200);
     const json = (await res.json()) as { ok: boolean; confirmed_at: string };
@@ -312,16 +352,15 @@ describe("E. Cas nominal pending → confirmed (UPDATE payload)", () => {
     expect(json.confirmed_at).toEqual(expect.any(String));
     expect(() => new Date(json.confirmed_at).toISOString()).not.toThrow();
 
-    const orderUpdate = captured.updates.find((u) => u.table === "orders");
-    expect(orderUpdate).toBeDefined();
-    const payload = orderUpdate!.payload as Record<string, unknown>;
-    expect(payload.statut).toBe("confirmed");
-    expect(payload.confirmed_at).toEqual(expect.any(String));
-
-    const idEqs = captured.eqCalls.filter(
-      (e) => e.table === "orders" && e.col === "id" && e.val === ORDER_ID,
-    );
-    expect(idEqs.length).toBeGreaterThanOrEqual(2);
+    // F-001 : la route appelle .rpc() au lieu de .from('orders').update().
+    // L'UPDATE atomique + assertTransition + audit log sont gérés
+    // SQL-side dans la même transaction. Pas observable depuis le mock
+    // .from() builder (la RPC encapsule).
+    expect(captured.rpcCalls).toContainEqual({
+      name: "confirm_order_by_producer",
+      params: { p_order_id: ORDER_ID },
+    });
+    expect(captured.updates.find((u) => u.table === "orders")).toBeUndefined();
   });
 });
 

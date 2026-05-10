@@ -106,7 +106,8 @@ type ChainResp = { data?: unknown; error?: unknown };
 
 interface SupabaseControl {
   selectOrders?: ChainResp;
-  updateOrders?: ChainResp;
+  updateOrders?: ChainResp; // legacy : kept for backward compat in helpers
+  cancelOrderRpc?: ChainResp; // F-001 P0-TA : RPC cancel_order replace UPDATE
   producer?: ChainResp;
   consumer?: ChainResp;
 }
@@ -118,6 +119,7 @@ interface Captured {
   eqs: Array<{ table: string; col: string; val: unknown }>;
   lts: Array<{ table: string; col: string; val: unknown }>;
   maybeSingleCount: number;
+  rpcCalls: Array<{ name: string; params: unknown }>;
 }
 
 function makeSupabase(ctrl: SupabaseControl = {}): {
@@ -131,6 +133,7 @@ function makeSupabase(ctrl: SupabaseControl = {}): {
     eqs: [],
     lts: [],
     maybeSingleCount: 0,
+    rpcCalls: [],
   };
 
   const buildBuilder = (table: string) => {
@@ -194,6 +197,19 @@ function makeSupabase(ctrl: SupabaseControl = {}): {
     from: (table: string) => {
       captured.from.push(table);
       return buildBuilder(table);
+    },
+    rpc: (name: string, params: unknown) => {
+      captured.rpcCalls.push({ name, params });
+      // F-001 P0-TA : retour configurable via ctrl.cancelOrderRpc.
+      // Defaults : success (data: null, error: null) — équivalent à
+      // ctrl.updateOrders default de l'ancienne version (UPDATE direct).
+      // Si caller fournit ctrl.updateOrders: { error }, on le propage en
+      // erreur RPC pour préserver les tests B1/B2 [REFUND_DB_DRIFT].
+      const rpcResp = ctrl.cancelOrderRpc ?? ctrl.updateOrders ?? {
+        data: null,
+        error: null,
+      };
+      return Promise.resolve(rpcResp);
     },
   } as unknown as SupabaseClient;
 
@@ -387,19 +403,13 @@ describe("POST /api/cron/order-timeout — single order", () => {
 
     expect(vi.mocked(stripe.refunds.create)).not.toHaveBeenCalled();
 
-    const ordersUpdate = captured.updates.find((u) => u.table === "orders");
-    expect(ordersUpdate?.payload).toEqual({
-      statut: "cancelled",
-      closure_reason: "timeout",
-      cancelled_at: FROZEN_NOW.toISOString(),
-    });
-
-    // Le filtre WHERE de l'UPDATE est posé sur orders.id.
-    expect(captured.eqs).toContainEqual({
-      table: "orders",
-      col: "id",
-      val: "order-1",
-    });
+    // F-001 P0-TA : transition via RPC SECDEF cancel_order.
+    const rpcCall = captured.rpcCalls.find((r) => r.name === "cancel_order");
+    expect(rpcCall).toBeDefined();
+    const rpcParams = rpcCall!.params as Record<string, unknown>;
+    expect(rpcParams.p_order_id).toBe("order-1");
+    expect(rpcParams.p_reason).toBe("timeout");
+    expect(rpcParams.p_target_status).toBe("cancelled");
 
     expect(body.processed).toBe(1);
     expect(body.results).toEqual([
@@ -429,10 +439,12 @@ describe("POST /api/cron/order-timeout — single order", () => {
       { idempotencyKey: "refund_order-2_timeout" },
     );
 
-    const ordersUpdate = captured.updates.find((u) => u.table === "orders");
-    expect(ordersUpdate?.payload.statut).toBe("refunded");
-    expect(ordersUpdate?.payload.closure_reason).toBe("timeout");
-    expect(ordersUpdate?.payload.cancelled_at).toBe(FROZEN_NOW.toISOString());
+    // F-001 P0-TA : transition via RPC SECDEF cancel_order(target=refunded).
+    const rpcCall = captured.rpcCalls.find((r) => r.name === "cancel_order");
+    expect(rpcCall).toBeDefined();
+    const rpcParams = rpcCall!.params as Record<string, unknown>;
+    expect(rpcParams.p_target_status).toBe("refunded");
+    expect(rpcParams.p_reason).toBe("timeout");
 
     expect(body.processed).toBe(1);
     expect(body.results).toEqual([
@@ -459,8 +471,12 @@ describe("POST /api/cron/order-timeout — single order", () => {
 
     expect(vi.mocked(stripe.refunds.create)).toHaveBeenCalledTimes(1);
 
-    const ordersUpdate = captured.updates.find((u) => u.table === "orders");
-    expect(ordersUpdate?.payload.statut).toBe("cancelled");
+    // F-001 P0-TA : transition fallback cancelled via RPC SECDEF cancel_order.
+    const rpcCall = captured.rpcCalls.find((r) => r.name === "cancel_order");
+    expect(rpcCall).toBeDefined();
+    expect((rpcCall!.params as Record<string, unknown>).p_target_status).toBe(
+      "cancelled",
+    );
 
     expect(body.results).toEqual([
       { order_id: "order-3", refunded: false, error: "card_error" },
@@ -502,7 +518,8 @@ describe("POST /api/cron/order-timeout — multiple orders", () => {
     expect(calls[0][1].idempotencyKey).toBe("refund_order-B_timeout");
     expect(calls[1][1].idempotencyKey).toBe("refund_order-C_timeout");
     expect(calls[0][1].idempotencyKey).not.toBe(calls[1][1].idempotencyKey);
-    expect(captured.updates.filter((u) => u.table === "orders")).toHaveLength(
+    // F-001 P0-TA : 3 RPC cancel_order pour les 3 orders.
+    expect(captured.rpcCalls.filter((r) => r.name === "cancel_order")).toHaveLength(
       3,
     );
     expect(body.processed).toBe(3);
@@ -594,8 +611,10 @@ describe("POST /api/cron/order-timeout — UPDATE error handling", () => {
       results: Array<Record<string, unknown>>;
     };
 
-    // L'UPDATE a bien été tenté (capturé) et a échoué.
-    expect(captured.updates.find((u) => u.table === "orders")).toBeDefined();
+    // F-001 P0-TA : la RPC cancel_order a bien été tentée (capturée) et a
+    // échoué (le mock client.rpc lit ctrl.updateOrders en fallback,
+    // propagation de l'erreur préservée pour les tests B1/B2).
+    expect(captured.rpcCalls.find((r) => r.name === "cancel_order")).toBeDefined();
 
     // L'erreur DB remonte explicitement dans results.
     expect(body.processed).toBe(1);
@@ -865,10 +884,12 @@ describe("POST /api/cron/order-timeout — T-409 pre-check pi.status", () => {
       },
     });
 
-    // Statut → cancelled (pas refunded car aucun refund Stripe émis).
-    const orderUpdate = captured.updates.find((u) => u.table === "orders");
-    expect(orderUpdate?.payload.statut).toBe("cancelled");
-    expect(orderUpdate?.payload.closure_reason).toBe("timeout");
+    // F-001 P0-TA : transition cancelled via RPC SECDEF cancel_order.
+    const rpcCall = captured.rpcCalls.find((r) => r.name === "cancel_order");
+    expect(rpcCall).toBeDefined();
+    const params = rpcCall!.params as Record<string, unknown>;
+    expect(params.p_target_status).toBe("cancelled");
+    expect(params.p_reason).toBe("timeout");
 
     const json = await res.json();
     expect(json.results[0].refunded).toBe(false);
@@ -897,8 +918,11 @@ describe("POST /api/cron/order-timeout — T-409 pre-check pi.status", () => {
     // Aucun audit forensique (path nominal succès).
     expect(vi.mocked(logPaymentEvent)).not.toHaveBeenCalled();
 
-    const orderUpdate = captured.updates.find((u) => u.table === "orders");
-    expect(orderUpdate?.payload.statut).toBe("refunded");
+    // F-001 P0-TA : transition refunded via RPC SECDEF cancel_order.
+    const rpcCall = captured.rpcCalls.find((r) => r.name === "cancel_order");
+    expect((rpcCall!.params as Record<string, unknown>).p_target_status).toBe(
+      "refunded",
+    );
 
     const json = await res.json();
     expect(json.results[0].refunded).toBe(true);
@@ -941,12 +965,15 @@ describe("POST /api/cron/order-timeout — T-100 assertTransition pre-refund", (
     const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
     expect(res.status).toBe(200);
 
-    // Tentative='cancelled' (pas de PI) → assertTransition appele avant UPDATE.
+    // Tentative='cancelled' (pas de PI) → assertTransition appele avant RPC.
     expect(mockAssertTransition).toHaveBeenCalledWith("pending", "cancelled");
     expect(vi.mocked(stripe.refunds.create)).not.toHaveBeenCalled();
 
-    const orderUpdate = captured.updates.find((u) => u.table === "orders");
-    expect(orderUpdate?.payload.statut).toBe("cancelled");
+    // F-001 P0-TA : transition cancelled via RPC SECDEF cancel_order.
+    const rpcCall = captured.rpcCalls.find((r) => r.name === "cancel_order");
+    expect((rpcCall!.params as Record<string, unknown>).p_target_status).toBe(
+      "cancelled",
+    );
   });
 
   it("T-100-C transition pre-refund refusee → graceful skip, refund Stripe NON emis, transition_error remonte dans results", async () => {
