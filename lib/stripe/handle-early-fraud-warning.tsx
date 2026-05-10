@@ -199,25 +199,21 @@ export async function syncStripeEarlyFraudWarning(
     return { result: "refund_failed", orderId };
   }
 
-  // 4. UPDATE statut order. closure_reason='efw_preemptive' pour drill-down
-  // UI admin/audit. La column closure_reason est text libre (cf migration
-  // 20260430000000 t413_rename), pas d'enum check à respecter.
-  const { error: updateError } = await admin
-    .from("orders")
-    .update({
-      statut: "refunded",
-      closure_reason: "efw_preemptive",
-      cancelled_at: new Date().toISOString(),
-    })
-    .eq("id", orderId);
+  // 4. F-001 P0-TA : transition * → refunded via RPC SECDEF cancel_order.
+  // p_reason='efw_preemptive' ∈ skip-list audit RPC (l'audit
+  // `stripe_early_fraud_warning_received` posé ci-dessous porte le
+  // contexte EFW Stripe complet). Refund Stripe émis OK mais RPC ratée →
+  // drift, on continue le flow (audit log + email) pour visibilité admin.
+  const { error: rpcError } = await admin.rpc("cancel_order", {
+    p_order_id: orderId,
+    p_reason: "efw_preemptive",
+    p_target_status: "refunded",
+  });
 
-  if (updateError) {
+  if (rpcError) {
     console.warn(
-      `[STRIPE_EFW_UPDATE_ERR] efw=${efw.id} order=${orderId} refund=${refund.id} error=${(updateError as { message?: string }).message ?? "unknown"}`,
+      `[STRIPE_EFW_RPC_ERR] efw=${efw.id} order=${orderId} refund=${refund.id} code=${rpcError.code ?? "none"} error=${rpcError.message}`,
     );
-    // Refund Stripe émis OK mais UPDATE DB raté → drift. On continue le flow
-    // (audit log + email) pour visibilité admin, qui pourra corriger DB
-    // manuellement à partir du Dashboard Stripe.
   }
 
   console.error(

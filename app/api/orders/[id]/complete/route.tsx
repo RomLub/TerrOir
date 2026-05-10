@@ -3,11 +3,8 @@ import { z } from "zod";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getOwnedProducerId } from "@/lib/auth/producerOwnership";
-import {
-  InvalidOrderTransitionError,
-  assertTransition,
-  type OrderStatus,
-} from "@/lib/orders/stateMachine";
+import { sqlstateToStatus } from "@/lib/api/sqlstate-to-status";
+import { type OrderStatus } from "@/lib/orders/stateMachine";
 import { sendPickupReviewEmail } from "@/lib/orders/send-pickup-review-email";
 import { logPickupEvent } from "@/lib/audit-logs/log-pickup-event";
 import {
@@ -115,30 +112,13 @@ export async function POST(request: Request, props: RouteContext) {
     });
     return NextResponse.json({ ok: true, already: true });
   }
-  try {
-    assertTransition(order.statut as OrderStatus, "completed");
-  } catch (e) {
-    if (e instanceof InvalidOrderTransitionError) {
-      await logPickupEvent({
-        eventType: "pickup_attempt_invalid",
-        userId: session.id,
-        metadata: {
-          producer_id: producerId,
-          order_id: order.id,
-          reason: `order_not_confirmed:${order.statut}`,
-          route: ROUTE_TAG,
-        },
-      });
-      return NextResponse.json({ error: e.message }, { status: 409 });
-    }
-    throw e;
-  }
   // Normalisation identique des 2 côtés : strip [^A-Z0-9] + uppercase. Le
   // form OrderDetailClient.tsx submitCode() strip déjà les non-alphanum
   // côté client (pour tolérer `TRR-XXXXX` ou `TRRXXXXX` ou avec espaces
   // / lowercase). Sans la même normalisation côté serveur, le code soumis
   // sans dash ne matche jamais le code DB qui inclut le dash → bug
-  // 100% reproductible UI cycle quality 2026-05-07.
+  // 100% reproductible UI cycle quality 2026-05-07. Defense-in-depth :
+  // la RPC complete_pickup_by_producer re-vérifie aussi côté SQL.
   const submittedNormalized = parsed.data.code_commande
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, "");
@@ -159,47 +139,52 @@ export async function POST(request: Request, props: RouteContext) {
     return NextResponse.json({ error: "Code invalide" }, { status: 400 });
   }
 
-  // sec-P1-2 (T9 2026-05-07) : transition atomique race-safe. Le filtre
-  // `.eq("statut","confirmed")` garantit qu'un double-clic réseau, deux
-  // tabs producer ouvertes, ou un retry parallèle code-based ne mettront
-  // pas à jour la même row 2 fois. Si une autre transaction a déjà bougé
-  // le statut, le UPDATE matchera 0 rows, on retourne 409. Cohérent avec
-  // la route code-based /api/producer/orders/validate-pickup.
+  // F-001 P0-TA : transition confirmed → completed via RPC SECDEF dédiée
+  // (auth dispatch interne owner > admin > service_role + assertTransition
+  // SQL-side miroir state machine + UPDATE atomique race-safe `.eq(statut,
+  // confirmed)` côté SQL + audit log `pickup_validated` cluster pickup_*
+  // dans la même transaction). p_submitted_code passé pour double-vérif
+  // SQL-side (defense-in-depth vs normalisation route ci-dessus).
   const completedAt = new Date();
-  const { data: updatedRows, error: updateError } = await admin
-    .from("orders")
-    .update({
-      statut: "completed",
-      completed_at: completedAt.toISOString(),
-    })
-    .eq("id", order.id)
-    .eq("statut", "confirmed")
-    .select("id");
-  if (updateError) {
-    console.error(
-      `[PICKUP_COMPLETE_UPDATE_ERR] order=${order.id} error=${updateError.message}`,
-    );
-    return NextResponse.json(
-      { error: "Internal database error" },
-      { status: 500 },
-    );
-  }
-  if (!updatedRows || updatedRows.length === 0) {
-    // Race condition : un autre flow (autre tab, double-clic, route
-    // code-based concurrente) a déjà transitioné cette commande. On loggue
-    // pour la forensique mais on ne 500 pas — l'opération est idempotente
-    // côté business (pickup déjà validé, mail review déjà parti).
+  const { error: rpcError } = await admin.rpc("complete_pickup_by_producer", {
+    p_order_id: order.id,
+    p_submitted_code: parsed.data.code_commande,
+  });
+  if (rpcError) {
+    const status = sqlstateToStatus(rpcError.code);
+    if (status === 500) {
+      console.error(
+        `[PICKUP_COMPLETE_RPC_ERR] order=${order.id} code=${rpcError.code ?? "none"} message=${rpcError.message}`,
+      );
+      await logPickupEvent({
+        eventType: "pickup_attempt_invalid",
+        userId: session.id,
+        metadata: {
+          producer_id: producerId,
+          order_id: order.id,
+          reason: "rpc_error",
+          route: ROUTE_TAG,
+        },
+      });
+      return NextResponse.json(
+        { error: "Internal database error" },
+        { status: 500 },
+      );
+    }
     await logPickupEvent({
       eventType: "pickup_attempt_invalid",
       userId: session.id,
       metadata: {
         producer_id: producerId,
         order_id: order.id,
-        reason: "race_already_completed",
+        reason: `rpc_${rpcError.code ?? "unknown"}`,
         route: ROUTE_TAG,
       },
     });
-    return NextResponse.json({ ok: true, already: true });
+    return NextResponse.json(
+      { error: rpcError.message, code: rpcError.code ?? undefined },
+      { status },
+    );
   }
 
   // Email review-request (J0). Les relances J+2 / J+7 sont gérées par le cron
@@ -212,16 +197,8 @@ export async function POST(request: Request, props: RouteContext) {
     codeCommande: order.code_commande,
   });
 
-  await logPickupEvent({
-    eventType: "pickup_validated",
-    userId: session.id,
-    metadata: {
-      producer_id: producerId,
-      order_id: order.id,
-      completed_at: completedAt.toISOString(),
-      route: ROUTE_TAG,
-    },
-  });
+  // Audit log `pickup_validated` posé par la RPC SECDEF dans la même
+  // transaction que l'UPDATE (F-001 P0-TA). Pas de double log côté route.
 
   // L'inclusion dans le prochain payout est automatique : /api/cron/weekly-payout
   // filtre sur statut='completed' + completed_at dans la plage du lundi précédent.

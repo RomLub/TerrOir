@@ -3,11 +3,8 @@ import { revalidateTag } from "next/cache";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { userOwnsProducer } from "@/lib/auth/producerOwnership";
-import {
-  InvalidOrderTransitionError,
-  assertTransition,
-  type OrderStatus,
-} from "@/lib/orders/stateMachine";
+import { sqlstateToStatus } from "@/lib/api/sqlstate-to-status";
+import { type OrderStatus } from "@/lib/orders/stateMachine";
 import { googleMapsUrl, sendTemplate } from "@/lib/resend/send";
 import OrderConfirmedConsumer, {
   subject as confirmedSubject,
@@ -44,25 +41,33 @@ export async function POST(_request: Request, props0: RouteContext) {
   if (order.statut === "confirmed") {
     return NextResponse.json({ ok: true, already: true });
   }
-  try {
-    assertTransition(order.statut as OrderStatus, "confirmed");
-  } catch (e) {
-    if (e instanceof InvalidOrderTransitionError) {
-      return NextResponse.json({ error: e.message }, { status: 409 });
-    }
-    throw e;
-  }
 
+  // F-001 P0-TA : transition pending → confirmed via RPC SECDEF dédiée
+  // (auth dispatch interne owner > admin > service_role + assertTransition
+  // SQL-side miroir state machine + UPDATE atomique + audit log
+  // `order_confirmed` cluster, le tout dans la même transaction).
+  // userOwnsProducer côté route reste pour shortcircuit applicatif (économise
+  // 1 RTT avant l'appel RPC sur un caller non-owner) et lecture order pour
+  // email + badge (la RPC retourne juste l'uuid).
   const confirmedAt = new Date();
-  const { error: updateError } = await admin
-    .from("orders")
-    .update({
-      statut: "confirmed",
-      confirmed_at: confirmedAt.toISOString(),
-    })
-    .eq("id", order.id);
-  if (updateError) {
-    return NextResponse.json({ error: updateError.message }, { status: 500 });
+  const { error: rpcError } = await admin.rpc("confirm_order_by_producer", {
+    p_order_id: order.id,
+  });
+  if (rpcError) {
+    const status = sqlstateToStatus(rpcError.code);
+    if (status === 500) {
+      console.error(
+        `[CONFIRM_RPC_ERR] order=${order.id} code=${rpcError.code ?? "none"} message=${rpcError.message}`,
+      );
+      return NextResponse.json(
+        { error: "Internal database error" },
+        { status: 500 },
+      );
+    }
+    return NextResponse.json(
+      { error: rpcError.message, code: rpcError.code ?? undefined },
+      { status },
+    );
   }
 
   // Invalide le cache des stats publiques (ordersCount sur la home) :

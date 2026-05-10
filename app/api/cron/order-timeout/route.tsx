@@ -190,34 +190,37 @@ export async function POST(request: Request) {
         }
       }
 
-      const { error: updateError } = await admin
-        .from("orders")
-        .update({
-          statut: finalStatus,
-          closure_reason: "timeout",
-          cancelled_at: new Date().toISOString(),
-        })
-        .eq("id", order.id);
+      // F-001 P0-TA : transition pending → cancelled|refunded via RPC
+      // SECDEF cancel_order. p_reason='timeout' ∈ skip-list audit RPC
+      // (l'audit `order_timeout_*` posé côté caller porte le contexte
+      // Stripe). Cron utilise admin client → bypass via auth.role()=
+      // service_role côté RPC.
+      const { error: rpcError } = await admin.rpc("cancel_order", {
+        p_order_id: order.id,
+        p_reason: "timeout",
+        p_target_status: finalStatus,
+      });
 
-      if (updateError) {
-        // Drift Stripe/DB : refund déjà émis chez Stripe mais statut DB
-        // toujours pending → prochain run du cron retentera + risque de
-        // double refund. Préfixe grep-able pour réconciliation manuelle.
+      if (rpcError) {
         if (refundEmitted) {
           console.warn(
-            `[REFUND_DB_DRIFT] order=${order.id} pi=${order.stripe_payment_intent_id} ${updateError.message}`,
+            `[REFUND_DB_DRIFT] order=${order.id} pi=${order.stripe_payment_intent_id} ${rpcError.message}`,
           );
-          // Cluster B Phase 3 (bugs-P1-3) — alerte ops critique.
-          await sendOpsAlert("[REFUND_DB_DRIFT]", updateError, {
-            order_id: order.id,
-            path: "cron_timeout",
-            db_error: updateError.message,
-          });
+          await sendOpsAlert(
+            "[REFUND_DB_DRIFT]",
+            new Error(rpcError.message),
+            {
+              order_id: order.id,
+              path: "cron_timeout",
+              db_error: rpcError.message,
+              rpc_code: rpcError.code ?? "none",
+            },
+          );
         }
         return {
           order_id: order.id,
           refunded: false,
-          db_error: updateError.message,
+          db_error: rpcError.message,
         };
       }
 

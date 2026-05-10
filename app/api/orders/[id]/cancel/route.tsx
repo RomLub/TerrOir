@@ -4,6 +4,7 @@ import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { userOwnsProducer } from "@/lib/auth/producerOwnership";
 import { revalidatePublicStats } from "@/lib/stats/revalidate";
+import { sqlstateToStatus } from "@/lib/api/sqlstate-to-status";
 import {
   InvalidOrderTransitionError,
   assertTransition,
@@ -161,39 +162,57 @@ export async function POST(request: Request, props0: RouteContext) {
     }
   }
 
-  // Cluster B Phase 3 (bugs-P1-1) — guard UPDATE + log [REFUND_DB_DRIFT]
-  // grep-able si refund Stripe deja emis mais UPDATE DB rate. Sans ce guard
-  // le path silenciait une drift critique (refund cote Stripe, statut DB
-  // toujours pending → prochain trigger rejouera + double refund possible).
-  const { error: cancelUpdateError } = await admin
-    .from("orders")
-    .update({
-      statut: finalStatus,
-      closure_reason: reason,
-      cancelled_at: new Date().toISOString(),
-    })
-    .eq("id", order.id);
+  // F-001 P0-TA : transition pending|confirmed → cancelled|refunded via RPC
+  // SECDEF cancel_order (auth dispatch interne admin > producer > consumer
+  // + assertTransition SQL-side + UPDATE atomique race-safe + audit log
+  // `order_cancelled` posé sauf si reason ∈ {admin_refund, timeout,
+  // efw_preemptive} — caller ici écrit pas d'audit Stripe-aware côté manual
+  // cancel, donc audit RPC posé pour reason=stock|producer_cancel|
+  // consumer_cancel|other|payment_failed). Cluster B Phase 3 (bugs-P1-1)
+  // guard [REFUND_DB_DRIFT] préservé sur erreur RPC post-refund Stripe émis.
+  const { error: rpcError } = await admin.rpc("cancel_order", {
+    p_order_id: order.id,
+    p_reason: reason,
+    p_target_status: finalStatus,
+  });
 
-  if (cancelUpdateError) {
+  if (rpcError) {
+    const status = sqlstateToStatus(rpcError.code);
     if (refundEmitted) {
       console.warn(
-        `[REFUND_DB_DRIFT] order=${order.id} pi=${order.stripe_payment_intent_id} ${cancelUpdateError.message}`,
+        `[REFUND_DB_DRIFT] order=${order.id} pi=${order.stripe_payment_intent_id} ${rpcError.message}`,
       );
-      await sendOpsAlert("[REFUND_DB_DRIFT]", cancelUpdateError, {
+      await sendOpsAlert("[REFUND_DB_DRIFT]", new Error(rpcError.message), {
         order_id: order.id,
         path: "manual_cancel",
         final_status: finalStatus,
-        db_error: cancelUpdateError.message,
+        db_error: rpcError.message,
+        rpc_code: rpcError.code ?? "none",
       });
+    }
+    if (status === 500) {
+      console.error(
+        `[CANCEL_RPC_ERR] order=${order.id} code=${rpcError.code ?? "none"} message=${rpcError.message}`,
+      );
+      return NextResponse.json(
+        {
+          error: "Internal database error",
+          warning: refundEmitted
+            ? `[REFUND_DB_DRIFT] order=${order.id} ${rpcError.message}`
+            : undefined,
+        },
+        { status: 500 },
+      );
     }
     return NextResponse.json(
       {
-        error: "DB update failed",
+        error: rpcError.message,
+        code: rpcError.code ?? undefined,
         warning: refundEmitted
-          ? `[REFUND_DB_DRIFT] order=${order.id} ${cancelUpdateError.message}`
-          : cancelUpdateError.message,
+          ? `[REFUND_DB_DRIFT] order=${order.id} ${rpcError.message}`
+          : undefined,
       },
-      { status: 500 },
+      { status },
     );
   }
 
