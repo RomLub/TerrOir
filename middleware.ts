@@ -15,6 +15,69 @@ const PRO_LANDING_PATH = "/pro-accueil";
 const ADMIN_LANDING_PATH = "/admin-accueil";
 const APEX = "terroir-local.fr";
 
+// F-005a (audit P0-TC 2026-05-10) — CSP nonce-based en mode Report-Only.
+// Génère un nonce crypto fort par requête, le pose dans le header de
+// requête (lu par Next.js pour l'injecter dans ses scripts internes RSC
+// + hydratation, et par app/layout.tsx pour usage futur) et dans le
+// header de réponse Content-Security-Policy-Report-Only (le browser
+// collecte les violations sans bloquer la prod). Bascule en mode
+// enforce différée (~24-48 h d'observation preview) cf.
+// docs/conventions/security-headers.md.
+//
+// Pourquoi ici plutôt que dans next.config.js : nonce dynamique par
+// requête nécessite runtime serveur (Edge), incompatible avec les
+// headers statiques de next.config.js. La CSP enforce statique
+// (unsafe-inline + unsafe-eval) a été retirée de next.config.js dans
+// le même commit pour éviter la double CSP qui rendrait le nonce
+// inutile (intersection des permissions browser).
+function generateCspNonce(): string {
+  // Edge runtime : Web Crypto API. 16 octets = 128 bits, recommandation
+  // W3C minimum pour non-prédictibilité d'un nonce CSP.
+  const arr = new Uint8Array(16);
+  crypto.getRandomValues(arr);
+  return btoa(String.fromCharCode(...arr));
+}
+
+function buildCspReportOnly(nonce: string): string {
+  // Construction dynamique : on lit NEXT_PUBLIC_SUPABASE_URL pour
+  // whitelister précisément le projet Supabase TerrOir au lieu d'un
+  // wildcard *.supabase.co trop large. Fallback wildcard si l'env var
+  // est absente (build local sans .env.local).
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+  let supabaseHttps = "https://*.supabase.co";
+  let supabaseWss = "wss://*.supabase.co";
+  if (supabaseUrl) {
+    try {
+      const u = new URL(supabaseUrl);
+      supabaseHttps = `https://${u.host}`;
+      supabaseWss = `wss://${u.host}`;
+    } catch {
+      // URL invalide → on garde le fallback wildcard.
+    }
+  }
+  // 'strict-dynamic' : permet aux scripts noncés de loader d'autres
+  // scripts dynamiquement sans avoir à tous les whitelister. Combine
+  // avec 'nonce-XXX' pour un script-src moderne. js.stripe.com +
+  // m.stripe.network restent whitelistés explicitement (Stripe.js
+  // peut être chargé hors bootstrap noncé). va.vercel-scripts.com
+  // pour Vercel Analytics. blob: pour workers Mapbox.
+  return [
+    "default-src 'self'",
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://js.stripe.com https://m.stripe.network https://va.vercel-scripts.com blob:`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https:",
+    "font-src 'self' data:",
+    `connect-src 'self' https://api.stripe.com https://api.mapbox.com https://*.tiles.mapbox.com https://events.mapbox.com https://va.vercel-scripts.com https://vitals.vercel-analytics.com ${supabaseHttps} ${supabaseWss}`,
+    "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://m.stripe.network",
+    "worker-src 'self' blob:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    "upgrade-insecure-requests",
+  ].join("; ");
+}
+
 // Chemins accessibles sans session, quel que soit le sous-domaine.
 // /pro-accueil et /admin-accueil sont les cibles de rewrite des landings
 // publiques servies sur pro.* et admin.* (cf. blocs spéciaux ci-dessous).
@@ -73,9 +136,23 @@ async function resolveRoleSnapshot(
 }
 
 export async function middleware(request: NextRequest) {
+  // F-005a : nonce CSP Report-Only injecté en tête de requête. Le
+  // header `Content-Security-Policy` est posé sur les request headers
+  // (pas Report-Only) pour que Next.js l'injecte automatiquement dans
+  // ses scripts internes RSC + hydratation. Le `x-nonce` est consommé
+  // par app/layout.tsx pour usage futur (composants custom qui en
+  // auraient besoin).
+  const nonce = generateCspNonce();
+  const cspHeader = buildCspReportOnly(nonce);
+
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-nonce", nonce);
+  requestHeaders.set("Content-Security-Policy", cspHeader);
+
   let response = NextResponse.next({
-    request: { headers: request.headers },
+    request: { headers: requestHeaders },
   });
+  response.headers.set("Content-Security-Policy-Report-Only", cspHeader);
 
   const host = request.headers.get("host") ?? undefined;
   const cookieOptions = cookieConfigForHost(host);
@@ -98,8 +175,12 @@ export async function middleware(request: NextRequest) {
             request.cookies.set(name, value);
           });
           response = NextResponse.next({
-            request: { headers: request.headers },
+            request: { headers: requestHeaders },
           });
+          response.headers.set(
+            "Content-Security-Policy-Report-Only",
+            cspHeader,
+          );
           cookiesToSet.forEach(({ name, value, options }) => {
             response.cookies.set(name, value, options);
           });
