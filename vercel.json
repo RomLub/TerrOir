@@ -57,6 +57,9 @@
     "app/api/cron/purge-stock-alerts/route.ts": { "maxDuration": 60 },
     "app/api/cron/purge-otp-codes/route.ts": { "maxDuration": 60 },
     "app/api/cron/disputes-deadline-check/route.tsx": { "maxDuration": 60 },
-    "app/api/cron/refund-expire-pending/route.tsx": { "maxDuration": 60 }
+    "app/api/cron/refund-expire-pending/route.tsx": { "maxDuration": 60 },
+    "app/api/orders/[id]/cancel/route.tsx": { "maxDuration": 30 },
+    "app/api/orders/[id]/confirm/route.tsx": { "maxDuration": 30 },
+    "app/api/orders/[id]/complete/route.tsx": { "maxDuration": 30 }
   }
 }
