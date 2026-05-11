@@ -113,8 +113,22 @@ export async function retryIncident(
 
   let refund: { id: string };
   try {
+    // F-063 (audit pré-launch 2026-05-11) — `reason` + `closure_reason`
+    // pour reporting Stripe Dashboard + grep audit ops. Le retry conserve
+    // le `kind` d'origine (manual_cancel / timeout / admin / efw / revival)
+    // dans metadata.original_kind. closure_reason = 'retry' marque le
+    // contexte du call (différent du refund initial).
     refund = await stripe.refunds.create(
-      { payment_intent: paymentIntentId },
+      {
+        payment_intent: paymentIntentId,
+        reason: "requested_by_customer",
+        metadata: {
+          closure_reason: "retry",
+          order_id: orderId,
+          original_kind: kind,
+          attempt: attemptNumber,
+        },
+      },
       { idempotencyKey },
     );
   } catch (refundErr) {

@@ -83,8 +83,21 @@ Pour cycles >2h sans Romain présent (ex: cycle FIX méga-audit
 - Trigger `producers_block_owner_admin_columns` BEFORE UPDATE bloque 
   self-update producteur sur 25 colonnes admin-only (incluant lat/lng 
   T-218-bis)
-- Toutes les RPC SECURITY DEFINER : EXECUTE révoqué de PUBLIC + anon 
-  + authenticated, GRANT EXECUTE à service_role exclusivement
+- Toutes les RPC SECURITY DEFINER **métier** : EXECUTE révoqué de 
+  PUBLIC + anon + authenticated, GRANT EXECUTE à service_role 
+  exclusivement (ex: `cancel_order`, `confirm_order_by_producer`, 
+  `get_producer_dashboard`, `claim_otp_atomic`, etc.)
+- **Exception helpers RLS** : les helpers SECURITY DEFINER consommés 
+  directement par les policies RLS (`is_admin()`, 
+  `owns_producer(uuid)`, `is_producer_active()`, etc. — typiquement 
+  inline dans migrations ou regroupés côté DB) nécessitent EXECUTE 
+  pour `anon` + `authenticated`, sinon les policies plantent au 
+  runtime (les rôles client doivent pouvoir évaluer la policy 
+  pendant une requête PostgREST). C'est un faux positif récurrent 
+  d'audit ACL (cf. F-058 audit pré-launch 2026-05) — la doctrine 
+  "révoquer EXECUTE de PUBLIC/anon/auth" vise les RPC métier, pas 
+  les helpers RLS. Voir aussi `docs/METHODOLOGY.md` §"Doctrine 
+  transitions DB sensibles" pour les détails opératoires.
 - Trigger functions : pas besoin de GRANT (trigger engine bypass ACL)
 - Superuser SQL Studio sans `SET ROLE service_role` ne bypass pas le 
   trigger T-218 (auth.role() = NULL ≠ 'service_role', is_admin() = 

@@ -117,6 +117,18 @@ export const AUTH_EVENT_TYPES = [
   // CNIL ("prouvez que l'user X a bien pu exercer son droit"). userId =
   // session.id, metadata embarque counts (orders, reviews, notifications).
   "user_data_exported",
+  // F-060 (audit pré-launch 2026-05-11) : email post-deletion RGPD orphelin.
+  // L'event `account_deleted` (ligne ~39) trace la suppression DB (RPC OK +
+  // admin.auth.admin.deleteUser OK). Mais l'email de confirmation envoyé via
+  // sendTemplate n'a pas son propre event : un échec Resend est silencieux
+  // côté audit_logs. Pour RGPD art. 12.3 (informer l'user de la suppression),
+  // on trace explicitement l'envoi (sent | failed). userId = null car le user
+  // est supprimé au moment du log (cf. doctrine cycle qualité D-12 : filtrer
+  // par event_type + sinceTimestamp post-deletion, pas par user_id). metadata
+  // embarque `user_id_deleted` (snapshot avant CASCADE) + `email_masked` pour
+  // grep forensique.
+  "account_deletion_email_sent",
+  "account_deletion_email_failed",
   // F-027 (audit pré-launch 2026-05-10) : opt-out RGPD lead producer_interests.
   // Émis par unsubscribeAction quand un lead clique sur le lien désabonnement
   // d'un email TerrOir et confirme la suppression. userId = null (lead pas

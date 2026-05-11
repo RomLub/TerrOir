@@ -34,12 +34,27 @@ vi.hoisted(() => {
   // n'exercent pas le path Stripe (mock @/lib/stripe/server ci-dessous).
   process.env.STRIPE_SECRET_KEY =
     process.env.STRIPE_SECRET_KEY ?? "sk_test_stub";
+  // F-037 / F-062 — complete-email-change tire @/lib/resend/send via
+  // notification email post-change. Stub URLs nécessaires pour templates
+  // layout au module-load.
+  process.env.NEXT_PUBLIC_APP_URL =
+    process.env.NEXT_PUBLIC_APP_URL ?? "https://www.terroir-local.fr";
+  process.env.NEXT_PUBLIC_ADMIN_URL =
+    process.env.NEXT_PUBLIC_ADMIN_URL ?? "https://admin.terroir-local.fr";
+  process.env.NEXT_PUBLIC_PRODUCER_URL =
+    process.env.NEXT_PUBLIC_PRODUCER_URL ?? "https://pro.terroir-local.fr";
 });
 
 vi.mock("@/lib/stripe/server", () => ({
   stripe: {
     customers: { update: vi.fn().mockResolvedValue({}) },
   },
+}));
+
+// F-037 / F-062 — mock sendTemplate pour éviter throw RESEND_API_KEY au
+// module-load. Helper fail-safe côté action (warn si KO, pas de revert).
+vi.mock("@/lib/resend/send", () => ({
+  sendTemplate: vi.fn().mockResolvedValue({ ok: true, id: "msg_test" }),
 }));
 
 type AnyAsyncFn = (...args: unknown[]) => Promise<unknown>;

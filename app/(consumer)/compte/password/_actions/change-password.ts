@@ -26,6 +26,7 @@
 // + chiffre, aligné Dashboard Supabase 29/04/2026 (T-312 partiel).
 // =============================================================================
 
+import { createElement } from "react";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -34,6 +35,10 @@ import { strongPasswordSchema } from "@/lib/auth/validators";
 import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 import { maskEmail } from "@/lib/rgpd/mask-email";
 import { consumeRateLimit, getLoginRateLimit } from "@/lib/rate-limit";
+import { sendTemplate } from "@/lib/resend/send";
+import PasswordChangedNotice, {
+  subject as passwordChangedNoticeSubject,
+} from "@/lib/resend/templates/password-changed-notice";
 
 const changePasswordSchema = z
   .object({
@@ -166,6 +171,34 @@ export async function changePasswordAction(
     eventType: "password_changed",
     userId: session.id,
   });
+
+  // 6. F-062 (audit pré-launch 2026-05-11) — notification email post-change.
+  // Defense-in-depth : si un attaquant a réussi à passer le re-auth (mdp
+  // courant fuite + change ici), l'user titulaire reçoit une trace
+  // post-fait + canal support pour récupération.
+  // Fail-safe : log warn ne revert pas le succès (le changement est déjà
+  // appliqué côté auth — bloquer ici crée une drift UI/auth pire).
+  const changedAt = new Date().toLocaleString("fr-FR", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const noticeProps = { changedAt };
+  const noticeResult = await sendTemplate({
+    to: session.email,
+    userId: session.id,
+    template: "password_changed_notice",
+    subject: passwordChangedNoticeSubject(noticeProps),
+    element: createElement(PasswordChangedNotice, noticeProps),
+    metadata: { source: "change_password" },
+  });
+  if (!noticeResult.ok) {
+    console.warn(
+      `PASSWORD_CHANGED_NOTICE_SEND_WARN user=${session.id} email=${maskEmail(session.email)} error=${noticeResult.error}`,
+    );
+  }
 
   return { success: true };
 }

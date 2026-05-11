@@ -70,100 +70,85 @@ export default async function ProducerDashboardPage() {
   const slotsRangeStart = addDays(weekStart, -1);
   const slotsRangeEnd = addDays(weekEnd, 1);
 
-  const [
-    { data: user },
-    { count: ordersToday },
-    { count: ordersYesterday },
-    { data: weekOrders },
-    { data: lastWeekOrders },
-    { data: producerRow },
-    { data: pendingRaw },
-    { data: upcomingRaw },
-    { data: slots },
-    { data: weekPickups },
-    { data: lowStockProducts },
-  ] = await Promise.all([
-    admin
-      .from('users')
-      .select('prenom, nom')
-      .eq('id', session.id)
-      .maybeSingle(),
-    admin
-      .from('orders')
-      .select('id', { count: 'exact', head: true })
-      .eq('producer_id', producer.id)
-      .gte('created_at', todayStart.toISOString())
-      .lt('created_at', tomorrowStart.toISOString()),
-    admin
-      .from('orders')
-      .select('id', { count: 'exact', head: true })
-      .eq('producer_id', producer.id)
-      .gte('created_at', yesterdayStart.toISOString())
-      .lt('created_at', todayStart.toISOString()),
-    admin
-      .from('orders')
-      .select('id, montant_total, statut')
-      .eq('producer_id', producer.id)
-      .gte('created_at', weekStart.toISOString())
-      .lt('created_at', weekEnd.toISOString()),
-    admin
-      .from('orders')
-      .select('montant_total, statut')
-      .eq('producer_id', producer.id)
-      .gte('created_at', lastWeekStart.toISOString())
-      .lt('created_at', weekStart.toISOString()),
-    admin
-      .from('producers')
-      .select('note_moyenne, nb_avis, badge_stock_score, badge_confirmation_score, badge_annulation_score')
-      .eq('id', producer.id)
-      .maybeSingle(),
-    admin
-      .from('orders')
-      .select(`
-        id, code_commande, created_at, montant_total, date_retrait,
-        consumer:consumer_id ( prenom ),
-        slots:slot_id ( starts_at, ends_at ),
-        order_items ( products:product_id ( nom ) )
-      `)
-      .eq('producer_id', producer.id)
-      .eq('statut', 'pending')
-      .order('created_at', { ascending: true })
-      .limit(5),
-    admin
-      .from('orders')
-      .select(`
-        id, code_commande, heure_retrait, date_retrait,
-        consumer:consumer_id ( prenom )
-      `)
-      .eq('producer_id', producer.id)
-      .in('statut', ['confirmed'])
-      .gte('date_retrait', todayStart.toISOString().slice(0, 10))
-      .order('date_retrait', { ascending: true })
-      .order('heure_retrait', { ascending: true })
-      .limit(1),
-    admin
-      .from('slots')
-      .select('id, starts_at, ends_at')
-      .eq('producer_id', producer.id)
-      .eq('active', true)
-      .gte('starts_at', slotsRangeStart.toISOString())
-      .lt('starts_at', slotsRangeEnd.toISOString()),
-    admin
-      .from('orders')
-      .select('date_retrait, slot_id, statut')
-      .eq('producer_id', producer.id)
-      .gte('date_retrait', weekStart.toISOString().slice(0, 10))
-      .lt('date_retrait', weekEnd.toISOString().slice(0, 10)),
-    admin
-      .from('products')
-      .select('id, nom, stock_disponible, stock_illimite')
-      .eq('producer_id', producer.id)
-      .eq('active', true)
-      .eq('stock_illimite', false)
-      .lte('stock_disponible', 5)
-      .gt('stock_disponible', 0)
-      .limit(3),
-  ]);
+  // F-045 (audit pré-launch 2026-05-11) — RPC consolidée. Avant : 11 queries
+  // Promise.all = 11 conn slots du pooler. Après : 1 RPC SECDEF = 1 conn.
+  // Cf. migration 20260511101000_p0_sweep_f045_get_producer_dashboard.sql.
+  const { data: dashboard, error: dashboardError } = await admin.rpc(
+    'get_producer_dashboard',
+    {
+      p_producer_id: producer.id,
+      p_user_id: session.id,
+      p_today_start: todayStart.toISOString(),
+      p_yesterday_start: yesterdayStart.toISOString(),
+      p_tomorrow_start: tomorrowStart.toISOString(),
+      p_week_start: weekStart.toISOString(),
+      p_week_end: weekEnd.toISOString(),
+      p_last_week_start: lastWeekStart.toISOString(),
+      p_slots_range_start: slotsRangeStart.toISOString(),
+      p_slots_range_end: slotsRangeEnd.toISOString(),
+      p_today_iso: todayStart.toISOString().slice(0, 10),
+      p_week_start_iso: weekStart.toISOString().slice(0, 10),
+      p_week_end_iso: weekEnd.toISOString().slice(0, 10),
+    },
+  );
+
+  if (dashboardError) {
+    console.error(
+      `[DASHBOARD_RPC_ERR] producer=${producer.id} message=${dashboardError.message}`,
+    );
+  }
+
+  const dash = (dashboard ?? {}) as {
+    user?: { prenom: string | null; nom: string | null } | null;
+    orders_today?: number;
+    orders_yesterday?: number;
+    week_orders?: Array<{ id: string; montant_total: number | null; statut: string }>;
+    last_week_orders?: Array<{ montant_total: number | null; statut: string }>;
+    producer_row?: {
+      note_moyenne: number | null;
+      nb_avis: number | null;
+      badge_stock_score: number | null;
+      badge_confirmation_score: number | null;
+      badge_annulation_score: number | null;
+    } | null;
+    pending_orders?: Array<{
+      id: string;
+      code_commande: string | null;
+      created_at: string;
+      montant_total: number | null;
+      date_retrait: string | null;
+      consumer: { prenom: string | null } | null;
+      slot: { starts_at: string | null; ends_at: string | null } | null;
+      order_items: Array<{ nom: string }>;
+    }>;
+    upcoming_orders?: Array<{
+      id: string;
+      code_commande: string | null;
+      heure_retrait: string | null;
+      date_retrait: string | null;
+      consumer: { prenom: string | null } | null;
+    }>;
+    slots?: Array<{ id: string; starts_at: string; ends_at: string }>;
+    week_pickups?: Array<{ date_retrait: string | null; slot_id: string | null; statut: string }>;
+    low_stock_products?: Array<{
+      id: string;
+      nom: string;
+      stock_disponible: number;
+      stock_illimite: boolean;
+    }>;
+  };
+
+  const user = dash.user ?? null;
+  const ordersToday = dash.orders_today ?? 0;
+  const ordersYesterday = dash.orders_yesterday ?? 0;
+  const weekOrders = dash.week_orders ?? [];
+  const lastWeekOrders = dash.last_week_orders ?? [];
+  const producerRow = dash.producer_row ?? null;
+  const pendingRaw = dash.pending_orders ?? [];
+  const upcomingRaw = dash.upcoming_orders ?? [];
+  const slots = dash.slots ?? [];
+  const weekPickups = dash.week_pickups ?? [];
+  const lowStockProducts = dash.low_stock_products ?? [];
 
   const firstName = user?.prenom?.trim() || user?.nom?.trim() || 'Pierre';
 
@@ -175,22 +160,12 @@ export default async function ProducerDashboardPage() {
     .filter((o) => o.statut !== 'cancelled' && o.statut !== 'refunded')
     .reduce((s, o) => s + Number(o.montant_total ?? 0), 0);
 
-  const pendingOrders = ((pendingRaw ?? []) as unknown as Array<{
-    id: string;
-    code_commande: string | null;
-    created_at: string;
-    montant_total: number | null;
-    date_retrait: string | null;
-    consumer: { prenom: string | null } | Array<{ prenom: string | null }> | null;
-    slots: { starts_at: string | null; ends_at: string | null } | Array<{ starts_at: string | null; ends_at: string | null }> | null;
-    order_items: Array<{ products: { nom: string } | Array<{ nom: string }> | null }>;
-  }>).map((o) => {
-    const consumer = Array.isArray(o.consumer) ? o.consumer[0] : o.consumer;
-    const slot = Array.isArray(o.slots) ? o.slots[0] : o.slots;
-    const itemNames = (o.order_items ?? []).map((it) => {
-      const p = Array.isArray(it.products) ? it.products[0] : it.products;
-      return p?.nom ?? '';
-    }).filter(Boolean);
+  const pendingOrders = pendingRaw.map((o) => {
+    const consumer = o.consumer;
+    const slot = o.slot;
+    const itemNames = (o.order_items ?? [])
+      .map((it) => it?.nom ?? '')
+      .filter(Boolean);
     const itemsSummary = itemNames.slice(0, 3).join(' · ') + (itemNames.length > 3 ? '…' : '');
     const slotTimeLabel = slot?.starts_at && slot?.ends_at
       ? formatSlotRange(slot.starts_at, slot.ends_at)
@@ -211,15 +186,9 @@ export default async function ProducerDashboardPage() {
   });
 
   let nextPickup: DashboardData['nextPickup'] = null;
-  if (upcomingRaw && upcomingRaw.length > 0) {
-    const u = upcomingRaw[0] as unknown as {
-      id: string;
-      code_commande: string | null;
-      heure_retrait: string | null;
-      date_retrait: string | null;
-      consumer: { prenom: string | null } | Array<{ prenom: string | null }> | null;
-    };
-    const consumer = Array.isArray(u.consumer) ? u.consumer[0] : u.consumer;
+  if (upcomingRaw.length > 0) {
+    const u = upcomingRaw[0]!;
+    const consumer = u.consumer;
     const label = formatLegacyTimeHHMM(u.heure_retrait);
     const subDate = u.date_retrait
       ? new Date(u.date_retrait + 'T00:00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })

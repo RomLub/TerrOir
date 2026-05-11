@@ -139,8 +139,14 @@ export async function POST(request: Request) {
           try {
             // T-408 idempotencyKey : `refund_${order.id}_timeout` (context
             // discriminator distinct des paths manual_cancel / admin / retry).
+            // F-063 (audit pré-launch 2026-05-11) — `reason` + `closure_reason`
+            // pour reporting Stripe Dashboard + grep audit ops.
             await stripe.refunds.create(
-              { payment_intent: order.stripe_payment_intent_id },
+              {
+                payment_intent: order.stripe_payment_intent_id,
+                reason: "requested_by_customer",
+                metadata: { closure_reason: "timeout", order_id: order.id },
+              },
               { idempotencyKey: `refund_${order.id}_timeout` },
             );
             refundEmitted = true;

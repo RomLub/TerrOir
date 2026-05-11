@@ -436,8 +436,17 @@ describe("E. Happy path + side effects", () => {
 
     // 1. Stripe refund émis sur le bon PI.
     expect(mockRefundCreate).toHaveBeenCalledTimes(1);
+    // F-063 (audit pré-launch 2026-05-11) — reason + closure_reason='admin_refund'.
+    // Discriminator admin/producer reflété dans closure_reason côté caller.
     expect(mockRefundCreate).toHaveBeenCalledWith(
-      { payment_intent: PI_ID },
+      expect.objectContaining({
+        payment_intent: PI_ID,
+        reason: "requested_by_customer",
+        metadata: expect.objectContaining({
+          closure_reason: "admin_refund",
+          order_id: ORDER_ID,
+        }),
+      }),
       { idempotencyKey: `refund_${ORDER_ID}_admin` },
     );
 

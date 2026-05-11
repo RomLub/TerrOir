@@ -252,12 +252,32 @@ export async function deleteAccountAction(
     year: "numeric",
   });
   const emailProps = { deletedAt };
-  await sendTemplate({
+  const emailResult = await sendTemplate({
     to: session.email,
     userId: session.id,
     template: "account_deleted",
     subject: accountDeletedSubject(emailProps),
     element: createElement(AccountDeleted, emailProps),
+  });
+
+  // F-060 (audit pré-launch 2026-05-11) — trace forensique RGPD art. 12.3
+  // de l'envoi email de confirmation. `account_deleted` ne couvrait que
+  // l'étape DB (RPC + admin.deleteUser) ; un échec Resend était silencieux.
+  // userId = null car CASCADE auth.users → audit_logs.user_id à l'étape 8
+  // mettrait NULL de toute façon (cf. doctrine cycle qualité D-12). Le
+  // snapshot user_id_deleted reste exploitable via filtre metadata jsonb.
+  await logAuthEvent({
+    eventType: emailResult.ok
+      ? "account_deletion_email_sent"
+      : "account_deletion_email_failed",
+    userId: null,
+    metadata: {
+      user_id_deleted: session.id,
+      email_masked: maskEmail(session.email),
+      ...(emailResult.ok
+        ? { resend_id: emailResult.id }
+        : { error: emailResult.error, skipped: emailResult.skipped ?? false }),
+    },
   });
 
   // 7. Server signOut AVANT admin.deleteUser (clear cookies pendant que

@@ -139,8 +139,14 @@ export async function POST(request: Request, props0: RouteContext) {
       source: "refund_cancel",
     });
     try {
+      // F-063 (audit pré-launch 2026-05-11) — `reason` + `closure_reason`
+      // pour reporting Stripe Dashboard + grep audit ops.
       await stripe.refunds.create(
-        { payment_intent: order.stripe_payment_intent_id },
+        {
+          payment_intent: order.stripe_payment_intent_id,
+          reason: "requested_by_customer",
+          metadata: { closure_reason: "manual_cancel", order_id: order.id },
+        },
         { idempotencyKey: `refund_${order.id}_manual_cancel` },
       );
       refundEmitted = true;

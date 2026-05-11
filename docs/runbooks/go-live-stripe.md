@@ -52,9 +52,32 @@ Pas de modif scope minimal sur `producer-invitation.tsx` ici — ce template est
 
 1. **Créer le compte Stripe live** depuis Dashboard (https://dashboard.stripe.com → Activate account). KYC plateforme : SIRET TerrOir, RIB, justificatif d'activité (marketplace circuit court). Délai de validation Stripe : 1-3 jours ouvrés.
 2. **Configurer l'API version live** sur `2026-04-22.dahlia` (alignée sur la version pinned dans `lib/stripe/server.ts:10` après Phase 3). Workbench → Overview → API versions → Upgrade.
-3. **Configurer les Connect settings live** : branding plateforme (logo, couleurs, ToS link). Si décision V1.x = migration v2, créer aussi les controller properties.
+3. **Configurer les Connect settings live** : branding plateforme (logo, couleurs, ToS link). Si décision V1.x = migration v2, créer aussi les controller properties. Détail checklist F-064 ci-dessous.
 4. **Activer dynamic payment methods** côté Dashboard (référé par audit M-1 — phase 2). Pré-configurer Apple Pay, Google Pay, SEPA si Phase 2 lifted.
 5. **Apple Pay domain verification** (audit L-3, phase 2) : déposer le fichier `.well-known/apple-developer-merchantid-domain-association` sur `terroir-local.fr` puis cliquer "Verify" dans Dashboard Stripe.
+
+### F-064 Connect Express Dashboard branding — checklist Romain
+
+> À faire pré-Live dans la console Stripe live (Settings → Connect → 
+> Branding). Garantit que les producers voient TerrOir (pas Stripe) 
+> dans leur Express Dashboard.
+
+- [ ] Logo TerrOir uploadé console Stripe (Settings → Connect → 
+      Branding → Icon + Logo). Format PNG/SVG ≥128x128, fond 
+      transparent recommandé.
+- [ ] Couleur primaire TerrOir (vert) — hex à confirmer côté Romain 
+      depuis `lib/resend/emailTheme.green` (ou variable Tailwind 
+      brand correspondante). Poser à la fois "Brand color" et 
+      "Accent color" si distinction proposée.
+- [ ] Link **Terms of Service** pointe `https://www.terroir-local.fr/cgu`
+- [ ] Link **Privacy Policy** pointe `https://www.terroir-local.fr/politique-confidentialite`
+- [ ] Bouton "Powered by Stripe" minimisé (option Express Dashboard 
+      : Settings → Connect → Branding → Powered by Stripe = `minimal` 
+      ou équivalent selon UI Stripe en vigueur). À défaut, accepter 
+      l'affichage légal minimal imposé par Stripe.
+- [ ] Spot-check : ouvrir l'Express Dashboard d'un producer test 
+      après onboarding live, vérifier que logo + couleur + liens 
+      apparaissent comme prévu.
 
 ---
 
@@ -191,6 +214,54 @@ WHERE stripe_account_id IS NOT NULL;
 5. **Post-mortem** : ouvrir un audit_log forensique custom + Linear ticket avec les Vercel logs `[STRIPE_*]` filtrés sur la fenêtre du cutover.
 
 > **Le rollback doit être décidé dans les 24h** sinon l'argent reçu en live commence à se settle (T+2 sur Stripe, irréversible côté plateforme). Au-delà de 24h, on fix forward (pas rollback).
+
+---
+
+## Pré-Live database maintenance (F-067)
+
+> À exécuter une fois, juste avant ou juste après la bascule Stripe 
+> live, sur le projet Supabase production. Refresh des stats du 
+> planner Postgres stale (`last_analyze IS NULL` sur la majorité des 
+> tables d'après audit F-067 pré-launch 2026-05).
+
+### VACUUM ANALYZE global
+
+Via Supabase Dashboard → SQL Editor (ou MCP `execute_sql`) sur le 
+projet `exsxharjqqpohkbznhss` :
+
+```sql
+VACUUM ANALYZE;
+```
+
+- **But** : recalcule les statistiques du planner pour toutes les 
+  tables. Améliore les plans d'exécution des queries des pages 
+  publiques (`/producteurs`, `/produits`) et des listes admin 
+  (`/admin/producteurs`, `/admin/produits`, `/admin/commandes`) qui 
+  reposent sur les estimations de cardinalité.
+- **Idempotent** : safe à re-exécuter. Pas de lock long sur les 
+  tables (VACUUM utilise un lock SHARE UPDATE EXCLUSIVE qui 
+  n'empêche pas les lectures ni les écritures concurrentes — 
+  `VACUUM FULL` serait bloquant, on ne l'utilise PAS).
+- **Coût** : faible à ce stade (volumes pré-Live négligeables). 
+  À re-considérer post-Live : préférer une fenêtre de maintenance 
+  (3h-5h UTC dimanche) si les volumes producteurs/produits/orders 
+  dépassent 100k lignes.
+
+### Bonus — autovacuum agressif post-Live
+
+Si après quelques semaines de Live les stats `last_analyze` se 
+re-stalent vite sur les tables hot (typiquement `orders`, 
+`producers`, `products`), poser un override autovacuum par-table :
+
+```sql
+ALTER TABLE producers SET (autovacuum_analyze_scale_factor = 0.05);
+ALTER TABLE products  SET (autovacuum_analyze_scale_factor = 0.05);
+ALTER TABLE orders    SET (autovacuum_analyze_scale_factor = 0.05);
+```
+
+(Défaut Postgres = 0.1 = re-analyze quand 10% des lignes ont changé. 
+0.05 = re-analyze à 5%, plus agressif.) À mesurer avant d'appliquer 
+— pas nécessaire pré-Live.
 
 ---
 

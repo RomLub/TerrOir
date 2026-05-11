@@ -234,8 +234,11 @@ describe("POST /api/webhooks/resend — email.bounced", () => {
     expect(mockIncrementSoftBounce).not.toHaveBeenCalled();
     expect(mockLogPaymentEvent).toHaveBeenCalledWith({
       eventType: "email_hard_bounce_suppressed",
+      // F-053 (2026-05-11) : pas de PII verbatim — `email_masked` remplace
+      // `email`. Cluster purement opérationnel, lookup user-side via
+      // source_resend_id si besoin forensique.
       metadata: expect.objectContaining({
-        email: "bounced@example.com",
+        email_masked: "bo***@example.com",
         source_resend_id: "em_perm",
         bounce_type: "Permanent",
         bounce_subtype: "Suppressed",
