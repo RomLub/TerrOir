@@ -14,6 +14,9 @@ type NavItem = {
   href: string;
   label: string;
   icon: ReactElement;
+  // F-014 v2 followup : badge optionnel pour signaler des items actionnables
+  // (ex: pending refunds count). Rendu uniquement si > 0.
+  badgeKey?: "pendingRefundsCount";
 };
 
 type NavGroup = {
@@ -213,11 +216,30 @@ const CutIcon = (
   </svg>
 );
 
+// F-014 v2 followup — icône horloge pour "Refunds en attente" (signale
+// l'action requise par l'admin sur les demandes producer > cap).
+const RefundsPendingIcon = (
+  <svg
+    aria-hidden="true"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="h-4 w-4"
+  >
+    <circle cx="12" cy="12" r="10" />
+    <polyline points="12 6 12 12 16 14" />
+  </svg>
+);
+
 const NAV: NavEntry[] = [
   { kind: "item", href: "/tableau-de-bord", label: "Tableau de bord", icon: DashboardIcon },
   { kind: "item", href: "/producer-interests", label: "Leads producteurs", icon: LeadsIcon },
   { kind: "item", href: "/gestion-producteurs", label: "Gestion producteurs", icon: ProducersIcon },
   { kind: "item", href: "/suivi-commandes", label: "Suivi commandes", icon: OrdersIcon },
+  { kind: "item", href: "/refunds/pending", label: "Refunds en attente", icon: RefundsPendingIcon, badgeKey: "pendingRefundsCount" },
   { kind: "item", href: "/audit-logs", label: "Journal d'audit", icon: AuditLogsIcon },
   { kind: "item", href: "/avis", label: "Avis", icon: ReviewsIcon },
   { kind: "item", href: "/legal-compliance", label: "Conformité légale", icon: ComplianceIcon },
@@ -234,8 +256,20 @@ function isActive(pathname: string | null, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function AdminSidebar() {
+type AdminSidebarProps = {
+  // F-014 v2 followup : count pending refunds fetché côté layout server,
+  // affiché en badge sur l'item /refunds/pending si > 0.
+  pendingRefundsCount?: number;
+};
+
+export function AdminSidebar({
+  pendingRefundsCount = 0,
+}: AdminSidebarProps = {}) {
   const pathname = usePathname();
+
+  const badgeValues: Record<NonNullable<NavItem["badgeKey"]>, number> = {
+    pendingRefundsCount,
+  };
 
   return (
     <aside className="sticky top-24 h-fit min-h-[400px] w-[220px] shrink-0 rounded-md border border-gray-200 bg-white shadow-sm">
@@ -254,6 +288,7 @@ export function AdminSidebar() {
               );
             }
             const active = isActive(pathname, entry.href);
+            const badgeCount = entry.badgeKey ? badgeValues[entry.badgeKey] : 0;
             return (
               <li key={entry.href}>
                 <Link
@@ -268,7 +303,15 @@ export function AdminSidebar() {
                   <span className={active ? "text-gray-900" : "text-gray-500"}>
                     {entry.icon}
                   </span>
-                  {entry.label}
+                  <span className="flex-1">{entry.label}</span>
+                  {badgeCount > 0 ? (
+                    <span
+                      aria-label={`${badgeCount} en attente`}
+                      className="inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-terroir-terra-700 px-1.5 text-[11px] font-semibold text-white"
+                    >
+                      {badgeCount > 99 ? "99+" : badgeCount}
+                    </span>
+                  ) : null}
                 </Link>
               </li>
             );

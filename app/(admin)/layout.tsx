@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth/session";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { AdminHeader } from "./_components/AdminHeader";
 import { AdminSidebar } from "./_components/AdminSidebar";
 
@@ -31,11 +32,20 @@ export default async function AdminLayout({
     redirect("https://admin.terroir-local.fr/tableau-de-bord");
   }
 
+  // F-014 v2 followup (audit P0 sweep) : count pending refunds pour badge
+  // sidebar. Query coût négligeable (admin low-traffic, index status_idx).
+  // Fail-open : si erreur, badge invisible (count=0).
+  const admin = createSupabaseAdminClient();
+  const { count: pendingRefundsCount } = await admin
+    .from("pending_refunds")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "pending");
+
   return (
     <div className="flex min-h-screen flex-col bg-gray-50">
       <AdminHeader />
       <div className="mx-auto flex w-full max-w-7xl flex-1 gap-6 px-8 py-8">
-        <AdminSidebar />
+        <AdminSidebar pendingRefundsCount={pendingRefundsCount ?? 0} />
         <div className="min-w-0 flex-1">{children}</div>
       </div>
     </div>
