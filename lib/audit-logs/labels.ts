@@ -53,6 +53,8 @@ export const AUDIT_EVENT_LABELS: Record<string, string> = {
 
   // ─── Commandes ──────────────────────────────────────────────────────
   order_created: "Commande créée",
+  order_confirmed: "Commande confirmée par producteur",
+  order_cancelled: "Commande annulée",
   order_payment_succeeded: "Paiement réussi",
   order_payment_failed: "Paiement échoué",
   order_revival_succeeded: "Résurrection commande réussie",

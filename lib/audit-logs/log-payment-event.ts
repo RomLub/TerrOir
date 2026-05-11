@@ -43,6 +43,15 @@ export const PAYMENT_EVENT_TYPES = [
   // (Bundles 1+3+4) — aucune mutation DB importante n'échappe désormais
   // à l'audit trail.
   "order_created",
+  // F-035 + F-036 (audit pré-launch 2026-05-11) — INSERT côté RPC SECDEF
+  // (cf. migration 20260510100000_p0_ta_f001_orders_transitions_rpc_secdef.sql)
+  // mais surfacés ici pour le typing TS / filtres UI admin /audit-logs.
+  // order_confirmed metadata : { order_id, producer_id, by, confirmed_at }.
+  // order_cancelled metadata : { order_id, producer_id, consumer_id, by,
+  // reason, target_status, cancelled_at }. Le champ `by` discrimine
+  // 'admin'|'producer'|'consumer' au niveau RPC interne (caller dispatch).
+  "order_confirmed",
+  "order_cancelled",
   // Path nominal et failed (instrumentation rétroactive Phase 2).
   "order_payment_succeeded",
   "order_payment_failed",
