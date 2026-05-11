@@ -8,6 +8,19 @@ import {
   type Mock,
 } from "vitest";
 
+// F-037 — la nouvelle dépendance @/lib/resend/templates/email-changed-notice
+// tire transitive `lib/resend/templates/layout.tsx` qui throw au module-load
+// si NEXT_PUBLIC_APP_URL absent. Stub hoisted aligné pattern projet
+// (cf. tests/app/(consumer)/compte/profil/_actions/verify-otp.test.tsx).
+vi.hoisted(() => {
+  process.env.NEXT_PUBLIC_APP_URL =
+    process.env.NEXT_PUBLIC_APP_URL ?? "https://www.terroir-local.fr";
+  process.env.NEXT_PUBLIC_ADMIN_URL =
+    process.env.NEXT_PUBLIC_ADMIN_URL ?? "https://admin.terroir-local.fr";
+  process.env.NEXT_PUBLIC_PRODUCER_URL =
+    process.env.NEXT_PUBLIC_PRODUCER_URL ?? "https://pro.terroir-local.fr";
+});
+
 type AnyAsyncFn = (...args: unknown[]) => Promise<unknown>;
 type AnySyncFn = (...args: unknown[]) => unknown;
 
@@ -90,6 +103,13 @@ vi.mock("@/lib/stripe/server", () => ({
   },
 }));
 
+// F-037 — mock Resend sendTemplate pour intercepter la notification
+// post-completion à l'ancienne adresse.
+let sendTemplateMock: Mock<AnyAsyncFn>;
+vi.mock("@/lib/resend/send", () => ({
+  sendTemplate: (...args: unknown[]) => sendTemplateMock(...args),
+}));
+
 import { completeEmailChangeAction } from "@/app/(consumer)/compte/profil/_actions/complete-email-change";
 
 function makeFormData(newEmail: string): FormData {
@@ -120,6 +140,9 @@ beforeEach(() => {
   stripeCustomersUpdateMock = vi
     .fn<AnyAsyncFn>()
     .mockResolvedValue({ id: "cus_default", email: "new@example.com" });
+  sendTemplateMock = vi
+    .fn<AnyAsyncFn>()
+    .mockResolvedValue({ ok: true, id: "msg_default" });
   selectQueue = [
     {
       data: {
@@ -364,6 +387,44 @@ describe("completeEmailChangeAction — F-041 Stripe customer email re-sync", ()
 
     expect(res).toEqual({ ok: true });
     // L'audit log + signOut continuent malgré l'erreur Stripe.
+    expect(logAuthEventMock).toHaveBeenCalled();
+  });
+});
+
+describe("completeEmailChangeAction — F-037 notification post-completion oldEmail", () => {
+  it("envoie email-changed-notice à l'ancienne adresse après succès", async () => {
+    const res = await completeEmailChangeAction(
+      {},
+      makeFormData("new@example.com"),
+    );
+
+    expect(res).toEqual({ ok: true });
+    expect(sendTemplateMock).toHaveBeenCalledTimes(1);
+    const call = sendTemplateMock.mock.calls[0]![0] as {
+      to: string;
+      userId: string | null;
+      template: string;
+      metadata?: Record<string, unknown>;
+    };
+    expect(call.to).toBe("old@example.com");
+    expect(call.userId).toBeNull();
+    expect(call.template).toBe("email_changed_notice");
+    expect(call.metadata).toMatchObject({
+      user_id: "user-1",
+    });
+  });
+
+  it("envoi notice échoue → log warn fail-open, flow continue ok=true", async () => {
+    sendTemplateMock = vi
+      .fn<AnyAsyncFn>()
+      .mockResolvedValue({ ok: false, error: "Resend down" });
+
+    const res = await completeEmailChangeAction(
+      {},
+      makeFormData("new@example.com"),
+    );
+
+    expect(res).toEqual({ ok: true });
     expect(logAuthEventMock).toHaveBeenCalled();
   });
 });

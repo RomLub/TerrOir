@@ -38,6 +38,10 @@ import { getSessionUser } from "@/lib/auth/session";
 import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 import { maskEmail } from "@/lib/rgpd/mask-email";
 import { stripe } from "@/lib/stripe/server";
+import { sendTemplate } from "@/lib/resend/send";
+import EmailChangedNotice, {
+  subject as emailChangedNoticeSubject,
+} from "@/lib/resend/templates/email-changed-notice";
 
 export type CompleteEmailChangeReason =
   | "session"
@@ -197,6 +201,37 @@ export async function completeEmailChangeAction(
       new_email_masked: maskEmail(newEmail),
     },
   });
+
+  // F-037 (audit pré-launch 2026-05-11) — notification post-completion à
+  // l'ANCIENNE adresse. Defense-in-depth : si un attaquant a eu accès aux
+  // 2 boîtes pendant la fenêtre OTP, cette notification finale laisse une
+  // trace résiduelle audit-able côté ancien propriétaire (boîte mail
+  // archivée, alerte) + canal support recours.
+  //
+  // Fail-safe : le changement est déjà finalisé (auth + users + signOut).
+  // Un échec d'envoi ne doit PAS revert ou retourner une erreur — on log
+  // pour ops et on continue. `userId: null` car le user a maintenant
+  // newEmail comme adresse principale, currentEmail est orphelin côté
+  // public.users (l'ancien email n'identifie plus l'utilisateur). La
+  // notification reste rattachable forensiquement via metadata.
+  const noticeProps = { newEmailMasked: maskEmail(newEmail) };
+  const noticeResult = await sendTemplate({
+    to: currentEmail,
+    userId: null,
+    template: "email_changed_notice",
+    subject: emailChangedNoticeSubject(noticeProps),
+    element: <EmailChangedNotice {...noticeProps} />,
+    metadata: {
+      user_id: session.id,
+      old_email_masked: maskEmail(currentEmail),
+      new_email_masked: maskEmail(newEmail),
+    },
+  });
+  if (!noticeResult.ok) {
+    console.warn(
+      `EMAIL_CHANGED_NOTICE_SEND_WARN user=${session.id} old=${maskEmail(currentEmail)} error=${noticeResult.error}`,
+    );
+  }
 
   return { ok: true };
 }
