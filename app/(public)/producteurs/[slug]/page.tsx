@@ -43,6 +43,82 @@ async function fetchCachedProducerBlock(slug: string): Promise<ProducerPublic | 
 }
 
 const REVIEWS_FETCH_LIMIT = 50;
+const REVIEWS_REVALIDATE_S = 30;
+const PRODUCTS_REVALIDATE_S = 30;
+
+// F-047 (audit pré-launch 2026-05) — Partial caching reviews + products
+// sur la fiche /producteurs/[slug]. Tag par slug pour invalidation ciblée
+// quand un producteur reçoit une nouvelle review (consumer review submit
+// + producer response respond) ou modifie son catalogue (create/update/
+// toggle actif catalogue). TTL court (30s) car ces deux blocs évoluent
+// plus vite que le bloc producer (60s).
+//
+// Le retour est conservé en shape Raw (PostgREST) — la projection
+// applicative se fait après le cache pour ne pas réinventer les Maps de
+// transformation côté unstable_cache.
+
+type ReviewRaw = {
+  note: number | null;
+  commentaire: string | null;
+  created_at: string;
+  producer_response: string | null;
+  producer_response_at: string | null;
+  users: { prenom: string | null; nom: string | null } | { prenom: string | null; nom: string | null }[] | null;
+};
+
+type ProductRaw = {
+  id: string;
+  nom: string;
+  description: string | null;
+  photos: string[] | null;
+  prix: number | string;
+  unite: string | null;
+  stock_disponible: number | null;
+  stock_illimite: boolean | null;
+};
+
+async function fetchCachedProducerReviews(producerId: string, slug: string): Promise<ReviewRaw[]> {
+  return unstable_cache(
+    async () => {
+      const admin = createSupabaseAdminClient();
+      const { data } = await admin
+        .from('reviews')
+        .select(
+          'note, commentaire, created_at, producer_response, producer_response_at, users:consumer_id ( prenom, nom )',
+        )
+        .eq('producer_id', producerId)
+        .eq('statut', 'published')
+        .order('published_at', { ascending: false, nullsFirst: false })
+        .limit(REVIEWS_FETCH_LIMIT);
+      return (data ?? []) as unknown as ReviewRaw[];
+    },
+    ['producer-reviews', slug],
+    {
+      revalidate: REVIEWS_REVALIDATE_S,
+      tags: [`producer-reviews:${slug}`],
+    },
+  )();
+}
+
+async function fetchCachedProducerProducts(producerId: string, slug: string): Promise<ProductRaw[]> {
+  return unstable_cache(
+    async () => {
+      const admin = createSupabaseAdminClient();
+      const { data } = await admin
+        .from('products')
+        .select('id, nom, description, photos, prix, unite, stock_disponible, stock_illimite')
+        .eq('producer_id', producerId)
+        .eq('active', true)
+        .order('created_at', { ascending: false });
+      return (data ?? []) as unknown as ProductRaw[];
+    },
+    ['producer-products', slug],
+    {
+      revalidate: PRODUCTS_REVALIDATE_S,
+      tags: [`producer-products:${slug}`],
+    },
+  )();
+}
 
 function scoreFromBadge(v: number | null | undefined): number {
   if (v === null || v === undefined || Number.isNaN(v)) return 0;
@@ -71,23 +147,12 @@ export default async function ProducteurPage(props: { params: Promise<{ slug: st
     notFound();
   }
 
-  const admin = createSupabaseAdminClient();
-  const [{ data: productsRaw }, { data: reviewsRaw }] = await Promise.all([
-    admin
-      .from('products')
-      .select('id, nom, description, photos, prix, unite, stock_disponible, stock_illimite')
-      .eq('producer_id', producer.id)
-      .eq('active', true)
-      .order('created_at', { ascending: false }),
-    admin
-      .from('reviews')
-      .select(
-        'note, commentaire, created_at, producer_response, producer_response_at, users:consumer_id ( prenom, nom )',
-      )
-      .eq('producer_id', producer.id)
-      .eq('statut', 'published')
-      .order('published_at', { ascending: false, nullsFirst: false })
-      .limit(REVIEWS_FETCH_LIMIT),
+  // F-047 : reviews + products cachés par slug avec invalidation tag-based
+  // (revalidateProducerReviews / revalidateProducerProducts depuis les flows
+  // qui modifient ces blocs).
+  const [productsRaw, reviewsRaw] = await Promise.all([
+    fetchCachedProducerProducts(producer.id, producer.slug),
+    fetchCachedProducerReviews(producer.id, producer.slug),
   ]);
 
   const commune = [producer.commune, producer.code_postal].filter(Boolean).join(' · ');

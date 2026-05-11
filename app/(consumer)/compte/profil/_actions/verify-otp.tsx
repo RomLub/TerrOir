@@ -127,16 +127,55 @@ export async function verifyOtpAction(
   const valid = await verifyHash(code, row.code_hash);
 
   if (!valid) {
-    const newAttempts = row.attempts + 1;
+    // F-024 (audit P0 sweep 2026-05-11) : increment atomique via RPC SECDEF.
+    // Le flow précédent était un read-then-write (read row.attempts puis
+    // UPDATE attempts = row.attempts + 1) → race condition sur tentatives
+    // concurrentes lisant la même valeur initiale et écrasant l'increment
+    // mutuellement (lost update). La RPC fait UPDATE ... attempts = attempts + 1
+    // WHERE attempts < cap RETURNING attempts en un seul statement atomique.
+    //
+    // Sémantique de retour :
+    //   • new_attempts non null → increment OK, valeur post-increment.
+    //   • new_attempts null     → guard miss (attempts déjà à 5 avant ce call).
+    //                              On bloque comme attempts_exceeded (la RPC
+    //                              a aussi force-consumed la row).
+    //   • consumed=true         → row vient d'être marquée consumed (cap atteint
+    //                              ou guard miss). Pas de UPDATE supplémentaire.
+    const { data: rpcData, error: rpcError } = await admin.rpc(
+      "increment_otp_attempts_if_below_cap",
+      { p_row_id: row.id, p_cap: ATTEMPTS_CAP },
+    );
+
+    if (rpcError) {
+      console.error(
+        `VERIFY_OTP_INCREMENT_RPC_ERROR user=${session.id} step=${step} message=${rpcError.message}`,
+      );
+      // Fail-closed : on traite comme attempts_exceeded plutôt que de laisser
+      // l'attaquant retenter (defense-in-depth sur incident DB).
+      await logAuthEvent({
+        eventType: "account_otp_attempts_exceeded",
+        userId: session.id,
+        metadata: { step, attempts: row.attempts, reason: "rpc_error" },
+      });
+      return { ok: false, reason: "attempts_exceeded" };
+    }
+
+    // RPC returns table → array de 1 row (ou 0 si type retour weird).
+    const result = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+    const newAttempts = (result?.new_attempts as number | null | undefined) ?? null;
+
+    // Guard miss : la row était déjà à cap avant ce call (race perdue).
+    if (newAttempts === null) {
+      await logAuthEvent({
+        eventType: "account_otp_attempts_exceeded",
+        userId: session.id,
+        metadata: { step, attempts: ATTEMPTS_CAP, reason: "guard_miss" },
+      });
+      return { ok: false, reason: "attempts_exceeded" };
+    }
+
+    // Cap atteint pile sur cette tentative.
     if (newAttempts >= ATTEMPTS_CAP) {
-      // Cap atteint sur cette tentative : on incrémente ET on invalide.
-      await admin
-        .from("email_change_otp_codes")
-        .update({
-          attempts: newAttempts,
-          consumed_at: new Date().toISOString(),
-        })
-        .eq("id", row.id);
       await logAuthEvent({
         eventType: "account_otp_attempts_exceeded",
         userId: session.id,
@@ -144,10 +183,8 @@ export async function verifyOtpAction(
       });
       return { ok: false, reason: "attempts_exceeded" };
     }
-    await admin
-      .from("email_change_otp_codes")
-      .update({ attempts: newAttempts })
-      .eq("id", row.id);
+
+    // Increment nominal.
     await logAuthEvent({
       eventType: "account_otp_invalid",
       userId: session.id,

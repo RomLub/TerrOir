@@ -11,6 +11,7 @@ import {
   logAuthEvent,
 } from "@/lib/audit-logs/log-auth-event";
 import { LEGAL_VERSIONS } from "@/lib/legal/versions";
+import { maskEmail } from "@/lib/rgpd/mask-email";
 
 export type SignupState = {
   error?: string;
@@ -84,13 +85,13 @@ export async function signupAction(
       (error?.message && /already (registered|exists)/i.test(error.message))
     ) {
       console.warn(
-        `SIGNUP_DUP_EMAIL email=${email} code=${code ?? "n/a"}`,
+        `SIGNUP_DUP_EMAIL email=${maskEmail(email)} code=${code ?? "n/a"}`,
       );
       return { success: { email } };
     }
     if (error) {
       console.error(
-        `SIGNUP_ERROR email=${email} code=${code ?? "n/a"} message=${error.message}`,
+        `SIGNUP_ERROR email=${maskEmail(email)} code=${code ?? "n/a"} message=${error.message}`,
       );
     }
     return { error: "Inscription impossible. Réessayez plus tard." };
@@ -125,7 +126,7 @@ export async function signupAction(
     );
     if (rollbackError) {
       console.error(
-        `SIGNUP_ORPHAN_AUTH user_id=${data.user.id} email=${email} ` +
+        `SIGNUP_ORPHAN_AUTH user_id=${data.user.id} email=${maskEmail(email)} ` +
           `profile_error=${profileError.message} rollback_error=${rollbackError.message}`,
       );
     }

@@ -238,6 +238,18 @@ let _stripeWebhookLimiter: Ratelimit | null | undefined;
 // userId pour éviter NAT-collision et pour aligner avec exportComptaLimiter.
 let _rgpdExportLimiter: Ratelimit | null | undefined;
 
+// F-034 (audit P0 sweep 2026-05-11) — Route POST /api/orders/create. Cap
+// 10/60s keying userId : 1 order/checkout nominal, retries 2-3 (réseau
+// flaky, double-clic) absorbés par la dedup T-428 (5min fenêtre) ; le
+// cap rate-limit applique une defensive layer côté énumération automatisée
+// (script qui crée des orders en rafale pour saturer slots d'un producteur
+// rival, ou pour scanner side-channels stock_depleted). Keying userId pour
+// aligner avec doctrine Stripe write (getStripeCreatePaymentIntentRateLimit
+// 10/60s userId) et éviter NAT-collision marchés où consumers partagent
+// l'IP café/4G. Audit log applicatif rate_limit_exceeded côté caller pour
+// détection forensique pattern d'attaque énumération slots.
+let _ordersCreateLimiter: Ratelimit | null | undefined;
+
 export function getSignupRateLimit(): Ratelimit | null {
   if (_signupLimiter === undefined) {
     _signupLimiter = createRateLimiter(5, "60 s", "signup");
@@ -383,4 +395,11 @@ export function getRgpdExportRateLimit(): Ratelimit | null {
     _rgpdExportLimiter = createRateLimiter(5, "24 h", "rgpd_export");
   }
   return _rgpdExportLimiter;
+}
+
+export function getOrdersCreateRateLimit(): Ratelimit | null {
+  if (_ordersCreateLimiter === undefined) {
+    _ordersCreateLimiter = createRateLimiter(10, "60 s", "orders_create");
+  }
+  return _ordersCreateLimiter;
 }

@@ -3,6 +3,7 @@ import { assertCronAuth } from "@/lib/cron/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { recomputeBadgesForProducer } from "@/lib/producers/recompute-badges";
 import { mapWithConcurrency } from "@/lib/concurrency/p-limit";
+import { dbErrorResponse } from "@/lib/api/db-error-response";
 
 // Cron hebdomadaire — recompute des 3 scores badges pour chaque producteur
 // actif. Audit RPC M-1 : passage de boucle séquentielle à mapWithConcurrency
@@ -25,7 +26,7 @@ export async function POST(request: Request) {
     .eq("statut", "active");
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return dbErrorResponse(error, "CRON_WEEKLY_BADGES_SELECT");
   }
   if (!producers || producers.length === 0) {
     return NextResponse.json({ processed: 0, errors: [] });

@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { revalidateProducerCard } from "@/lib/stats/revalidate";
+import {
+  revalidateProducerCard,
+  revalidateProducerReviews,
+} from "@/lib/stats/revalidate";
 
 const bodySchema = z.object({
   action: z.enum(["publish", "reject"]),
@@ -110,6 +113,13 @@ export async function POST(request: Request, props: RouteContext) {
   // appel, la fiche /producteurs/[slug] sert la note stale jusqu'à 60s.
   if (producerSlug) {
     await revalidateProducerCard({
+      slug: producerSlug,
+      source: "admin-reviews-moderate",
+    });
+    // F-047 : invalide aussi le cache des reviews affichées sur la fiche
+    // /producteurs/[slug]. Sans ça, publish/reject prend jusqu'à 30s à
+    // se propager (revalidate TTL du unstable_cache page-level).
+    await revalidateProducerReviews({
       slug: producerSlug,
       source: "admin-reviews-moderate",
     });

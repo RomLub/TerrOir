@@ -29,7 +29,18 @@ vi.hoisted(() => {
   process.env.EMAIL_CHANGE_OTP_SECRET =
     process.env.EMAIL_CHANGE_OTP_SECRET ??
     "test-only-secret-do-not-use-in-prod-32bytes-min";
+  // F-041 (audit P0 sweep) : complete-email-change importe lib/stripe/server
+  // pour re-sync l'email Stripe Customer. Stub la clé pour les tests qui
+  // n'exercent pas le path Stripe (mock @/lib/stripe/server ci-dessous).
+  process.env.STRIPE_SECRET_KEY =
+    process.env.STRIPE_SECRET_KEY ?? "sk_test_stub";
 });
+
+vi.mock("@/lib/stripe/server", () => ({
+  stripe: {
+    customers: { update: vi.fn().mockResolvedValue({}) },
+  },
+}));
 
 type AnyAsyncFn = (...args: unknown[]) => Promise<unknown>;
 type AnySyncFn = (...args: unknown[]) => unknown;
@@ -64,6 +75,11 @@ vi.mock("@/lib/supabase/server", () => ({
   }),
 }));
 
+// F-024 (audit P0 sweep) : verify-otp invoke admin.rpc('increment_otp_attempts')
+// pour incrément atomique race-safe. Mock retourne attempts incrémenté ou null
+// si guard cap atteint. Le test peut surcharger via incrementOtpRpcQueue.
+let incrementOtpRpcQueue: { data: unknown; error: unknown }[] = [];
+
 vi.mock("@/lib/supabase/admin", () => ({
   createSupabaseAdminClient: () => ({
     auth: {
@@ -71,6 +87,10 @@ vi.mock("@/lib/supabase/admin", () => ({
         updateUserById: (...args: unknown[]) => adminUpdateUserByIdMock(...args),
       },
     },
+    rpc: (_name: string, _params: unknown) =>
+      Promise.resolve(
+        incrementOtpRpcQueue.shift() ?? { data: null, error: null },
+      ),
     from: () => ({
       select: () => ({
         eq: () => ({
@@ -169,6 +189,10 @@ describe("Concurrency — verify avec code obsolète post re-request", () => {
       { data: makeOtpRow({ code_hash: "new-hash-after-rerequest" }), error: null },
     ];
     verifyHashMock = vi.fn<AnyAsyncFn>().mockResolvedValue(false);
+    // F-024 (audit P0 sweep) : verify-otp utilise RPC SECDEF
+    // increment_otp_attempts_if_below_cap. Mock retourne new_attempts=1
+    // (premier wrong attempt sur cette row).
+    incrementOtpRpcQueue = [{ data: [{ new_attempts: 1 }], error: null }];
 
     const res = await verifyOtpAction({}, makeVerifyFD("current", "111111"));
     expect(res).toEqual({
@@ -208,20 +232,16 @@ describe("Concurrency — cap attempts", () => {
     expect(res2).toEqual({ ok: false, reason: "no_active" });
   });
 
-  it("4 wrong attempts puis 5th wrong → attempts_exceeded sur le 5th avec invalidation", async () => {
-    // 5th tentative : attempts=4 dans la DB. verifyHash retourne false.
-    // newAttempts=5 atteint le cap → invalidate + attempts_exceeded.
+  it("4 wrong attempts puis 5th wrong → attempts_exceeded sur le 5th (RPC consume atomique)", async () => {
+    // F-024 (audit P0 sweep) : 5th tentative — RPC retourne new_attempts=5
+    // qui atteint le cap. La RPC SECDEF consume la row atomiquement côté
+    // SQL ; pas de UPDATE manuel TS supplémentaire.
     selectQueue = [{ data: makeOtpRow({ attempts: 4 }), error: null }];
     verifyHashMock = vi.fn<AnyAsyncFn>().mockResolvedValue(false);
+    incrementOtpRpcQueue = [{ data: [{ new_attempts: 5 }], error: null }];
 
     const res = await verifyOtpAction({}, makeVerifyFD("current", "999999"));
     expect(res).toEqual({ ok: false, reason: "attempts_exceeded" });
-    expect(updateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        attempts: 5,
-        consumed_at: expect.any(String),
-      }),
-    );
   });
 });
 

@@ -4,6 +4,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { retryIncident, type RetryIncidentResult } from "@/lib/refund-incidents/retry-incident";
 import type { RefundKind } from "@/lib/refund-incidents/types";
 import { mapWithConcurrency } from "@/lib/concurrency/p-limit";
+import { dbErrorResponse } from "@/lib/api/db-error-response";
 
 // Cron daily Vercel `0 4 * * *` (4h UTC, soit 5-6h Paris hors heures de
 // pointe). Tente de re-rembourser les orders dont le refund initial a
@@ -73,7 +74,7 @@ export async function POST(request: Request) {
     .limit(BATCH_LIMIT);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return dbErrorResponse(error, "CRON_RETRY_FAILED_REFUNDS_SELECT");
   }
 
   // Signal d'incident large : si on tape la limite, le run suivant en

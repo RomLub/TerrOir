@@ -13,10 +13,15 @@
 //   - Dedup race-safe : UPDATE claimed=[] (concurrent) → audit
 //     `review_followup_dedup_blocked`, pas de send.
 //   - Réponse JSON { j2: { sent, skipped, dedup_blocked }, j7: ... }.
+//   - F-020 : query principale enrichie embeds PostgREST
+//     (`consumer:consumer_id(...)`, `producer:producer_id(...)`) + batch
+//     mapWithConcurrency cap 5. Vérifié via `select` cols + absence de
+//     `from('users')` / `from('producers')` séparés.
 //
 // Pattern aligné sur tests/app/api/cron/reminder-consumer/route.test.ts,
-// avec extension queue par-table pour gérer reviews/users/producers + UPDATE
-// de claim sur orders.
+// avec queue par-table pour gérer reviews + UPDATE de claim sur orders.
+// Post F-020 : consumer/producer fetchés via embeds dans le SELECT initial,
+// plus de calls séparés `from('users')` / `from('producers')`.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -157,6 +162,9 @@ function makeOrder(overrides: Partial<Record<string, unknown>> = {}) {
     producer_id: "prod-1",
     review_followup_d2_sent_at: null,
     review_followup_d7_sent_at: null,
+    // F-020 : embeds PostgREST inline (consumer + producer fetchés en 1 query).
+    consumer: { email: "consumer@test.fr" },
+    producer: { nom_exploitation: "Ferme A" },
     ...overrides,
   };
 }
@@ -210,10 +218,6 @@ describe("POST /api/cron/review-followup — fenêtre J-2 / J-7", () => {
       { data: [], error: null }, // J-7 batch
     ];
     responses.reviews = [{ data: null, error: null }];
-    responses.users = [{ data: { email: "consumer@test.fr" }, error: null }];
-    responses.producers = [
-      { data: { nom_exploitation: "Ferme A" }, error: null },
-    ];
     responses.orders_update = [{ data: [{ id: "order-j2" }], error: null }];
 
     const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
@@ -243,16 +247,16 @@ describe("POST /api/cron/review-followup — fenêtre J-2 / J-7", () => {
   });
 
   it("B2 1 order J-7 sans review → email J+7 envoyé, audit sent_d7", async () => {
-    const order = makeOrder({ id: "order-j7", code_commande: "TRR-J7BBB" });
+    const order = makeOrder({
+      id: "order-j7",
+      code_commande: "TRR-J7BBB",
+      producer: { nom_exploitation: "Ferme B" },
+    });
     responses.orders = [
       { data: [], error: null },
       { data: [order], error: null },
     ];
     responses.reviews = [{ data: null, error: null }];
-    responses.users = [{ data: { email: "consumer@test.fr" }, error: null }];
-    responses.producers = [
-      { data: { nom_exploitation: "Ferme B" }, error: null },
-    ];
     responses.orders_update = [{ data: [{ id: "order-j7" }], error: null }];
 
     const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
@@ -314,16 +318,12 @@ describe("POST /api/cron/review-followup — anti-spam (review existante)", () =
 
 describe("POST /api/cron/review-followup — robustesse missing data", () => {
   it("D1 consumer.email null → skip + audit reason=consumer_email_missing", async () => {
-    const order = makeOrder();
+    const order = makeOrder({ consumer: { email: null } });
     responses.orders = [
       { data: [order], error: null },
       { data: [], error: null },
     ];
     responses.reviews = [{ data: null, error: null }];
-    responses.users = [{ data: { email: null }, error: null }];
-    responses.producers = [
-      { data: { nom_exploitation: "Ferme" }, error: null },
-    ];
 
     const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
     expect(res.status).toBe(200);
@@ -338,14 +338,12 @@ describe("POST /api/cron/review-followup — robustesse missing data", () => {
   });
 
   it("D2 producer null → skip + audit reason=producer_missing", async () => {
-    const order = makeOrder();
+    const order = makeOrder({ producer: null });
     responses.orders = [
       { data: [order], error: null },
       { data: [], error: null },
     ];
     responses.reviews = [{ data: null, error: null }];
-    responses.users = [{ data: { email: "u@test.fr" }, error: null }];
-    responses.producers = [{ data: null, error: null }];
 
     const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
     expect(res.status).toBe(200);
@@ -366,10 +364,6 @@ describe("POST /api/cron/review-followup — robustesse missing data", () => {
       { data: [], error: null },
     ];
     responses.reviews = [{ data: null, error: null }];
-    responses.users = [{ data: { email: "u@test.fr" }, error: null }];
-    responses.producers = [
-      { data: { nom_exploitation: "Ferme" }, error: null },
-    ];
     responses.orders_update = [{ data: [{ id: "order-1" }], error: null }];
     vi.mocked(sendTemplate).mockResolvedValueOnce({
       ok: false,
@@ -400,10 +394,6 @@ describe("POST /api/cron/review-followup — dedup race-safe", () => {
       { data: [], error: null },
     ];
     responses.reviews = [{ data: null, error: null }];
-    responses.users = [{ data: { email: "u@test.fr" }, error: null }];
-    responses.producers = [
-      { data: { nom_exploitation: "Ferme" }, error: null },
-    ];
     // claim concurrent perdue : data: []
     responses.orders_update = [{ data: [], error: null }];
 
@@ -414,5 +404,63 @@ describe("POST /api/cron/review-followup — dedup race-safe", () => {
     expect(findAuditEvents("review_followup_dedup_blocked")).toHaveLength(1);
     const body = (await res.json()) as { j2: { dedup_blocked: number } };
     expect(body.j2.dedup_blocked).toBe(1);
+  });
+});
+
+// --- F. Refacto N+1 → embeds PostgREST + mapWithConcurrency (F-020) ----
+
+describe("POST /api/cron/review-followup — F-020 perf", () => {
+  it("F1 SELECT initial orders inclut embeds consumer + producer (1 query au lieu de 1+2N)", async () => {
+    responses.orders = [
+      { data: [], error: null },
+      { data: [], error: null },
+    ];
+
+    await POST(makeRequest({ auth: "Bearer test-secret" }));
+
+    // 2 SELECT sur orders (un par batch J-2 + J-7), tous deux avec embeds.
+    const ordersSelects = captured.selectCols.filter((s) => s.table === "orders");
+    expect(ordersSelects).toHaveLength(2);
+    for (const s of ordersSelects) {
+      expect(s.cols).toMatch(/consumer:consumer_id\s*\(\s*email\s*\)/);
+      expect(s.cols).toMatch(
+        /producer:producer_id\s*\(\s*nom_exploitation\s*\)/,
+      );
+    }
+
+    // Plus aucun SELECT séparé sur `users` ou `producers` (data fetchée
+    // via embeds dans la query principale).
+    const usersFroms = captured.from.filter((t) => t === "users");
+    const producersFroms = captured.from.filter((t) => t === "producers");
+    expect(usersFroms).toHaveLength(0);
+    expect(producersFroms).toHaveLength(0);
+  });
+
+  it("F2 batch de N orders → 1 query principale par batch + N envois en parallèle borné", async () => {
+    // 8 orders dans la fenêtre J-2 : la concurrence cap=5 ne doit pas casser
+    // le pattern. On vérifie que tous les sendTemplate sont appelés et que
+    // chaque order a son audit sent_d2.
+    const orders = Array.from({ length: 8 }, (_, i) =>
+      makeOrder({ id: `order-${i}`, code_commande: `TRR-X${i}` }),
+    );
+    responses.orders = [
+      { data: orders, error: null }, // J-2
+      { data: [], error: null }, // J-7
+    ];
+    responses.reviews = Array.from({ length: 8 }, () => ({
+      data: null,
+      error: null,
+    }));
+    responses.orders_update = orders.map((o) => ({
+      data: [{ id: o.id }],
+      error: null,
+    }));
+
+    const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { j2: { sent: number } };
+    expect(body.j2.sent).toBe(8);
+    expect(vi.mocked(sendTemplate)).toHaveBeenCalledTimes(8);
+    expect(findAuditEvents("review_followup_sent_d2")).toHaveLength(8);
   });
 });

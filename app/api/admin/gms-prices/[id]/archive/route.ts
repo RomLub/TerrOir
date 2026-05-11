@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { archiveGmsPrice } from "@/lib/gms-prices/admin-write";
+import { dbErrorResponse } from "@/lib/api/db-error-response";
 
 // POST /api/admin/gms-prices/[id]/archive — Soft delete bidirectionnel.
 // Body : { action: 'archive' | 'restore' } (toggle active).
@@ -46,7 +47,9 @@ export async function POST(request: Request, props: RouteContext) {
     .eq("id", params.id)
     .maybeSingle();
   if (selectError) {
-    return NextResponse.json({ error: selectError.message }, { status: 500 });
+    return dbErrorResponse(selectError, "ADMIN_GMS_PRICE_ARCHIVE_SELECT", {
+      gms_price_id: params.id,
+    });
   }
   if (!existing) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });

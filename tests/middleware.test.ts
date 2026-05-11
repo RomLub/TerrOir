@@ -12,6 +12,8 @@ const mockGetUser = vi.fn();
 const mockUsersRolesMaybeSingle = vi.fn();
 const mockAdminUsersMaybeSingle = vi.fn();
 const mockProducersMaybeSingle = vi.fn();
+// F-026 : RPC get_role_snapshot_revocation → retourne ISO string ou null.
+const mockRpcGetRevocation = vi.fn();
 
 vi.mock("@supabase/ssr", () => ({
   createServerClient: () => ({
@@ -48,6 +50,7 @@ vi.mock("@supabase/ssr", () => ({
       }
       throw new Error(`Unmocked table: ${table}`);
     },
+    rpc: (name: string, args: unknown) => mockRpcGetRevocation(name, args),
   }),
 }));
 
@@ -61,6 +64,9 @@ beforeEach(() => {
   mockUsersRolesMaybeSingle.mockReset();
   mockAdminUsersMaybeSingle.mockReset();
   mockProducersMaybeSingle.mockReset();
+  // F-026 default : aucune révocation enregistrée pour ce user (cas nominal).
+  mockRpcGetRevocation.mockReset();
+  mockRpcGetRevocation.mockResolvedValue({ data: null, error: null });
 });
 
 afterEach(() => {
@@ -183,6 +189,75 @@ describe("middleware — role snapshot cookie cache (T-321)", () => {
       }),
     );
 
+    expect(mockUsersRolesMaybeSingle).toHaveBeenCalledTimes(1);
+    expect(mockAdminUsersMaybeSingle).toHaveBeenCalledTimes(1);
+  });
+
+  it("F-026 — snapshot frais (issued_at > min_issued_at) → utilise cache, pas de DB lookup", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
+
+    // Cookie émis maintenant (expires_at = now + TTL → issued_at = now).
+    const cookieValue = await signRoleSnapshot({
+      user_id: "user-1",
+      roles: ["consumer"],
+      isAdmin: false,
+      expires_at: Date.now() + 15 * 60 * 1000,
+    });
+
+    // Révocation très ancienne (1h avant) → snapshot frais.
+    mockRpcGetRevocation.mockResolvedValue({
+      data: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+      error: null,
+    });
+
+    await middleware(
+      buildRequest({
+        url: "https://www.terroir-local.fr/compte",
+        host: "www.terroir-local.fr",
+        cookies: { "__Secure-terroir_role_snapshot": cookieValue },
+      }),
+    );
+
+    // RPC consultée, mais le snapshot est plus récent → pas de DB lookup.
+    expect(mockRpcGetRevocation).toHaveBeenCalledWith(
+      "get_role_snapshot_revocation",
+      { p_user_id: "user-1" },
+    );
+    expect(mockUsersRolesMaybeSingle).not.toHaveBeenCalled();
+    expect(mockAdminUsersMaybeSingle).not.toHaveBeenCalled();
+  });
+
+  it("F-026 — snapshot stale (min_issued_at > issued_at) → force DB lookup refresh", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
+    mockUsersRolesMaybeSingle.mockResolvedValue({
+      data: { roles: ["consumer", "producer"] }, // promu producer entre temps
+    });
+    mockAdminUsersMaybeSingle.mockResolvedValue({ data: null });
+
+    // Cookie émis il y a 5min (expires_at = now + 10min → issued_at = now - 5min).
+    const cookieValue = await signRoleSnapshot({
+      user_id: "user-1",
+      roles: ["consumer"],
+      isAdmin: false,
+      expires_at: Date.now() + 10 * 60 * 1000,
+    });
+
+    // Révocation 2min avant maintenant → après l'issued_at (now - 5min).
+    // Donc issued_at < min_issued_at → snapshot stale.
+    mockRpcGetRevocation.mockResolvedValue({
+      data: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
+      error: null,
+    });
+
+    await middleware(
+      buildRequest({
+        url: "https://www.terroir-local.fr/compte",
+        host: "www.terroir-local.fr",
+        cookies: { "__Secure-terroir_role_snapshot": cookieValue },
+      }),
+    );
+
+    // Snapshot stale → fallback DB lookup (refresh).
     expect(mockUsersRolesMaybeSingle).toHaveBeenCalledTimes(1);
     expect(mockAdminUsersMaybeSingle).toHaveBeenCalledTimes(1);
   });

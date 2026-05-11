@@ -33,6 +33,7 @@ import { getSessionUser } from "@/lib/auth/session";
 import { strongPasswordSchema } from "@/lib/auth/validators";
 import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 import { maskEmail } from "@/lib/rgpd/mask-email";
+import { consumeRateLimit, getLoginRateLimit } from "@/lib/rate-limit";
 
 const changePasswordSchema = z
   .object({
@@ -52,6 +53,8 @@ const changePasswordSchema = z
 export type ChangePasswordState = {
   error?: string;
   success?: boolean;
+  rateLimited?: boolean;
+  retryAfterSeconds?: number;
 };
 
 export async function changePasswordAction(
@@ -62,6 +65,37 @@ export async function changePasswordAction(
   const session = await getSessionUser();
   if (!session || !session.email) {
     return { error: "Session introuvable. Reconnectez-vous." };
+  }
+
+  // F-025 (audit P0 sweep 2026-05-11) : rate-limit sur la re-auth password
+  // avant d'invoquer tempClient.signInWithPassword. Le re-auth password est
+  // équivalent à un login en termes de surface bruteforce (5 attempts/60s
+  // keying session.id). Reuse getLoginRateLimit() pour cohérence des caps
+  // applicatifs (5/60s).
+  const rl = await consumeRateLimit(
+    getLoginRateLimit(),
+    `change_password:${session.id}`,
+  );
+  if (!rl.success) {
+    const retryAfterSeconds = Math.max(
+      1,
+      Math.ceil((rl.reset - Date.now()) / 1000),
+    );
+    await logAuthEvent({
+      eventType: "rate_limit_exceeded",
+      userId: session.id,
+      metadata: {
+        route: "change_password",
+        cap: rl.limit,
+        reset: rl.reset,
+      },
+    });
+    return {
+      error:
+        "Trop de tentatives. Patientez quelques instants avant de réessayer.",
+      rateLimited: true,
+      retryAfterSeconds,
+    };
   }
 
   // 2. Parse + validation Zod (complexité + match + différence)

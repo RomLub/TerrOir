@@ -65,10 +65,10 @@ vi.mock("@/lib/resend/templates/admin-producer-refund-alert", () => ({
   subject: (p: { amount: number }) => `subject-${p.amount}`,
 }));
 
-vi.mock("@/lib/resend/templates/admin-producer-refund-cap-exceeded", () => ({
+vi.mock("@/lib/resend/templates/admin-producer-refund-pending", () => ({
   default: () => null,
-  subject: (p: { attemptedAmount: number; cap: number }) =>
-    `cap-exceeded-${p.attemptedAmount}-cap${p.cap}`,
+  subject: (p: { amount: number; cap: number }) =>
+    `pending-${p.amount}-cap${p.cap}`,
 }));
 
 vi.mock("next/cache", () => ({
@@ -178,7 +178,10 @@ vi.mock("@/lib/supabase/admin", () => ({
       const builder: Record<string, unknown> & { _op: Op } = { _op: "pending" };
       builder.select = (cols: string) => {
         captured.selects.push({ table, cols });
-        builder._op = "select";
+        // Preserve _op si déjà 'insert' ou 'update' — pattern .insert().select()
+        // chez Supabase = INSERT puis SELECT inserted rows (le mock consomme
+        // toujours via le queue 'insert' dans ce cas).
+        if (builder._op === "pending") builder._op = "select";
         return builder;
       };
       builder.update = (payload: unknown) => {
@@ -195,7 +198,9 @@ vi.mock("@/lib/supabase/admin", () => ({
         captured.eqCalls.push({ table, col, val });
         return builder;
       };
+      builder.in = (_col: string, _vals: unknown[]) => builder;
       builder.maybeSingle = () => Promise.resolve(consume(table, builder._op));
+      builder.single = () => Promise.resolve(consume(table, builder._op));
       builder.then = (onFulfilled: (r: Resp) => unknown) =>
         onFulfilled(consume(table, builder._op));
       return builder;
@@ -690,7 +695,7 @@ describe("F'. Audit Stripe L-5 — refund producer audit + email admin", () => {
 
 // --- F''. F-014 (audit pré-launch 2026-05-10) — cap dur producer ---------
 
-describe("F''. F-014 — cap DUR producer self-refund", () => {
+describe("F''. F-014 v2 — workflow approval admin (producer self-refund > cap)", () => {
   function setProducerSession() {
     sessionUser = {
       id: PRODUCER_USER_ID,
@@ -701,37 +706,58 @@ describe("F''. F-014 — cap DUR producer self-refund", () => {
     pushProducerSelect({ data: { id: PRODUCER_ID }, error: null });
   }
 
-  it("F-014-A producer + amount <= cap default (500€) → flow nominal 200, AUCUN block", async () => {
+  function setPendingRefundLookup(existing: { id: string; status: string } | null) {
+    responses.pending_refunds = responses.pending_refunds ?? {};
+    responses.pending_refunds.select = [
+      ...(responses.pending_refunds.select ?? []),
+      { data: existing, error: null },
+    ];
+  }
+
+  function setPendingRefundInsert(row: { id: string }) {
+    responses.pending_refunds = responses.pending_refunds ?? {};
+    responses.pending_refunds.insert = [
+      ...(responses.pending_refunds.insert ?? []),
+      { data: row, error: null },
+    ];
+  }
+
+  it("F-014-A producer + amount <= cap default (500€) → flow nominal 200, AUCUN pending_refund créé", async () => {
     setProducerSession();
     setOrderFetch({ montant_total: 499.99 });
     const res = await POST(makeRequest());
     expect(res.status).toBe(200);
     expect(mockRefundCreate).toHaveBeenCalledTimes(1);
+    expect(captured.inserts.filter((i) => i.table === "pending_refunds")).toEqual([]);
     expect(mockLogPaymentEvent).not.toHaveBeenCalledWith(
-      expect.objectContaining({ eventType: "producer_refund_cap_exceeded" }),
+      expect.objectContaining({ eventType: "producer_refund_pending_created" }),
     );
   });
 
-  it("F-014-B producer + amount > cap default → 403 refund_cap_exceeded + audit log + email admin URGENT, AUCUN refund Stripe", async () => {
+  it("F-014-B producer + amount > cap default → 202 + pending_refund INSERT + audit log + email admin URGENT, AUCUN refund Stripe", async () => {
     setProducerSession();
     setOrderFetch({ montant_total: 750 });
+    setPendingRefundLookup(null);
+    setPendingRefundInsert({ id: "pend-uuid-1" });
     const res = await POST(makeRequest());
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(202);
     expect(await res.json()).toEqual({
-      error: "refund_cap_exceeded",
-      attempted_amount: 750,
+      status: "pending_approval",
+      pending_refund_id: "pend-uuid-1",
+      amount: 750,
       cap: 500,
     });
     expect(mockRefundCreate).not.toHaveBeenCalled();
-    expect(captured.updates).toEqual([]);
+    expect(captured.inserts.filter((i) => i.table === "pending_refunds")).toHaveLength(1);
     expect(mockLogPaymentEvent).toHaveBeenCalledWith(
       expect.objectContaining({
-        eventType: "producer_refund_cap_exceeded",
+        eventType: "producer_refund_pending_created",
         userId: CONSUMER_ID,
         metadata: expect.objectContaining({
+          pending_refund_id: "pend-uuid-1",
           order_id: ORDER_ID,
           producer_id: PRODUCER_ID,
-          attempted_amount: 750,
+          amount: 750,
           cap: 500,
         }),
       }),
@@ -740,45 +766,67 @@ describe("F''. F-014 — cap DUR producer self-refund", () => {
     expect(mockSendTemplate).toHaveBeenCalledWith(
       expect.objectContaining({
         to: "admin@terroir-local.fr",
-        template: "admin_producer_refund_cap_exceeded",
+        template: "admin_producer_refund_pending",
       }),
     );
   });
 
   it("F-014-C admin path n'est PAS soumis au cap (amount > cap → flow nominal 200)", async () => {
-    // sessionUser = admin par défaut
     setOrderFetch({ montant_total: 9999 });
     const res = await POST(makeRequest());
     expect(res.status).toBe(200);
     expect(mockRefundCreate).toHaveBeenCalledTimes(1);
+    expect(captured.inserts.filter((i) => i.table === "pending_refunds")).toEqual([]);
+  });
+
+  it("F-014-D producer + pending existing → 202 idempotent renvoie l'existing au lieu d'INSERT", async () => {
+    setProducerSession();
+    setOrderFetch({ montant_total: 750 });
+    setPendingRefundLookup({ id: "existing-uuid", status: "pending" });
+    const res = await POST(makeRequest());
+    expect(res.status).toBe(202);
+    expect(await res.json()).toEqual({
+      status: "pending_approval",
+      pending_refund_id: "existing-uuid",
+      existing: true,
+      existing_status: "pending",
+    });
+    expect(captured.inserts.filter((i) => i.table === "pending_refunds")).toEqual([]);
     expect(mockLogPaymentEvent).not.toHaveBeenCalledWith(
-      expect.objectContaining({ eventType: "producer_refund_cap_exceeded" }),
+      expect.objectContaining({ eventType: "producer_refund_pending_created" }),
     );
   });
 
-  it("F-014-D PRODUCER_REFUND_CAP_EUR=200 + amount=300 → 403 avec cap=200", async () => {
+  it("F-014-E PRODUCER_REFUND_CAP_EUR=200 + amount=300 → 202 avec cap=200", async () => {
     process.env.PRODUCER_REFUND_CAP_EUR = "200";
     setProducerSession();
     setOrderFetch({ montant_total: 300 });
+    setPendingRefundLookup(null);
+    setPendingRefundInsert({ id: "pend-uuid-2" });
     const res = await POST(makeRequest());
-    expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({
-      error: "refund_cap_exceeded",
-      attempted_amount: 300,
+    expect(res.status).toBe(202);
+    expect(await res.json()).toMatchObject({
+      status: "pending_approval",
+      pending_refund_id: "pend-uuid-2",
+      amount: 300,
       cap: 200,
     });
   });
 
-  it("F-014-E PRODUCER_REFUND_CAP_EUR invalide (<=0 ou non-numérique) → fallback default 500", async () => {
-    process.env.PRODUCER_REFUND_CAP_EUR = "abc";
+  it("F-014-F reason optionnel transmis depuis le body → propagé dans INSERT + audit log + email", async () => {
     setProducerSession();
-    setOrderFetch({ montant_total: 600 });
-    const res = await POST(makeRequest());
-    expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({
-      error: "refund_cap_exceeded",
-      attempted_amount: 600,
-      cap: 500,
+    setOrderFetch({ montant_total: 750 });
+    setPendingRefundLookup(null);
+    setPendingRefundInsert({ id: "pend-uuid-3" });
+    const res = await POST(
+      makeRequest({
+        body: { order_id: ORDER_ID, reason: "Erreur poids viande, dédommagement" },
+      }),
+    );
+    expect(res.status).toBe(202);
+    const pendingInsert = captured.inserts.find((i) => i.table === "pending_refunds");
+    expect(pendingInsert?.payload).toMatchObject({
+      reason: "Erreur poids viande, dédommagement",
     });
   });
 });

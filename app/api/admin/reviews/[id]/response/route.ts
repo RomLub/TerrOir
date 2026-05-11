@@ -3,6 +3,7 @@ import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { logReviewEvent } from "@/lib/audit-logs/log-review-event";
 import { revalidateProducerCard } from "@/lib/stats/revalidate";
+import { dbErrorResponse } from "@/lib/api/db-error-response";
 
 // Admin override : suppression d'une réponse Producer abusive (modération
 // a posteriori, override de la lock 24h producer). Décision business :
@@ -54,7 +55,9 @@ export async function DELETE(_request: Request, props: RouteContext) {
     .eq("id", review.id);
 
   if (updateError) {
-    return NextResponse.json({ error: updateError.message }, { status: 500 });
+    return dbErrorResponse(updateError, "ADMIN_REVIEW_RESPONSE_DELETE", {
+      review_id: review.id,
+    });
   }
 
   await logReviewEvent({

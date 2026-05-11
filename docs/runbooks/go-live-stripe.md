@@ -13,7 +13,36 @@
 - ✅ Phase 3 fixes audit Stripe : H-1 + H-3 upgrade SDK 22 + apiVersion `2026-04-22.dahlia` (commit 811d178).
 - ✅ Phase B fixes audit Stripe : L-1 IP allowlist webhook (`docs/fixes/fix-stripe-phase-b-prelaunch-2026-05-05.md`), PCI SAQ-A audit (`docs/audits/audit-stripe-pci-saq-a-2026-05-05.md` — éligible 12 OK / 0 WARN / 0 FAIL après W-1 + W-2 fix), 3DS matrice E2E (`tests/e2e/stripe-3ds-matrix.spec.ts` — 4 tests + 1 skip documenté), 3DS decline E2E (`tests/e2e/stripe-decline.spec.ts` — 2 tests : API+webhook chain + UI iframe drive).
 - ✅ Session H fixes pré-launch : W-1 PCI headers `next.config.js` (CSP Report-Only initial, X-Frame-Options DENY, X-Content-Type-Options, Referrer-Policy, Permissions-Policy — cf. `docs/conventions/security-headers.md`).
-- ⏳ RGS payouts : décision T+7 vs T+2 à arbitrer V1.x.
+- ✅ RGS payouts : politique T+7 par défaut tranchée (cf. section dédiée ci-dessous).
+
+---
+
+## Politique de versement payout RGS T+7
+
+> **Décision (F-044 audit pré-launch 2026-05) : payout schedule = T+7 par défaut.**
+> Aligné sur le default Stripe Connect Express, prudence plateforme.
+
+### Rationale T+7 (vs T+2)
+
+- **Protection chargeback** : un chargeback consommateur peut tomber jusqu'à T+5 / T+6 après le débit. Verser le producer à T+2 expose TerrOir à un solde négatif Connect si le chargeback arrive après le payout (Stripe debite le compte plateforme, pas le producer). T+7 = fenêtre de protection raisonnable au lancement avec faible historique.
+- **Protection refund window** : nos doctrines order-timeout (refund auto J+1) et refund admin (cap 30 jours) peuvent générer des refunds asynchrones. T+7 laisse le temps au reverse-transfer de tourner avant que le payout n'ait quitté Stripe.
+- **Compromis cashflow producer** : 7 jours est acceptable pour des producers en circuit court (vs 30j sortie de coopérative). Communication explicite dans l'email d'onboarding (cf. ci-dessous).
+
+### Alternative T+2 (cas par cas, V1.x)
+
+T+2 (meilleure UX producer cashflow) reste activable case-par-case post-Live :
+
+- **Méthode 1 — Dashboard Stripe** : Connect → Account → Settings → Payout schedule = `daily / 2 day delay`. Action manuelle admin, 1 producer à la fois.
+- **Méthode 2 — UI admin V1.x** : ajouter un toggle "Payout accéléré T+2" dans `/admin/producteurs/[id]` qui call `stripe.accounts.update({ settings: { payouts: { schedule: { delay_days: 2 } } } })`. Conditionner à 30j d'historique sans chargeback + KYC `restricted=false` + admin approval.
+- **Critères d'éligibilité (à implémenter V1.x)** : ≥10 commandes completed, 0 chargeback, 0 dispute ouverte, KYC complet.
+
+### Communication producer (email d'onboarding)
+
+L'email `producer-invitation` (cf. `lib/resend/templates/producer-invitation.tsx`) précède la connexion Stripe Connect. **Action V1.x** : ajouter dans l'email post-KYC (ou bannière dashboard producer) la mention :
+
+> « Vos paiements vous parviennent sous 7 jours après chaque commande livrée (politique T+7 par défaut, protégeant votre compte contre les éventuels remboursements). »
+
+Pas de modif scope minimal sur `producer-invitation.tsx` ici — ce template est envoyé AVANT que le producer ait un compte Stripe. La mention rejoint le template `payout-summary` (déjà envoyé hebdomadaire) ou un futur template `producer-onboarding-stripe-completed` (V1.x).
 
 ---
 
@@ -173,7 +202,7 @@ WHERE stripe_account_id IS NOT NULL;
 - ✅ **3DS testing exhaustif** : 4 tests E2E Playwright + 1 skip documenté (`tests/e2e/stripe-3ds-matrix.spec.ts`). Cas decline simple (sans 3DS challenge) couvert par `tests/e2e/stripe-decline.spec.ts` (2 tests : API+webhook chain + UI iframe drive). Cas decline post-challenge 3DS laissé en couverture unitaire (`handle-payment-failed.test.ts`) — drive UI iframe `hooks.stripe.com` hors scope E2E stable.
 - ✅ **L-1 IP allowlist webhook Stripe** : implémenté côté applicatif (`lib/stripe/ip-allowlist.ts` + check route). Bypass implicite preview/dev. Doc convention `docs/conventions/stripe-webhook.md` pour refresh trimestriel.
 - ✅ **L-3 Apple Pay domain verification** : FIXED phase 2 (cf. `docs/fixes/fix-stripe-phase-2-m1-l3-2026-05-05.md`).
-- ⏳ **RGS payouts** : Stripe Connect Express verse en T+7 par défaut (configurable T+2). Pour les producers, T+7 risque de générer du support "où est mon argent" — arbitrer si on bumpe à T+2 (cashflow plateforme moins bon mais UX producer mieux).
+- ✅ **RGS payouts** : politique T+7 par défaut tranchée (F-044 audit pré-launch 2026-05). Cf. section "Politique de versement payout RGS T+7" ci-dessus. T+2 reste activable case-par-case V1.x via Dashboard / UI admin (critères : ≥10 commandes completed, 0 chargeback, KYC complet).
 - ⏳ **Cron dispute deadline check** : observation réelle des thresholds 24h / 72h. Si les disputes arrivent toutes le matin (déjà observé sur volumes test), aligner le cron à 6h UTC pour laisser plus de marge admin.
 - ✅ **W-1 PCI durcissement headers de sécurité** (audit SAQ-A) — FIXED 2026-05-05 (Session H, durcissement V1.1 anticipé pré-launch). 5 headers posés dans `next.config.js` async headers : X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy strict-origin-when-cross-origin, Permissions-Policy (camera/microphone none, geolocation/payment self), Content-Security-Policy-Report-Only (Stripe + Mapbox + Vercel Analytics + Supabase whitelistés). **Action restante** : passage CSP Report-Only → enforce après 7j observation Vercel logs (date cible 2026-05-12). Procédure cf. `docs/conventions/security-headers.md`.
 - ✅ **W-2 PCI rate-limit endpoints Stripe** (audit SAQ-A) — FIXED 2026-05-05 (durcissement V1.1 anticipé pré-launch). 3 helpers ajoutés à `lib/rate-limit.ts` : `getStripeCreatePaymentIntentRateLimit` (10/60s), `getStripeRefundRateLimit` (5/60s), `getStripeConnectOnboardRateLimit` (3/60s). Cf. `docs/conventions/rate-limiting.md` + `docs/audits/audit-stripe-pci-saq-a-2026-05-05.md` §W-2.

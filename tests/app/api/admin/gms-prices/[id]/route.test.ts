@@ -103,11 +103,12 @@ describe("PUT /api/admin/gms-prices/[id]", () => {
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
-  it("erreur SELECT pré-check → 500", async () => {
+  it("erreur SELECT pré-check → 500 + message générique (F-029)", async () => {
     preCheckResp = { data: null, error: { message: "db down" } };
     const res = await PUT(makeRequest(VALID_BODY), CTX);
     expect(res.status).toBe(500);
-    expect(await res.json()).toEqual({ error: "db down" });
+    // F-029 : dbErrorResponse masque le message brut Postgres.
+    expect(await res.json()).toEqual({ error: "Internal database error" });
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 

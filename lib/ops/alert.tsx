@@ -52,7 +52,14 @@ export type OpsAlertPrefix =
   // Pas de "refund à bloquer" ici (le débit chargeback est définitif côté
   // Stripe). Admin action requise : ouvrir investigation producteur +
   // reversal manuel Dashboard quand Connect remédié.
-  | "[DISPUTE_LOST_REVERSAL_FAILED]";
+  | "[DISPUTE_LOST_REVERSAL_FAILED]"
+  // F-042 (audit pré-launch 2026-05-11) — Stripe a désactivé `charges_enabled`
+  // sur le Connect account d'un producer (KYC re-flagged, requirement expiré,
+  // fraud flag, etc.). Producer ne peut plus encaisser de nouvelles
+  // commandes jusqu'à régularisation via Dashboard Connect Express. Admin
+  // action requise : vérifier requirements.disabled_reason +
+  // requirements.currently_due et contacter le producer si besoin.
+  | "[STRIPE_CHARGES_DISABLED]";
 
 export type OpsAlertMetadata = Record<string, unknown>;
 

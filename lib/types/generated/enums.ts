@@ -7,6 +7,10 @@
 // (Zod, UI radio, helpers) doit importer ici pour éviter la dérive
 // TS↔SQL silencieuse. Cf. T-220.
 
+// enum pending_refund_status (source: create_type, last migration: 20260511004000_p0_sweep_f014_pending_refunds.sql)
+export const PENDING_REFUND_STATUS_VALUES = ["pending", "approved", "denied", "expired"] as const;
+export type PendingRefundStatus = (typeof PENDING_REFUND_STATUS_VALUES)[number];
+
 // disputes.status (source: in, last migration: 20260429020000_disputes_table.sql)
 export const DISPUTES_STATUS_VALUES = ["needs_response", "under_review", "won", "lost", "warning_closed", "warning_needs_response", "warning_under_review"] as const;
 export type DisputesStatus = (typeof DISPUTES_STATUS_VALUES)[number];

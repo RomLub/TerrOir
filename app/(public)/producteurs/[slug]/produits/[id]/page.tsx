@@ -90,11 +90,18 @@ export default async function ProductPage(props: { params: Promise<{ slug: strin
       // libèrent leur slot dans le décompte consumer. Le check autoritatif
       // reste côté RPC create_order_with_items (SELECT FOR UPDATE +
       // recount), ce fetch sert uniquement à griser les slots pleins en UI.
+      //
+      // F-048 (audit pré-launch 2026-05) : bornage par date_retrait >= today.
+      // Sans cette borne, on fetch tout l'historique des orders actives du
+      // producteur (potentiellement des centaines à terme, dont des stale).
+      // Les slots affichés sont >= earliest (today + delai), donc inutile de
+      // compter les orders dont date_retrait est passée.
       admin
         .from('orders')
         .select('slot_id')
         .eq('producer_id', producerRow.id)
-        .in('statut', [...ACTIVE_ORDER_STATUTS]),
+        .in('statut', [...ACTIVE_ORDER_STATUTS])
+        .gte('date_retrait', now.toISOString().slice(0, 10)),
     ]);
 
   const bookingCounts = new Map<string, number>();

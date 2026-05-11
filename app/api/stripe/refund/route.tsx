@@ -14,9 +14,10 @@ import { SUPPORT_EMAIL } from "@/lib/env/support-email";
 import AdminProducerRefundAlert, {
   subject as producerRefundAlertSubject,
 } from "@/lib/resend/templates/admin-producer-refund-alert";
-import AdminProducerRefundCapExceeded, {
-  subject as producerRefundCapExceededSubject,
-} from "@/lib/resend/templates/admin-producer-refund-cap-exceeded";
+import AdminProducerRefundPending, {
+  subject as producerRefundPendingSubject,
+} from "@/lib/resend/templates/admin-producer-refund-pending";
+import { NEXT_PUBLIC_ADMIN_URL } from "@/lib/env/urls";
 import {
   InvalidOrderTransitionError,
   assertTransition,
@@ -29,7 +30,12 @@ import {
 import { extractRequestContext } from "@/lib/audit-logs/log-auth-event";
 import { reverseTransferIfNeeded } from "@/lib/stripe/reverse-transfer";
 
-const bodySchema = z.object({ order_id: z.string().guid() });
+const bodySchema = z.object({
+  order_id: z.string().guid(),
+  // F-014 v2 : reason optionnel passé par UI producer pour contextualiser la
+  // demande pending. Borné côté Zod pour anti-flood (max 500 chars).
+  reason: z.string().max(500).optional(),
+});
 
 // Audit Stripe L-5 (2026-05-05) : seuil au-delà duquel un refund producer
 // déclenche un email admin. Default 100€, configurable via env. Sujet V1.x
@@ -135,62 +141,112 @@ export async function POST(request: Request) {
     );
   }
 
-  // F-014 : cap DUR producer self-refund. Bloque AVANT toute action Stripe.
-  // L'admin n'est PAS soumis au cap (path historique, approval implicite par
-  // le rôle admin lui-même). Le cap protège contre un producer compromis qui
-  // drainerait la platform balance avant détection (cf. F-004 clawback).
+  // F-014 v2 (audit P0 sweep 2026-05-11) : workflow approval admin remplace
+  // le 403 historique. Producer self-refund au-delà du cap crée un row
+  // pending_refunds + audit log + email admin. La requête retourne 202
+  // Accepted ; l'admin tranche via /admin/refunds/pending. Le cap admin
+  // (path historique sans cap) reste inchangé.
   if (refundedByProducer) {
     const cap = producerRefundCap();
     const attempted = Number(order.montant_total);
     if (Number.isFinite(attempted) && attempted > cap) {
-      console.warn(
-        `[PRODUCER_REFUND_CAP_EXCEEDED] order=${order.id} producer=${order.producer_id} attempted=${attempted} cap=${cap}`,
-      );
-      await logPaymentEvent({
-        eventType: "producer_refund_cap_exceeded",
-        userId: order.consumer_id,
-        metadata: {
+      // Anti-double-create : si un pending_refund existe déjà pour cet order
+      // (status='pending' ou 'approved' déjà décidé), on renvoie le row
+      // existant au lieu d'en créer un nouveau (idempotence côté producer
+      // double-clic, retry réseau).
+      const { data: existingPending } = await admin
+        .from("pending_refunds")
+        .select("id, status")
+        .eq("order_id", order.id)
+        .in("status", ["pending", "approved"])
+        .maybeSingle();
+
+      if (existingPending) {
+        return NextResponse.json(
+          {
+            status: "pending_approval",
+            pending_refund_id: existingPending.id,
+            existing: true,
+            existing_status: existingPending.status,
+          },
+          { status: 202 },
+        );
+      }
+
+      const { data: created, error: createErr } = await admin
+        .from("pending_refunds")
+        .insert({
           order_id: order.id,
           producer_id: order.producer_id,
-          attempted_amount: attempted,
+          amount_eur: attempted,
+          reason: parsed.data.reason ?? null,
+        })
+        .select("id")
+        .single();
+
+      if (createErr || !created) {
+        console.error(
+          `[PENDING_REFUND_CREATE_ERR] order=${order.id} error=${createErr?.message ?? "no_row"}`,
+        );
+        return NextResponse.json(
+          { error: "Internal database error" },
+          { status: 500 },
+        );
+      }
+
+      await logPaymentEvent({
+        eventType: "producer_refund_pending_created",
+        userId: order.consumer_id,
+        metadata: {
+          pending_refund_id: created.id,
+          order_id: order.id,
+          producer_id: order.producer_id,
+          amount: attempted,
           cap,
+          reason: parsed.data.reason ?? null,
         },
       }).catch(() => {});
 
+      const reviewUrl = `${NEXT_PUBLIC_ADMIN_URL}/refunds/pending`;
       const props = {
+        pendingRefundId: created.id,
         codeCommande: order.code_commande,
-        attemptedAmount: attempted,
+        amount: attempted,
         cap,
         orderId: order.id,
         producerId: order.producer_id,
+        reason: parsed.data.reason ?? null,
+        reviewUrl,
       };
       waitUntil(
         sendTemplate({
           to: SUPPORT_EMAIL,
           userId: null,
-          template: "admin_producer_refund_cap_exceeded",
-          subject: producerRefundCapExceededSubject(props),
-          element: <AdminProducerRefundCapExceeded {...props} />,
+          template: "admin_producer_refund_pending",
+          subject: producerRefundPendingSubject(props),
+          element: <AdminProducerRefundPending {...props} />,
           metadata: {
+            pending_refund_id: created.id,
             order_id: order.id,
             producer_id: order.producer_id,
-            attempted_amount: attempted,
+            amount: attempted,
             cap,
           },
         }).catch((err) => {
           console.error(
-            `[PRODUCER_REFUND_CAP_EXCEEDED_EMAIL_ERR] order=${order.id} error=${(err as Error).message}`,
+            `[PRODUCER_REFUND_PENDING_EMAIL_ERR] order=${order.id} error=${(err as Error).message}`,
           );
         }),
       );
 
       return NextResponse.json(
         {
-          error: "refund_cap_exceeded",
-          attempted_amount: attempted,
+          status: "pending_approval",
+          pending_refund_id: created.id,
+          amount: attempted,
           cap,
         },
-        { status: 403 },
+        { status: 202 },
       );
     }
   }

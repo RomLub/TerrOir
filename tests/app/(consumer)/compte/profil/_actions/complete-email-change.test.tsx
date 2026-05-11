@@ -16,7 +16,13 @@ let logAuthEventMock: Mock<AnyAsyncFn>;
 let adminUpdateUserByIdMock: Mock<AnyAsyncFn>;
 let userSignOutMock: Mock<AnyAsyncFn>;
 let updateSpy: Mock<AnySyncFn>;
-let updateResponse: { error: { message: string } | null };
+let updateResponse: {
+  data: { stripe_customer_id: string | null } | null;
+  error: { message: string } | null;
+};
+// F-041 — Stripe customer update mock + response data including
+// stripe_customer_id retourné par la chaîne update().select().maybeSingle().
+let stripeCustomersUpdateMock: Mock<AnyAsyncFn>;
 // SELECT response queue : the action does 2 SELECTs (current + new)
 let selectQueue: { data: Record<string, unknown> | null; error: unknown }[] = [];
 
@@ -60,12 +66,28 @@ vi.mock("@/lib/supabase/admin", () => ({
       }),
       update: (payload: unknown) => {
         updateSpy(payload);
+        // F-041 — chaîne update().eq().select('stripe_customer_id').maybeSingle()
+        // pour récupérer le stripe_customer_id post-UPDATE et re-sync l'email
+        // Stripe Customer.
         return {
-          eq: () => Promise.resolve(updateResponse),
+          eq: () => ({
+            select: () => ({
+              maybeSingle: () => Promise.resolve(updateResponse),
+            }),
+          }),
         };
       },
     }),
   }),
+}));
+
+// F-041 — mock Stripe SDK pour intercepter customers.update.
+vi.mock("@/lib/stripe/server", () => ({
+  stripe: {
+    customers: {
+      update: (...args: unknown[]) => stripeCustomersUpdateMock(...args),
+    },
+  },
 }));
 
 import { completeEmailChangeAction } from "@/app/(consumer)/compte/profil/_actions/complete-email-change";
@@ -89,7 +111,15 @@ beforeEach(() => {
     .mockResolvedValue({ data: { user: { id: "user-1" } }, error: null });
   userSignOutMock = vi.fn<AnyAsyncFn>().mockResolvedValue({ error: null });
   updateSpy = vi.fn<AnySyncFn>();
-  updateResponse = { error: null };
+  // F-041 — par défaut, public.users a un stripe_customer_id (path commun
+  // pour les consumers ayant déjà passé commande / configuré paiement).
+  updateResponse = {
+    data: { stripe_customer_id: "cus_default" },
+    error: null,
+  };
+  stripeCustomersUpdateMock = vi
+    .fn<AnyAsyncFn>()
+    .mockResolvedValue({ id: "cus_default", email: "new@example.com" });
   selectQueue = [
     {
       data: {
@@ -268,7 +298,10 @@ describe("completeEmailChangeAction — admin update errors", () => {
   });
 
   it("public.users update fail → reason=users_update_failed (auth.users déjà muté = désynchro forensique)", async () => {
-    updateResponse = { error: { message: "unique constraint violation" } };
+    updateResponse = {
+      data: null,
+      error: { message: "unique constraint violation" },
+    };
     const res = await completeEmailChangeAction(
       {},
       makeFormData("new@example.com"),
@@ -277,5 +310,60 @@ describe("completeEmailChangeAction — admin update errors", () => {
     expect(adminUpdateUserByIdMock).toHaveBeenCalled();
     expect(userSignOutMock).not.toHaveBeenCalled();
     expect(logAuthEventMock).not.toHaveBeenCalled();
+  });
+});
+
+// F-041 (audit pré-launch 2026-05-11) — re-sync email Stripe Customer après
+// changement d'email DB. Fail-open : si Stripe API down, on log mais on
+// continue le flow (l'email DB est déjà OK).
+describe("completeEmailChangeAction — F-041 Stripe customer email re-sync", () => {
+  it("stripe_customer_id présent → stripe.customers.update appelé avec newEmail", async () => {
+    updateResponse = {
+      data: { stripe_customer_id: "cus_test_123" },
+      error: null,
+    };
+    const res = await completeEmailChangeAction(
+      {},
+      makeFormData("new@example.com"),
+    );
+
+    expect(res).toEqual({ ok: true });
+    expect(stripeCustomersUpdateMock).toHaveBeenCalledTimes(1);
+    expect(stripeCustomersUpdateMock).toHaveBeenCalledWith("cus_test_123", {
+      email: "new@example.com",
+    });
+  });
+
+  it("stripe_customer_id null → stripe.customers.update NON appelé", async () => {
+    updateResponse = {
+      data: { stripe_customer_id: null },
+      error: null,
+    };
+    const res = await completeEmailChangeAction(
+      {},
+      makeFormData("new@example.com"),
+    );
+
+    expect(res).toEqual({ ok: true });
+    expect(stripeCustomersUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it("stripe API throw → log warn fail-open, flow continue ok=true", async () => {
+    updateResponse = {
+      data: { stripe_customer_id: "cus_test_fail" },
+      error: null,
+    };
+    stripeCustomersUpdateMock = vi
+      .fn<AnyAsyncFn>()
+      .mockRejectedValue(new Error("Stripe API down"));
+
+    const res = await completeEmailChangeAction(
+      {},
+      makeFormData("new@example.com"),
+    );
+
+    expect(res).toEqual({ ok: true });
+    // L'audit log + signOut continuent malgré l'erreur Stripe.
+    expect(logAuthEventMock).toHaveBeenCalled();
   });
 });

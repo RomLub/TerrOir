@@ -103,13 +103,16 @@ describe("POST /api/cron/retry-failed-refunds — query refund_incidents", () =>
     expect(retryIncident).not.toHaveBeenCalled();
   });
 
-  it("SELECT retourne PostgREST error → 500 avec message", async () => {
+  it("SELECT retourne PostgREST error → 500 avec message générique (F-029)", async () => {
     vi.mocked(createSupabaseAdminClient).mockReturnValue(
       makeSupabase({ data: null, error: { message: "table down" } }),
     );
     const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
     expect(res.status).toBe(500);
-    expect(((await res.json()) as { error: string }).error).toBe("table down");
+    // F-029 : dbErrorResponse masque le message brut Postgres.
+    expect(((await res.json()) as { error: string }).error).toBe(
+      "Internal database error",
+    );
     expect(retryIncident).not.toHaveBeenCalled();
   });
 

@@ -45,6 +45,14 @@ vi.mock("@supabase/ssr", () => ({
       exchangeCodeForSession: mockExchangeCodeForSession,
       getUser: mockGetUser,
     },
+  }),
+}));
+
+// F-009 (audit P0 sweep 2026-05-11) : le sync public.users.email passe
+// désormais via admin client (trigger users_block_owner_protected_columns
+// bloque users.email pour non-service_role).
+vi.mock("@/lib/supabase/admin", () => ({
+  createSupabaseAdminClient: () => ({
     from: (table: string) => ({
       update: (payload: unknown) => {
         mockUsersUpdate(table, payload);

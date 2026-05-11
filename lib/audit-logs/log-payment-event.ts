@@ -85,6 +85,18 @@ export const PAYMENT_EVENT_TYPES = [
   // requête est rejetée en 403 + email alerte admin (action requise).
   // Metadata : attempted_amount, cap, order_id, producer_id.
   "producer_refund_cap_exceeded",
+  // F-014 v2 (audit P0 sweep 2026-05-11) — workflow approval admin :
+  // producer POST refund > cap crée un pending_refund au lieu du 403.
+  // Cluster `producer_refund_pending_*` :
+  //   - created : INSERT pending_refunds par producer request
+  //   - admin_approved : admin approve → déclenche flow Stripe refund
+  //   - admin_denied : admin deny → email producer + clos
+  //   - expired : cron auto-expire après 7j sans décision
+  // Metadata : pending_refund_id, order_id, producer_id, amount, reason.
+  "producer_refund_pending_created",
+  "producer_refund_admin_approved",
+  "producer_refund_admin_denied",
+  "producer_refund_pending_expired",
   "order_timeout_refund_failed",
   // Path cron timeout sur order pending non payée (PI status !== 'succeeded').
   // T-409 : skip refund Stripe + audit forensique pour ne pas polluer le
@@ -98,6 +110,20 @@ export const PAYMENT_EVENT_TYPES = [
   "stripe_account_updated",
   "stripe_payout_paid",
   "stripe_dispute",
+  // F-039 (audit pré-launch 2026-05-11) — events Stripe `charge.dispute.funds_*`
+  // pour traçabilité forensique du débit / re-crédit de la platform balance
+  // pendant un dispute. Aucun effet de bord business (pas d'UPDATE DB, pas
+  // d'email producer) : audit log uniquement, pour reconstitution comptable
+  // post-mortem et réconciliation avec Stripe Dashboard.
+  //   - stripe_dispute_funds_withdrawn : Stripe a débité la platform balance
+  //     du montant du dispute (provisoire le temps de l'instruction). Émis
+  //     sur webhook `charge.dispute.funds_withdrawn`. Metadata : dispute_id,
+  //     charge_id, payment_intent_id, amount, currency, reason, status.
+  //   - stripe_dispute_funds_reinstated : Stripe a re-crédité la platform
+  //     balance (dispute won). Émis sur webhook `charge.dispute.funds_reinstated`.
+  //     Metadata identique.
+  "stripe_dispute_funds_withdrawn",
+  "stripe_dispute_funds_reinstated",
   // Audit Stripe M-4 (2026-05-05) — cron disputes-deadline-check :
   //   - stripe_dispute_deadline_warning : email relance posé (urgency=soon|urgent),
   //     metadata.dispute_id, hours_remaining, urgency, sms_sent (bool).

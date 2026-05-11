@@ -89,6 +89,41 @@ export async function revalidateProducerCard(opts: {
   }
 }
 
+// F-047 (audit pré-launch 2026-05) : invalidation du cache des reviews
+// affichées sur la fiche /producteurs/[slug]. Appelée depuis le flow
+// producer-reviews-respond (create/update/delete) ET depuis le flow
+// consumer review submit. TTL côté page = 30s, mais ce tag permet la
+// propagation immédiate.
+export async function revalidateProducerReviews(opts: {
+  slug: string;
+  source: string;
+}): Promise<void> {
+  try {
+    revalidateTag(`producer-reviews:${opts.slug}`, "max");
+  } catch (e) {
+    console.warn(
+      `[PRODUCER_REVIEWS_REVAL_WARN] source=${opts.source} slug=${opts.slug} ${(e as Error).message}`,
+    );
+  }
+}
+
+// F-047 : invalidation du cache des produits affichés sur la fiche
+// /producteurs/[slug]. Appelée depuis le flow producer catalogue
+// (create/update/toggle actif). Distinct de `public-products` qui couvre
+// /produits (page liste).
+export async function revalidateProducerProducts(opts: {
+  slug: string;
+  source: string;
+}): Promise<void> {
+  try {
+    revalidateTag(`producer-products:${opts.slug}`, "max");
+  } catch (e) {
+    console.warn(
+      `[PRODUCER_PRODUCTS_REVAL_WARN] source=${opts.source} slug=${opts.slug} ${(e as Error).message}`,
+    );
+  }
+}
+
 // Page /livraison (P0 légales 2026-05-06) : carte SVG des départements
 // couverts. Le tag est invalidé quand un producer change d'état public
 // (devient public, retire son catalogue, suppression RGPD). Le wiring

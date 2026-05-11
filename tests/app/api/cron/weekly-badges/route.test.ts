@@ -186,7 +186,8 @@ describe("POST /api/cron/weekly-badges — agrégation errors", () => {
 
     const res = await POST(makeRequest({ auth: "Bearer test-secret" }));
     expect(res.status).toBe(500);
-    expect(await res.json()).toEqual({ error: "db down" });
+    // F-029 : dbErrorResponse masque le message brut Postgres.
+    expect(await res.json()).toEqual({ error: "Internal database error" });
     expect(vi.mocked(recomputeBadgesForProducer)).not.toHaveBeenCalled();
   });
 });

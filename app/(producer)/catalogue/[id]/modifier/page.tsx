@@ -11,6 +11,7 @@ import { promoteProducerToPublicIfActive } from '@/lib/producers/promote-to-publ
 import {
   revalidatePublicStats,
   revalidatePublicProducts,
+  revalidateProducerProducts,
 } from '@/lib/stats/revalidate';
 import { ProducerLayout } from '../../../_components/ProducerLayout';
 import {
@@ -292,6 +293,14 @@ export default function ProductEditPage() {
         source: 'producer-catalogue-update',
         productId,
       });
+      // F-047 : invalide le cache `producer-products:<slug>` pour la fiche
+      // /producteurs/[slug]. Slug déjà en state (fetch-init + render gating).
+      if (producerSlug) {
+        await revalidateProducerProducts({
+          slug: producerSlug,
+          source: 'producer-catalogue-update',
+        });
+      }
       router.push('/catalogue');
     } catch (err) {
       setError((err as Error).message ?? 'Enregistrement impossible');

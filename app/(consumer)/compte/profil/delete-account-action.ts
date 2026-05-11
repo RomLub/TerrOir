@@ -72,10 +72,13 @@ import AccountDeleted, {
 } from "@/lib/resend/templates/account-deleted";
 import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 import { maskEmail } from "@/lib/rgpd/mask-email";
+import { consumeRateLimit, getLoginRateLimit } from "@/lib/rate-limit";
 
 export type DeleteAccountState = {
   error?: string;
   success?: boolean;
+  rateLimited?: boolean;
+  retryAfterSeconds?: number;
 };
 
 const deleteAccountSchema = z.object({
@@ -90,6 +93,38 @@ export async function deleteAccountAction(
   const session = await getSessionUser();
   if (!session || !session.email) {
     return { error: "Session introuvable. Reconnectez-vous." };
+  }
+
+  // F-025 (audit P0 sweep 2026-05-11) : rate-limit sur la re-auth password
+  // avant d'invoquer tempClient.signInWithPassword. Le re-auth password est
+  // équivalent à un login en termes de surface bruteforce (5 attempts/60s
+  // keying session.id). Reuse getLoginRateLimit() pour cohérence des caps
+  // applicatifs (5/60s) — keying par session.id (donc per-user) plutôt que
+  // par IP (cohérent doctrine getExportComptaRateLimit, etc).
+  const rl = await consumeRateLimit(
+    getLoginRateLimit(),
+    `delete_account:${session.id}`,
+  );
+  if (!rl.success) {
+    const retryAfterSeconds = Math.max(
+      1,
+      Math.ceil((rl.reset - Date.now()) / 1000),
+    );
+    await logAuthEvent({
+      eventType: "rate_limit_exceeded",
+      userId: session.id,
+      metadata: {
+        route: "delete_account",
+        cap: rl.limit,
+        reset: rl.reset,
+      },
+    });
+    return {
+      error:
+        "Trop de tentatives. Patientez quelques instants avant de réessayer.",
+      rateLimited: true,
+      retryAfterSeconds,
+    };
   }
 
   // 2. Parse password + re-auth via client temporaire (anon + persistSession=false)

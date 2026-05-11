@@ -5,6 +5,7 @@ import { cookieConfigForHost } from "@/lib/supabase/cookie-domain";
 import {
   readRoleSnapshotFromRequest,
   setRoleSnapshotOnResponse,
+  ROLE_SNAPSHOT_TTL_SECONDS,
 } from "@/lib/auth/role-snapshot-cookie";
 
 const PRODUCER_HOST = "pro.terroir-local.fr";
@@ -120,11 +121,55 @@ async function resolveRoleSnapshot(
 ): Promise<{ roles: string[]; isAdmin: boolean; needsRefresh: boolean }> {
   const cached = await readRoleSnapshotFromRequest(request, host);
   if (cached && cached.user_id === userId) {
-    return {
-      roles: cached.roles,
-      isAdmin: cached.isAdmin,
-      needsRefresh: false,
-    };
+    // F-026 (audit P0 sweep 2026-05-11) : staleness check serveur. Le cookie
+    // est valide HMAC + non expiré + bind user_id, mais on consulte la table
+    // role_snapshot_revocations pour invalider les snapshots émis avant un
+    // changement de rôle ou de status admin. issued_at = expires_at - TTL
+    // (le cookie ne porte pas issued_at en propre, calcul dérivé).
+    const issuedAtMs =
+      cached.expires_at - ROLE_SNAPSHOT_TTL_SECONDS * 1000;
+    // Lookup via RPC SECDEF (le middleware utilise un client anon Supabase,
+    // pas service_role) — la RPC fait juste le SELECT min_issued_at par
+    // user_id. Fail-open : si la RPC throw / renvoie une erreur, on garde
+    // le snapshot cached (le pire est une staleness de 15min, statu quo
+    // pré-F-026 acceptable comme dégradation).
+    try {
+      const { data: minIssuedAtIso } = await supabase.rpc(
+        "get_role_snapshot_revocation",
+        { p_user_id: userId },
+      );
+      if (typeof minIssuedAtIso === "string") {
+        const minIssuedAtMs = new Date(minIssuedAtIso).getTime();
+        if (Number.isFinite(minIssuedAtMs) && issuedAtMs < minIssuedAtMs) {
+          // Snapshot stale → force DB lookup + needsRefresh pour réécrire
+          // le cookie avec roles/isAdmin frais.
+          // (Tomber dans le path DB ci-dessous.)
+        } else {
+          return {
+            roles: cached.roles,
+            isAdmin: cached.isAdmin,
+            needsRefresh: false,
+          };
+        }
+      } else {
+        // Pas de révocation enregistrée pour ce user → snapshot frais.
+        return {
+          roles: cached.roles,
+          isAdmin: cached.isAdmin,
+          needsRefresh: false,
+        };
+      }
+    } catch (e) {
+      // Fail-open : on garde le snapshot cached (dégradation acceptable).
+      console.warn(
+        `[ROLE_SNAPSHOT_REVOCATION_RPC_WARN] user=${userId} error=${(e as Error).message}`,
+      );
+      return {
+        roles: cached.roles,
+        isAdmin: cached.isAdmin,
+        needsRefresh: false,
+      };
+    }
   }
   const [{ data: profile }, { data: adminRow }] = await Promise.all([
     supabase.from("users").select("roles").eq("id", userId).maybeSingle(),
