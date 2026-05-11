@@ -37,6 +37,10 @@ import { sendTemplate } from "@/lib/resend/send";
 import { generateOtp } from "@/lib/email-change/otp";
 import { hashOtp } from "@/lib/email-change/hmac";
 import { checkOtpRateLimit } from "@/lib/email-change/rate-limit";
+import {
+  consumeRateLimit,
+  getOtpNewEmailRateLimit,
+} from "@/lib/rate-limit";
 import EmailChangeOtpCurrent, {
   subject as currentSubject,
 } from "@/lib/resend/templates/email-change-otp-current";
@@ -87,6 +91,40 @@ export async function requestOtpAction(
       error: `Trop de demandes. Réessayez dans ${rl.retryAfterSeconds}s.`,
       retryAfterSeconds: rl.retryAfterSeconds,
     };
+  }
+
+  // F-056 (audit pré-launch 2026-05-11) — Cap secondaire anti-harcèlement keyé
+  // sur l'adresse cible quand step=new (le destinataire de l'email Resend
+  // serait alors une boîte tierce que l'attaquant veut spammer). Le cap par
+  // (userId, step) ci-dessus protège contre la consommation budget Resend ; ce
+  // second cap protège la BOÎTE TIERCE. 3/h/email cible : marge UX large
+  // (un user honnête essaie 1-2 fois sur la même newEmail avant de
+  // l'abandonner), au-delà = signal compte compromis + harcèlement.
+  if (step === "new") {
+    const newEmailRl = await consumeRateLimit(
+      getOtpNewEmailRateLimit(),
+      newEmail,
+    );
+    if (!newEmailRl.success) {
+      const retryAfter = Math.max(
+        1,
+        Math.ceil((newEmailRl.reset - Date.now()) / 1000),
+      );
+      await logAuthEvent({
+        eventType: "rate_limit_exceeded",
+        userId: session.id,
+        metadata: {
+          route: "otp_new_email",
+          cap: newEmailRl.limit,
+          reset: newEmailRl.reset,
+          target_email_masked: maskEmail(newEmail),
+        },
+      });
+      return {
+        error: `Trop de demandes vers cette adresse. Réessayez dans ${retryAfter}s.`,
+        retryAfterSeconds: retryAfter,
+      };
+    }
   }
 
   const admin = createSupabaseAdminClient();

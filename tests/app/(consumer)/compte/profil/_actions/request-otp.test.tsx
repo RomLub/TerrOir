@@ -27,6 +27,7 @@ type AnySyncFn = (...args: unknown[]) => unknown;
 
 let sessionMock: Mock<AnyAsyncFn>;
 let rateLimitMock: Mock<AnyAsyncFn>;
+let newEmailRateLimitMock: Mock<AnyAsyncFn>;
 let sendTemplateMock: Mock<AnyAsyncFn>;
 let logAuthEventMock: Mock<AnyAsyncFn>;
 let updateSpy: Mock<AnySyncFn>;
@@ -40,6 +41,12 @@ vi.mock("@/lib/auth/session", () => ({
 
 vi.mock("@/lib/email-change/rate-limit", () => ({
   checkOtpRateLimit: (...args: unknown[]) => rateLimitMock(...args),
+}));
+
+// F-056 : helper Upstash secondaire keyé sur newEmail (anti-harcèlement step=new).
+vi.mock("@/lib/rate-limit", () => ({
+  consumeRateLimit: (...args: unknown[]) => newEmailRateLimitMock(...args),
+  getOtpNewEmailRateLimit: () => ({}),
 }));
 
 vi.mock("@/lib/resend/send", () => ({
@@ -95,6 +102,12 @@ beforeEach(() => {
     isAdmin: false,
   });
   rateLimitMock = vi.fn<AnyAsyncFn>().mockResolvedValue({ ok: true });
+  newEmailRateLimitMock = vi.fn<AnyAsyncFn>().mockResolvedValue({
+    success: true,
+    limit: 3,
+    remaining: 2,
+    reset: Date.now() + 3600_000,
+  });
   sendTemplateMock = vi
     .fn<AnyAsyncFn>()
     .mockResolvedValue({ ok: true, id: "resend-msg-id" });
@@ -230,6 +243,47 @@ describe("requestOtpAction — guards", () => {
     expect(res.retryAfterSeconds).toBe(42);
     expect(insertSpy).not.toHaveBeenCalled();
     expect(sendTemplateMock).not.toHaveBeenCalled();
+  });
+
+  // F-056 — cap secondaire anti-harcèlement keyé sur newEmail (uniquement
+  // step=new ; step=current envoie à l'ancienne adresse du user lui-même).
+  it("F-056 step=new : cap secondaire newEmail dépassé → 429-like + audit rate_limit_exceeded", async () => {
+    newEmailRateLimitMock = vi.fn<AnyAsyncFn>().mockResolvedValue({
+      success: false,
+      limit: 3,
+      remaining: 0,
+      reset: Date.now() + 1800_000,
+    });
+    const res = await requestOtpAction(
+      {},
+      makeFormData("new", "tiers@example.com"),
+    );
+    expect(res.error).toMatch(/cette adresse/);
+    expect(insertSpy).not.toHaveBeenCalled();
+    expect(sendTemplateMock).not.toHaveBeenCalled();
+    expect(logAuthEventMock).toHaveBeenCalledWith({
+      eventType: "rate_limit_exceeded",
+      userId: "user-1",
+      metadata: expect.objectContaining({
+        route: "otp_new_email",
+        target_email_masked: "ti***@example.com",
+      }),
+    });
+  });
+
+  it("F-056 step=current : cap secondaire newEmail PAS appliqué (envoi à l'ancienne adresse)", async () => {
+    newEmailRateLimitMock = vi.fn<AnyAsyncFn>().mockResolvedValue({
+      success: false,
+      limit: 3,
+      remaining: 0,
+      reset: Date.now() + 1800_000,
+    });
+    const res = await requestOtpAction(
+      {},
+      makeFormData("current", "new@example.com"),
+    );
+    expect(res).toEqual({ ok: true });
+    expect(newEmailRateLimitMock).not.toHaveBeenCalled();
   });
 });
 

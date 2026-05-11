@@ -250,6 +250,16 @@ let _rgpdExportLimiter: Ratelimit | null | undefined;
 // détection forensique pattern d'attaque énumération slots.
 let _ordersCreateLimiter: Ratelimit | null | undefined;
 
+// F-056 (audit pré-launch 2026-05-11) — Cap secondaire OTP change-email
+// keying l'adresse cible (newEmail). 3/h/email pour empêcher un compte
+// compromis de harceler une boîte tierce en spammant des OTP "votre code
+// est XXX" via le step=new (l'adresse cible reçoit l'email Resend). Le
+// cap DB existant (`checkOtpRateLimit` 3/60s par userId+step) ne couvre
+// pas ce vecteur : un attaquant peut alterner `newEmail` à chaque requête
+// sous le même user. Keying email cible (et non IP, ni userId) car le
+// dommage = nuisance vers la boîte tierce, pas vers l'attaquant.
+let _otpNewEmailLimiter: Ratelimit | null | undefined;
+
 export function getSignupRateLimit(): Ratelimit | null {
   if (_signupLimiter === undefined) {
     _signupLimiter = createRateLimiter(5, "60 s", "signup");
@@ -402,4 +412,11 @@ export function getOrdersCreateRateLimit(): Ratelimit | null {
     _ordersCreateLimiter = createRateLimiter(10, "60 s", "orders_create");
   }
   return _ordersCreateLimiter;
+}
+
+export function getOtpNewEmailRateLimit(): Ratelimit | null {
+  if (_otpNewEmailLimiter === undefined) {
+    _otpNewEmailLimiter = createRateLimiter(3, "1 h", "otp_new_email");
+  }
+  return _otpNewEmailLimiter;
 }

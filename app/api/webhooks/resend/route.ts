@@ -203,10 +203,18 @@ export async function POST(request: Request) {
         } else {
           // Permanent + Undetermined + tout type inconnu : safety net hard.
           await addSuppression(recipient, "hard_bounce", emailId);
+          // F-053 (audit pré-launch 2026-05-11) : doctrine T-200 r1 — pas de
+          // PII verbatim dans audit_logs.metadata pour les events purement
+          // opérationnels. `email_suppressions` séparée garde la clé email en
+          // clair (nécessaire au lookup pré-envoi sendTemplate), donc on
+          // n'enlève pas le signal forensique : on déduit l'event audit en
+          // matchant `source_resend_id` côté notifications. Pour
+          // `email_complaint_received` ci-dessous, la doctrine légale CASL
+          // justifie la trace email verbatim (acte juridique = plainte spam).
           await logPaymentEvent({
             eventType: "email_hard_bounce_suppressed",
             metadata: {
-              email: recipient,
+              email_masked: maskEmail(recipient),
               source_resend_id: emailId,
               bounce_type: bounceType,
               bounce_subtype: event.data?.bounce?.subType ?? null,
