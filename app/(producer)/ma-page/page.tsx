@@ -6,7 +6,10 @@ import { Button, Badge, Input, Textarea, ProducerCard } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { uploadProducerPhoto } from '@/lib/producers/upload';
 import { labelEspece, labelLabel } from '@/lib/producers/labels';
-import { revalidateProducerCard } from '@/lib/stats/revalidate';
+import {
+  revalidateProducerCard,
+  revalidateProducersSearch,
+} from '@/lib/stats/revalidate';
 import {
   type Alimentation,
   type DensiteAnimale,
@@ -272,6 +275,13 @@ export default function MaPagePage() {
           source: 'producer-ma-page-save',
         });
       }
+      // F-021 : especes/labels/commune entrent dans la query search_producers
+      // (filtres + ranking distance). On invalide le cache search pour que
+      // le visiteur voie le producteur mis à jour sans attendre 60s.
+      await revalidateProducersSearch({
+        source: 'producer-ma-page-save',
+        producerId,
+      });
       setTimeout(() => setSaved(false), 2500);
     } catch (err) {
       setError((err as Error).message ?? 'Enregistrement impossible');

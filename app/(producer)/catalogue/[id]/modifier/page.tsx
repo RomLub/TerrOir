@@ -12,6 +12,7 @@ import {
   revalidatePublicStats,
   revalidatePublicProducts,
   revalidateProducerProducts,
+  revalidateProducersSearch,
 } from '@/lib/stats/revalidate';
 import { ProducerLayout } from '../../../_components/ProducerLayout';
 import {
@@ -301,6 +302,13 @@ export default function ProductEditPage() {
           source: 'producer-catalogue-update',
         });
       }
+      // F-021 : update produit peut changer `active_product_count` (flip
+      // active true↔false) ou ranking carbone si filtres impactés.
+      await revalidateProducersSearch({
+        source: 'producer-catalogue-update',
+        producerId,
+        extra: { productId },
+      });
       router.push('/catalogue');
     } catch (err) {
       setError((err as Error).message ?? 'Enregistrement impossible');

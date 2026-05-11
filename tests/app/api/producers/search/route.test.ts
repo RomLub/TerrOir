@@ -38,6 +38,15 @@ vi.mock("@/lib/rate-limit", () => ({
   consumeRateLimit: async () => rateLimitHolder.current,
 }));
 
+// F-021 : `fetchSearchProducersCached` wrap la RPC dans `unstable_cache`.
+// En contexte test, on bypass le cache (pass-through) pour conserver la
+// sémantique "chaque test fournit son propre mock data" — sinon le 1er test
+// pollue les suivants avec la même clé de cache.
+vi.mock("next/cache", () => ({
+  unstable_cache: <Fn extends (...args: unknown[]) => unknown>(fn: Fn) => fn,
+  revalidateTag: vi.fn(),
+}));
+
 import { GET } from "@/app/api/producers/search/route";
 
 type RpcResult<T> = { data: T | null; error: { message: string } | null };

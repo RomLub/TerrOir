@@ -143,3 +143,37 @@ export async function revalidateCoverageDepartments(opts: {
     );
   }
 }
+
+// F-021 (audit pré-launch 2026-05 + verification 2026-05-11) : invalidation
+// du cache de la RPC `search_producers` wrap dans
+// `lib/producers/search-producers-cached.ts`. Appelée après toute mutation
+// qui change l'état visible côté search :
+//   - producer self-update / admin update (especes, labels, score carbone,
+//     mode_elevage, alimentation, densite_animale, indicateurs DGCCRF qui
+//     entrent dans le ranking, statut public/pending).
+//   - product create / update / toggle active (impacte la sous-requête
+//     corrélée `count(*) FROM products WHERE active=true` retournée par
+//     la RPC).
+// TTL côté wrapper = 60s, donc fail-safe si un flow oublie l'invalidation.
+export async function revalidateProducersSearch(opts: {
+  source: string;
+  producerId?: string;
+  extra?: Record<string, string>;
+}): Promise<void> {
+  try {
+    revalidateTag("producers-search", "max");
+  } catch (e) {
+    const parts: string[] = [
+      `[PRODUCERS_SEARCH_REVAL_WARN]`,
+      `source=${opts.source}`,
+      `producerId=${opts.producerId ?? "none"}`,
+    ];
+    if (opts.extra) {
+      for (const [k, v] of Object.entries(opts.extra)) {
+        parts.push(`${k}=${v}`);
+      }
+    }
+    parts.push((e as Error).message);
+    console.warn(parts.join(" "));
+  }
+}

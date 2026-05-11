@@ -109,6 +109,12 @@ export function IndicateursSection({
             slug: producerSlug,
             source: 'producer-indicateurs-update',
           });
+          // F-021 : mode_elevage / alimentation / densite_animale sont
+          // des filtres facets de la RPC search_producers — invalidation
+          // immédiate pour fraîcheur des résultats search.
+          await mod.revalidateProducersSearch({
+            source: 'producer-indicateurs-update',
+          });
         } catch (e) {
           console.warn('[INDICATEURS_REVALIDATE_WARN]', e);
         }

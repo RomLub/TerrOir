@@ -9,6 +9,7 @@ import { promoteProducerToPublicIfActive } from '@/lib/producers/promote-to-publ
 import {
   revalidatePublicStats,
   revalidatePublicProducts,
+  revalidateProducersSearch,
 } from '@/lib/stats/revalidate';
 import { ProducerLayout } from '../_components/ProducerLayout';
 
@@ -77,6 +78,14 @@ export function CatalogueClient({
       await revalidatePublicProducts({
         source: 'producer-catalogue-toggle',
         productId: id,
+      });
+      // F-021 : toggle active flip impacte `active_product_count` retourné
+      // par la RPC search_producers (sous-requête corrélée) + auto-promote
+      // peut faire apparaître/disparaître le producteur.
+      await revalidateProducersSearch({
+        source: 'producer-catalogue-toggle',
+        producerId,
+        extra: { productId: id, active: String(next) },
       });
     } else {
       setError(upError.message);
