@@ -7,6 +7,17 @@ Pour les priorités forward-looking, voir [`TODO.md`](./TODO.md).
 
 ---
 
+## 2026-05-11 (audit pré-launch sweep phase 3 — Basse + Info)
+
+> Sweep des findings Basse + Info restants après PR #112-#116 (phase 1 et 2). Voir PR finale pour les finding traités code.
+>
+> 🟢 **3 findings Info-only fermés sans code** (audit explicitement classés "info, no action") :
+> - **F-057** replyTo user-controlled : risque très faible (regex Zod email rejette `\r\n` + SDK Resend HTTPS JSON). Pas d'action immédiate.
+> - **F-061** Hiérarchie super-admin / admin pour invitation : hors scope V1, à reconsidérer V1.x si volume admin > 3.
+> - **F-065** Absence `expand` sur certains lookups Stripe : pas d'action immédiate. Déclencheur = latence webhook handler > 5 s (instrumentation observée post-Live).
+
+---
+
 ## 2026-05-06 (chantier pickup-validation — flow remise commande producer + boucle feedback avis)
 
 > Chantier hors numérotation T-XXX selon directive. Doc complète : [`docs/fixes/pickup-validation-2026-05-06.md`](./fixes/pickup-validation-2026-05-06.md). Sessions 2 enchaînées sur terminal TC, 8 LOTs séquentiels (commits `4c8e2e1` → ce commit).
