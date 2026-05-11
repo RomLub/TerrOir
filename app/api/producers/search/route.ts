@@ -12,6 +12,7 @@ import {
   DENSITE_ANIMALE_VALUES,
   MODE_ELEVAGE_VALUES,
 } from "@/lib/producers/score-carbone-enums";
+import { fetchSearchProducersCached } from "@/lib/producers/search-producers-cached";
 
 // GET /api/producers/search?lat=&lng=&radius=&especes=bovin,ovin&labels=bio
 //   &mode_elevage=plein_air,semi_plein_air&alimentation=pature_dominante
@@ -108,16 +109,22 @@ export async function GET(request: Request) {
     DENSITE_ANIMALE_VALUES,
   );
 
+  // F-021 (audit pré-launch 2026-05) : la RPC `search_producers` reste
+  // coûteuse (sous-requête corrélée products + haversine inline). Pour
+  // absorber les pics, on délègue à `fetchSearchProducersCached` qui wrap
+  // l'appel dans `unstable_cache` (key quantifiée à 1 décimale ~11 km, TTL
+  // 60s, tag `producers-search`). Les flows producer/product appellent
+  // `revalidateProducersSearch` après mutation pour la fraîcheur immédiate.
   const admin = createSupabaseAdminClient();
-  const { data, error } = await admin.rpc("search_producers", {
-    p_lat: lat,
-    p_lng: lng,
-    p_radius_km: radius,
-    p_especes: especes.length ? especes : null,
-    p_labels: labels.length ? labels : null,
-    p_mode_elevage: modeElevage,
-    p_alimentation: alimentation,
-    p_densite_animale: densiteAnimale,
+  const { data, error } = await fetchSearchProducersCached(admin, {
+    lat,
+    lng,
+    radius_km: radius,
+    especes: especes.length ? especes : null,
+    labels: labels.length ? labels : null,
+    mode_elevage: modeElevage,
+    alimentation: alimentation,
+    densite_animale: densiteAnimale,
   });
 
   if (error) {
@@ -137,12 +144,7 @@ export async function GET(request: Request) {
   // NB : l'INPUT lat/lng (querystring visiteur) reste en précision native
   // côté serveur — c'est nécessaire pour la recherche par proximité, hors
   // scope T-200.
-  type SearchRow = {
-    latitude: number | null;
-    longitude: number | null;
-    [key: string]: unknown;
-  };
-  const sanitized = ((data ?? []) as SearchRow[]).map((row) => ({
+  const sanitized = (data ?? []).map((row) => ({
     ...row,
     latitude: roundCoord(row.latitude),
     longitude: roundCoord(row.longitude),

@@ -11,6 +11,7 @@ import {
   revalidatePublicStats,
   revalidatePublicProducts,
   revalidateProducerProducts,
+  revalidateProducersSearch,
 } from '@/lib/stats/revalidate';
 import { ProducerLayout } from '../../_components/ProducerLayout';
 import {
@@ -240,6 +241,15 @@ export default function ProductNewPage() {
             source: 'producer-catalogue-create',
           });
         }
+        // F-021 : un nouveau produit actif change l'`active_product_count`
+        // retourné par la RPC search_producers (sous-requête corrélée).
+        // L'auto-promotion `pending → public` (cf. ligne 220) peut aussi
+        // exposer un producteur qui n'apparaissait pas avant.
+        await revalidateProducersSearch({
+          source: 'producer-catalogue-create',
+          producerId,
+          extra: { productId: inserted.id },
+        });
       }
       router.push('/catalogue');
     } catch (err) {
