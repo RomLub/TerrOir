@@ -375,8 +375,18 @@ describe("syncStripePaymentSucceeded — Cas 7 : revival_blocked_stock + refund 
     // Refund Stripe appelé avec le bon PI + idempotencyKey contextuel
     // (audit Stripe M-2 : aligné sur les paths admin / timeout / retry).
     expect(vi.mocked(stripe.refunds.create)).toHaveBeenCalledTimes(1);
+    // F-063 (audit pré-launch 2026-05-11) — reason + closure_reason='revival_blocked'
+    // + blocked_reason embarqué dans metadata pour drill-down ops.
     expect(vi.mocked(stripe.refunds.create)).toHaveBeenCalledWith(
-      { payment_intent: "pi_blocked_s" },
+      expect.objectContaining({
+        payment_intent: "pi_blocked_s",
+        reason: "requested_by_customer",
+        metadata: expect.objectContaining({
+          closure_reason: "revival_blocked",
+          order_id: "order-42",
+          blocked_reason: "revival_blocked_stock",
+        }),
+      }),
       { idempotencyKey: "refund_order-42_revival" },
     );
 

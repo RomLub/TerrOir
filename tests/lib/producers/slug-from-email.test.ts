@@ -7,6 +7,15 @@ describe("slugFromEmail", () => {
     expect(slug).toMatch(/^john-doe-[a-z0-9]{6}$/);
   });
 
+  // F-055 (audit pré-launch 2026-05-11) — suffixe randomBytes(3).toString('hex')
+  // = 6 caractères hexadécimaux exclusivement (0-9, a-f). Verrouille
+  // l'invariant contre une régression accidentelle vers Math.random()
+  // (qui peut produire des caractères g-z via base36).
+  it("suffixe hex strict (randomBytes(3) — F-055)", () => {
+    const slug = slugFromEmail("john.doe@example.com");
+    expect(slug).toMatch(/^john-doe-[0-9a-f]{6}$/);
+  });
+
   it("remplace les caractères non-ASCII (accents) par des tirets", () => {
     const slug = slugFromEmail("émile@x.fr");
     expect(slug).toMatch(/^-mile-[a-z0-9]{6}$/);

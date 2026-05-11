@@ -8,6 +8,18 @@ import {
   type Mock,
 } from "vitest";
 
+// F-062 (audit pré-launch 2026-05-11) — l'action importe @/lib/resend/send
+// qui throw au module-load si RESEND_API_KEY absent. + le template
+// password-changed-notice tire layout.tsx qui requiert NEXT_PUBLIC_APP_URL.
+vi.hoisted(() => {
+  process.env.NEXT_PUBLIC_APP_URL =
+    process.env.NEXT_PUBLIC_APP_URL ?? "https://www.terroir-local.fr";
+  process.env.NEXT_PUBLIC_ADMIN_URL =
+    process.env.NEXT_PUBLIC_ADMIN_URL ?? "https://admin.terroir-local.fr";
+  process.env.NEXT_PUBLIC_PRODUCER_URL =
+    process.env.NEXT_PUBLIC_PRODUCER_URL ?? "https://pro.terroir-local.fr";
+});
+
 // vitest 4 : `vi.fn()` retourne `Mock<Procedure | Constructable>` qui n'est
 // pas appelable. On force le type vers une signature de fonction concrète.
 type AnyAsyncFn = (...args: unknown[]) => Promise<unknown>;
@@ -57,6 +69,13 @@ vi.mock("@/lib/audit-logs/log-auth-event", () => ({
 vi.mock("@/lib/rate-limit", () => ({
   consumeRateLimit: (...args: unknown[]) => consumeRateLimitMock(...args),
   getLoginRateLimit: () => ({ /* stub limiter, not introspected */ }),
+}));
+
+// F-062 (audit pré-launch 2026-05-11) — l'action appelle sendTemplate post-
+// success pour envoyer la notification password_changed_notice. Mock pour
+// éviter le throw module-load (RESEND_API_KEY) + isoler le test.
+vi.mock("@/lib/resend/send", () => ({
+  sendTemplate: vi.fn().mockResolvedValue({ ok: true, id: "msg_test" }),
 }));
 
 import { changePasswordAction } from "@/app/(consumer)/compte/password/_actions/change-password";

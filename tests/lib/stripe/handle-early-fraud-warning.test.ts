@@ -169,8 +169,17 @@ describe("syncStripeEarlyFraudWarning — path nominal (refunded)", () => {
     expect(out.result).toBe("refunded");
     expect(out.orderId).toBe("order-42");
 
+    // F-063 (audit pré-launch 2026-05-11) — reason='fraudulent' + closure_reason='efw'.
     expect(vi.mocked(stripe.refunds.create)).toHaveBeenCalledWith(
-      { payment_intent: "pi_test_1" },
+      expect.objectContaining({
+        payment_intent: "pi_test_1",
+        reason: "fraudulent",
+        metadata: expect.objectContaining({
+          closure_reason: "efw",
+          efw_id: "issfr_test_1",
+          order_id: "order-42",
+        }),
+      }),
       { idempotencyKey: "refund_order-42_efw" },
     );
 
@@ -311,8 +320,17 @@ describe("syncStripeEarlyFraudWarning — fallback charge.retrieve quand PI manq
 
     expect(out.result).toBe("refunded");
     expect(vi.mocked(stripe.charges.retrieve)).toHaveBeenCalledWith("ch_test_1");
+    // F-063 — reason='fraudulent' + closure_reason='efw'.
     expect(vi.mocked(stripe.refunds.create)).toHaveBeenCalledWith(
-      { payment_intent: "pi_test_1" },
+      expect.objectContaining({
+        payment_intent: "pi_test_1",
+        reason: "fraudulent",
+        metadata: expect.objectContaining({
+          closure_reason: "efw",
+          efw_id: "issfr_test_1",
+          order_id: "order-42",
+        }),
+      }),
       { idempotencyKey: "refund_order-42_efw" },
     );
   });

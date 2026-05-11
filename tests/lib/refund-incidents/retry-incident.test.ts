@@ -132,8 +132,18 @@ describe("retryIncident — succès Stripe", () => {
 
     expect(res).toBe("succeeded");
     // idempotencyKey calculé sur attempt_number = retryCount + 1 = 1
+    // F-063 (audit pré-launch 2026-05-11) — reason + closure_reason='retry'
+    // + original_kind embarqué dans metadata.
     expect(stripe.refunds.create).toHaveBeenCalledWith(
-      { payment_intent: "pi_1" },
+      expect.objectContaining({
+        payment_intent: "pi_1",
+        reason: "requested_by_customer",
+        metadata: expect.objectContaining({
+          closure_reason: "retry",
+          original_kind: "admin",
+          attempt: 1,
+        }),
+      }),
       { idempotencyKey: "refund_order-1_admin_1" },
     );
     expect(recordRefundAttempt).toHaveBeenCalledWith(
@@ -173,8 +183,17 @@ describe("retryIncident — succès Stripe", () => {
     });
 
     expect(res).toBe("succeeded");
+    // F-063 — reason + closure_reason='retry' + original_kind='timeout'.
     expect(stripe.refunds.create).toHaveBeenCalledWith(
-      { payment_intent: "pi_1" },
+      expect.objectContaining({
+        payment_intent: "pi_1",
+        reason: "requested_by_customer",
+        metadata: expect.objectContaining({
+          closure_reason: "retry",
+          original_kind: "timeout",
+          attempt: 2,
+        }),
+      }),
       { idempotencyKey: "refund_order-1_timeout_2" },
     );
     expect(captured.ordersUpdate).toEqual([]);

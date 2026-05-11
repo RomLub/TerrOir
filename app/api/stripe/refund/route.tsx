@@ -314,8 +314,20 @@ export async function POST(request: Request) {
   // distinct des paths manual_cancel / timeout / retry).
   let refund;
   try {
+    // F-063 (audit pré-launch 2026-05-11) — `reason` + `closure_reason`
+    // pour reporting Stripe Dashboard + grep audit ops. Discriminator
+    // admin/producer reflété dans closure_reason (le path executeRefundFlow
+    // de lib/refunds/execute-refund.ts couvre déjà ce switch — ici on
+    // tagge le path direct API).
     refund = await stripe.refunds.create(
-      { payment_intent: order.stripe_payment_intent_id },
+      {
+        payment_intent: order.stripe_payment_intent_id,
+        reason: "requested_by_customer",
+        metadata: {
+          closure_reason: refundedByProducer ? "producer_refund" : "admin_refund",
+          order_id: order.id,
+        },
+      },
       { idempotencyKey: `refund_${order.id}_admin` },
     );
   } catch (e) {

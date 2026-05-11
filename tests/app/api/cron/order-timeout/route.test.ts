@@ -435,8 +435,16 @@ describe("POST /api/cron/order-timeout — single order", () => {
     expect(vi.mocked(stripe.refunds.create)).toHaveBeenCalledTimes(1);
     // T-408 : 1er arg params metier, 2e arg options idempotencyKey
     // (context "timeout" discriminator distinct des autres paths refund).
+    // F-063 (audit pré-launch 2026-05-11) — reason + closure_reason='timeout'.
     expect(vi.mocked(stripe.refunds.create)).toHaveBeenCalledWith(
-      { payment_intent: "pi_abc" },
+      expect.objectContaining({
+        payment_intent: "pi_abc",
+        reason: "requested_by_customer",
+        metadata: expect.objectContaining({
+          closure_reason: "timeout",
+          order_id: "order-2",
+        }),
+      }),
       { idempotencyKey: "refund_order-2_timeout" },
     );
 
@@ -911,8 +919,16 @@ describe("POST /api/cron/order-timeout — T-409 pre-check pi.status", () => {
       "pi_paid",
     );
     // T-409 idempotencyKey aligné avec convention TA Bundle 1 (T-408).
+    // F-063 — reason + closure_reason='timeout'.
     expect(vi.mocked(stripe.refunds.create)).toHaveBeenCalledWith(
-      { payment_intent: "pi_paid" },
+      expect.objectContaining({
+        payment_intent: "pi_paid",
+        reason: "requested_by_customer",
+        metadata: expect.objectContaining({
+          closure_reason: "timeout",
+          order_id: "order-T409B",
+        }),
+      }),
       { idempotencyKey: "refund_order-T409B_timeout" },
     );
 

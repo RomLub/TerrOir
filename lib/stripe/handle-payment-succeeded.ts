@@ -234,8 +234,19 @@ export async function syncStripePaymentSucceeded(
         // Defense-in-depth : la dédup webhook_events_processed évite déjà
         // un 2e refund sur rejouage Stripe, mais cohérence avec les autres
         // paths refund + protection contre purge erronée de la table dédup.
+        // F-063 (audit pré-launch 2026-05-11) — `reason` + `closure_reason`
+        // pour reporting Stripe Dashboard + grep audit ops. blockedReason
+        // (slot_unavailable | stock_unavailable) embarqué pour drill-down.
         await stripe.refunds.create(
-          { payment_intent: paymentIntent.id },
+          {
+            payment_intent: paymentIntent.id,
+            reason: "requested_by_customer",
+            metadata: {
+              closure_reason: "revival_blocked",
+              order_id: orderId,
+              blocked_reason: blockedReason,
+            },
+          },
           { idempotencyKey: `refund_${orderId}_revival` },
         );
 

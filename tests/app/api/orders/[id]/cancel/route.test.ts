@@ -460,8 +460,16 @@ describe("D. Auth — utilisateur", () => {
     // T-408 : refund consumer self-cancel passe aussi par le path manual_cancel
     // (route + reason "consumer_cancel" sont deux choses distinctes; idempKey
     // discrimine seulement la SOURCE d'appel, pas la reason metier).
+    // F-063 (audit pré-launch 2026-05-11) — reason + closure_reason='manual_cancel'.
     expect(mockRefundCreate).toHaveBeenCalledWith(
-      { payment_intent: PI_ID },
+      expect.objectContaining({
+        payment_intent: PI_ID,
+        reason: "requested_by_customer",
+        metadata: expect.objectContaining({
+          closure_reason: "manual_cancel",
+          order_id: ORDER_ID,
+        }),
+      }),
       { idempotencyKey: `refund_${ORDER_ID}_manual_cancel` },
     );
     const json = await res.json();
@@ -566,8 +574,16 @@ describe("E. Stripe refund + finalStatus dynamique", () => {
     expect(res.status).toBe(200);
     expect(mockRefundCreate).toHaveBeenCalledTimes(1);
     // T-408 : 1er arg params metier, 2e arg options idempotency.
+    // F-063 — reason + closure_reason='manual_cancel'.
     expect(mockRefundCreate).toHaveBeenCalledWith(
-      { payment_intent: PI_ID },
+      expect.objectContaining({
+        payment_intent: PI_ID,
+        reason: "requested_by_customer",
+        metadata: expect.objectContaining({
+          closure_reason: "manual_cancel",
+          order_id: ORDER_ID,
+        }),
+      }),
       { idempotencyKey: `refund_${ORDER_ID}_manual_cancel` },
     );
     const json = await res.json();

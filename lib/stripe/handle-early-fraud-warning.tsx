@@ -177,8 +177,20 @@ export async function syncStripeEarlyFraudWarning(
   // 3. Refund pré-emptif. Idempotency-key spécifique au path EFW.
   let refund: Stripe.Refund | null = null;
   try {
+    // F-063 (audit pré-launch 2026-05-11) — `reason: 'fraudulent'` reflète
+    // la nature du refund (EFW = signal fraude Visa/MC pré-dispute) côté
+    // Stripe Dashboard et balance des disputes. closure_reason='efw' pour
+    // grep audit ops + cohérence avec les autres paths refund.
     refund = await stripe.refunds.create(
-      { payment_intent: paymentIntentId },
+      {
+        payment_intent: paymentIntentId,
+        reason: "fraudulent",
+        metadata: {
+          closure_reason: "efw",
+          order_id: orderId,
+          efw_id: efw.id,
+        },
+      },
       { idempotencyKey: `refund_${orderId}_efw` },
     );
   } catch (refundErr) {

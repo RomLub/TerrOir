@@ -1,5 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+// F-062 (audit pré-launch 2026-05-11) — l'action importe @/lib/resend/send
+// qui throw au module-load si RESEND_API_KEY absent. + le template
+// password-changed-notice tire layout.tsx qui requiert NEXT_PUBLIC_APP_URL.
+vi.hoisted(() => {
+  process.env.NEXT_PUBLIC_APP_URL =
+    process.env.NEXT_PUBLIC_APP_URL ?? "https://www.terroir-local.fr";
+  process.env.NEXT_PUBLIC_ADMIN_URL =
+    process.env.NEXT_PUBLIC_ADMIN_URL ?? "https://admin.terroir-local.fr";
+  process.env.NEXT_PUBLIC_PRODUCER_URL =
+    process.env.NEXT_PUBLIC_PRODUCER_URL ?? "https://pro.terroir-local.fr";
+});
+
 // --- Mocks ---------------------------------------------------------------
 // Le redirect Next.js réel throw NEXT_REDIRECT en succès. On stubbe avec un
 // throw maison qu'on attrape dans le helper runAction() pour laisser les
@@ -8,6 +20,12 @@ vi.mock("next/navigation", () => ({
   redirect: (url: string) => {
     throw new Error(`__REDIRECT__:${url}`);
   },
+}));
+
+// F-062 — mock sendTemplate (notice post-recovery). Fail-safe : action ne
+// revert pas si l'email échoue.
+vi.mock("@/lib/resend/send", () => ({
+  sendTemplate: vi.fn().mockResolvedValue({ ok: true, id: "msg_test" }),
 }));
 
 // revalidatePath() requiert un static generation store en runtime — absent en

@@ -24,6 +24,8 @@ export const AUDIT_EVENT_LABELS: Record<string, string> = {
   account_logout: "Déconnexion",
   account_signup: "Inscription",
   account_deleted: "Compte supprimé",
+  account_deletion_email_sent: "Email confirmation suppression envoyé",
+  account_deletion_email_failed: "Échec envoi email confirmation suppression",
   email_change: "Changement d'email",
   admin_login: "Connexion admin",
   role_changed: "Rôle modifié",

@@ -98,8 +98,24 @@ export async function executeRefundFlow(
 
   let refund;
   try {
+    // F-063 (audit pré-launch 2026-05-11) — `reason` + `closure_reason`
+    // pour reporting Stripe Dashboard + grep audit ops. closure_reason
+    // discrimine producer_refund / admin_refund / admin_approved_pending.
     refund = await stripe.refunds.create(
-      { payment_intent: order.stripe_payment_intent_id },
+      {
+        payment_intent: order.stripe_payment_intent_id,
+        reason: "requested_by_customer",
+        metadata: {
+          closure_reason:
+            emittedBy === "producer"
+              ? "producer_refund"
+              : emittedBy === "admin_approved_pending"
+                ? "admin_approved_pending"
+                : "admin_refund",
+          order_id: order.id,
+          emitted_by: emittedBy,
+        },
+      },
       { idempotencyKey },
     );
   } catch (e) {
