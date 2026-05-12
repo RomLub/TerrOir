@@ -32,7 +32,6 @@ function buildClient(opts: {
 } = {}): SupabaseClient {
   return {
     from: (table: string) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const b: any = {};
       let lastEqVal: string | null = null;
       b.select = () => b;

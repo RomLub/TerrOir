@@ -42,7 +42,6 @@ function buildClient(ctrl: Control = {}): {
     from: (table: string) => {
       captured.fromCalls.push(table);
       let mode: "select" | "update" | null = null;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const b: any = {};
       b.select = (cols: string) => {
         captured.selectCols.push(cols);

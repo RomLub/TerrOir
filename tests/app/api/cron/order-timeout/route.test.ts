@@ -138,7 +138,6 @@ function makeSupabase(ctrl: SupabaseControl = {}): {
 
   const buildBuilder = (table: string) => {
     let mode: "select" | "update" | null = null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const b: any = {};
 
     b.select = (cols: string) => {

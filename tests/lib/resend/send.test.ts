@@ -64,7 +64,6 @@ const baseArgs = {
   userId: "user-1",
   template: "test_template",
   subject: "Subject",
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   element: null as any,
   metadata: { context: "test" },
 };

@@ -87,11 +87,9 @@ function makeSupabase(opts: {
       captured.fromCalls.push(table);
 
       if (table === "producers") {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const root: any = {};
         // SELECT path : select(...).eq(...).maybeSingle()
         root.select = () => {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const sel: any = {};
           sel.eq = (col: string, val: unknown) => {
             captured.selectEqs.push([col, val]);
@@ -103,7 +101,6 @@ function makeSupabase(opts: {
         // UPDATE path : update(...).eq(...).select('id') [thenable]
         root.update = (payload: unknown) => {
           captured.updates.push(payload);
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const upd: any = {};
           upd.eq = (col: string, val: unknown) => {
             captured.updateEqs.push([col, val]);
@@ -122,7 +119,6 @@ function makeSupabase(opts: {
 
       if (table === "users") {
         // SELECT path users : select('email').eq('id', X).maybeSingle()
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const root: any = {};
         root.select = () => ({
           eq: () => ({
@@ -133,7 +129,6 @@ function makeSupabase(opts: {
       }
 
       // Fallback no-op.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const fb: any = {};
       fb.select = () => fb;
       fb.eq = () => fb;

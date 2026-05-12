@@ -63,19 +63,16 @@ export async function setup(): Promise<void> {
     }
 
     if (loaded === 0) {
-      // eslint-disable-next-line no-console
       console.warn(
         `${LOG_PREFIX} supabase status parsed OK mais aucune clé trouvée (format inattendu). Fallback hardcoded.`,
       );
     } else {
-      // eslint-disable-next-line no-console
       console.log(
         `${LOG_PREFIX} runtime keys loaded from supabase status (${loaded} env vars exported).`,
       );
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    // eslint-disable-next-line no-console
     console.warn(
       `${LOG_PREFIX} supabase status failed, falling back to hardcoded defaults. Cause: ${message.split(/\r?\n/)[0]}`,
     );

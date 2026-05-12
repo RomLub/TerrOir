@@ -9,6 +9,5 @@ type ClientLogLevel = "log" | "warn" | "error";
 
 export function clientLog(level: ClientLogLevel, ...args: unknown[]): void {
   if (!isDev) return;
-  // eslint-disable-next-line no-console
   console[level](...args);
 }

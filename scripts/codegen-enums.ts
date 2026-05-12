@@ -1,5 +1,4 @@
 #!/usr/bin/env tsx
-/* eslint-disable no-console */
 
 // =============================================================================
 // scripts/codegen-enums.ts (T-220)

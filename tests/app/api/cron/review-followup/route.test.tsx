@@ -89,7 +89,6 @@ function makeClient(): SupabaseClient {
   return {
     from: (table: string) => {
       captured.from.push(table);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const b: any = {};
       let mode: "select" | "update" = "select";
       b.select = (cols: string) => {

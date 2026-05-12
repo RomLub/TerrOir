@@ -41,7 +41,6 @@ function makeSupabase(selectOrders: ChainResp = { data: [], error: null }): {
   const captured: Captured = { from: [], selectCols: [] };
 
   const buildBuilder = (table: string) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const b: any = {};
     b.select = (cols: string) => {
       captured.selectCols.push({ table, cols });

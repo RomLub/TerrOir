@@ -53,7 +53,6 @@ function makeSupabase(ctrl: SupabaseControl = {}): {
   client: SupabaseClient;
 } {
   const buildBuilder = (table: string) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const b: any = {};
     b.select = () => b;
     b.eq = () => b;

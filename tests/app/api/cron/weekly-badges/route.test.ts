@@ -29,7 +29,6 @@ interface Control {
 function buildClient(ctrl: Control = {}): SupabaseClient {
   return {
     from: (_table: string) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const b: any = {};
       b.select = () => b;
       b.eq = () => Promise.resolve(ctrl.selectProducers ?? { data: [], error: null });

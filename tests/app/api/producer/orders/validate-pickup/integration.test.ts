@@ -105,7 +105,6 @@ vi.mock("@/lib/supabase/admin", () => ({
   createSupabaseAdminClient: () => ({
     from: (table: string) => {
       captured.from.push(table);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const builder: any = { _op: "select" };
       builder.select = (cols: string) => {
         captured.selectCols.push({ table, cols });

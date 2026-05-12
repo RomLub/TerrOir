@@ -29,7 +29,6 @@ describeIfLocal(
 
     beforeAll(() => {
       if (!reachable) {
-        // eslint-disable-next-line no-console
         console.warn(
           "[T-296] Supabase locale non joignable, tests SQL skippés. " +
             "Lance `npx supabase start` pour exécuter la suite.",
