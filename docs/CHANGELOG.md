@@ -2,8 +2,32 @@
 
 Historique des chantiers et commits structurants. Ordre antichronologique (plus récent en haut).
 
+Pour la doctrine d'exécution (règles d'or + workflow), voir [`CLAUDE.md`](../CLAUDE.md) à la racine.
+Pour les actions conditionnées en attente, voir [`post-launch-checklist.md`](./post-launch-checklist.md).
 Pour les leçons apprises transversales, voir [`LESSONS.md`](./LESSONS.md).
-Pour les priorités forward-looking, voir [`TODO.md`](./TODO.md).
+Pour les décisions structurantes (ADRs), voir [`decisions/`](./decisions/).
+
+---
+
+## 2026-05-13 (refonte doctrine + tri TODO/backlog + ADRs + EOL normalisation)
+
+> Refonte structurelle session 2026-05-12/13. PR #122 (EOL) mergée + chantier `chore/cleanup-post-t300-and-doctrine-refresh` en cours.
+>
+> 🟢 **`CLAUDE.md` réécrit from scratch** (1036 lignes diff). 5 règles d'or en tête (fainéantise maximale Romain, propreté seul critère, zéro backlog, langage non technique, pas de fenêtres de questions) + 10 sections opérationnelles. Section pièges connus inclut désormais une liste « actions UI-only confirmées » (Stripe Connect KYC, Supabase SMTP custom + templates Auth, HIBP toggle, Stripe Connect branding, création comptes services tiers).
+>
+> 🟢 **Tri `TODO.md` + `backlog/post-live.md`** (482 lignes supprimées) selon critère règle d'or 3 : (i) faisable maintenant → fait, (ii) conditionné à événement externe → déplacé dans `post-launch-checklist.md` avec condition explicite, (iii) aspirationnel sans condition → suppression, (iv) rationale produit réutilisable → ADR. Le mot « backlog » disparaît du repo (`docs/backlog/` supprimé). Plus de roadmap aspirationnelle T-200/T-221/T-223/T-240/T-241/T-242.
+>
+> 🟢 **`docs/decisions/` créé** (4 fichiers, format ADR standard) : ADR-0001 Position consumer persistance (Deferred), ADR-0002 Pattern déclarations engageantes producteur (Accepted, livré T-241 + T-243), ADR-0003 Mode de livraison retrait ferme uniquement (Accepted, décision Romain 2026-05-07).
+>
+> 🟢 **`docs/post-launch-checklist.md` créé** (413 lignes) — items conservés triés par condition de déblocage : bloquants Live initial, audit externe pré-launch, actions UI tierces Romain, conditionné T-003, conditionné passage Live, conditionné PostHog/Sentry provisionnés, conditionné évolution wording véracité, conditionné élargissement géo, conditionné mesures télémétrie atteignant un seuil, bug latent C-CHECKOUT-IDEMPO, conformité a11y française marchand grand public.
+>
+> 🟢 **`.gitattributes` enforce LF** (PR #122 mergée, commit `e5d7f70`). 46 lignes : `* text=auto eol=lf` par défaut + binaires explicites (`.png`/`.jpg`/`.pdf`/fonts/archives/audio/vidéo marqués `binary`) + scripts Windows préventifs (`.bat`/`.cmd`/`.ps1` en `eol=crlf`). Effet : élimine la divergence silencieuse Windows CRLF ↔ outils Node LF, déverrouille `tests/scripts/codegen-enums.test.ts` qui failait localement. Index git n'a pas bougé (déjà en LF), seul le working tree Windows est renormalisé au checkout. `CONTRIBUTING.md` complété section « Configuration git locale (action requise sur Windows) » documentant `core.autocrlf=false` + procédure de re-checkout forcé.
+>
+> 🟢 **Cleanup post-T-300 commentaires** : 2 commentaires `lib/producers/` (`fetch-public.ts`, `get-display-name.ts`) référençaient le ticket T-300 (DROP COLUMN `prenom_affichage`, livré 2026-05-07). Reformulés pour expliquer le design fonctionnel (`users.prenom` source unique, pas de duplication sur la table producers) sans pollution ticket-référence.
+>
+> 🟢 **`docs/METHODOLOGY.md` supprimé** (571 lignes obsolètes). Le contenu utile est consolidé dans `CLAUDE.md` règles d'or + sections.
+>
+> 🟢 **`docs/README.md` et `docs/HANDOFF.md`** mis à jour pour pointer vers les nouveaux artefacts (`post-launch-checklist.md`, `decisions/`) et `CLAUDE.md` racine. Références cassées vers `TODO.md` / `METHODOLOGY.md` / `backlog/post-live.md` corrigées.
 
 ---
 
