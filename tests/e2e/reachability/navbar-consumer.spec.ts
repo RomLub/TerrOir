@@ -158,7 +158,7 @@ test.describe('reachability — navbar consumer connecté', () => {
       ).toBeVisible();
     });
 
-    test('drawer mobile : pas de S’inscrire (user déjà connecté)', async ({
+    test("drawer mobile : pas de S'inscrire (user déjà connecté)", async ({
       page,
       ctx,
     }) => {

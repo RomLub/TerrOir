@@ -27,7 +27,7 @@ test.describe('reachability — navbar anonyme', () => {
       await expect(page).toHaveURL(/\/connexion/);
     });
 
-    test('S’inscrire CTA visible (bg terroir-green) + reachable → /auth/inscription', async ({
+    test("S'inscrire CTA visible (bg terroir-green) + reachable → /auth/inscription", async ({
       page,
     }) => {
       await page.goto('/');
@@ -107,7 +107,7 @@ test.describe('reachability — navbar anonyme', () => {
       expect(box!.x).toBeLessThan(0);
     });
 
-    test('drawer ouvre via Menu button + S’inscrire visible (full-width green)', async ({
+    test("drawer ouvre via Menu button + S'inscrire visible (full-width green)", async ({
       page,
     }) => {
       await page.goto('/');
