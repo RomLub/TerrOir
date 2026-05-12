@@ -34,11 +34,12 @@ export async function seedProducer(
   const userId = authData.user.id;
 
   // Crée le producer associé.
+  const slug = `t296-prod-${crypto.randomUUID().slice(0, 8)}`;
   const { data: prod, error: prodErr } = await supabase
     .from("producers")
     .insert({
       user_id: userId,
-      email,
+      slug,
       statut: overrides?.statut ?? "draft",
       nom_exploitation: overrides?.nom_exploitation ?? "Ferme test T-296",
       declaration_indicateurs_snapshot:
