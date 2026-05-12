@@ -1,5 +1,5 @@
-// Test pilote T-296 — RPC `update_producer_onboarding` (16 args, signature
-// courante post-T-243).
+// Test pilote T-296 — RPC `update_producer_onboarding` (15 args, signature
+// courante post-T-300).
 //
 // Cible : la décision SQL de re-persistance des declaration_indicateurs_*
 // (T-241), qui est exactement le type de logique métier qu'un test Vitest
@@ -25,9 +25,8 @@ const SUPABASE = getSqlIntegrationClient();
 function buildArgs(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     p_user_id: overrides.p_user_id ?? "",
-    p_prenom_affichage: overrides.p_prenom_affichage ?? "Jean",
     p_nom_exploitation: overrides.p_nom_exploitation ?? "Ferme test T-296",
-    p_forme_juridique: overrides.p_forme_juridique ?? "EI",
+    p_forme_juridique: overrides.p_forme_juridique ?? "ei",
     p_siret: overrides.p_siret ?? "12345678900012",
     p_adresse: overrides.p_adresse ?? "1 rue du Test",
     p_code_postal: overrides.p_code_postal ?? "72000",
@@ -35,8 +34,8 @@ function buildArgs(overrides: Partial<Record<string, unknown>> = {}) {
     p_type_production: overrides.p_type_production ?? "elevage",
     p_type_production_precision: overrides.p_type_production_precision ?? null,
     p_mode_elevage: overrides.p_mode_elevage ?? "plein_air",
-    p_alimentation: overrides.p_alimentation ?? "herbe_majoritaire",
-    p_densite_animale: overrides.p_densite_animale ?? "extensif",
+    p_alimentation: overrides.p_alimentation ?? "pature_dominante",
+    p_densite_animale: overrides.p_densite_animale ?? "extensive",
     p_declaration_cochee: overrides.p_declaration_cochee ?? true,
     p_wording_version: overrides.p_wording_version ?? "v1.1",
     p_enums_version: overrides.p_enums_version ?? "v1.0",
@@ -47,7 +46,7 @@ const reachable = await isLocalSupabaseReachable();
 const describeIfLocal = reachable ? describe : describe.skip;
 
 describeIfLocal(
-  "update_producer_onboarding (16 args, T-241+T-243) — décision SQL re-persistance DGCCRF",
+  "update_producer_onboarding (15 args, T-241+T-243+T-300) — décision SQL re-persistance DGCCRF",
   () => {
     let seeded: SeededProducer;
 
@@ -96,8 +95,8 @@ describeIfLocal(
       expect(data?.declaration_indicateurs_wording_version).toBe("v1.1");
       expect(data?.declaration_indicateurs_snapshot).toMatchObject({
         mode_elevage: "plein_air",
-        alimentation: "herbe_majoritaire",
-        densite_animale: "extensif",
+        alimentation: "pature_dominante",
+        densite_animale: "extensive",
       });
     });
 
@@ -107,8 +106,8 @@ describeIfLocal(
         statut: "active",
         declaration_indicateurs_snapshot: {
           mode_elevage: "plein_air",
-          alimentation: "herbe_majoritaire",
-          densite_animale: "extensif",
+          alimentation: "pature_dominante",
+          densite_animale: "extensive",
         },
       });
 
@@ -124,8 +123,8 @@ describeIfLocal(
           p_user_id: seeded.userId,
           // Args identiques au snapshot existant
           p_mode_elevage: "plein_air",
-          p_alimentation: "herbe_majoritaire",
-          p_densite_animale: "extensif",
+          p_alimentation: "pature_dominante",
+          p_densite_animale: "extensive",
         }),
       );
       expect(error).toBeNull();
