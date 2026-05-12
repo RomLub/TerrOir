@@ -11,7 +11,15 @@ build/
 next-env.d.ts.bak
 .turbo
 *.tsbuildinfo
-.claude/
+
+# Claude Code — artefacts de session (worktrees agent, locks, caches).
+# NE PAS ignorer .claude/ entièrement : les sous-dossiers de configuration
+# partagés (par exemple .claude/agents/ pour les sub-agents définis par
+# Romain quand ils existeront) doivent rester versionnés.
+.claude/worktrees/
+.claude/cache/
+.claude/sessions/
+.claude/*.lock
 
 # Playwright
 /test-results/
