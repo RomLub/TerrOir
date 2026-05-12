@@ -10,6 +10,10 @@ import path from "node:path";
 export default defineConfig({
   test: {
     include: ["tests/sql-integration/**/*.test.ts"],
+    // globalSetup runtime : extrait les seeded keys de `supabase status -o env`
+    // et les expose en `process.env.TEST_SUPABASE_*` pour helpers/client.ts.
+    // Fail-open : si CLI absente / Docker down, fallback hardcoded helpers.
+    globalSetup: ["./tests/sql-integration/setup.ts"],
     environment: "node",
     globals: false,
     reporters: "default",
