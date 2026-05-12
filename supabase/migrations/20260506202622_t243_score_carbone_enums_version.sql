@@ -163,7 +163,9 @@ begin
 end;
 $$;
 
-comment on function public.update_producer_onboarding is
+comment on function public.update_producer_onboarding(
+  uuid, text, text, text, text, text, text, text, text, text, text, text, text, boolean, text, text
+) is
   'T-241 + T-243 — UPDATE atomique fiche producteur (onboarding) avec décision '
   'côté SQL de re-persistance des declaration_indicateurs_* (case sur l''honneur '
   'DGCCRF + version wording certifié + version enums score-carbone). Voir '
