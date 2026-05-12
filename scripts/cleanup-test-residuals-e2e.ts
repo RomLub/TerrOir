@@ -2,9 +2,9 @@
  * scripts/cleanup-test-residuals-e2e.ts
  * Sweep CLI standalone des résiduels E2E (sentinel playwright-test-*@mailinator.com).
  *
- * Wrapper sur sweepE2EResiduals (tests/e2e/helpers/db-cleanup.ts), exposé en CLI
- * pour invocation hors Playwright lifecycle (cron Vercel hebdo, sweep manuel
- * post-incident, debug local sans run Playwright complet).
+ * Wrapper sur sweepE2EResiduals (lib/maintenance/sweep-e2e-residuals.ts), exposé
+ * en CLI pour invocation hors Playwright lifecycle (cron Vercel hebdo, sweep
+ * manuel post-incident, debug local sans run Playwright complet).
  *
  * Usage :
  *   npx tsx scripts/cleanup-test-residuals-e2e.ts                    # apply
@@ -21,7 +21,7 @@ import { resolve } from "node:path";
 // au runtime, lequel exige NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY).
 loadEnv({ path: resolve(process.cwd(), ".env.local") });
 
-import { sweepE2EResiduals } from "@/tests/e2e/helpers/db-cleanup";
+import { sweepE2EResiduals } from "@/lib/maintenance/sweep-e2e-residuals";
 
 function parseArgs(argv: string[]): { dryRun: boolean; minAgeHours?: number } {
   const dryRun = argv.includes("--dry-run");
