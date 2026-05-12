@@ -27,8 +27,8 @@ function buildArgs(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     p_user_id: overrides.p_user_id ?? "",
     p_mode_elevage: overrides.p_mode_elevage ?? "plein_air",
-    p_alimentation: overrides.p_alimentation ?? "herbe_majoritaire",
-    p_densite_animale: overrides.p_densite_animale ?? "extensif",
+    p_alimentation: overrides.p_alimentation ?? "pature_dominante",
+    p_densite_animale: overrides.p_densite_animale ?? "extensive",
     p_declaration_cochee: overrides.p_declaration_cochee ?? true,
     p_wording_version: overrides.p_wording_version ?? "v1.1",
     p_enums_version: overrides.p_enums_version ?? "v1.0",
@@ -91,8 +91,8 @@ describeIfLocal(
         statut: "active",
         declaration_indicateurs_snapshot: {
           mode_elevage: "plein_air",
-          alimentation: "herbe_majoritaire",
-          densite_animale: "extensif",
+          alimentation: "pature_dominante",
+          densite_animale: "extensive",
         },
       });
 
