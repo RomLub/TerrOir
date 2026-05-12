@@ -228,6 +228,11 @@ describe("codegen-enums :: parité fichier généré ↔ migrations actuelles", 
     }
     const expected = generateOutput([...acc.values()]);
     const actual = fs.readFileSync(OUTPUT_FILE, "utf-8");
-    expect(actual.trim()).toBe(expected.trim());
+    // Normalize CRLF → LF avant compare : sur Windows (autocrlf default),
+    // readFileSync lit les CRLF du disk alors que generateOutput produit LF
+    // (template literals JS natif Node). Sans ça, trim() ne nettoie que
+    // start/end whitespace mais pas les \r internes → faux positif local
+    // Windows-only (CI ubuntu = LF natif, pas affectée).
+    expect(actual.replace(/\r\n/g, "\n").trim()).toBe(expected.trim());
   });
 });
