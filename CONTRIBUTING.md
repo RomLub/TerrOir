@@ -1,7 +1,39 @@
 # Contribuer à TerrOir
 
-Ce document décrit la procédure complète pour gérer la base de données
-Supabase et les migrations dans le projet.
+Ce document décrit la configuration locale (git, Supabase) requise pour
+contribuer au projet, ainsi que la procédure complète pour gérer la
+base de données et les migrations.
+
+---
+
+## Configuration git locale (action requise sur Windows)
+
+Le repo utilise un `.gitattributes` qui normalise toutes les fins de
+ligne en LF, indépendamment de l'OS. Sur Windows, configurer la
+conversion automatique CRLF sur `false` pour éviter les conflits
+fantômes (modifs EOL-only) lors de stash / cherry-pick / rebase :
+
+```bash
+git config --local core.autocrlf false
+```
+
+À exécuter **une seule fois** après le premier clone du repo.
+
+Si le repo est déjà cloné avec des fichiers en CRLF dans le working
+tree, force le re-checkout pour passer en LF :
+
+> ⚠️ Avant d'exécuter ces commandes, vérifier que `git status` est
+> clean (aucune modif uncommitted). Le `reset --hard` est destructif
+> et écrasera tout travail non committé.
+
+```bash
+git rm --cached -r .
+git reset --hard HEAD
+```
+
+**macOS / Linux** : rien à faire. `core.autocrlf` est `false` ou
+`input` par défaut, comportement déjà compatible avec le
+`.gitattributes` du repo.
 
 ---
 

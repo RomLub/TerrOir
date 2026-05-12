@@ -1,0 +1,46 @@
+# .gitattributes — TerrOir
+#
+# Normalisation des fins de ligne pour cohérence cross-OS (Windows / macOS /
+# Linux). Sans ce fichier, Windows + core.autocrlf=true peut produire un
+# working tree en CRLF alors que les outils Node (codegen, vitest) génèrent
+# du LF — divergence silencieuse qui casse les tests de parité (cf.
+# tests/scripts/codegen-enums.test.ts qui comparait actual.trim() vs
+# expected.trim() sans normaliser \r\n internes).
+#
+# Effet du `eol=lf` global : les fichiers texte sont stockés ET checked out
+# en LF, indépendamment de la config locale `core.autocrlf` du contributeur.
+
+# Par défaut : tous les fichiers texte normalisés en LF.
+* text=auto eol=lf
+
+# Fichiers binaires explicites — git ne tente aucune normalisation.
+*.png      binary
+*.jpg      binary
+*.jpeg     binary
+*.gif      binary
+*.ico      binary
+*.webp     binary
+*.avif     binary
+*.bmp      binary
+*.pdf      binary
+*.woff     binary
+*.woff2    binary
+*.ttf      binary
+*.otf      binary
+*.eot      binary
+*.mp4      binary
+*.webm     binary
+*.mp3      binary
+*.wav      binary
+*.zip      binary
+*.tar      binary
+*.tar.gz   binary
+*.gz       binary
+*.7z       binary
+*.rar      binary
+
+# Scripts Windows : doivent rester en CRLF natif sinon cmd.exe les rejette.
+# Aucun dans le repo aujourd'hui, préventif pour additions futures.
+*.bat      eol=crlf
+*.cmd      eol=crlf
+*.ps1      eol=crlf
