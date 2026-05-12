@@ -17,7 +17,7 @@
  * dans les logs qu'un exit code de session masquant les vrais résultats).
  */
 
-import { sweepE2EResiduals } from '../helpers/db-cleanup';
+import { sweepE2EResiduals } from '@/lib/maintenance/sweep-e2e-residuals';
 import { cleanupPersistentUsers } from '../helpers/auth-state';
 
 export default async function globalTeardown(): Promise<void> {

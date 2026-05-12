@@ -20,7 +20,7 @@
 
 import dotenv from 'dotenv';
 import path from 'path';
-import { sweepE2EResiduals } from '../helpers/db-cleanup';
+import { sweepE2EResiduals } from '@/lib/maintenance/sweep-e2e-residuals';
 import { createRunId } from '../helpers/audit-log';
 
 const REQUIRED_ENV = [
