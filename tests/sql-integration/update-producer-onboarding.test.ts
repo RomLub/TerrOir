@@ -1,5 +1,5 @@
-// Test pilote T-296 — RPC `update_producer_onboarding` (16 args, signature
-// courante post-T-243).
+// Test pilote T-296 — RPC `update_producer_onboarding` (15 args, signature
+// courante post-T-300).
 //
 // Cible : la décision SQL de re-persistance des declaration_indicateurs_*
 // (T-241), qui est exactement le type de logique métier qu'un test Vitest
@@ -25,7 +25,6 @@ const SUPABASE = getSqlIntegrationClient();
 function buildArgs(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     p_user_id: overrides.p_user_id ?? "",
-    p_prenom_affichage: overrides.p_prenom_affichage ?? "Jean",
     p_nom_exploitation: overrides.p_nom_exploitation ?? "Ferme test T-296",
     p_forme_juridique: overrides.p_forme_juridique ?? "EI",
     p_siret: overrides.p_siret ?? "12345678900012",
@@ -47,7 +46,7 @@ const reachable = await isLocalSupabaseReachable();
 const describeIfLocal = reachable ? describe : describe.skip;
 
 describeIfLocal(
-  "update_producer_onboarding (16 args, T-241+T-243) — décision SQL re-persistance DGCCRF",
+  "update_producer_onboarding (15 args, T-241+T-243+T-300) — décision SQL re-persistance DGCCRF",
   () => {
     let seeded: SeededProducer;
 
