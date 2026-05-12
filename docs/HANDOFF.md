@@ -59,7 +59,7 @@
 >
 > **Vulnérabilités npm pré-existantes flagged 28/04** : 5 vulnerabilities détectées sur le repo (1 critical + 3 high + 1 moderate), indépendantes des chantiers session. Item posé en TODO 🔐 Avant lancement public pour audit dédié + revue manuelle des breaking changes potentiels avant `npm audit fix --force`.
 >
-> Objectif : permettre à un Claude frais de reprendre le projet exactement où on en est, juste en lisant ce document (puis `docs/METHODOLOGY.md` et `docs/TODO.md`). Voir `docs/README.md` pour l'index complet de la documentation.
+> Objectif : permettre à un Claude frais de reprendre le projet exactement où on en est, juste en lisant ce document (puis `CLAUDE.md` à la racine pour la doctrine d'exécution, puis `docs/post-launch-checklist.md` pour les actions conditionnées en attente). Voir `docs/README.md` pour l'index complet de la documentation.
 
 ## Projet : TerrOir
 
@@ -191,12 +191,12 @@ Gérées via Vercel Dashboard. Jamais dans le code.
   - **Rotation de cette clé = 2 endroits en parallèle** : (1) Vercel `RESEND_API_KEY`, (2) Supabase Dashboard > Auth > SMTP custom. Oublier le 2e = Supabase continue silencieusement avec la clé révoquée.
 - **Vercel Dashboard > Environment Variables** : toutes les clés listées dans la section « Variables d'env critiques » ci-dessus.
 - **Stripe Dashboard** :
-  - Mode Test actuel → Live à basculer avant go-live (cf `TODO.md` bloquants lancement).
+  - Mode Test actuel → Live à basculer avant go-live (cf `docs/post-launch-checklist.md`, section « Bloquants Live initial »).
   - Webhook endpoint mode Test : pointe sur `https://www.terroir-local.fr/api/stripe/webhook` ✅ (validé 26/04 via Dashboard). Events souscrits : `payment_intent.succeeded`, `payment_intent.payment_failed`, `account.updated`, `payout.paid` (alignés avec le handler `app/api/stripe/webhook/route.tsx`).
   - **Webhook endpoint mode Live** : à créer au moment de la bascule Test → Live (recopier la même URL côté Live).
   - Payment methods > Link : désactivé account-wide ✅ (vérifié 26/04 dans Settings > Paiements > Moyens de paiement).
   - Test 3DS scénarios validés : carte `4000 0027 6000 3184` complete + fail + retentative avec carte 4242 (validé end-to-end 26-27/04 sur 3 commandes successives TRR-DNW87, TRR-AM2UN, TRR-7235E, TRR-KKKDL).
-  - **Branding Connect** : non configuré (flag pour investigation dédiée future, cf `TODO.md`).
+  - **Branding Connect** : non configuré (cf `docs/post-launch-checklist.md`, section « Conditionné à action UI tierce Romain » → Stripe Connect branding).
 - **Mapbox account** : token `NEXT_PUBLIC_MAPBOX_TOKEN` configuré sur Vercel **Production + Preview**. Restrictions URL configurées côté Mapbox account sur les 4 domaines : `https://www.terroir-local.fr/*`, `https://pro.terroir-local.fr/*`, `https://admin.terroir-local.fr/*`, `https://terroir-local.fr/*`, plus `http://localhost:3000/*` pour le dev local. Sans ces restrictions URL, le token serait utilisable depuis n'importe quel domaine si exfiltré (token public bundlé côté client).
 - **Vercel Cron Jobs (`vercel.json`)** : 7 schedules UTC actifs, déclenchés en production uniquement (pas sur preview environments). Auth pattern : header `Authorization: Bearer ${CRON_SECRET}` requis sur tous les cron endpoints.
   - `0 4 * * *` : `/api/cron/retry-failed-refunds` (PR #5 28/04 PM, scope minimal résurrection bloquée).
@@ -263,7 +263,7 @@ Gérées via Vercel Dashboard. Jamais dans le code.
 - **Vision funnel producteur — Phase 1 + 2** (commits `87bfff9` + `9e78ea4` + `783e071` + `a895ed2` + `49b45d8` + migrations `20260426000000` + `20260427000000`) : 
   - Phase 1 : colonnes `source` + `prenom` ajoutées à `producer_interests`. `source ∈ ('formulaire_public', 'invitation_directe')` DEFAULT `formulaire_public`. Création auto de lead `source='invitation_directe' statut='contacted'` quand un admin invite un prospect dont l'email n'est pas en base — l'onglet Leads devient le journal d'acquisition complet.
   - Phase 2 : formulaire `/devenir-producteur` simplifié (split prenom/nom, drop required Espèces élevées). Wizard onboarding réduit de 3 à 2 étapes (Compte / Profil), `StepPersonnel` fusionné dans `StepEntreprise` (renommage déféré). Helper `lib/producers/pick-initial-infos.ts` merge 3 sources par priorité (producer draft > user > lead) pour pré-remplir prenom/nom/telephone/nom_exploitation/commune. `'À compléter'` traité comme empty pour ne pas leak dans les inputs. `complete-onboarding` valide les 3 perso fields, écrit `users` AVANT `producers` (partial failure laisse le draft retryable). 7 tests vitest sur `pick-initial-infos`.
-  - Phase 3 (DROP `prenom_affichage`, ~19 fichiers transversaux) **reportée** à une session dédiée — cf `TODO.md` Vision funnel.
+  - Phase 3 (DROP `prenom_affichage`, ~19 fichiers transversaux) **livrée 2026-05-07** — migration `20260507102000_t300_drop_producers_prenom_affichage.sql` + fix régression trigger `20260512100000_p1_fix_t300_t218bis_regression_trigger.sql`.
 - **Audit auto-promotion 3 conditions cumulatives** (commit `4911401`) : `promoteProducerToPublicIfActive` ne checkait que la garde `statut='active'` côté UPDATE — un producer pouvait apparaître sur `/producteurs` et la carte sans Stripe Connect prêt ou sans aucun créneau. Désormais 3 pré-checks cumulatifs avant la transition `active → public` : (1) `statut='active'` ET `stripe_charges_enabled=true`, (2) ≥ 1 produit `active=true`, (3) ≥ 1 slot `active=true` ET `excluded_at IS NULL`. Tests vitest étendus à 21 cas (vs 10 avant).
 - **Purge panier au logout** (commit `a08a56e`) : `lib/auth/use-logout-flow.ts` purge le state panier au logout pour éviter la fuite entre sessions sur même device (un user A se déconnecte → user B se connecte → panier de A persiste en local storage).
 - **Reset password page dédiée** (commit `5ff9394`) : `/reinitialiser-mot-de-passe` affiche un formulaire « nouveau mot de passe » avant tout login automatique (étape 2 explicite). Server action groupée `verifyOtp` + `updateUser` pour conserver les cookies de session. `/mot-de-passe-oublie` pointe désormais `redirectTo` vers la nouvelle page. ⚠️ Action Romain : template Supabase « Reset Password » à mettre à jour (`${SITE_URL}/reinitialiser-mot-de-passe?token_hash={{ .TokenHash }}&type=recovery`).
@@ -363,9 +363,9 @@ _(rien en cours)_
 Pour un Claude frais qui hérite du projet :
 
 1. **Lire `docs/README.md`** d'abord (routeur vers l'ensemble de la doc).
-2. **Lire `docs/HANDOFF.md`** (ce fichier) en entier.
-3. **Lire `docs/METHODOLOGY.md`** pour la méthode de collaboration.
-4. **Lire `docs/TODO.md`** pour la priorisation forward-looking. Historique chronologique dans `docs/CHANGELOG.md`, leçons transversales dans `docs/LESSONS.md`.
+2. **Lire `CLAUDE.md`** (à la racine) pour la doctrine d'exécution (règles d'or, workflow, pièges connus).
+3. **Lire `docs/HANDOFF.md`** (ce fichier) en entier.
+4. **Lire `docs/post-launch-checklist.md`** pour les actions conditionnées en attente. Pour les ADRs (rationale des choix structurants), `docs/decisions/`. Historique chronologique dans `docs/CHANGELOG.md`, leçons transversales dans `docs/LESSONS.md`.
 5. Consulter les **derniers commits git** (`git log --oneline -20`) pour le contexte récent.
 6. **Pas d'empilement** : max 3 chantiers en vol en parallèle (TA/TB/TC), périmètres de fichiers disjoints.
 7. Chaque chantier suit le pattern : **inspection → validation → code → auto-QA (`tsc --noEmit` + `npm run build`) → commit normé → push → rapport**.

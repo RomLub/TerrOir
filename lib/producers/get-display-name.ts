@@ -1,7 +1,6 @@
 // Helper canonical pour le "prénom d'affichage" d'un producteur côté lecture
 // publique. Source unique : `users.prenom` (la personne physique derrière la
-// ferme). T-300 : la colonne historique `producers.prenom_affichage` a ete
-// droppee, ce helper lit directement users.prenom.
+// ferme) — pas de duplication sur la table producers.
 //
 // Le helper retourne `null` quand aucun prénom utilisable n'est disponible.
 // Les call sites doivent traiter `null` comme "pas de prénom à afficher" et

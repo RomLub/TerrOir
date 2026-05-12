@@ -18,7 +18,8 @@ export interface ProducerPublic {
   nom_exploitation: string;
   // Jointure embarquée Supabase vers public.users via la FK
   // producers.user_id → users.id. Source unique pour le prénom d'affichage
-  // depuis T-300 (DROP COLUMN producers.prenom_affichage).
+  // de la personne physique derrière la ferme — pas de duplication sur
+  // la table producers.
   users: { prenom: string | null } | null;
   commune: string | null;
   code_postal: string | null;
