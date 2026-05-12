@@ -220,6 +220,11 @@ Tout push, sans exception, doit avoir validé localement :
   ci-dessous)
 - `npm run build` (next build complet)
 - `npx vitest run` (suite tests)
+- Si modif spec E2E security (`tests/e2e/security/*.spec.ts`) : 
+  vérifier passage par helpers canoniques `seedConsumer`/`seedProducer` 
+  (jamais email custom hors pattern sentinel 
+  `playwright-test-*@mailinator.com`). Cf. doctrine 
+  `docs/conventions/regression-tests-security.md`.
 
 Apprentissage cycle 06/05/2026 (T-130) : règle ESLint 
 `react/no-unescaped-entities` stricte sur ce repo, ne pardonne pas 
@@ -288,6 +293,12 @@ similaire :
 - Pattern `@testing-library/react` + `userEvent` pour tests 
   interactifs (depuis T-237)
 - `react-dom/client` + `act()` brut accepté pour tests SSR légers
+- Pattern E2E sentinel + cleanup : sentinel email 
+  `playwright-test-{ts}[-{suffix}]@mailinator.com` (cf. 
+  `tests/e2e/helpers/guards.ts:70` `generateTestEmail`). Helpers seed 
+  canoniques `seedConsumer` / `seedProducer` (jamais bypass). Cleanup 
+  auto via Playwright `global-setup`/`global-teardown`. Cleanup manuel : 
+  `npx tsx scripts/cleanup-test-residuals-e2e.ts [--dry-run] [--min-age-hours=N]`.
 
 ### Pattern audit log
 Cluster nommés (`auth_*`, `payment_*`, `admin_invite_*`, 
