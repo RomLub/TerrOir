@@ -187,7 +187,6 @@ function buildMockSupabase(): SupabaseClient {
   return {
     from: (table: string) => {
       captured.fromCalls.push(table);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const b: any = {};
       let isUpdate = false;
       let inCalled = false;

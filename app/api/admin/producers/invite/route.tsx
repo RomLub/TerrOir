@@ -324,6 +324,7 @@ export async function POST(request: Request) {
       template: "producer_invitation",
       subject: invitationSubject(),
       element: (
+        // eslint-disable-next-line react-hooks/error-boundaries -- false positive : ce JSX n'est pas rendu par React DOM, il est passé à sendTemplate qui le rend en string HTML via @react-email/render. Le try/catch externe absorbe les throws inattendus de sendTemplate (ceinture+bretelles, cf. commentaire au-dessus).
         <ProducerInvitation
           invitationUrl={invitationUrl}
           unsubscribeUrl={unsubscribeUrl}

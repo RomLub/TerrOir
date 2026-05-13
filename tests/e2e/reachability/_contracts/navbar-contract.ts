@@ -23,7 +23,8 @@ export const NAVBAR_CONTRACT = {
     /** !user — links visibles dans la barre desktop. */
     anonymous: [
       'Connexion',
-      'S’inscrire', // Apostrophe courbe (U+2019) — rendu via &rsquo;
+      // eslint-disable-next-line no-restricted-syntax -- T-255: apostrophe courbe U+2019 obligatoire ici, doit matcher le rendu &rsquo; produit par navbar-public.tsx:283 (Playwright getByRole name compare au texte rendu DOM)
+      'S’inscrire',
       'Panier',
     ],
     /** user logged consumer-only — pas de Panier visible si isAdmin (sinon visible). */
@@ -35,6 +36,7 @@ export const NAVBAR_CONTRACT = {
   },
   mobile_drawer: {
     /** !user — drawer mobile, S'inscrire en tête full-width. */
+    // eslint-disable-next-line no-restricted-syntax -- T-255: apostrophe courbe U+2019 obligatoire, doit matcher le rendu &rsquo; produit par navbar-public.tsx:385
     anonymous: ['Connexion', 'S’inscrire'],
     /** user logged consumer-only — drawer rend Mon compte + Déconnexion. */
     consumer: ['Mon compte', 'Déconnexion'],

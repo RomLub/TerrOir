@@ -108,7 +108,6 @@ function makeRequest(
 
 function buildMockSupabase() {
   // Builder pour notifications.metadata fetch+merge (mergeNotificationMetadata).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const builder: any = {};
   builder.from = () => builder;
   builder.select = () => builder;

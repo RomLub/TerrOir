@@ -29,7 +29,6 @@ let serverResponses: {
 vi.mock("@/lib/supabase/server", () => ({
   createSupabaseServerClient: async () => ({
     from: (table: string) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const b: any = {};
       let mode: "select" | "insert" = "select";
       b.select = () => b;
@@ -90,7 +89,6 @@ beforeEach(() => {
 
   // Default admin: admin_users SELECT vide (pas de notif), notifications insert no-op.
   mockAdminFrom.mockImplementation((table: string) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const b: any = {};
     b.select = () => Promise.resolve({ data: [], error: null });
     b.insert = (...args: unknown[]) => {
@@ -284,7 +282,6 @@ describe("POST /api/reviews/create — happy path + notifications admin", () => 
 
   it("200 + INSERT notifications pour chaque admin", async () => {
     mockAdminFrom.mockImplementation((table: string) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const b: any = {};
       b.select = () => {
         if (table === "admin_users") {

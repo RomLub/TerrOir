@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Button, Input } from "@/components/ui";
 
 // Période par défaut : début de l'année courante → aujourd'hui (cas typique
@@ -14,9 +14,9 @@ function defaultRange() {
 }
 
 export function FacturesClient() {
-  const initial = useMemo(defaultRange, []);
-  const [from, setFrom] = useState(initial.from);
-  const [to, setTo] = useState(initial.to);
+  const [{ from: initialFrom, to: initialTo }] = useState(defaultRange);
+  const [from, setFrom] = useState(initialFrom);
+  const [to, setTo] = useState(initialTo);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

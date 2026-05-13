@@ -159,7 +159,6 @@ describe("POST /api/producer-interests — F-038 consent + honeypot", () => {
   });
 
   it("consent absent → 400 + helper jamais appelé", async () => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { consent, ...withoutConsent } = VALID_BODY;
     const res = await POST(buildRequest(withoutConsent));
     expect(res.status).toBe(400);

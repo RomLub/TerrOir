@@ -50,6 +50,7 @@ export const test = base.extend<CtxFixtures, WorkerFixtures>({
       trackedEmails: new Set<string>(),
     };
 
+    // eslint-disable-next-line react-hooks/rules-of-hooks -- false positive : `use` ici est un fixture Playwright (signature standard `({ fixtures }, use, testInfo) => { setup; await use(value); teardown }`), pas le hook React 19 `use()`. Aucun lien avec React.
     await use(ctx);
 
     // Cleanup automatique post-test : on ne nettoie QUE les users.

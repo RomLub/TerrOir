@@ -98,6 +98,10 @@ export function UserProvider({
   // loading n'est pas re-set ici : le useEffect onAuthStateChange ci-dessous
   // gère déjà setLoading(false) après loadProfile. T-012 : roles désormais
   // sync depuis initial (était la limitation pré-existante levée par T-012).
+  // Extraction de l'empreinte des rôles (`join(",")`) en variable : la règle
+  // react-hooks/exhaustive-deps exige une dépendance statiquement analysable,
+  // pas une expression évaluée inline dans la deps array.
+  const rolesSignature = initial.roles.join(",");
   useEffect(() => {
     setUser(initial.user);
     setIsAdmin(initial.isAdmin);
@@ -107,7 +111,7 @@ export function UserProvider({
     // Deps primitives volontaires : `initial` est recréé à chaque render
     // parent (RSC update). Dépendre des objets entiers ferait re-tirer à
     // chaque update sans changement d'identité. Comparer les primitives
-    // (id, booleans, roles.join) capture précisément les transitions
+    // (id, booleans, rolesSignature) capture précisément les transitions
     // login/logout et changement de membership rôles inter-render SSR.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -115,7 +119,7 @@ export function UserProvider({
     initial.isAdmin,
     initial.isProducer,
     initial.producerLite?.id,
-    initial.roles.join(","),
+    rolesSignature,
   ]);
 
   useEffect(() => {

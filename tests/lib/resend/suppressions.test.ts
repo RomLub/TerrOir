@@ -32,7 +32,6 @@ vi.mock("@/lib/supabase/admin", () => ({
       if (table !== "email_suppressions") {
         throw new Error(`Unexpected table: ${table}`);
       }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const builder: any = {};
       builder.select = () => builder;
       // T-110 : .ilike() est utilisé côté src pour case-insensitive lookups.

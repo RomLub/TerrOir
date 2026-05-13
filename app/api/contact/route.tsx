@@ -144,6 +144,7 @@ export async function POST(request: Request) {
 
   let html: string;
   try {
+    // eslint-disable-next-line react-hooks/error-boundaries -- false positive : ce JSX n'est pas rendu par React DOM, il est rendu en string HTML par renderEmail (Resend SDK via @react-email/render) qui est async. Le try/catch capture bien la promise rejection.
     html = await renderEmail(<ContactFormSubmission {...emailProps} />);
   } catch (err) {
     console.error(

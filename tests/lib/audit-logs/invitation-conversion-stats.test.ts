@@ -9,7 +9,6 @@ const queue: CountResp[] = [];
 vi.mock("@/lib/supabase/admin", () => ({
   createSupabaseAdminClient: () => ({
     from: () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const b: any = {};
       b.select = () => b;
       b.eq = () => b;
