@@ -178,6 +178,8 @@ describe("fetchAdminUsersList", () => {
   });
 
   it("admin_users contient l'id -> role='admin' (override producer)", async () => {
+    // admin_users a la colonne `id` (FK row-as-PK vers auth.users.id),
+    // pas de colonne `user_id` séparée.
     const rawRow = {
       id: "u3",
       email: "admin@example.com",
@@ -190,7 +192,7 @@ describe("fetchAdminUsersList", () => {
       responses: [
         { data: [rawRow], error: null },
         { count: 1, error: null },
-        { data: [{ user_id: "u3" }], error: null },
+        { data: [{ id: "u3" }], error: null },
         { data: [], error: null },
         { data: [], error: null },
       ],
@@ -200,6 +202,50 @@ describe("fetchAdminUsersList", () => {
       roleFilter: "all",
       q: null,
     });
+    expect(res.rows[0].role).toBe("admin");
+  });
+
+  it("roleFilter='admin' -> bout-en-bout filtre les non-admins et marque l'user admin (régression PR #130 user_id→id)", async () => {
+    // Régression PR #130 : admin_users.PK = `id` (FK row-as-PK vers
+    // auth.users.id), pas `user_id`. Le code doit lire `id` et filtrer
+    // `users.id IN (admin_ids)`. Si on lisait `user_id` (inexistant), le
+    // lookup renverrait `undefined` partout → ids vides → return early
+    // rows:[], et la jointure secondaire pour `deriveRole` mapperait sur
+    // un Set vide → role='consumer' au lieu de 'admin'.
+    //
+    // Ordre des `.from()` (FIFO mock) quand roleFilter='admin' :
+    //   1. users (items)        — créé avant tout filtre
+    //   2. users (count)
+    //   3. admin_users (lookup filter)
+    //   4. admin_users (jointure secondaire deriveRole)
+    //   5. auth.users (last_sign_in)
+    //   6. orders
+    const rawRow = {
+      id: "a1",
+      email: "admin@example.com",
+      prenom: null,
+      nom: null,
+      roles: ["consumer"],
+      created_at: "2026-01-15T12:00:00Z",
+    };
+    const { admin } = makeAdminMock({
+      responses: [
+        { data: [rawRow], error: null },
+        { count: 1, error: null },
+        { data: [{ id: "a1" }], error: null },
+        { data: [{ id: "a1" }], error: null },
+        { data: [], error: null },
+        { data: [], error: null },
+      ],
+    });
+    const res = await fetchAdminUsersList(admin, {
+      cursor: { before: null, beforeId: null },
+      roleFilter: "admin",
+      q: null,
+    });
+    expect(res.error).toBeNull();
+    expect(res.rows).toHaveLength(1);
+    // Sans le fix user_id→id, deriveRole tombait sur adminSet vide → 'consumer'.
     expect(res.rows[0].role).toBe("admin");
   });
 
@@ -428,6 +474,8 @@ describe("fetchAdminUserDetail", () => {
   });
 
   it("admin_users present -> role='admin'", async () => {
+    // admin_users.id (FK row-as-PK vers auth.users.id) — pas de colonne
+    // `user_id` séparée. Régression PR #130 corrigée.
     const { admin } = makeAdminMock({
       responses: [
         {
@@ -444,7 +492,7 @@ describe("fetchAdminUserDetail", () => {
           error: null,
         },
         { data: null, error: null },
-        { data: { user_id: "u1" }, error: null },
+        { data: { id: "u1" }, error: null },
       ],
     });
     const res = await fetchAdminUserDetail(admin, "u1");
