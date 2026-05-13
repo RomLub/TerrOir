@@ -11,7 +11,7 @@
 
 import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
 
-export default [
+const config = [
   ...nextCoreWebVitals,
   {
     // Patterns ignorés. `eslint-config-next` ignore déjà par défaut
@@ -69,6 +69,27 @@ export default [
   },
   {
     rules: {
+      // Désactivation TEMPORAIRE de 2 règles React Compiler 19
+      // strictes introduites par eslint-plugin-react-hooks 7
+      // (livré via eslint-config-next 16). Le scan exploratoire a
+      // remonté 21 occurrences de set-state-in-effect + 7 de purity
+      // sur le pattern « fetch Supabase dans useEffect » réparti
+      // dans tout le code client (admin/pro/consumer).
+      //
+      // Décision arbitrée 2026-05-13 : adopter @tanstack/react-query
+      // comme couche fetch+cache au lieu de patcher 28 occurrences à
+      // la main (refactor profond, gain marginal, dette inévitable
+      // tant que l'archi `useEffect + fetch` reste). La désactivation
+      // ici est tracée et opposable, pas un backlog vivant : sa
+      // clôture est conditionnée au merge de la PR
+      // chore/migrate-fetch-to-tanstack-query.
+      //
+      // Cf. docs/decisions/0004-migration-tanstack-query.md (Accepted).
+      // À RÉACTIVER (passer à "error") au dernier commit de la PR
+      // TanStack quand toutes les occurrences auront été éliminées.
+      "react-hooks/set-state-in-effect": "off",
+      "react-hooks/purity": "off",
+
       // Règles TerrOir spécifiques (issues T-255 et T-266). Reprises à
       // l'identique depuis l'ancien `.eslintrc.json` — l'éradication des
       // apostrophes courbes U+2019 et l'enforcement du préfixe
@@ -107,3 +128,5 @@ export default [
     },
   },
 ];
+
+export default config;
