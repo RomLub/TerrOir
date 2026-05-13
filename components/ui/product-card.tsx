@@ -14,7 +14,6 @@ export type ProductCardData = {
 
 export type ProductCardProps = {
   product: ProductCardData;
-  onClick?: () => void;
   className?: string;
 };
 
@@ -29,20 +28,17 @@ function formatPrice(price: number) {
   }
 }
 
-export function ProductCard({
-  product,
-  onClick,
-  className = "",
-}: ProductCardProps) {
+export function ProductCard({ product, className = "" }: ProductCardProps) {
   const outOfStock = product.stockLeft <= 0;
   const lowStock = !outOfStock && product.stockLeft <= 5;
 
+  // Hover state : lift + shadow renforcée pour confirmer l'affordance quand
+  // la carte est enveloppée d'un <Link>. Les usages display-only (previews
+  // form catalogue) montrent la même animation au survol — non bloquant,
+  // c'est un aperçu de l'apparence client.
   return (
     <article
-      onClick={onClick}
-      className={`group flex flex-col overflow-hidden rounded-2xl border border-terroir-border bg-white shadow-sm transition hover:shadow-md ${
-        onClick ? "cursor-pointer" : ""
-      } ${className}`}
+      className={`group flex h-full flex-col overflow-hidden rounded-2xl border border-terroir-border bg-white shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md ${className}`}
     >
       <div className="relative aspect-4/3 w-full overflow-hidden bg-terroir-green-100">
         {product.image ? (

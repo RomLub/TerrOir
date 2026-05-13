@@ -557,7 +557,7 @@ export default function ProductEditPage() {
 
           <aside className="lg:sticky lg:top-10">
             <div className="text-[11px] uppercase tracking-[0.14em] text-terra-700 font-semibold mb-3">Prévisualisation</div>
-            <ProductCard product={preview} onClick={() => {}} />
+            <ProductCard product={preview} />
             <p className="mt-3 text-[11px] text-dark/50 text-center">Voici comment votre produit apparaîtra aux clients.</p>
           </aside>
         </div>

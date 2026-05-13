@@ -22,6 +22,12 @@ import { STOCK_UNLIMITED_SENTINEL } from "@/lib/products/constants";
 
 const FEATURED_LIMIT = 4;
 
+export type FeaturedProductCard = ProductCardData & {
+  /** Slug du producteur — requis pour construire l'URL canonique
+   * /producteurs/[slug]/produits/[id] sur le wrapping Link de la home. */
+  producerSlug: string;
+};
+
 type RawRow = {
   id: string;
   nom: string;
@@ -33,7 +39,9 @@ type RawRow = {
   product_categories: { name: string } | { name: string }[] | null;
   animals: { name: string } | { name: string }[] | null;
   cuts: { name: string } | { name: string }[] | null;
-  producers: { nom_exploitation: string; commune: string | null } | { nom_exploitation: string; commune: string | null }[];
+  producers:
+    | { nom_exploitation: string; slug: string; commune: string | null }
+    | { nom_exploitation: string; slug: string; commune: string | null }[];
 };
 
 function pickFirst<T>(v: T | T[] | null): T | null {
@@ -41,7 +49,7 @@ function pickFirst<T>(v: T | T[] | null): T | null {
   return Array.isArray(v) ? (v[0] ?? null) : v;
 }
 
-async function fetchFeaturedRaw(): Promise<ProductCardData[]> {
+async function fetchFeaturedRaw(): Promise<FeaturedProductCard[]> {
   const admin = createSupabaseAdminClient();
   try {
     const { data, error } = await admin
@@ -51,7 +59,7 @@ async function fetchFeaturedRaw(): Promise<ProductCardData[]> {
          product_categories(name),
          animals(name),
          cuts(name),
-         producers!inner(nom_exploitation, commune, statut, deleted_at)`,
+         producers!inner(nom_exploitation, slug, commune, statut, deleted_at)`,
       )
       .eq("active", true)
       .eq("producers.statut", "public")
@@ -64,28 +72,30 @@ async function fetchFeaturedRaw(): Promise<ProductCardData[]> {
       return [];
     }
 
-    return ((data ?? []) as RawRow[]).map((p) => {
-      const producer = pickFirst(p.producers);
-      const cut = pickFirst(p.cuts);
-      const animal = pickFirst(p.animals);
-      const category = pickFirst(p.product_categories);
-      const stockLeft = p.stock_illimite ? STOCK_UNLIMITED_SENTINEL : (p.stock_disponible ?? 0);
-      const producerLabel = producer
-        ? `${producer.nom_exploitation}${producer.commune ? ` — ${producer.commune}` : ""}`
-        : undefined;
-      return {
-        id: p.id,
-        name: p.nom,
-        price: Number(p.prix),
-        unit: p.unite ?? undefined,
-        stockLeft,
-        producer: producerLabel,
-        // ProductCard affiche un seul badge — priorité cut > animal >
-        // category, cohérent avec /produits.
-        category: cut?.name ?? animal?.name ?? category?.name ?? undefined,
-        image: Array.isArray(p.photos) && p.photos.length > 0 ? p.photos[0] : null,
-      } satisfies ProductCardData;
-    });
+    const rows = ((data ?? []) as RawRow[])
+      .map((p): FeaturedProductCard | null => {
+        const producer = pickFirst(p.producers);
+        if (!producer?.slug) return null;
+        const cut = pickFirst(p.cuts);
+        const animal = pickFirst(p.animals);
+        const category = pickFirst(p.product_categories);
+        const stockLeft = p.stock_illimite ? STOCK_UNLIMITED_SENTINEL : (p.stock_disponible ?? 0);
+        return {
+          id: p.id,
+          name: p.nom,
+          price: Number(p.prix),
+          unit: p.unite ?? undefined,
+          stockLeft,
+          producer: `${producer.nom_exploitation}${producer.commune ? ` — ${producer.commune}` : ""}`,
+          producerSlug: producer.slug,
+          // ProductCard affiche un seul badge — priorité cut > animal >
+          // category, cohérent avec /produits.
+          category: cut?.name ?? animal?.name ?? category?.name ?? undefined,
+          image: Array.isArray(p.photos) && p.photos.length > 0 ? p.photos[0] : null,
+        };
+      });
+
+    return rows.filter((r): r is FeaturedProductCard => r !== null);
   } catch (err) {
     console.error("[FEATURED_PRODUCTS_ERR]", err);
     return [];
