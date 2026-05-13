@@ -79,16 +79,17 @@ export async function fetchAdminUsersList(
 
   // Le filtre rôle 'admin' n'est pas une valeur des roles[] DB : c'est dérivé
   // de la whitelist admin_users. Pour ce filtre on inverse le sens : on
-  // récupère d'abord les admin user_ids, puis on filtre `id IN (...)`.
+  // récupère d'abord les `admin_users.id` (FK vers auth.users(id), row-as-PK
+  // pattern — pas de colonne `user_id` séparée), puis on filtre `id IN (...)`.
   if (opts.roleFilter === "admin") {
     const { data: adminRows, error: adminErr } = await admin
       .from("admin_users")
-      .select("user_id");
+      .select("id");
     if (adminErr) {
       return { rows: [], total: 0, nextCursor: null, error: adminErr.message };
     }
     const ids = (adminRows ?? [])
-      .map((r) => (r as { user_id: string | null }).user_id)
+      .map((r) => (r as { id: string | null }).id)
       .filter((u): u is string => !!u);
     if (ids.length === 0) {
       return { rows: [], total: 0, nextCursor: null, error: null };
@@ -129,9 +130,11 @@ export async function fetchAdminUsersList(
 
   // Jointures secondaires : admin_users (whitelist) + auth.users
   // (last_sign_in_at) + counts orders. Tout en parallèle, bornés à la page.
+  // admin_users.id est la PK (row-as-PK FK vers auth.users(id)) — pas de
+  // colonne `user_id` séparée.
   const [adminIdsRes, authRes, ordersCountsRes] = await Promise.all([
     ids.length > 0
-      ? admin.from("admin_users").select("user_id").in("user_id", ids)
+      ? admin.from("admin_users").select("id").in("id", ids)
       : Promise.resolve({ data: [], error: null }),
     ids.length > 0
       ? admin
@@ -150,8 +153,8 @@ export async function fetchAdminUsersList(
   // "dernière activité" et "commandes" tombent à null/0. Évite qu'une régression
   // RLS sur auth.users casse toute la liste.
   const adminSet = new Set(
-    ((adminIdsRes.data ?? []) as Array<{ user_id: string | null }>)
-      .map((r) => r.user_id)
+    ((adminIdsRes.data ?? []) as Array<{ id: string | null }>)
+      .map((r) => r.id)
       .filter((u): u is string => !!u),
   );
   const lastSignInById = new Map<string, string | null>();
@@ -226,8 +229,8 @@ export async function fetchAdminUserDetail(
       .maybeSingle(),
     admin
       .from("admin_users")
-      .select("user_id")
-      .eq("user_id", userId)
+      .select("id")
+      .eq("id", userId)
       .maybeSingle(),
   ]);
 
