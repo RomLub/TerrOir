@@ -1,6 +1,7 @@
 # ADR-0006 — Modèle de flux Stripe Connect et validation pickup : conservation du Separate Charges & Transfers + workflow incidents + programme TerrOir Confiance 3 niveaux
 
-- **Statut** : Proposed
+- **Statut** : Accepted
+- **Accepted** : 2026-05-13
 - **Date** : 2026-05-13
 - **Décideurs** : Romain Lubin
 
