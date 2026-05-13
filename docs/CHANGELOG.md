@@ -9,6 +9,29 @@ Pour les décisions structurantes (ADRs), voir [`decisions/`](./decisions/).
 
 ---
 
+## 2026-05-13 (PR2 admin-dashboard — RPC + page tableau de bord)
+
+> PR `feature/admin-dashboard`. Deuxième des 3 PR du chantier audit-driven admin (`docs/AUDIT_ADMIN.md`).
+>
+> 🟢 **Tableau de bord admin opérationnel** — `app/(admin)/tableau-de-bord/page.tsx` passait de 8 lignes vides (juste `<h1>Back-office</h1>`) à une vue 3-zones consommée par 1 Server Component + 1 RPC SECDEF. Résout `AUDIT_ADMIN §6 P0 #1`.
+>
+> 🟢 **RPC `get_admin_dashboard()`** — migration `20260513124041_create_get_admin_dashboard.sql`. SECDEF / STABLE / `search_path = public, pg_temp`. ACL strictement `service_role` (pattern aligné `get_producer_dashboard` F-045). Retourne JSONB 3-zones :
+> - **cockpit** : 6 compteurs d'attention (refunds_pending, disputes_open, reviews_pending, producers_pending_validation, refund_incidents, invitations_expired).
+> - **business** : 8 KPI (orders/revenue/new_users today + orders/revenue/completion_rate/active_producers/total_producers 7j + invitation_conversion 30j).
+> - **recent_events** : 15 derniers `audit_logs` filtrés sur whitelist business (order_created, pickup_validated, order_cancelled, order_payment_succeeded, account_signup, account_login_magic_link, admin_invite_sent, invitation_consumed_success, producer_response_published).
+>
+> 🟢 **UI** — 3 zones rendues via `CockpitCard` (Zone 1, opacity-50 à 0, href vers page domaine), `MetricCard` (Zone 2, formats € via `centsToEuro` + Intl), `RecentActivityTable` (Zone 3, chaque ligne clickable vers `/audit-logs?event_type=...`). Cartes des pages PR3 à venir (disputes / refund-incidents / invitations) rendues avec `title="Page à venir"` + opacity, prêtes à recevoir un `href` quand la PR3 livrera ces pages.
+>
+> 🟢 **Décisions enum dans la RPC** : `producers_pending_validation_count` = `statut='pending' AND deleted_at IS NULL` (draft = onboarding en cours, pas une décision admin). `disputes_open_count` = `closed_at IS NULL` (vérifié robuste : `handle-dispute-closed.tsx:69` pose toujours `closed_at` sur won/lost/warning_closed ; `handle-dispute-updated.ts` ne mappe jamais ces statuts terminaux). `refund_incidents_count` = `status IN ('pending','retrying')`. `invitations_expired_count` = `used_at IS NULL AND expires_at < now()` (table sans col `status`).
+>
+> 🟢 **Whitelist Zone 3 — corrections vs brief initial** : `order_completed` → `pickup_validated` (seul "completed event" du registre, posé quand le producteur scanne TRR-XXXXX). `signup_success` → `account_signup`. `magic_link_consumed_success` → `account_login_magic_link`. `review_submitted` retiré (event_type inexistant — à ouvrir post-PR2). `order_payment_succeeded` ajouté (signal business high-value à chaque paiement validé Stripe).
+>
+> 🟢 **Patches docs** : `docs/AUDIT_ADMIN.md` corrigé (mentions implicites d'un statut `producer_invitations` levées — la table n'a pas de col status, états computed via `used_at`+`expires_at`). `CLAUDE.md §8` ajoute 2 pièges : (1) `producer_invitations` sans col status ; (2) apostrophe courbe U+2019 interdite ESLint aussi dans les valeurs d'attribut JSX `"..."` (pas seulement le texte).
+>
+> Tests : 2550/2550 verts (17 nouveaux : 3 types + 3 fetch + 11 page). Lint, type-check, build : propres.
+
+---
+
 ## 2026-05-13 (PR1 admin-pattern-uniform — refactor 3 pages admin)
 
 > PR #128 `refactor/admin-pattern-uniform`. Première des 3 PR du chantier audit-driven admin (`docs/AUDIT_ADMIN.md`).
