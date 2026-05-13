@@ -539,6 +539,16 @@ la condition de déblocage.
   Si une PR future a besoin d'un statut révoqué explicite (cf. event
   `invitation_revoked` pré-déclaré, jamais émis), ajouter une colonne
   `revoked_at timestamptz NULL` plutôt qu'un enum `status`.
+- **Jointures admin → identité (post-PR #130)** : PostgREST ne traverse
+  PAS le schema `auth.*`. Une FK vers `auth.users(id)` (ex:
+  `producer_invitations.created_by`) ne peut PAS être consommée via une
+  jointure embarquée Supabase JS — elle plante avec « Could not find a
+  relationship in the schema cache ». Pattern obligatoire : **fetch
+  séparé sur `admin_users`** (`id` = FK vers `auth.users.id`), lookup
+  `Map` sur IDs distincts non-null, fail-safe en cas d'erreur. Et
+  `admin_users.PK = id`, jamais `user_id` (les mocks vitest ne
+  détectent pas le mismatch). Doctrine complète dans
+  `docs/LESSONS.md` § « Admin surfaces / Jointures Supabase ».
 
 ### ESLint
 

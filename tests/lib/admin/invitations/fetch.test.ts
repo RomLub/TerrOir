@@ -23,15 +23,24 @@ type Call = {
 };
 
 // Simulateur Supabase chainable. Capture les appels (.select, .is, .not,
-// .gte, .lte, .lt, .order, .limit) pour assertions sur les filtres SQL
-// appliqués. 2 builders distincts (items / count) consommés dans l'ordre
-// d'appel de .from() (cohérent fetch.test.ts producers).
+// .gte, .lte, .lt, .in, .order, .limit) pour assertions sur les filtres
+// SQL appliqués. Jusqu'à 3 builders distincts consommés FIFO via .from() :
+//   1. producer_invitations (items)
+//   2. producer_invitations (count)
+//   3. admin_users (jointure secondaire created_by → email — fetch séparé
+//      car FK pointe vers auth.users hors PostgREST)
+// Le 3e n'est consommé que si au moins une row a `created_by` non-null.
 function makeAdminMock(opts: {
   itemsResp: Resp;
   countResp: Resp;
+  creatorsResp?: Resp;
 }): { admin: SupabaseClient; calls: Call[] } {
   const calls: Call[] = [];
-  const nextResp: Resp[] = [opts.itemsResp, opts.countResp];
+  const nextResp: Resp[] = [
+    opts.itemsResp,
+    opts.countResp,
+    opts.creatorsResp ?? { data: [], error: null },
+  ];
 
   const makeBuilder = (resp: Resp) => {
     const builder: Record<string, unknown> = {};
@@ -59,6 +68,10 @@ function makeAdminMock(opts: {
       calls.push({ op: "lt", col, val });
       return builder;
     };
+    builder.in = (col: string, val: unknown) => {
+      calls.push({ op: "in", col, val });
+      return Promise.resolve(resp);
+    };
     builder.or = (filters: string) => {
       calls.push({ op: "or", val: filters });
       return builder;
@@ -71,13 +84,16 @@ function makeAdminMock(opts: {
       calls.push({ op: "limit", val: n });
       return Promise.resolve(resp);
     };
-    // Count query : awaité direct (pas de .limit).
+    // Count query / select sans .limit : awaité direct via .then().
     builder.then = (onFulfilled: (r: Resp) => unknown) => onFulfilled(resp);
     return builder;
   };
 
   const admin = {
-    from: () => makeBuilder(nextResp.shift() ?? { data: null, error: null }),
+    from: (table: string) => {
+      calls.push({ op: "from", col: table });
+      return makeBuilder(nextResp.shift() ?? { data: null, error: null });
+    },
   } as unknown as SupabaseClient;
 
   return { admin, calls };
@@ -329,7 +345,10 @@ describe("fetchAdminInvitationsList — divers", () => {
     );
   });
 
-  it("mapping raw → AdminInvitationRow : applique mapRowStatus + flatten creator + champs ISO", async () => {
+  it("mapping raw → AdminInvitationRow : applique mapRowStatus + lookup admin_users + champs ISO", async () => {
+    // Row 1 : created_by renseigné, admin présent dans admin_users → email exposé.
+    // Row 2 : created_by NULL (cas système : invitation pré-isolation admin
+    //         ou job batch hors session) → createdByEmail = null sans lookup.
     const { admin } = makeAdminMock({
       itemsResp: {
         data: [
@@ -341,7 +360,6 @@ describe("fetchAdminInvitationsList — divers", () => {
             revoked_at: null,
             created_at: "2026-05-13T10:00:00Z",
             created_by: "admin-1",
-            creator: { email: "admin@terroir.fr" },
           },
           {
             id: "inv2",
@@ -351,13 +369,15 @@ describe("fetchAdminInvitationsList — divers", () => {
             revoked_at: null,
             created_at: "2026-04-25T10:00:00Z",
             created_by: null,
-            // Forme alternative array (compat ascendante Supabase joints).
-            creator: [{ email: "admin2@terroir.fr" }],
           },
         ],
         error: null,
       },
       countResp: { count: 2, error: null },
+      creatorsResp: {
+        data: [{ id: "admin-1", email: "admin@terroir.fr" }],
+        error: null,
+      },
     });
     const res = await fetchAdminInvitationsList(admin, {
       ...baseOpts,
@@ -375,8 +395,168 @@ describe("fetchAdminInvitationsList — divers", () => {
     expect(res.rows[1]).toMatchObject({
       id: "inv2",
       status: "expired",
-      createdByEmail: "admin2@terroir.fr",
+      createdByEmail: null,
     });
+  });
+
+  it("created_by renseigné mais admin retiré du tableau admin_users → fallback createdByEmail = null", async () => {
+    // Scénario : un admin a créé une invitation, puis son row admin_users
+    // a été supprimé (rotation, off-boarding). La FK auth.users persiste
+    // (ON DELETE SET NULL), mais le lookup admin_users renvoie vide.
+    // Comportement attendu : l'invitation reste exposée, createdByEmail
+    // tombe à null (la colonne "Créé par" affichera "—" côté UI).
+    const { admin } = makeAdminMock({
+      itemsResp: {
+        data: [
+          {
+            id: "inv1",
+            email: "p1@example.com",
+            expires_at: "2026-05-20T00:00:00Z",
+            used_at: null,
+            revoked_at: null,
+            created_at: "2026-05-13T10:00:00Z",
+            created_by: "admin-orphan",
+          },
+        ],
+        error: null,
+      },
+      countResp: { count: 1, error: null },
+      creatorsResp: { data: [], error: null },
+    });
+    const res = await fetchAdminInvitationsList(admin, {
+      ...baseOpts,
+      status: "all",
+    });
+    expect(res.error).toBeNull();
+    expect(res.rows).toHaveLength(1);
+    expect(res.rows[0].createdByEmail).toBeNull();
+  });
+
+  it("lookup admin_users en erreur → fail-safe (rows exposées, createdByEmail null)", async () => {
+    // Scénario : RLS regression / table absente sur admin_users. Pattern
+    // fail-safe symétrique à lib/admin/users/fetch.ts (auth.users error).
+    // La liste reste utilisable, seule la colonne "Créé par" tombe à null.
+    const { admin } = makeAdminMock({
+      itemsResp: {
+        data: [
+          {
+            id: "inv1",
+            email: "p1@example.com",
+            expires_at: "2026-05-20T00:00:00Z",
+            used_at: null,
+            revoked_at: null,
+            created_at: "2026-05-13T10:00:00Z",
+            created_by: "admin-1",
+          },
+        ],
+        error: null,
+      },
+      countResp: { count: 1, error: null },
+      creatorsResp: { data: null, error: { message: "admin_users rls" } },
+    });
+    const res = await fetchAdminInvitationsList(admin, {
+      ...baseOpts,
+      status: "all",
+    });
+    expect(res.error).toBeNull();
+    expect(res.rows).toHaveLength(1);
+    expect(res.rows[0].createdByEmail).toBeNull();
+  });
+
+  it("aucune row avec created_by non-null → pas de fetch admin_users (économie round-trip)", async () => {
+    // Si toutes les invitations de la page ont created_by NULL, le code
+    // skip totalement la 3e query admin_users. On vérifie en observant
+    // les `.from()` capturés : seulement producer_invitations × 2.
+    const { admin, calls } = makeAdminMock({
+      itemsResp: {
+        data: [
+          {
+            id: "inv1",
+            email: "p1@example.com",
+            expires_at: "2026-05-20T00:00:00Z",
+            used_at: null,
+            revoked_at: null,
+            created_at: "2026-05-13T10:00:00Z",
+            created_by: null,
+          },
+        ],
+        error: null,
+      },
+      countResp: { count: 1, error: null },
+    });
+    const res = await fetchAdminInvitationsList(admin, {
+      ...baseOpts,
+      status: "all",
+    });
+    expect(res.error).toBeNull();
+    expect(res.rows[0].createdByEmail).toBeNull();
+    const fromCalls = calls.filter((c) => c.op === "from");
+    expect(fromCalls).toHaveLength(2);
+    expect(fromCalls.every((c) => c.col === "producer_invitations")).toBe(true);
+  });
+
+  it("created_by distincts dédupliqués dans .in(...) admin_users", async () => {
+    // 3 invitations créées par 2 admins distincts → le .in() ne contient
+    // que 2 IDs (Set), pas 3.
+    const { admin, calls } = makeAdminMock({
+      itemsResp: {
+        data: [
+          {
+            id: "inv1",
+            email: "p1@example.com",
+            expires_at: "2026-05-20T00:00:00Z",
+            used_at: null,
+            revoked_at: null,
+            created_at: "2026-05-13T10:00:00Z",
+            created_by: "admin-A",
+          },
+          {
+            id: "inv2",
+            email: "p2@example.com",
+            expires_at: "2026-05-20T00:00:00Z",
+            used_at: null,
+            revoked_at: null,
+            created_at: "2026-05-13T11:00:00Z",
+            created_by: "admin-B",
+          },
+          {
+            id: "inv3",
+            email: "p3@example.com",
+            expires_at: "2026-05-20T00:00:00Z",
+            used_at: null,
+            revoked_at: null,
+            created_at: "2026-05-13T12:00:00Z",
+            created_by: "admin-A",
+          },
+        ],
+        error: null,
+      },
+      countResp: { count: 3, error: null },
+      creatorsResp: {
+        data: [
+          { id: "admin-A", email: "a@terroir.fr" },
+          { id: "admin-B", email: "b@terroir.fr" },
+        ],
+        error: null,
+      },
+    });
+    const res = await fetchAdminInvitationsList(admin, {
+      ...baseOpts,
+      status: "all",
+    });
+    expect(res.rows.map((r) => r.createdByEmail)).toEqual([
+      "a@terroir.fr",
+      "b@terroir.fr",
+      "a@terroir.fr",
+    ]);
+    const inCalls = calls.filter(
+      (c) => c.op === "in" && c.col === "id",
+    );
+    expect(inCalls).toHaveLength(1);
+    expect((inCalls[0]?.val as string[]).sort()).toEqual([
+      "admin-A",
+      "admin-B",
+    ]);
   });
 
   it("nextCursor exposé uniquement si data.length === PAGE_SIZE (50)", async () => {

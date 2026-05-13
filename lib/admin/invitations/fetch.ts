@@ -10,12 +10,21 @@ import {
 
 // Helper service_role pour la page admin /invitations (chantier PR3
 // feature/admin-new-surfaces). Centralise la query producer_invitations
-// + jointure admin_users.email + filtres status computed + filtres date
-// + pagination cursor + count exact.
+// + lookup email créateur (admin_users) + filtres status computed +
+// filtres date + pagination cursor + count exact.
 //
 // Pattern strictement aligné sur `lib/admin/producers/fetch.ts` (PR1) :
 // service_role, cursor (created_at DESC + id DESC tie-breaker), limite
 // hardcodée 50 (volume invitations attendu plus faible que producers).
+//
+// IMPORTANT — `producer_invitations.created_by` est FK vers `auth.users(id)`.
+// PostgREST n'expose pas le schema `auth.*`, donc une jointure embarquée
+// `creator:created_by(email)` échoue avec "Could not find a relationship
+// in the schema cache". Pattern retenu (cohérent `lib/admin/users/fetch.ts`) :
+// fetch séparé sur `admin_users(id, email)` filtré sur les `created_by`
+// distincts non-null, lookup par Map. Convention canonique : voir
+// docs/LESSONS.md "Admin surfaces / jointures Supabase". Bug post-merge
+// PR #130 corrigé par fix/admin-invitations-created-by (2026-05-13).
 //
 // IMPORTANT — producer_invitations n'a pas de colonne `status`. Le filtre
 // status est traduit en conditions SQL équivalentes :
@@ -51,10 +60,9 @@ export type FetchAdminInvitationsResult = {
   error: string | null;
 };
 
-// Shape Supabase brute de la query — capture la jointure non-aplatie qu'on
-// remappe ensuite vers AdminInvitationRow. La jointure 1:1 sur created_by
-// peut remonter en objet ou en array selon la version du client (cf.
-// fetch.ts producers — même précaution).
+// Shape Supabase brute de la query principale. Le lookup créateur
+// (admin_users.email) est fait dans un 2e fetch séparé (cf. note jointures
+// auth.* en tête de fichier).
 type RawInvitationRow = {
   id: string;
   email: string;
@@ -63,10 +71,6 @@ type RawInvitationRow = {
   revoked_at: string | null;
   created_at: string;
   created_by: string | null;
-  creator:
-    | { email: string | null }
-    | Array<{ email: string | null }>
-    | null;
 };
 
 // Mapping computed status. Précédence (defensive) :
@@ -93,11 +97,13 @@ export async function fetchAdminInvitationsList(
   const now = opts.now ?? new Date();
   const nowIso = now.toISOString();
 
-  // SELECT initial avec jointure admin_users via FK created_by.
+  // SELECT principal — sans jointure embarquée. L'email du créateur est
+  // résolu par un 2e fetch séparé sur admin_users (cf. note jointures
+  // auth.* en tête de fichier).
   let itemsQuery = admin
     .from("producer_invitations")
     .select(
-      "id, email, expires_at, used_at, revoked_at, created_at, created_by, creator:created_by ( email )",
+      "id, email, expires_at, used_at, revoked_at, created_at, created_by",
     );
   let countQuery = admin
     .from("producer_invitations")
@@ -162,19 +168,47 @@ export async function fetchAdminInvitationsList(
 
   const data = (itemsRes.data ?? []) as unknown as RawInvitationRow[];
 
-  const rows: AdminInvitationRow[] = data.map((inv) => {
-    const creator = Array.isArray(inv.creator) ? inv.creator[0] : inv.creator;
-    return {
-      id: inv.id,
-      email: inv.email,
-      status: mapRowStatus(inv, now),
-      createdAt: inv.created_at,
-      expiresAt: inv.expires_at,
-      usedAt: inv.used_at,
-      revokedAt: inv.revoked_at,
-      createdByEmail: creator?.email ?? null,
-    };
-  });
+  // Jointure secondaire admin_users : récupère l'email du créateur pour
+  // chaque `created_by` distinct non-null. Fail-safe — si la jointure
+  // échoue (RLS, table absente, etc.), on continue avec un Map vide et
+  // `createdByEmail` tombera à null pour toutes les rows (la liste reste
+  // utilisable, juste la colonne "Créé par" affiche "—"). Cohérent
+  // lib/admin/users/fetch.ts qui pratique le même fail-safe.
+  const creatorIds = Array.from(
+    new Set(
+      data
+        .map((r) => r.created_by)
+        .filter((u): u is string => !!u),
+    ),
+  );
+  const creatorsRes =
+    creatorIds.length > 0
+      ? await admin
+          .from("admin_users")
+          .select("id, email")
+          .in("id", creatorIds)
+      : { data: [] as Array<{ id: string; email: string | null }>, error: null };
+
+  const emailByCreatorId = new Map<string, string | null>();
+  for (const r of (creatorsRes.data ?? []) as Array<{
+    id: string;
+    email: string | null;
+  }>) {
+    emailByCreatorId.set(r.id, r.email);
+  }
+
+  const rows: AdminInvitationRow[] = data.map((inv) => ({
+    id: inv.id,
+    email: inv.email,
+    status: mapRowStatus(inv, now),
+    createdAt: inv.created_at,
+    expiresAt: inv.expires_at,
+    usedAt: inv.used_at,
+    revokedAt: inv.revoked_at,
+    createdByEmail: inv.created_by
+      ? (emailByCreatorId.get(inv.created_by) ?? null)
+      : null,
+  }));
 
   // Cursor exposé seulement si on a rempli exactement PAGE_SIZE rows.
   const last =
