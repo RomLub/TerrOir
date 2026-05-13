@@ -14,7 +14,6 @@ import {
   getProducerStatusLabel,
 } from '@/components/ui';
 import { ListingHeader } from '@/components/listings/ListingHeader';
-import { buildCursorUrl } from '@/lib/pagination/cursor';
 import type {
   AdminProducerRow,
   ProducerStatus,
@@ -634,7 +633,3 @@ function InviteModal({
     </AdminModal>
   );
 }
-
-// re-export reference to the buildCursorUrl helper to indicate it's intentional
-// (used in tests if extended). Kept for parity with previous CSR import surface.
-export { buildCursorUrl };
