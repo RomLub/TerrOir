@@ -19,6 +19,51 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
+    # Variables d'environnement factices pour la CI. Plusieurs modules
+    # TerrOir valident leurs env vars au boot (`lib/resend/client.ts`,
+    # `lib/stripe/client.ts`, `lib/env/urls.ts`, etc.) et throw si absent.
+    # En local on a `.env.local` qui les fournit ; en prod Vercel les a
+    # via Project Settings. La CI doit fournir des PLACEHOLDERS qui
+    # respectent le format minimum attendu (regex de validation Zod
+    # côté boot) pour que `next build` collecte les page data sans
+    # crasher. Ces valeurs ne sont JAMAIS appelées contre un service
+    # réel — la CI ne lance aucun test E2E qui taperait sur Resend,
+    # Stripe, Supabase ou Mapbox.
+    env:
+      # Supabase
+      NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.placeholder.placeholder
+      SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.placeholder.placeholder
+      # URLs applicatives
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      NEXT_PUBLIC_PRODUCER_URL: http://localhost:3001
+      NEXT_PUBLIC_ADMIN_URL: http://localhost:3002
+      # Stripe
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_placeholder
+      STRIPE_SECRET_KEY: sk_test_placeholder
+      STRIPE_WEBHOOK_SECRET: whsec_placeholder
+      # Mapbox
+      NEXT_PUBLIC_MAPBOX_TOKEN: pk.placeholder
+      # Resend
+      RESEND_API_KEY: re_placeholder
+      RESEND_FROM_EMAIL: noreply@example.com
+      RESEND_WEBHOOK_SECRET: whsec_placeholder
+      # Twilio
+      TWILIO_ACCOUNT_SID: ACplaceholderplaceholderplaceholder00
+      TWILIO_AUTH_TOKEN: placeholder
+      TWILIO_PHONE_NUMBER: '+15551234567'
+      # Upstash Redis (rate-limit) — fail-open documenté si absent,
+      # donc valeurs juste pour cohérence, pas strictement requises.
+      UPSTASH_REDIS_REST_URL: https://placeholder.upstash.io
+      UPSTASH_REDIS_REST_TOKEN: placeholder
+      # HMAC secrets (format hex 64 chars attendu)
+      EMAIL_CHANGE_OTP_SECRET: '0000000000000000000000000000000000000000000000000000000000000000'
+      CRON_SECRET: '0000000000000000000000000000000000000000000000000000000000000000'
+      OPT_OUT_TOKEN_SECRET: '0000000000000000000000000000000000000000000000000000000000000000'
+      ROLE_SNAPSHOT_SECRET: '0000000000000000000000000000000000000000000000000000000000000000'
+      # Ops alerting
+      SUPPORT_EMAIL: support@example.com
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
