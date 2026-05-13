@@ -70,7 +70,7 @@ afterEach(() => {
 describe("GET /api/admin/animals/[id]", () => {
   it("succès → row + dependencies (products ET cuts)", async () => {
     mockCount.mockResolvedValue({ products: 4, cuts: 30 });
-    const res = await GET({} as Request, { params: { id: ID } });
+    const res = await GET({} as Request, { params: Promise.resolve({ id: ID }) });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.dependencies).toEqual({ products: 4, cuts: 30 });
@@ -79,7 +79,7 @@ describe("GET /api/admin/animals/[id]", () => {
 
 describe("DELETE /api/admin/animals/[id] — multi-dépendances", () => {
   it("delete OK si products=0 ET cuts=0", async () => {
-    const res = await DELETE({} as Request, { params: { id: ID } });
+    const res = await DELETE({} as Request, { params: Promise.resolve({ id: ID }) });
     expect(res.status).toBe(200);
     expect(mockLog).toHaveBeenCalledOnce();
   });
@@ -91,7 +91,7 @@ describe("DELETE /api/admin/animals/[id] — multi-dépendances", () => {
         cuts: 0,
       });
     });
-    const res = await DELETE({} as Request, { params: { id: ID } });
+    const res = await DELETE({} as Request, { params: Promise.resolve({ id: ID }) });
     expect(res.status).toBe(409);
     const body = await res.json();
     expect(body.dependencies).toEqual({ products: 3, cuts: 0 });
@@ -104,7 +104,7 @@ describe("DELETE /api/admin/animals/[id] — multi-dépendances", () => {
         cuts: 30,
       });
     });
-    const res = await DELETE({} as Request, { params: { id: ID } });
+    const res = await DELETE({} as Request, { params: Promise.resolve({ id: ID }) });
     expect(res.status).toBe(409);
     const body = await res.json();
     expect(body.dependencies).toEqual({ products: 0, cuts: 30 });
@@ -117,7 +117,7 @@ describe("DELETE /api/admin/animals/[id] — multi-dépendances", () => {
         cuts: 5,
       });
     });
-    const res = await DELETE({} as Request, { params: { id: ID } });
+    const res = await DELETE({} as Request, { params: Promise.resolve({ id: ID }) });
     expect(res.status).toBe(409);
     const body = await res.json();
     expect(body.dependencies).toEqual({ products: 2, cuts: 5 });

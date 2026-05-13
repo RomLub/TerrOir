@@ -98,22 +98,28 @@ function validInvitation(email = "user@example.com"): Resp {
 }
 
 // Récupère le composant nommé `name` dans l'arbre `el` (DFS sur props.children).
-function findByName(el: ReactElement | null | undefined, name: string): ReactElement | null {
+// Le générique `P` permet aux call sites de typer les props attendues du
+// composant cible (sinon `el.props` est `unknown` en React 19, ce qui rend
+// les expects sur des props précises non compilables sans cast).
+function findByName<P = Record<string, unknown>>(
+  el: ReactElement | null | undefined,
+  name: string,
+): ReactElement<P> | null {
   if (!el || typeof el !== "object") return null;
   if (typeof el.type === "function" && (el.type as { name?: string }).name === name) {
-    return el;
+    return el as ReactElement<P>;
   }
   const children = (el.props as { children?: unknown })?.children;
   const arr = Array.isArray(children) ? children : children !== undefined ? [children] : [];
   for (const c of arr) {
-    const found = findByName(c as ReactElement, name);
+    const found = findByName<P>(c as ReactElement, name);
     if (found) return found;
   }
   return null;
 }
 
 async function runPage(token?: string): Promise<ReactElement> {
-  const result = await InvitationPage({ searchParams: token ? { token } : {} });
+  const result = await InvitationPage({ searchParams: Promise.resolve(token ? { token } : {}) });
   return result as ReactElement;
 }
 
@@ -134,7 +140,7 @@ afterEach(() => {
 describe("InvitationPage — ErrorCard CTAs", () => {
   it("token manquant → ErrorCard avec CTA /devenir-producteur", async () => {
     const result = await runPage();
-    const card = findByName(result, "ErrorCard");
+    const card = findByName<{ ctaHref: string; ctaLabel: string; message: string }>(result, "ErrorCard");
     expect(card).not.toBeNull();
     expect(card!.props).toMatchObject({
       ctaLabel: "Demander une nouvelle invitation",
@@ -145,7 +151,7 @@ describe("InvitationPage — ErrorCard CTAs", () => {
   it("invitation introuvable → ErrorCard avec CTA /devenir-producteur", async () => {
     responses.producer_invitations = [{ data: null, error: null }];
     const result = await runPage(VALID_TOKEN);
-    const card = findByName(result, "ErrorCard");
+    const card = findByName<{ ctaHref: string; ctaLabel: string; message: string }>(result, "ErrorCard");
     expect(card!.props.ctaHref).toBe("/devenir-producteur");
     expect(card!.props.message).toMatch(/introuvable/i);
   });
@@ -162,7 +168,7 @@ describe("InvitationPage — ErrorCard CTAs", () => {
       },
     ];
     const result = await runPage(VALID_TOKEN);
-    const card = findByName(result, "ErrorCard");
+    const card = findByName<{ ctaHref: string; ctaLabel: string; message: string }>(result, "ErrorCard");
     expect(card!.props.ctaHref).toBe("/devenir-producteur");
     expect(card!.props.message).toMatch(/utilisée/i);
   });
@@ -179,7 +185,7 @@ describe("InvitationPage — ErrorCard CTAs", () => {
       },
     ];
     const result = await runPage(VALID_TOKEN);
-    const card = findByName(result, "ErrorCard");
+    const card = findByName<{ ctaHref: string; ctaLabel: string; message: string }>(result, "ErrorCard");
     expect(card!.props.ctaHref).toBe("/devenir-producteur");
     expect(card!.props.message).toMatch(/expirée/i);
   });
@@ -189,7 +195,7 @@ describe("InvitationPage — ErrorCard CTAs", () => {
     responses.admin_users = [{ data: { id: "admin-1" }, error: null }];
 
     const result = await runPage(VALID_TOKEN);
-    const card = findByName(result, "ErrorCard");
+    const card = findByName<{ ctaHref: string; ctaLabel: string; message: string }>(result, "ErrorCard");
     expect(card!.props).toMatchObject({
       ctaLabel: "Nous contacter",
       ctaHref: "/contact",
@@ -218,7 +224,7 @@ describe("InvitationPage — ErrorCard CTAs", () => {
     ];
 
     const result = await runPage(VALID_TOKEN);
-    const card = findByName(result, "ErrorCard");
+    const card = findByName<{ ctaHref: string; ctaLabel: string; message: string }>(result, "ErrorCard");
     expect(card!.props).toMatchObject({
       ctaLabel: "Se connecter à mon espace producteur",
       ctaHref: "/connexion",
@@ -250,7 +256,7 @@ describe("InvitationPage — T-105 consumer-upgrade notice", () => {
     const result = await runPage(VALID_TOKEN);
     const notice = findByName(result, "ConsumerUpgradeNotice");
     expect(notice).not.toBeNull();
-    const wizard = findByName(result, "OnboardingWizard");
+    const wizard = findByName<{ caseKind: string }>(result, "OnboardingWizard");
     expect(wizard!.props.caseKind).toBe("consumer-login");
   });
 
@@ -263,7 +269,7 @@ describe("InvitationPage — T-105 consumer-upgrade notice", () => {
     const result = await runPage(VALID_TOKEN);
     const notice = findByName(result, "ConsumerUpgradeNotice");
     expect(notice).toBeNull();
-    const wizard = findByName(result, "OnboardingWizard");
+    const wizard = findByName<{ caseKind: string }>(result, "OnboardingWizard");
     expect(wizard!.props.caseKind).toBe("new");
   });
 });
@@ -276,7 +282,7 @@ describe("InvitationPage — wizard caseKind passé à OnboardingWizard", () => 
     responses.producer_interests = [{ data: null, error: null }];
 
     const result = await runPage(VALID_TOKEN);
-    const wizard = findByName(result, "OnboardingWizard");
+    const wizard = findByName<{ caseKind: string }>(result, "OnboardingWizard");
     expect(wizard).not.toBeNull();
     expect(wizard!.props).toMatchObject({
       caseKind: "new",
@@ -297,7 +303,7 @@ describe("InvitationPage — wizard caseKind passé à OnboardingWizard", () => 
     responses.producer_interests = [{ data: null, error: null }];
 
     const result = await runPage(VALID_TOKEN);
-    const wizard = findByName(result, "OnboardingWizard");
+    const wizard = findByName<{ caseKind: string }>(result, "OnboardingWizard");
     expect(wizard!.props).toMatchObject({
       caseKind: "consumer-login",
       email: "consumer@example.com",
@@ -328,7 +334,7 @@ describe("InvitationPage — T-303 consumer-loggedin no auto-upgrade pendant le 
 
     const result = await runPage(VALID_TOKEN);
 
-    const card = findByName(result, "InvitationConfirmCard");
+    const card = findByName<{ email: string }>(result, "InvitationConfirmCard");
     expect(card).not.toBeNull();
     expect(card!.props).toMatchObject({
       token: VALID_TOKEN,
@@ -343,7 +349,7 @@ describe("InvitationPage — T-303 consumer-loggedin no auto-upgrade pendant le 
 
     // Et pas de wizard non plus — la carte de confirmation remplace tout
     // le flow auto-upgrade-puis-StepInfos.
-    expect(findByName(result, "OnboardingWizard")).toBeNull();
+    expect(findByName<{ caseKind: string }>(result, "OnboardingWizard")).toBeNull();
   });
 
   it("T-110 : session.email vs invitation.email comparés case-insensitively → InvitationConfirmCard rendue malgré casse différente", async () => {
@@ -369,7 +375,7 @@ describe("InvitationPage — T-303 consumer-loggedin no auto-upgrade pendant le 
 
     const result = await runPage(VALID_TOKEN);
 
-    const card = findByName(result, "InvitationConfirmCard");
+    const card = findByName<{ email: string }>(result, "InvitationConfirmCard");
     expect(card).not.toBeNull();
     expect(card!.props.email).toBe("consumer@example.com");
   });

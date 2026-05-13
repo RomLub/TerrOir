@@ -42,7 +42,7 @@ function makeRequest(body: unknown): Request {
   return { json: async () => body } as unknown as Request;
 }
 
-const CTX = { params: { id: "ref-1" } };
+const CTX = { params: Promise.resolve({ id: "ref-1" }) };
 
 let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 

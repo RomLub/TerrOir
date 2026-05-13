@@ -88,13 +88,13 @@ beforeEach(() => {
 describe("DELETE /api/admin/reviews/[id]/response", () => {
   it("403 si pas admin", async () => {
     sessionUser = { id: "consumer", email: null, roles: ["consumer"], isAdmin: false };
-    const res = await DELETE(makeRequest(), { params: { id: REVIEW_ID } });
+    const res = await DELETE(makeRequest(), { params: Promise.resolve({ id: REVIEW_ID }) });
     expect(res.status).toBe(403);
   });
 
   it("404 si review inexistante", async () => {
     setupReviewLookup(null);
-    const res = await DELETE(makeRequest(), { params: { id: REVIEW_ID } });
+    const res = await DELETE(makeRequest(), { params: Promise.resolve({ id: REVIEW_ID }) });
     expect(res.status).toBe(404);
   });
 
@@ -104,7 +104,7 @@ describe("DELETE /api/admin/reviews/[id]/response", () => {
       producer_id: PRODUCER_ID,
       producer_response: null,
     });
-    const res = await DELETE(makeRequest(), { params: { id: REVIEW_ID } });
+    const res = await DELETE(makeRequest(), { params: Promise.resolve({ id: REVIEW_ID }) });
     expect(res.status).toBe(409);
   });
 
@@ -117,7 +117,7 @@ describe("DELETE /api/admin/reviews/[id]/response", () => {
       producer_response_locked_at: pastLock,
       producers: { slug: "test-slug" },
     });
-    const res = await DELETE(makeRequest(), { params: { id: REVIEW_ID } });
+    const res = await DELETE(makeRequest(), { params: Promise.resolve({ id: REVIEW_ID }) });
     expect(res.status).toBe(200);
     const payload = ctx.getUpdatePayload() as Record<string, unknown>;
     expect(payload.producer_response).toBeNull();

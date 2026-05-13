@@ -138,32 +138,32 @@ describe("POST /api/producer/reviews/[id]/respond", () => {
   it("401 si pas de session", async () => {
     sessionUser = null;
     setupProducerLookup(PRODUCER_ID);
-    const res = await POST(makeRequest("POST", { response: "merci" }), { params: { id: REVIEW_ID } });
+    const res = await POST(makeRequest("POST", { response: "merci" }), { params: Promise.resolve({ id: REVIEW_ID }) });
     expect(res.status).toBe(401);
   });
 
   it("403 si user n'est pas producer", async () => {
     setupProducerLookup(null);
-    const res = await POST(makeRequest("POST", { response: "merci" }), { params: { id: REVIEW_ID } });
+    const res = await POST(makeRequest("POST", { response: "merci" }), { params: Promise.resolve({ id: REVIEW_ID }) });
     expect(res.status).toBe(403);
   });
 
   it("400 si body invalide (response vide)", async () => {
     setupProducerLookup(PRODUCER_ID);
-    const res = await POST(makeRequest("POST", { response: "" }), { params: { id: REVIEW_ID } });
+    const res = await POST(makeRequest("POST", { response: "" }), { params: Promise.resolve({ id: REVIEW_ID }) });
     expect(res.status).toBe(400);
   });
 
   it("400 si response > 500 chars", async () => {
     setupProducerLookup(PRODUCER_ID);
-    const res = await POST(makeRequest("POST", { response: "x".repeat(501) }), { params: { id: REVIEW_ID } });
+    const res = await POST(makeRequest("POST", { response: "x".repeat(501) }), { params: Promise.resolve({ id: REVIEW_ID }) });
     expect(res.status).toBe(400);
   });
 
   it("404 si review introuvable ou pas owned", async () => {
     setupProducerLookup(PRODUCER_ID);
     setupReviewLookup(null);
-    const res = await POST(makeRequest("POST", { response: "merci" }), { params: { id: REVIEW_ID } });
+    const res = await POST(makeRequest("POST", { response: "merci" }), { params: Promise.resolve({ id: REVIEW_ID }) });
     expect(res.status).toBe(404);
   });
 
@@ -177,7 +177,7 @@ describe("POST /api/producer/reviews/[id]/respond", () => {
       producer_response: null,
       producer_response_locked_at: null,
     });
-    const res = await POST(makeRequest("POST", { response: "merci" }), { params: { id: REVIEW_ID } });
+    const res = await POST(makeRequest("POST", { response: "merci" }), { params: Promise.resolve({ id: REVIEW_ID }) });
     expect(res.status).toBe(409);
   });
 
@@ -191,7 +191,7 @@ describe("POST /api/producer/reviews/[id]/respond", () => {
       producer_response: null,
       producer_response_locked_at: null,
     });
-    const res = await POST(makeRequest("POST", { response: "Merci pour votre retour !" }), { params: { id: REVIEW_ID } });
+    const res = await POST(makeRequest("POST", { response: "Merci pour votre retour !" }), { params: Promise.resolve({ id: REVIEW_ID }) });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toEqual({ ok: true, mode: "created" });
@@ -224,7 +224,7 @@ describe("POST /api/producer/reviews/[id]/respond", () => {
       producer_response: "ancienne réponse",
       producer_response_locked_at: futureLock,
     });
-    const res = await POST(makeRequest("POST", { response: "réponse révisée" }), { params: { id: REVIEW_ID } });
+    const res = await POST(makeRequest("POST", { response: "réponse révisée" }), { params: Promise.resolve({ id: REVIEW_ID }) });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toEqual({ ok: true, mode: "updated" });
@@ -250,7 +250,7 @@ describe("POST /api/producer/reviews/[id]/respond", () => {
       producer_response: "ancienne",
       producer_response_locked_at: pastLock,
     });
-    const res = await POST(makeRequest("POST", { response: "tentative tardive" }), { params: { id: REVIEW_ID } });
+    const res = await POST(makeRequest("POST", { response: "tentative tardive" }), { params: Promise.resolve({ id: REVIEW_ID }) });
     expect(res.status).toBe(403);
   });
 });
@@ -264,7 +264,7 @@ describe("DELETE /api/producer/reviews/[id]/respond", () => {
       producer_response: "à supprimer",
       producer_response_locked_at: futureLock,
     });
-    const res = await DELETE(makeRequest("DELETE"), { params: { id: REVIEW_ID } });
+    const res = await DELETE(makeRequest("DELETE"), { params: Promise.resolve({ id: REVIEW_ID }) });
     expect(res.status).toBe(200);
     const payload = ctx.getUpdatePayload() as Record<string, unknown>;
     expect(payload.producer_response).toBeNull();
@@ -282,7 +282,7 @@ describe("DELETE /api/producer/reviews/[id]/respond", () => {
       producer_response: "ancienne",
       producer_response_locked_at: pastLock,
     });
-    const res = await DELETE(makeRequest("DELETE"), { params: { id: REVIEW_ID } });
+    const res = await DELETE(makeRequest("DELETE"), { params: Promise.resolve({ id: REVIEW_ID }) });
     expect(res.status).toBe(403);
   });
 
@@ -293,7 +293,7 @@ describe("DELETE /api/producer/reviews/[id]/respond", () => {
       producer_response: null,
       producer_response_locked_at: null,
     });
-    const res = await DELETE(makeRequest("DELETE"), { params: { id: REVIEW_ID } });
+    const res = await DELETE(makeRequest("DELETE"), { params: Promise.resolve({ id: REVIEW_ID }) });
     expect(res.status).toBe(409);
   });
 });

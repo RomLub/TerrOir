@@ -222,7 +222,7 @@ function setOrderFetch(partial: Partial<typeof DEFAULT_ORDER>) {
   ];
 }
 
-const PARAMS = { params: { id: ORDER_ID } };
+const PARAMS = { params: Promise.resolve({ id: ORDER_ID }) };
 
 // --- Setup / teardown ----------------------------------------------------
 

@@ -83,19 +83,19 @@ afterEach(() => {
 describe("GET /api/admin/categories/[id]", () => {
   it("non admin → 403", async () => {
     sessionUser = null;
-    const res = await GET({} as Request, { params: { id: ID } });
+    const res = await GET({} as Request, { params: Promise.resolve({ id: ID }) });
     expect(res.status).toBe(403);
   });
 
   it("inexistant → 404", async () => {
     mockGet.mockResolvedValue(null);
-    const res = await GET({} as Request, { params: { id: ID } });
+    const res = await GET({} as Request, { params: Promise.resolve({ id: ID }) });
     expect(res.status).toBe(404);
   });
 
   it("succès → 200 + row + dependencies", async () => {
     mockCount.mockResolvedValue({ products: 3 });
-    const res = await GET({} as Request, { params: { id: ID } });
+    const res = await GET({} as Request, { params: Promise.resolve({ id: ID }) });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.row.slug).toBe("viande");
@@ -106,14 +106,14 @@ describe("GET /api/admin/categories/[id]", () => {
 describe("PATCH /api/admin/categories/[id]", () => {
   it("non admin → 403", async () => {
     sessionUser = null;
-    const res = await PATCH(makeRequest(VALID_PATCH), { params: { id: ID } });
+    const res = await PATCH(makeRequest(VALID_PATCH), { params: Promise.resolve({ id: ID }) });
     expect(res.status).toBe(403);
   });
 
   it("body invalide → 400", async () => {
     const res = await PATCH(
       makeRequest({ ...VALID_PATCH, slug: "BAD!" }),
-      { params: { id: ID } },
+      { params: Promise.resolve({ id: ID }) },
     );
     expect(res.status).toBe(400);
   });
@@ -121,14 +121,14 @@ describe("PATCH /api/admin/categories/[id]", () => {
   it("inexistant → 404", async () => {
     mockGet.mockResolvedValue(null);
     const res = await PATCH(makeRequest(VALID_PATCH), {
-      params: { id: ID },
+      params: Promise.resolve({ id: ID }),
     });
     expect(res.status).toBe(404);
   });
 
   it("succès → 200 + audit log avec before/after", async () => {
     const res = await PATCH(makeRequest(VALID_PATCH), {
-      params: { id: ID },
+      params: Promise.resolve({ id: ID }),
     });
     expect(res.status).toBe(200);
     expect(mockLog).toHaveBeenCalledOnce();
@@ -148,7 +148,7 @@ describe("PATCH /api/admin/categories/[id]", () => {
       throw new AdminCategorisationSlugDuplicate("category", "viandes");
     });
     const res = await PATCH(makeRequest(VALID_PATCH), {
-      params: { id: ID },
+      params: Promise.resolve({ id: ID }),
     });
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({
@@ -161,7 +161,7 @@ describe("PATCH /api/admin/categories/[id]", () => {
   it("helper ok:false → 500, pas d'audit", async () => {
     mockUpdate.mockResolvedValue({ ok: false, error: "db" });
     const res = await PATCH(makeRequest(VALID_PATCH), {
-      params: { id: ID },
+      params: Promise.resolve({ id: ID }),
     });
     expect(res.status).toBe(500);
     expect(mockLog).not.toHaveBeenCalled();
@@ -171,18 +171,18 @@ describe("PATCH /api/admin/categories/[id]", () => {
 describe("DELETE /api/admin/categories/[id]", () => {
   it("non admin → 403", async () => {
     sessionUser = null;
-    const res = await DELETE({} as Request, { params: { id: ID } });
+    const res = await DELETE({} as Request, { params: Promise.resolve({ id: ID }) });
     expect(res.status).toBe(403);
   });
 
   it("inexistant → 404", async () => {
     mockGet.mockResolvedValue(null);
-    const res = await DELETE({} as Request, { params: { id: ID } });
+    const res = await DELETE({} as Request, { params: Promise.resolve({ id: ID }) });
     expect(res.status).toBe(404);
   });
 
   it("succès → 200 + audit avec snapshot avant suppression", async () => {
-    const res = await DELETE({} as Request, { params: { id: ID } });
+    const res = await DELETE({} as Request, { params: Promise.resolve({ id: ID }) });
     expect(res.status).toBe(200);
     expect(mockLog).toHaveBeenCalledOnce();
     const audit = mockLog.mock.calls[0][0];
@@ -198,7 +198,7 @@ describe("DELETE /api/admin/categories/[id]", () => {
     mockDelete.mockImplementation(() => {
       throw new AdminCategorisationDeleteBlocked("category", { products: 5 });
     });
-    const res = await DELETE({} as Request, { params: { id: ID } });
+    const res = await DELETE({} as Request, { params: Promise.resolve({ id: ID }) });
     expect(res.status).toBe(409);
     const body = await res.json();
     expect(body.error).toBe("delete_blocked");
@@ -208,7 +208,7 @@ describe("DELETE /api/admin/categories/[id]", () => {
 
   it("helper ok:false → 500, pas d'audit", async () => {
     mockDelete.mockResolvedValue({ ok: false, error: "db" });
-    const res = await DELETE({} as Request, { params: { id: ID } });
+    const res = await DELETE({} as Request, { params: Promise.resolve({ id: ID }) });
     expect(res.status).toBe(500);
     expect(mockLog).not.toHaveBeenCalled();
   });

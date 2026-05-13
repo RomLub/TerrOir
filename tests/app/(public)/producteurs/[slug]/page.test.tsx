@@ -155,7 +155,7 @@ describe("/producteurs/[slug] — contrat sécurité coords (T-217)", () => {
     };
 
     const result = (await ProducteurPage({
-      params: { slug: "ferme-alpha" },
+      params: Promise.resolve({ slug: "ferme-alpha" }),
     })) as ReactElement;
 
     const client = findByName(result, "ProducerPageClient");
@@ -186,7 +186,7 @@ describe("/producteurs/[slug] — contrat sécurité coords (T-217)", () => {
       };
 
       const result = (await ProducteurPage({
-        params: { slug: "ferme-alpha" },
+        params: Promise.resolve({ slug: "ferme-alpha" }),
       })) as ReactElement;
       const client = findByName(result, "ProducerPageClient");
       const producer = (client!.props as {
@@ -218,7 +218,7 @@ describe("/producteurs/[slug] — contrat sécurité coords (T-217)", () => {
     };
 
     const result = (await ProducteurPage({
-      params: { slug: "ferme-alpha" },
+      params: Promise.resolve({ slug: "ferme-alpha" }),
     })) as ReactElement;
     const client = findByName(result, "ProducerPageClient");
     const producer = (client!.props as {
