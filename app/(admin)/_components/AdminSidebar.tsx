@@ -234,12 +234,69 @@ const RefundsPendingIcon = (
   </svg>
 );
 
+// PR3 admin-new-surfaces : icônes pour les 3 nouvelles surfaces (users,
+// refund-incidents, invitations). Style cohérent avec les autres icônes
+// (lucide-like, stroke 2, viewBox 24x24, h-4 w-4).
+const UsersIcon = (
+  <svg
+    aria-hidden="true"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="h-4 w-4"
+  >
+    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+  </svg>
+);
+
+const RefundIncidentsIcon = (
+  <svg
+    aria-hidden="true"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="h-4 w-4"
+  >
+    <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+    <line x1="12" y1="9" x2="12" y2="13" />
+    <line x1="12" y1="17" x2="12.01" y2="17" />
+  </svg>
+);
+
+const InvitationsIcon = (
+  <svg
+    aria-hidden="true"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="h-4 w-4"
+  >
+    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+    <polyline points="22,6 12,13 2,6" />
+  </svg>
+);
+
 const NAV: NavEntry[] = [
   { kind: "item", href: "/tableau-de-bord", label: "Tableau de bord", icon: DashboardIcon },
   { kind: "item", href: "/producer-interests", label: "Leads producteurs", icon: LeadsIcon },
   { kind: "item", href: "/gestion-producteurs", label: "Gestion producteurs", icon: ProducersIcon },
+  { kind: "item", href: "/invitations", label: "Invitations", icon: InvitationsIcon },
+  { kind: "item", href: "/users", label: "Utilisateurs", icon: UsersIcon },
   { kind: "item", href: "/suivi-commandes", label: "Suivi commandes", icon: OrdersIcon },
   { kind: "item", href: "/refunds/pending", label: "Refunds en attente", icon: RefundsPendingIcon, badgeKey: "pendingRefundsCount" },
+  { kind: "item", href: "/refund-incidents", label: "Incidents refund", icon: RefundIncidentsIcon },
   { kind: "item", href: "/audit-logs", label: "Journal d'audit", icon: AuditLogsIcon },
   { kind: "item", href: "/avis", label: "Avis", icon: ReviewsIcon },
   { kind: "item", href: "/legal-compliance", label: "Conformité légale", icon: ComplianceIcon },

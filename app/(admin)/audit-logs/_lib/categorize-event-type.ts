@@ -20,6 +20,7 @@ export type EventCategory =
   | "legal"
   | "email"
   | "catalog"
+  | "refund"
   | "producers"
   | "producer_interests";
 
@@ -39,6 +40,13 @@ export function categorizeEventType(eventType: AuditEventType): EventCategory {
     eventType.startsWith("admin_cut_")
   )
     return "catalog";
+  // PR3 admin-new-surfaces : cluster refund_incidents (incidents Stripe
+  // refund échoués + résolution manuelle admin). Catégorie distincte de
+  // 'order' parce que le cycle de vie technique est séparé (backoff retry
+  // cron T-102 + intervention manuelle hors flow commande nominal).
+  // À terme, on pourrait y migrer aussi les `order_refund_*` /
+  // `producer_refund_*` existants pour lecture forensique unifiée.
+  if (eventType.startsWith("refund_incident_")) return "refund";
   // PR refactor/admin-pattern-uniform : modération avis admin (publish/reject)
   // rattachée visuellement au cluster "review" (modération côté admin = même
   // surface fonctionnelle que les réponses producteur).
@@ -138,6 +146,12 @@ export const CATEGORY_PALETTE: Record<
     bg: "bg-teal-50",
     text: "text-teal-700",
     dot: "bg-teal-500",
+  },
+  refund: {
+    label: "Refund",
+    bg: "bg-red-50",
+    text: "text-red-700",
+    dot: "bg-red-500",
   },
   producers: {
     label: "Producteurs",

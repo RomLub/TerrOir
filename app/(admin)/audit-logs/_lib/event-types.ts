@@ -31,6 +31,10 @@ import {
   type ProducerIndicateursEventType,
 } from "@/lib/audit-logs/log-producer-indicateurs-event";
 import {
+  REFUND_INCIDENTS_EVENT_TYPES,
+  type RefundIncidentsEventType,
+} from "@/lib/audit-logs/log-refund-incidents-event";
+import {
   REVIEW_MODERATION_EVENT_TYPES,
   type ReviewModerationEventType,
 } from "@/lib/audit-logs/log-review-moderation-event";
@@ -56,6 +60,7 @@ export const ALL_EVENT_TYPES = [
   ...PICKUP_EVENT_TYPES,
   ...REVIEW_FOLLOWUP_EVENT_TYPES,
   ...PRODUCER_INDICATEURS_EVENT_TYPES,
+  ...REFUND_INCIDENTS_EVENT_TYPES,
   ...REVIEW_MODERATION_EVENT_TYPES,
   ...PRODUCERS_ADMIN_EVENT_TYPES,
   ...PRODUCER_INTERESTS_EVENT_TYPES,
@@ -70,6 +75,7 @@ export type AuditEventType =
   | PickupEventType
   | ReviewFollowupEventType
   | ProducerIndicateursEventType
+  | RefundIncidentsEventType
   | ReviewModerationEventType
   | ProducersAdminEventType
   | ProducerInterestsEventType;
