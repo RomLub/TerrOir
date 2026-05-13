@@ -52,17 +52,26 @@ jobs:
       TWILIO_ACCOUNT_SID: ACplaceholderplaceholderplaceholder00
       TWILIO_AUTH_TOKEN: placeholder
       TWILIO_PHONE_NUMBER: '+15551234567'
-      # Upstash Redis (rate-limit) — fail-open documenté si absent,
-      # donc valeurs juste pour cohérence, pas strictement requises.
-      UPSTASH_REDIS_REST_URL: https://placeholder.upstash.io
-      UPSTASH_REDIS_REST_TOKEN: placeholder
+      # Upstash Redis (rate-limit) : INTENTIONNELLEMENT ABSENT.
+      # Le helper `consumeRateLimit` est fail-open documenté si les vars
+      # sont absentes — passer un placeholder URL ferait tenter un fetch
+      # vers un hostname inexistant qui throw réseau et casse les tests
+      # qui assertent un autre log message que [RATE_LIMIT_REDIS_ERROR].
+      # Cf. .env.example : « REQUIS en prod (sécurité), tolérés en
+      # dev/preview ». CI = tolérée.
       # HMAC secrets (format hex 64 chars attendu)
       EMAIL_CHANGE_OTP_SECRET: '0000000000000000000000000000000000000000000000000000000000000000'
       CRON_SECRET: '0000000000000000000000000000000000000000000000000000000000000000'
       OPT_OUT_TOKEN_SECRET: '0000000000000000000000000000000000000000000000000000000000000000'
       ROLE_SNAPSHOT_SECRET: '0000000000000000000000000000000000000000000000000000000000000000'
-      # Ops alerting
-      SUPPORT_EMAIL: support@example.com
+      # Ops alerting : INTENTIONNELLEMENT ABSENT.
+      # Plusieurs tests Vitest font `process.env.SUPPORT_EMAIL ?? "admin
+      # @terroir-local.fr"` au top-level pour fixer une valeur stable
+      # avant l'import du module testé. Définir SUPPORT_EMAIL côté CI
+      # écraserait ce fallback et casserait les assertions hardcodées
+      # sur la valeur prod. La var n'est requise par aucun module au
+      # build time (`lib/env/support-email.ts` ne throw pas au load,
+      # seulement à l'appel).
 
     steps:
       - name: Checkout
