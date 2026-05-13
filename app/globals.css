@@ -14,6 +14,28 @@
   ::file-selector-button {
     border-color: theme('colors.gray.200', currentColor);
   }
+
+  /*
+    Affordance cliquable : ni la spec HTML ni Tailwind preflight n'imposent
+    cursor:pointer sur <button>/[role=button] — contrairement à l'attente
+    UX standard. Les <a href> en revanche héritent du legacy hyperlink
+    pointer cursor. Sans cette règle, certains éléments cliquables (boutons)
+    n'affichent pas le pointer au survol alors que d'autres (liens) si,
+    cassant l'affordance de manière incohérente.
+
+    Les utilitaires Tailwind locaux (cursor-pointer, cursor-not-allowed,
+    disabled:cursor-not-allowed) sont chargés après cette layer et restent
+    prioritaires si surchargés explicitement sur un composant donné.
+  */
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']) {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [role='button'][aria-disabled='true'] {
+    cursor: not-allowed;
+  }
 }
 
 :root {
