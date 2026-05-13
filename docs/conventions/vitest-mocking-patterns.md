@@ -276,6 +276,29 @@ import { POST } from "@/app/api/...";
 - Tout test qui importe (directement ou transitivement) `@/lib/env/urls` ou un autre validateur d'env au load.
 - En général : tests sur les routes API, les templates Resend, les composants qui font du linking absolu.
 
+### Articulation avec la CI GitHub Actions
+
+Le pattern `vi.hoisted` + `?? "fallback"` fonctionne uniquement si `process.env` n'est PAS déjà pollué quand le test démarre. En CI, si les placeholders d'env sont posés au niveau JOB (`jobs.<id>.env`), ils sont injectés AVANT le step `Test` et écrasent les fallbacks des 92+ fichiers de test qui suivent ce pattern.
+
+**Règle** : en CI, scoper les env vars placeholders au niveau du STEP qui en a besoin (typiquement le step `Build` qui collecte les page data en évaluant les modules au boot), JAMAIS au niveau JOB. Le step `Test` reste sans bloc `env:`, ce qui laisse `process.env` vide et permet aux fallbacks `vi.hoisted` de prendre la main.
+
+Exemple concret : `.github/workflows/ci.yml` (PR #126, commit `aa18701`).
+
+```yaml
+jobs:
+  ci:
+    env:
+      TZ: Europe/Paris   # ← seules les vars système globales ici
+    steps:
+      - name: Build
+        env:             # ← placeholders au step uniquement
+          RESEND_API_KEY: re_placeholder
+          # ...
+        run: npm run build
+      - name: Test       # ← pas de env:, vi.hoisted fait son job
+        run: npm test
+```
+
 ---
 
 ## Checklist avant de pousser un nouveau test vitest
