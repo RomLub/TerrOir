@@ -241,8 +241,14 @@ Avant tout push, CC valide localement :
 3. `npm run type-check` (TypeScript strict)
 4. `npm run build` (Next build complet)
 5. `npm test` (Vitest)
+6. Si modif spec E2E security (`tests/e2e/security/*.spec.ts`) :
+   vérifier passage par helpers canoniques `seedConsumer` /
+   `seedProducer` (jamais email custom hors pattern sentinel
+   `playwright-test-*@mailinator.com`). Cf. doctrine
+   `docs/conventions/regression-tests-security.md`.
 
-Si un des cinq casse → on fixe, on ne push pas.
+Si un des cinq premiers casse → on fixe, on ne push pas. Le 6e
+(spec E2E security) ne s'applique que si le périmètre est touché.
 
 ## 4. SQL / Supabase
 
@@ -321,6 +327,23 @@ test E2E à la place.
   OU smoke tests post-apply migration reportés dans la conversation.
 - Toute PR touchant à un parcours user critique (checkout, signup,
   pickup validation, refund) : test E2E associé écrit ou mis à jour.
+
+### Pattern E2E (Playwright)
+
+- **Sentinel email** : `playwright-test-{ts}[-{suffix}]@mailinator.com`
+  (cf. `tests/e2e/helpers/guards.ts:70` `generateTestEmail`). Tout user
+  créé par un test E2E doit utiliser ce pattern — il permet le cleanup
+  ciblé sans toucher aux données réelles.
+- **Helpers seed canoniques** : `seedConsumer` / `seedProducer` (jamais
+  bypass). Préservent l'invariant sentinel + audit logs.
+- **Cleanup auto** : via Playwright `global-setup` / `global-teardown`.
+  À chaque run, les résidus matching le sentinel sont purgés.
+- **Cleanup manuel** :
+  `npx tsx scripts/cleanup-test-residuals-e2e.ts [--dry-run] [--min-age-hours=N]`
+  (wrapper CLI standalone sur `sweepE2EResiduals`, utile hors lifecycle
+  Playwright : cron, debug).
+- Voir doctrine `docs/conventions/regression-tests-security.md` pour
+  les invariants sécu E2E (RLS, helpers, sentinel pattern).
 
 ### Pattern de mocking Vitest (référence)
 

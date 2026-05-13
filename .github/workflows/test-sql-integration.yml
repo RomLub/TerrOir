@@ -1,0 +1,95 @@
+# Workflow CI : tests SQL-integration TerrOir
+#
+# OBJECTIF : faire tourner automatiquement la suite SQL-integration
+# (vitest.sql.config.ts) sur chaque PR + chaque push master, pour
+# que les tests régression sécu DB-side (RLS, triggers, RPC SECDEF)
+# tournent en filet réel et pas seulement à la demande locale.
+#
+# Cf. doctrine docs/conventions/regression-tests-security.md sections
+# 1 (quand écrire), 2 (matrice patterns), 4 bis (drift local Supabase).
+#
+# Périmètre : SQL-integration UNIQUEMENT (vitest.sql.config.ts include
+# strict tests/sql-integration/**/*.test.ts).
+# Pas couvert par ce workflow :
+#   - Tests unit standard (npm test) → backlog workflow séparé
+#   - Tests E2E Playwright security (orders-postgrest-attack.spec.ts)
+#     → TBD post-staging Axe 3.b T-225 (taperaient prod actuellement)
+#
+# Coût estimé : ~5-7 min par run (cold start Docker images Supabase).
+# Quota GitHub Hobby Free 2000 min/mois → marge ~85% au volume
+# actuel ~30 runs/mois.
+
+name: Tests SQL-integration
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  test-sql-integration:
+    name: Run vitest.sql.config.ts contre Supabase locale
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20 (LTS)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          # Backlog : aligner via .nvmrc ou package.json:engines
+          # (absents au 2026-05-12).
+          cache: 'npm'
+
+      - name: Install npm dependencies
+        # `npm ci` pour install reproductible from package-lock.json.
+        # Pas de --legacy-peer-deps (cf doctrine CLAUDE.md cycle FIX
+        # 2026-05-07 : c'est un signal d'alerte, pas un fix).
+        run: npm ci
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          # Pin strict aligné package.json devDep `"supabase": "^2.92.1"`.
+          # Si bump local, bump aussi ici (sinon drift local ↔ CI).
+          version: 2.92.1
+
+      - name: Start Supabase local stack (Docker)
+        # Démarre postgres + studio + auth + storage + edge runtime.
+        # Cold start ~3-5 min (pull images Docker). Pas de cache V1
+        # (cf doctrine regression-tests-security.md section 4 bis).
+        # Si supabase start fail → workflow fail (pas de continue-on-error).
+        run: npx supabase start
+
+      - name: Validate Supabase keys exposure (anti-fallback silencieux)
+        # Sanity check : confirme que `supabase status -o env` produit bien
+        # les clés ANON_KEY + SERVICE_ROLE_KEY + API_URL avant de lancer
+        # les tests. Sans ça, le globalSetup tests/sql-integration/setup.ts
+        # tomberait silencieusement sur fallback hardcoded
+        # (helpers/client.ts:24-27) qui pourrait masquer un drift CLI
+        # version et faire passer les tests verts sur la mauvaise base.
+        # Lit la même source que le globalSetup.
+        run: |
+          npx supabase status -o env > /tmp/supabase-env.txt
+          echo "=== Supabase env vars detected (8 first chars only, rest masked) ==="
+          grep -E "^(ANON_KEY|SERVICE_ROLE_KEY|API_URL)=" /tmp/supabase-env.txt | sed -E 's/=(.{8}).*$/=\1...(masked)/'
+          grep -q "^ANON_KEY=" /tmp/supabase-env.txt || (echo "FAIL: ANON_KEY absent" && exit 1)
+          grep -q "^SERVICE_ROLE_KEY=" /tmp/supabase-env.txt || (echo "FAIL: SERVICE_ROLE_KEY absent" && exit 1)
+          grep -q "^API_URL=" /tmp/supabase-env.txt || (echo "FAIL: API_URL absent" && exit 1)
+          rm /tmp/supabase-env.txt
+          echo "OK: 3/3 keys exposées par CLI"
+
+      - name: Run SQL-integration tests
+        # vitest.sql.config.ts — include strict tests/sql-integration/**/*.test.ts.
+        # globalSetup lit `supabase status -o env` pour exposer
+        # TEST_SUPABASE_* (clés locales jetables, pas de secret prod).
+        run: npm run test:sql
+
+      - name: Stop Supabase local stack
+        # Cleanup même si tests fail (libère ressources runner).
+        if: always()
+        run: npx supabase stop

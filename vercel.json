@@ -44,6 +44,10 @@
     {
       "path": "/api/cron/refund-expire-pending",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/cleanup-test-residuals",
+      "schedule": "0 2 * * 0"
     }
   ],
   "functions": {
@@ -58,6 +62,7 @@
     "app/api/cron/purge-otp-codes/route.ts": { "maxDuration": 60 },
     "app/api/cron/disputes-deadline-check/route.tsx": { "maxDuration": 60 },
     "app/api/cron/refund-expire-pending/route.tsx": { "maxDuration": 60 },
+    "app/api/cron/cleanup-test-residuals/route.ts": { "maxDuration": 60 },
     "app/api/orders/[id]/cancel/route.tsx": { "maxDuration": 30 },
     "app/api/orders/[id]/confirm/route.tsx": { "maxDuration": 30 },
     "app/api/orders/[id]/complete/route.tsx": { "maxDuration": 30 }

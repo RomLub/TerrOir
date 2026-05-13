@@ -31,6 +31,43 @@ Pour les décisions structurantes (ADRs), voir [`decisions/`](./decisions/).
 
 ---
 
+## 2026-05-12 (chantier P1 régression sweep — fix trigger producers + filet anti-régression doctrine)
+
+> Session `/plan-ceo-review` 2026-05-12. PR origine #121 (branche `feature/p1-regression-sweep-axes-1-5`) — 10 commits atomiques, 5 axes structurés. Cherry-pick chirurgical sur master après que la PR #121 ait divergé suite aux 5 PRs CC #2 mergées entre-temps (PRs #122-#126). 8 commits cherry-pickés + 2 partiels (CLAUDE.md + ce CHANGELOG), 1 abandonné (`04ae538` codegen-enums EOL fix rendu redondant par `.gitattributes` PR #122).
+>
+> 🔴 **Détecté + fixé en prod** : régression silencieuse trigger `producers_block_owner_admin_columns` introduite par migration P0_F008 (commit `5fcf720` du 2026-05-11). 2 régressions latentes ~36h :
+> 1. Référence `prenom_affichage` colonne droppée par T-300 (latent — bug 1)
+> 2. Pertes checks `latitude`/`longitude` admin-only T-218-bis (exploitable sur le papier mais bloqué de fait par bug 1)
+>
+> Migration corrective `20260512100000_p1_fix_t300_t218bis_regression_trigger` apply prod via MCP. Smoke tests post-apply 5/5 OK. Diagnostic dérive data : 8 producers prod, toutes coords dans bounds Sarthe, 0 dérive détectée.
+>
+> 🟢 **Filet anti-régression livré** :
+> - F-008 : 7 tests SQL-integ producers trigger (incl. 2 lat/lng T-218-bis bonus = proof of value du filet, sans ces tests la régression aurait pu revenir)
+> - F-004 grep statique : `tests/lib/stripe/refund-clawback-coverage.test.ts` qui scanne `app/+lib/+scripts/` pour `stripe.refunds.create` (count=7, 6 sites obligatoires + 1 exemption whitelist documentée `retry-incident.ts`)
+> - Audit batch coverage : F-001/F-003/F-009/F-014/F-026 confirmés déjà couverts via PR #119 + commits P0 sweep 10-11 mai (4-6h CC d'écriture redondante évitée par grep préalable systématique)
+>
+> 🟢 **CI workflow** : `.github/workflows/test-sql-integration.yml` — Supabase CLI v2.92.1 + Docker + Node 20 LTS. Premier run vert en 2m40s. Step validation explicite des keys avant tests pour éviter fallback hardcoded silencieux. Complémentaire au workflow `ci.yml` (lint + type-check + build + test, livré PR #126) qui couvre la suite Vitest standard hors SQL-integration.
+>
+> 🟢 **Doctrine** : `docs/conventions/regression-tests-security.md` (~301 lignes, sections 0-7) + `docs/audits/audit-batch-axe1-coverage-2026-05-12.md` (méthode reproductible audit batch, ROI 10-20x). Pattern E2E sentinel `playwright-test-*@mailinator.com` + cleanup auto Playwright lifecycle + cleanup manuel via `npx tsx scripts/cleanup-test-residuals-e2e.ts`.
+>
+> 🟢 **Cron Vercel weekly cleanup** : nouvelle route `/api/cron/cleanup-test-residuals` (dimanche 2h UTC, `0 2 * * 0`) + refactor `sweepE2EResiduals` de `tests/e2e/helpers/db-cleanup.ts` vers `lib/maintenance/sweep-e2e-residuals.ts` (découplage tests/prod, 3 imports updated atomiquement).
+>
+> Commits effectivement appliqués sur master (cherry-pick) :
+> - `3f37c0d` fix(db): retirer prenom_affichage + restaurer lat/lng admin-only trigger producers + doctrine anti-pattern
+> - `26e3411` docs(audit): batch coverage F-003/F-014/F-026/F-004 axe 1 P1 sweep
+> - `2837c3b` test(stripe): F-004 grep statique strict refund clawback coverage
+> - `a53a9f3` docs(conventions): doctrine regression-tests-security complète (sections 0-7)
+> - `9b0b634` ci(workflow): add test-sql-integration GitHub Action workflow
+> - `f2f8f77` feat(scripts): cleanup-test-residuals-e2e CLI standalone (sweep sentinel playwright-test-*)
+> - `d2b1bf2` docs(claude-md): pattern E2E sentinel + cleanup + cross-ref doctrine (appliqué partiel — section 5 Tests + pré-push obligatoire dans la nouvelle structure CLAUDE.md règles d'or)
+> - `60959a6` feat(cron): cleanup-test-residuals weekly + refactor sweep helper to lib/maintenance
+> - `432d642` doc(changelog): chantier P1 régression sweep 2026-05-12 (appliqué partiel — cette entrée elle-même)
+>
+> Commit abandonné :
+> - `04ae538` fix(test): normalize EOL in codegen-enums parity check — confirmé redondant après livraison `.gitattributes` (PR #122) qui résout la cause racine globalement.
+
+---
+
 ## 2026-05-11 (audit pré-launch sweep phase 3 — Basse + Info)
 
 > Sweep des findings Basse + Info restants après PR #112-#116 (phase 1 et 2). Voir PR finale pour les finding traités code.
