@@ -136,6 +136,9 @@ export const AUDIT_EVENT_LABELS: Record<string, string> = {
   admin_cut_created: "Morceau créé",
   admin_cut_updated: "Morceau modifié",
   admin_cut_deleted: "Morceau supprimé",
+
+  // ─── Refund incidents (PR3 admin-new-surfaces) ──────────────────────
+  refund_incident_resolved_manually: "Incident refund résolu manuellement",
 };
 
 export function getEventLabel(eventType: string): string {

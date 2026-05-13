@@ -16,6 +16,7 @@ const ALL_CATEGORIES = [
   "legal",
   "email",
   "catalog",
+  "refund",
 ] as const;
 
 describe("categorizeEventType", () => {
@@ -65,6 +66,12 @@ describe("categorizeEventType", () => {
     expect(categorizeEventType("producer_response_published")).toBe("review");
     expect(categorizeEventType("producer_response_removed_by_admin")).toBe(
       "review",
+    );
+  });
+
+  it("préfixe 'refund_incident_' → catégorie 'refund' (PR3 admin-new-surfaces)", () => {
+    expect(categorizeEventType("refund_incident_resolved_manually")).toBe(
+      "refund",
     );
   });
 

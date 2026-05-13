@@ -105,3 +105,36 @@ describe("AdminSidebar — entrées Catégorisation produits (T-130)", () => {
     }
   });
 });
+
+describe("AdminSidebar — PR3 admin-new-surfaces (3 nouvelles entrées)", () => {
+  it("rend les 3 nouvelles entrées /invitations /users /refund-incidents avec leurs labels", () => {
+    currentPathname = "/tableau-de-bord";
+    const html = render();
+    expect(html).toContain('href="/invitations"');
+    expect(html).toContain('href="/users"');
+    expect(html).toContain('href="/refund-incidents"');
+    expect(html).toContain("Invitations");
+    expect(html).toContain("Utilisateurs");
+    expect(html).toContain("Incidents refund");
+  });
+
+  it("active state sur /users", () => {
+    currentPathname = "/users";
+    const html = render();
+    expect(isActive(html, "/users")).toBe(true);
+    expect(isActive(html, "/invitations")).toBe(false);
+    expect(isActive(html, "/refund-incidents")).toBe(false);
+  });
+
+  it("active state sur /refund-incidents", () => {
+    currentPathname = "/refund-incidents";
+    const html = render();
+    expect(isActive(html, "/refund-incidents")).toBe(true);
+  });
+
+  it("active state sur /invitations (et sous-routes)", () => {
+    currentPathname = "/invitations";
+    const html = render();
+    expect(isActive(html, "/invitations")).toBe(true);
+  });
+});
