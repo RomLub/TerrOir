@@ -8,6 +8,7 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 
 import { Button, ProducerCard } from '@/components/ui';
 import { GEOLOC_FALLBACK } from '@/lib/geoloc/fallback';
+import { buildCirclePolygon } from '@/lib/maps/geo-circle';
 import {
   createPinImageData,
   PIN_TERRA_300 as TERRA_300,
@@ -21,9 +22,13 @@ mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? '';
 const PRODUCERS_SOURCE_ID = 'producers-source';
 const PRODUCERS_LAYER_ID = 'producers-pins';
 const PRODUCERS_HOVER_LAYER_ID = 'producers-pins-hover';
+const RADIUS_CIRCLE_SOURCE_ID = 'radius-circle-source';
+const RADIUS_CIRCLE_FILL_LAYER_ID = 'radius-circle-fill';
+const RADIUS_CIRCLE_OUTLINE_LAYER_ID = 'radius-circle-outline';
 const PIN_IMAGE_ID = 'producer-pin';
 const PIN_IMAGE_HOVER_ID = 'producer-pin-hover';
 const COLOR_USER = '#1976D2';
+const COLOR_RADIUS = '#2D6A4F';
 
 const USER_MARKER_CSS = `
 @keyframes terroir-user-pulse {
@@ -88,7 +93,18 @@ const LABEL_OPTIONS: { value: string; label: string }[] = [
   { value: 'boeuf_fermier_maine', label: 'Bœuf du Maine' },
 ];
 
-const RADIUS_OPTIONS = [10, 25, 50, 100];
+type RadiusValue = number | 'all';
+const RADIUS_OPTIONS_NUMERIC = [10, 25, 50, 100] as const;
+const DEFAULT_RADIUS = 50;
+
+// Parse la valeur `?rayon` depuis l'URL. Accepte `all` (mode « Tous »)
+// ou un entier positif. Tout autre input retombe sur le défaut.
+function parseRadiusParam(raw: string | null): RadiusValue {
+  if (raw === 'all') return 'all';
+  const n = Number(raw);
+  if (Number.isFinite(n) && n > 0) return n;
+  return DEFAULT_RADIUS;
+}
 
 // Audit Vercel C-1 + C-4 (2026-05-05) : module CarteClient lazy-loadé via
 // next/dynamic({ ssr: false }) depuis CarteClientLazy. Mapbox-gl (~250-350
@@ -107,11 +123,12 @@ export function CarteClient() {
 // onClick des Chip (pas dans un useEffect séparé) pour économiser un
 // re-render par toggle filter (avant : setState → render → useEffect →
 // router.replace → re-render searchParams).
-function buildFiltersUrl(especes: string[], labels: string[], radius: number): string {
+function buildFiltersUrl(especes: string[], labels: string[], radius: RadiusValue): string {
   const params = new URLSearchParams();
   if (especes.length) params.set('especes', especes.join(','));
   if (labels.length) params.set('labels', labels.join(','));
-  if (radius !== 50) params.set('rayon', String(radius));
+  if (radius === 'all') params.set('rayon', 'all');
+  else if (radius !== DEFAULT_RADIUS) params.set('rayon', String(radius));
   const q = params.toString();
   return q ? `/carte?${q}` : '/carte';
 }
@@ -126,9 +143,16 @@ function CarteClientContent() {
   const [labels, setLabels] = useState<string[]>(() =>
     searchParams.get('labels')?.split(',').filter(Boolean) ?? [],
   );
-  const [radius, setRadius] = useState<number>(() => Number(searchParams.get('rayon')) || 50);
+  const [radius, setRadius] = useState<RadiusValue>(() =>
+    parseRadiusParam(searchParams.get('rayon')),
+  );
 
   const [userLoc, setUserLoc] = useState<{ lat: number; lng: number } | null>(null);
+  // 'pending' tant que la permission n'a pas été résolue (1er render et
+  // pendant le getCurrentPosition). 'granted' = vraie position du visiteur
+  // disponible. 'denied' = refus, indisponible, ou erreur — l'UI bascule
+  // alors automatiquement en mode « Tous » (filtre de distance désactivé).
+  const [geoStatus, setGeoStatus] = useState<'pending' | 'granted' | 'denied'>('pending');
   const [locating, setLocating] = useState(false);
   const [locError, setLocError] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -137,25 +161,43 @@ function CarteClientContent() {
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  useEffect(() => {
+  // Tentative de géoloc. Extraite en handler pour permettre le retry
+  // depuis le lien « Activer ma position » quand le user a été en denied.
+  const requestGeoloc = () => {
     if (!('geolocation' in navigator)) {
       setUserLoc({ lat: GEOLOC_FALLBACK.lat, lng: GEOLOC_FALLBACK.lng });
+      setGeoStatus('denied');
+      setRadius((r) => (r === 'all' ? r : 'all'));
+      router.replace(buildFiltersUrl(especes, labels, 'all'), { scroll: false });
       return;
     }
     setLocating(true);
+    setLocError(null);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setUserLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setGeoStatus('granted');
         setLocating(false);
       },
       () => {
         setUserLoc({ lat: GEOLOC_FALLBACK.lat, lng: GEOLOC_FALLBACK.lng });
         setLocError(`Position indisponible — centré sur ${GEOLOC_FALLBACK.label}`);
+        setGeoStatus('denied');
         setLocating(false);
+        // En denied le filtre de distance n'a plus de sens : on bascule
+        // automatiquement en mode « Tous » et on sync l'URL.
+        setRadius((current) => {
+          if (current === 'all') return current;
+          router.replace(buildFiltersUrl(especes, labels, 'all'), { scroll: false });
+          return 'all';
+        });
       },
       { timeout: 8000 },
     );
-  }, []);
+  };
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { requestGeoloc(); }, []);
 
   const abortRef = useRef<AbortController | null>(null);
   useEffect(() => {
@@ -167,7 +209,7 @@ function CarteClientContent() {
     const params = new URLSearchParams({
       lat: String(userLoc.lat),
       lng: String(userLoc.lng),
-      radius: String(radius),
+      radius: radius === 'all' ? 'all' : String(radius),
     });
     if (especes.length) params.set('especes', especes.join(','));
     if (labels.length) params.set('labels', labels.join(','));
@@ -226,6 +268,35 @@ function CarteClientContent() {
     mapRef.current = map;
 
     const setup = () => {
+      // Source + layers du cercle de rayon. Insérés AVANT les layers
+      // producers pour que les pins restent toujours dessus. La data
+      // est posée par un effet dédié (cf. useEffect circle plus bas).
+      map.addSource(RADIUS_CIRCLE_SOURCE_ID, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+      map.addLayer({
+        id: RADIUS_CIRCLE_FILL_LAYER_ID,
+        type: 'fill',
+        source: RADIUS_CIRCLE_SOURCE_ID,
+        paint: {
+          'fill-color': COLOR_RADIUS,
+          'fill-opacity': 0.1,
+          'fill-opacity-transition': { duration: 250 },
+        },
+      });
+      map.addLayer({
+        id: RADIUS_CIRCLE_OUTLINE_LAYER_ID,
+        type: 'line',
+        source: RADIUS_CIRCLE_SOURCE_ID,
+        paint: {
+          'line-color': COLOR_RADIUS,
+          'line-opacity': 0.6,
+          'line-width': 2,
+          'line-opacity-transition': { duration: 250 },
+        },
+      });
+
       map.addSource(PRODUCERS_SOURCE_ID, {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
@@ -332,7 +403,16 @@ function CarteClientContent() {
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !userLoc || !mapReady) return;
+    if (!map || !mapReady) return;
+
+    // Pas de vraie géoloc → on n'affiche pas de marqueur « Ta position »
+    // (la carte reste centrée sur le fallback Le Mans pour donner un
+    // contexte visuel, mais sans induire que c'est la position réelle).
+    if (!userLoc || geoStatus !== 'granted') {
+      userMarkerRef.current?.remove();
+      userMarkerRef.current = null;
+      return;
+    }
 
     if (!userMarkerRef.current) {
       const el = document.createElement('div');
@@ -349,7 +429,31 @@ function CarteClientContent() {
     } else {
       userMarkerRef.current.setLngLat([userLoc.lng, userLoc.lat]);
     }
-  }, [userLoc, mapReady]);
+  }, [userLoc, geoStatus, mapReady]);
+
+  // Met à jour le cercle de rayon : visible uniquement si vraie géoloc
+  // et radius numérique (mode « Tous » ou pas de position → cercle vide).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    const source = map.getSource(RADIUS_CIRCLE_SOURCE_ID) as
+      | mapboxgl.GeoJSONSource
+      | undefined;
+    if (!source) return;
+
+    const shouldDraw =
+      geoStatus === 'granted' && userLoc != null && radius !== 'all';
+    if (!shouldDraw) {
+      source.setData({ type: 'FeatureCollection', features: [] });
+      return;
+    }
+    const polygon = buildCirclePolygon(userLoc.lat, userLoc.lng, radius);
+    source.setData({
+      type: 'Feature',
+      geometry: polygon,
+      properties: {},
+    });
+  }, [userLoc, geoStatus, radius, mapReady]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -410,16 +514,20 @@ function CarteClientContent() {
     setLabels(next);
     router.replace(buildFiltersUrl(especes, next, radius), { scroll: false });
   };
-  const setRadiusAndSync = (r: number) => {
+  const setRadiusAndSync = (r: RadiusValue) => {
     setRadius(r);
     router.replace(buildFiltersUrl(especes, labels, r), { scroll: false });
   };
   const clearAll = () => {
-    setEspeces([]); setLabels([]); setRadius(50);
-    router.replace(buildFiltersUrl([], [], 50), { scroll: false });
+    // Reset au défaut sensible : 50 km si l'utilisateur a partagé sa
+    // position, sinon « Tous » (le filtre de distance n'a pas de sens
+    // sans vraie géoloc).
+    const resetRadius: RadiusValue = geoStatus === 'denied' ? 'all' : DEFAULT_RADIUS;
+    setEspeces([]); setLabels([]); setRadius(resetRadius);
+    router.replace(buildFiltersUrl([], [], resetRadius), { scroll: false });
   };
 
-  const activeFilters = especes.length + labels.length + (radius !== 50 ? 1 : 0);
+  const activeFilters = especes.length + labels.length + (radius !== DEFAULT_RADIUS ? 1 : 0);
 
   const cards = useMemo(() => results.map((r) => ({
     id: r.id,
@@ -442,11 +550,6 @@ function CarteClientContent() {
     },
   })), [results]);
 
-  const isFallbackLoc =
-    userLoc != null &&
-    userLoc.lat === GEOLOC_FALLBACK.lat &&
-    userLoc.lng === GEOLOC_FALLBACK.lng;
-
   return (
     <div className="bg-bg flex flex-col h-[calc(100dvh-4rem)] min-h-[600px]">
       <style>{USER_MARKER_CSS}</style>
@@ -459,7 +562,9 @@ function CarteClientContent() {
                 <p className="text-[13px] text-dark/60 mt-1">
                   {loading
                     ? 'Recherche…'
-                    : `${results.length} producteur${results.length > 1 ? 's' : ''} dans un rayon de ${radius} km`}
+                    : radius === 'all'
+                      ? `${results.length} producteur${results.length > 1 ? 's' : ''} au total`
+                      : `${results.length} producteur${results.length > 1 ? 's' : ''} dans un rayon de ${radius} km`}
                 </p>
               </div>
               {locating && <span className="text-[11px] mono text-dark/50">Localisation…</span>}
@@ -489,14 +594,36 @@ function CarteClientContent() {
               </div>
             </FilterGroup>
 
-            <FilterGroup label={`Rayon · ${radius} km`}>
-              <div className="flex gap-1.5">
-                {RADIUS_OPTIONS.map((r) => (
-                  <Chip key={r} active={radius === r} onClick={() => setRadiusAndSync(r)}>
+            <FilterGroup label={`Rayon · ${radius === 'all' ? 'Tous' : `${radius} km`}`}>
+              <div className="flex gap-1.5 flex-wrap">
+                {RADIUS_OPTIONS_NUMERIC.map((r) => (
+                  <Chip
+                    key={r}
+                    active={radius === r}
+                    disabled={geoStatus === 'denied'}
+                    onClick={() => setRadiusAndSync(r)}
+                    title={
+                      geoStatus === 'denied'
+                        ? 'Active ta position pour filtrer par distance'
+                        : undefined
+                    }
+                  >
                     {r} km
                   </Chip>
                 ))}
+                <Chip active={radius === 'all'} onClick={() => setRadiusAndSync('all')}>
+                  Tous
+                </Chip>
               </div>
+              {geoStatus === 'denied' && (
+                <button
+                  type="button"
+                  onClick={requestGeoloc}
+                  className="mt-2 text-[12px] text-green-700 underline hover:text-green-900"
+                >
+                  Activer ma position
+                </button>
+              )}
             </FilterGroup>
 
             {activeFilters > 0 && (
@@ -512,7 +639,14 @@ function CarteClientContent() {
               <div className="bg-white rounded-2xl border border-dark/[0.06] p-8 text-center">
                 <h3 className="font-serif text-[20px] text-green-900">Aucun producteur</h3>
                 <p className="text-[13px] text-dark/60 mt-1">Essayez d&apos;élargir le rayon ou de retirer des filtres.</p>
-                <div className="mt-4"><Button variant="secondary" size="sm" onClick={clearAll}>Réinitialiser</Button></div>
+                <div className="mt-4 flex gap-2 flex-wrap justify-center">
+                  {radius !== 'all' && (
+                    <Button variant="secondary" size="sm" onClick={() => setRadiusAndSync('all')}>
+                      Voir tous les producteurs
+                    </Button>
+                  )}
+                  <Button variant="ghost" size="sm" onClick={clearAll}>Réinitialiser</Button>
+                </div>
               </div>
             ) : (
               cards.map((c) => (
@@ -552,16 +686,32 @@ function CarteClientContent() {
               </span>
               Producteur
             </div>
-            <div className="flex items-center gap-2">
-              <span className="relative inline-flex w-4 h-4 items-center justify-center">
-                <span className="absolute inset-0 rounded-full bg-[#1976D2]/30" />
-                <span className="w-2.5 h-2.5 rounded-full bg-[#1976D2] border-2 border-white" />
-              </span>
-              Ta position
-            </div>
+            {geoStatus === 'granted' && (
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="relative inline-flex w-4 h-4 items-center justify-center">
+                  <span className="absolute inset-0 rounded-full bg-[#1976D2]/30" />
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#1976D2] border-2 border-white" />
+                </span>
+                Ta position
+              </div>
+            )}
+            {geoStatus === 'granted' && radius !== 'all' && (
+              <div className="flex items-center gap-2">
+                <span className="inline-flex w-4 h-4 items-center justify-center">
+                  <span
+                    className="block w-3.5 h-3.5 rounded-full border-2"
+                    style={{
+                      backgroundColor: `${COLOR_RADIUS}1A`,
+                      borderColor: `${COLOR_RADIUS}99`,
+                    }}
+                  />
+                </span>
+                Rayon {radius} km
+              </div>
+            )}
           </div>
 
-          {isFallbackLoc && (
+          {geoStatus === 'denied' && (
             <div className="absolute top-4 left-4 bg-white/95 backdrop-blur rounded-full shadow-soft px-3 py-1.5 text-[12px] text-dark/70 z-10 flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-terra-500" />
               {GEOLOC_FALLBACK.label} (par défaut)
@@ -583,19 +733,29 @@ function FilterGroup({ label, children }: { label: string; children: React.React
 }
 
 function Chip({
-  children, active, onClick, variant = 'green',
+  children, active, onClick, variant = 'green', disabled = false, title,
 }: {
-  children: React.ReactNode; active: boolean; onClick: () => void; variant?: 'green' | 'terra';
+  children: React.ReactNode;
+  active: boolean;
+  onClick: () => void;
+  variant?: 'green' | 'terra';
+  disabled?: boolean;
+  title?: string;
 }) {
   const activeCls = variant === 'terra'
     ? 'bg-terra-700 text-white border-terra-700'
     : 'bg-green-700 text-white border-green-700';
+  const inactiveCls = disabled
+    ? 'bg-white text-dark/40 border-dark/10 cursor-not-allowed opacity-60'
+    : 'bg-white text-dark/70 border-dark/10 hover:border-green-500 hover:text-green-900';
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
+      title={title}
       className={`h-8 px-3 rounded-full text-[13px] font-medium border transition-colors ${
-        active ? activeCls : 'bg-white text-dark/70 border-dark/10 hover:border-green-500 hover:text-green-900'
+        active ? activeCls : inactiveCls
       }`}
     >
       {children}

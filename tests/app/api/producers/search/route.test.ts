@@ -216,6 +216,23 @@ describe("GET /api/producers/search — contrat sécurité coords", () => {
     const res = await GET(req);
     expect(res.status).toBe(400);
   });
+
+  it("accepte radius=all et désactive le filtre de distance côté RPC", async () => {
+    // Mode « Tous » UI : la route route accepte la valeur littérale `all` et
+    // passe un rayon mathématiquement supérieur à toute distance sur la
+    // sphère terrestre (>20 000 km). La RPC est appelée normalement.
+    const { client, rpcCalls } = buildCapturingMockClient();
+    mockClientHolder.current = client;
+    const req = new Request(
+      "http://localhost:3000/api/producers/search?lat=48&lng=0&radius=all",
+    );
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+    expect(rpcCalls).toHaveLength(1);
+    const args = rpcCalls[0]!.args;
+    expect(typeof args.p_radius_km).toBe("number");
+    expect(args.p_radius_km as number).toBeGreaterThan(20000);
+  });
 });
 
 describe("GET /api/producers/search — rate-limit anti-trilatération (T-236)", () => {
