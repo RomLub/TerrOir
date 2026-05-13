@@ -19,64 +19,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
-    # Variables d'environnement factices pour la CI. Plusieurs modules
-    # TerrOir valident leurs env vars au boot (`lib/resend/client.ts`,
-    # `lib/stripe/client.ts`, `lib/env/urls.ts`, etc.) et throw si absent.
-    # En local on a `.env.local` qui les fournit ; en prod Vercel les a
-    # via Project Settings. La CI doit fournir des PLACEHOLDERS qui
-    # respectent le format minimum attendu (regex de validation Zod
-    # côté boot) pour que `next build` collecte les page data sans
-    # crasher. Ces valeurs ne sont JAMAIS appelées contre un service
-    # réel — la CI ne lance aucun test E2E qui taperait sur Resend,
-    # Stripe, Supabase ou Mapbox.
-    # Timezone : la CI Ubuntu tourne en UTC par défaut, ce qui casse les
-    # tests qui asserent des conversions Europe/Paris (DST CET/CEST). Set
-    # TZ aligne le système CI sur la timezone de TerrOir (vente Sarthe).
+    # Variables d'environnement au niveau JOB : uniquement `TZ`, qui
+    # affecte le système entier (incluant les tests Vitest qui assertent
+    # des conversions Europe/Paris — Sarthe DST CET/CEST).
+    #
+    # Les autres env vars (placeholders pour le boot fail-fast des
+    # modules `lib/resend/client.ts`, `lib/stripe/client.ts`,
+    # `lib/env/urls.ts`, etc.) sont scopées au STEP `Build` uniquement.
+    # Pourquoi : la doctrine TerrOir (cf. docs/conventions/vitest-
+    # mocking-patterns.md §5) recommande pour les tests le pattern
+    # `vi.hoisted` + `?? "fallback"`. Ce pattern fonctionne UNIQUEMENT
+    # si `process.env` n'est pas déjà pollué AVANT le test. Mettre les
+    # placeholders au niveau job écraserait les fallbacks des 92
+    # fichiers de test concernés et provoquerait des AssertionError
+    # cosmétiques (ex: test attend `admin@terroir-local.fr`, reçoit le
+    # placeholder CI à la place).
     env:
       TZ: Europe/Paris
-      # Supabase
-      NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.placeholder.placeholder
-      SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.placeholder.placeholder
-      # URLs applicatives. Valeurs alignées sur les fallbacks des tests
-      # Vitest (`process.env.NEXT_PUBLIC_X ?? "https://app.test"` etc.,
-      # cf. tests/lib/auth/email-redirect.test.ts). TLD `.test` est
-      # officiellement réservé pour les tests par la RFC 6761.
-      NEXT_PUBLIC_APP_URL: https://app.test
-      NEXT_PUBLIC_PRODUCER_URL: https://pro.test
-      NEXT_PUBLIC_ADMIN_URL: https://admin.test
-      # Stripe
-      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_placeholder
-      STRIPE_SECRET_KEY: sk_test_placeholder
-      STRIPE_WEBHOOK_SECRET: whsec_placeholder
-      # Mapbox
-      NEXT_PUBLIC_MAPBOX_TOKEN: pk.placeholder
-      # Resend
-      RESEND_API_KEY: re_placeholder
-      RESEND_FROM_EMAIL: noreply@example.com
-      RESEND_WEBHOOK_SECRET: whsec_placeholder
-      # Twilio
-      TWILIO_ACCOUNT_SID: ACplaceholderplaceholderplaceholder00
-      TWILIO_AUTH_TOKEN: placeholder
-      TWILIO_PHONE_NUMBER: '+15551234567'
-      # Upstash Redis (rate-limit) : INTENTIONNELLEMENT ABSENT.
-      # Le helper `consumeRateLimit` est fail-open documenté si les vars
-      # sont absentes — passer un placeholder URL ferait tenter un fetch
-      # vers un hostname inexistant qui throw réseau et casse les tests
-      # qui assertent un autre log message que [RATE_LIMIT_REDIS_ERROR].
-      # Cf. .env.example : « REQUIS en prod (sécurité), tolérés en
-      # dev/preview ». CI = tolérée.
-      # HMAC secrets (format hex 64 chars attendu)
-      EMAIL_CHANGE_OTP_SECRET: '0000000000000000000000000000000000000000000000000000000000000000'
-      CRON_SECRET: '0000000000000000000000000000000000000000000000000000000000000000'
-      OPT_OUT_TOKEN_SECRET: '0000000000000000000000000000000000000000000000000000000000000000'
-      ROLE_SNAPSHOT_SECRET: '0000000000000000000000000000000000000000000000000000000000000000'
-      # Ops alerting. Requis au build (lib/env/support-email.ts throw
-      # au module-load). Valeur 'admin@terroir-local.fr' alignée sur
-      # ce que les tests Vitest font en fallback top-level :
-      # `process.env.SUPPORT_EMAIL ?? "admin@terroir-local.fr"`. Toute
-      # autre valeur casserait les assertions hardcodées des tests.
-      SUPPORT_EMAIL: admin@terroir-local.fr
 
     steps:
       - name: Checkout
@@ -98,19 +57,75 @@ jobs:
         run: npm ci
 
       - name: Lint (ESLint flat config)
+        # Pas de `env:` ici. `eslint .` est analyse statique pure (parse
+        # AST + applique règles), ne load aucun module — pas de fail-fast
+        # au boot.
         run: npm run lint
 
       - name: Build (Next.js compile + génère .next/types pour type-check)
         # `npm run build` doit précéder le type-check parce que tsconfig
         # inclut `.next/types/**/*.ts` (types générés par Next 16 :
-        # routes typées, segment configs). Sans le build préalable,
-        # le type-check signale des modules manquants.
+        # routes typées, segment configs). Sans le build préalable, le
+        # type-check signale des modules manquants.
+        #
+        # Env vars placeholders scopées à CE STEP UNIQUEMENT (cf.
+        # commentaire en tête du job). `next build` collecte les page
+        # data en évaluant les modules au boot — chaque module avec
+        # validation fail-fast a besoin de sa var même factice. Ces
+        # valeurs ne sont JAMAIS appelées contre un service réel : la
+        # CI ne lance aucun test E2E qui taperait sur Resend, Stripe,
+        # Supabase ou Mapbox.
+        env:
+          # Supabase
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.placeholder.placeholder
+          SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.placeholder.placeholder
+          # URLs applicatives (TLD .test = RFC 6761 réservé tests)
+          NEXT_PUBLIC_APP_URL: https://app.test
+          NEXT_PUBLIC_PRODUCER_URL: https://pro.test
+          NEXT_PUBLIC_ADMIN_URL: https://admin.test
+          # Stripe
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_placeholder
+          STRIPE_SECRET_KEY: sk_test_placeholder
+          STRIPE_WEBHOOK_SECRET: whsec_placeholder
+          # Mapbox
+          NEXT_PUBLIC_MAPBOX_TOKEN: pk.placeholder
+          # Resend
+          RESEND_API_KEY: re_placeholder
+          RESEND_FROM_EMAIL: noreply@example.com
+          RESEND_WEBHOOK_SECRET: whsec_placeholder
+          # Twilio
+          TWILIO_ACCOUNT_SID: ACplaceholderplaceholderplaceholder00
+          TWILIO_AUTH_TOKEN: placeholder
+          TWILIO_PHONE_NUMBER: '+15551234567'
+          # Upstash Redis (rate-limit) : INTENTIONNELLEMENT ABSENT.
+          # Le helper `consumeRateLimit` est fail-open documenté si les
+          # vars sont absentes. Passer un placeholder URL ferait tenter
+          # un fetch vers un hostname inexistant qui throw réseau au
+          # boot.
+          # HMAC secrets (format hex 64 chars attendu)
+          EMAIL_CHANGE_OTP_SECRET: '0000000000000000000000000000000000000000000000000000000000000000'
+          CRON_SECRET: '0000000000000000000000000000000000000000000000000000000000000000'
+          OPT_OUT_TOKEN_SECRET: '0000000000000000000000000000000000000000000000000000000000000000'
+          ROLE_SNAPSHOT_SECRET: '0000000000000000000000000000000000000000000000000000000000000000'
+          # Ops alerting. Requis au build (lib/env/support-email.ts throw
+          # au module-load).
+          SUPPORT_EMAIL: admin@terroir-local.fr
         run: npm run build
 
       - name: Type-check (TypeScript strict)
+        # Pas de `env:` ici. `tsc --noEmit` est analyse statique pure, ne
+        # load pas les modules — pas de fail-fast au boot. Lit
+        # `.next/types/**/*.ts` généré au step Build précédent.
         run: npm run type-check
 
       - name: Test (Vitest)
+        # Pas de `env:` ici. La doctrine TerrOir (§5 vitest-mocking-
+        # patterns) recommande `vi.hoisted` + `?? "fallback"` dans
+        # chaque fichier de test. Polluer process.env au niveau step
+        # casserait les fallbacks de 92 fichiers de test (cf.
+        # commentaire en tête du job).
+        #
         # `npm test` = `vitest run` (config par défaut), exclut
         # `tests/sql-integration/**` (requiert Docker + supabase start —
         # ces tests ont un workflow dédié si activés).
