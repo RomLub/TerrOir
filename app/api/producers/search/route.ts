@@ -69,7 +69,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const lat = parseFloat(url.searchParams.get("lat") ?? "");
   const lng = parseFloat(url.searchParams.get("lng") ?? "");
-  const radius = parseFloat(url.searchParams.get("radius") ?? "50");
+  const radiusRaw = url.searchParams.get("radius") ?? "50";
 
   if (Number.isNaN(lat) || Number.isNaN(lng)) {
     return NextResponse.json(
@@ -77,7 +77,16 @@ export async function GET(request: Request) {
       { status: 400 },
     );
   }
-  if (Number.isNaN(radius) || radius <= 0 || radius > 500) {
+
+  // `radius=all` (mode « Tous » côté UI carte) : pas de filtre de
+  // distance, on passe à la RPC un rayon supérieur à la moitié de la
+  // circonférence terrestre (~20 015 km) pour matcher tous les
+  // producteurs. La RPC continue de retourner `distance_km` (utile
+  // pour le ranking côté UI quand la géoloc est dispo).
+  const isUnlimited = radiusRaw === "all";
+  const radius = isUnlimited ? 20015 : parseFloat(radiusRaw);
+
+  if (!isUnlimited && (Number.isNaN(radius) || radius <= 0 || radius > 500)) {
     return NextResponse.json(
       { error: "radius hors bornes (1-500 km)" },
       { status: 400 },
