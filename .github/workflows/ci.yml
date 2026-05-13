@@ -64,14 +64,12 @@ jobs:
       CRON_SECRET: '0000000000000000000000000000000000000000000000000000000000000000'
       OPT_OUT_TOKEN_SECRET: '0000000000000000000000000000000000000000000000000000000000000000'
       ROLE_SNAPSHOT_SECRET: '0000000000000000000000000000000000000000000000000000000000000000'
-      # Ops alerting : INTENTIONNELLEMENT ABSENT.
-      # Plusieurs tests Vitest font `process.env.SUPPORT_EMAIL ?? "admin
-      # @terroir-local.fr"` au top-level pour fixer une valeur stable
-      # avant l'import du module testé. Définir SUPPORT_EMAIL côté CI
-      # écraserait ce fallback et casserait les assertions hardcodées
-      # sur la valeur prod. La var n'est requise par aucun module au
-      # build time (`lib/env/support-email.ts` ne throw pas au load,
-      # seulement à l'appel).
+      # Ops alerting. Requis au build (lib/env/support-email.ts throw
+      # au module-load). Valeur 'admin@terroir-local.fr' alignée sur
+      # ce que les tests Vitest font en fallback top-level :
+      # `process.env.SUPPORT_EMAIL ?? "admin@terroir-local.fr"`. Toute
+      # autre valeur casserait les assertions hardcodées des tests.
+      SUPPORT_EMAIL: admin@terroir-local.fr
 
     steps:
       - name: Checkout
