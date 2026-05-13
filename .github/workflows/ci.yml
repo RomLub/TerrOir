@@ -29,15 +29,22 @@ jobs:
     # crasher. Ces valeurs ne sont JAMAIS appelées contre un service
     # réel — la CI ne lance aucun test E2E qui taperait sur Resend,
     # Stripe, Supabase ou Mapbox.
+    # Timezone : la CI Ubuntu tourne en UTC par défaut, ce qui casse les
+    # tests qui asserent des conversions Europe/Paris (DST CET/CEST). Set
+    # TZ aligne le système CI sur la timezone de TerrOir (vente Sarthe).
     env:
+      TZ: Europe/Paris
       # Supabase
       NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
       NEXT_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.placeholder.placeholder
       SUPABASE_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.placeholder.placeholder
-      # URLs applicatives
-      NEXT_PUBLIC_APP_URL: http://localhost:3000
-      NEXT_PUBLIC_PRODUCER_URL: http://localhost:3001
-      NEXT_PUBLIC_ADMIN_URL: http://localhost:3002
+      # URLs applicatives. Valeurs alignées sur les fallbacks des tests
+      # Vitest (`process.env.NEXT_PUBLIC_X ?? "https://app.test"` etc.,
+      # cf. tests/lib/auth/email-redirect.test.ts). TLD `.test` est
+      # officiellement réservé pour les tests par la RFC 6761.
+      NEXT_PUBLIC_APP_URL: https://app.test
+      NEXT_PUBLIC_PRODUCER_URL: https://pro.test
+      NEXT_PUBLIC_ADMIN_URL: https://admin.test
       # Stripe
       NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_placeholder
       STRIPE_SECRET_KEY: sk_test_placeholder
