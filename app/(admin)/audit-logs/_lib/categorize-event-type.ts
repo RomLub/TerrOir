@@ -19,7 +19,9 @@ export type EventCategory =
   | "notification"
   | "legal"
   | "email"
-  | "catalog";
+  | "catalog"
+  | "producers"
+  | "producer_interests";
 
 export function categorizeEventType(eventType: AuditEventType): EventCategory {
   if (eventType.startsWith("admin_invite_")) return "admin_invite";
@@ -37,6 +39,22 @@ export function categorizeEventType(eventType: AuditEventType): EventCategory {
     eventType.startsWith("admin_cut_")
   )
     return "catalog";
+  // PR refactor/admin-pattern-uniform : modération avis admin (publish/reject)
+  // rattachée visuellement au cluster "review" (modération côté admin = même
+  // surface fonctionnelle que les réponses producteur).
+  if (eventType.startsWith("admin_review_")) return "review";
+  // PR refactor/admin-pattern-uniform : mutations admin sur producer_interests
+  // (leads producteurs). Catégorie distincte de "producers" (cluster pre-
+  // onboarding, sémantique différente). DOIT être testée AVANT
+  // `admin_producer_` qui est un sous-préfixe (sinon admin_producer_interest_*
+  // tomberait en `producers`).
+  if (eventType.startsWith("admin_producer_interest_"))
+    return "producer_interests";
+  // PR refactor/admin-pattern-uniform : mutations admin sur la table producers
+  // (changement statut, etc.). Distinct de `admin_invite_*` (qui couvre
+  // l'invitation pre-création) et `producer_response_*` (qui couvre la
+  // réponse aux avis dans le cluster `review`).
+  if (eventType.startsWith("admin_producer_")) return "producers";
   if (eventType.startsWith("stripe_")) return "stripe";
   // Pickup commande (validation retrait code producer) : sous-flow d'une
   // commande, regroupé visuellement avec les autres events 'order_*'.
@@ -120,5 +138,17 @@ export const CATEGORY_PALETTE: Record<
     bg: "bg-teal-50",
     text: "text-teal-700",
     dot: "bg-teal-500",
+  },
+  producers: {
+    label: "Producteurs",
+    bg: "bg-sky-50",
+    text: "text-sky-700",
+    dot: "bg-sky-500",
+  },
+  producer_interests: {
+    label: "Leads",
+    bg: "bg-fuchsia-50",
+    text: "text-fuchsia-700",
+    dot: "bg-fuchsia-500",
   },
 };
