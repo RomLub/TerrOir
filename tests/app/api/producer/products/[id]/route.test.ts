@@ -133,7 +133,7 @@ function makeRequest(body: unknown): Request {
   });
 }
 
-const ctx = { params: { id: PRODUCT_ID } };
+const ctx = { params: Promise.resolve({ id: PRODUCT_ID }) };
 
 function defaultProducerOk() {
   pushResp("producers", "select", {
@@ -197,7 +197,7 @@ describe("PATCH /api/producer/products/[id] — validation Zod", () => {
   it("product id non-uuid → 400", async () => {
     const res = await PATCH(
       makeRequest({ stock_disponible: 5 }),
-      { params: { id: "not-a-uuid" } },
+      { params: Promise.resolve({ id: "not-a-uuid" }) },
     );
     expect(res.status).toBe(400);
   });

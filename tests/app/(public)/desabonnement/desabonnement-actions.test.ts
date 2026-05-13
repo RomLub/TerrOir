@@ -132,7 +132,10 @@ describe("unsubscribeAction (T-110 — match email .ilike)", () => {
     ).toBeUndefined();
     // F-027 : audit log opt_out_unsubscribed émis avec event_type correct
     expect(logAuthEventMock).toHaveBeenCalledOnce();
-    const eventArg = logAuthEventMock.mock.calls[0]?.[0] as {
+    // Cast nécessaire : vi.fn(async () => {}) sans signature explicite type
+    // mock.calls comme [][]. Le double cast `unknown[]` puis `[0] as T`
+    // récupère l'argument typé sans perdre la sécurité (vs `any`).
+    const eventArg = (logAuthEventMock.mock.calls[0] as unknown[])[0] as {
       eventType: string;
       metadata?: { email_masked?: string; rows_deleted?: number };
     };

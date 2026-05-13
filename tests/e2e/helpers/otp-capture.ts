@@ -18,6 +18,7 @@
  */
 
 import { TestContext, safeDelete, safeInsert, getReadOnlyAdminClient, trackRowId } from './supabase-admin';
+import type { AuthEventType } from '@/lib/audit-logs/log-auth-event';
 
 // ============================================================================
 // MIRROR de lib/email-change/hmac.ts (algo HMAC-SHA256)
@@ -245,14 +246,6 @@ export async function assertOtpRowExists(
     );
   }
 }
-
-export type AuthEventType =
-  | 'account_otp_requested'
-  | 'account_otp_verified'
-  | 'account_otp_invalid'
-  | 'account_otp_expired'
-  | 'account_otp_attempts_exceeded'
-  | 'account_email_change_completed';
 
 export interface AssertAuditLogOptions {
   userId: string;

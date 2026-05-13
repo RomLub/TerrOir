@@ -90,7 +90,15 @@ describe("sendOpsAlert (Cluster B Phase 3)", () => {
     });
 
     expect(mockSendTemplate).toHaveBeenCalledTimes(1);
-    const args = mockSendTemplate.mock.calls[0]![0];
+    // Cast nécessaire : vi.fn(async () => ({...})) sans signature explicite
+    // type mock.calls comme [][]. Le double cast `unknown[]` puis `[0] as T`
+    // récupère l'argument typé sans perdre la sécurité (vs `any`).
+    const args = (mockSendTemplate.mock.calls[0] as unknown[])[0] as {
+      to: string;
+      subject: string;
+      template: string;
+      metadata: Record<string, unknown>;
+    };
     expect(args.to).toBe("admin@terroir-test.fr");
     expect(args.subject).toBe("[OPS] [REFUND_DB_DRIFT] order=ord-7");
     expect(args.template).toBe("admin_ops_alert");
