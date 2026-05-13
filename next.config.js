@@ -1,7 +1,8 @@
 // Assets logo disponibles :
-// /public/Logo_TerrOir.jpeg       → logo raster (OG meta tags, partage social)
-// /public/Logo_TerrOir_square.png → version carrée rognée (favicon, app icon iOS)
-// /app/icon.png                   → favicon 64x64 (auto-détecté par Next.js)
+// /public/Logo_TerrOir.jpeg → logo raster (OG meta tags, partage social)
+// /app/icon.png             → favicon 32x32 (auto-détecté par Next.js)
+// /app/apple-icon.png       → app icon iOS 180x180 (auto-détecté par Next.js)
+// /public/icone.svg         → icône carrée TerrOir (SVG, usage in-app)
 // Composant React <Logo /> dans components/ui/logo.tsx → SVG inline (UI in-app)
 
 const withBundleAnalyzer = require("@next/bundle-analyzer")({
