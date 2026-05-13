@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import mapboxgl from 'mapbox-gl';
@@ -200,7 +200,14 @@ function CarteClientContent() {
   const userMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const lastHoverRef = useRef<string | null>(null);
   const routerRef = useRef(router);
-  routerRef.current = router;
+  // useLayoutEffect (vs useEffect) garantit la maj synchrone avant le paint :
+  // les event handlers natifs Mapbox (déclenchés par interactions souris/clavier
+  // entre deux renders React) lisent toujours la valeur la plus à jour du
+  // router. Avec useEffect classique il y aurait une fenêtre micro-tâche où
+  // un event Mapbox pourrait lire l'ancienne référence.
+  useLayoutEffect(() => {
+    routerRef.current = router;
+  }, [router]);
   const [mapReady, setMapReady] = useState(false);
 
   useEffect(() => {
