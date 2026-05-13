@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+
+# Annule automatiquement les runs précédents de la même PR / branche quand
+# un nouveau commit est poussé — évite de payer plusieurs minutes CI pour
+# des commits que l'auteur a déjà rectifiés.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: Lint + Type-check + Build + Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Aligné sur Node 22 (LTS courante, version utilisée par Vercel
+          # pour les builds Next 16). Bumper ici si Vercel change de
+          # default ou si le projet a besoin d'une feature node récente.
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        # `npm ci` strict (vs `npm install`) : refuse les ERESOLVE et
+        # n'altère jamais package-lock.json. Pas de `--legacy-peer-deps`
+        # par doctrine (cf. CLAUDE.md règle workflow git « interdits »).
+        run: npm ci
+
+      - name: Lint (ESLint flat config)
+        run: npm run lint
+
+      - name: Build (Next.js compile + génère .next/types pour type-check)
+        # `npm run build` doit précéder le type-check parce que tsconfig
+        # inclut `.next/types/**/*.ts` (types générés par Next 16 :
+        # routes typées, segment configs). Sans le build préalable,
+        # le type-check signale des modules manquants.
+        run: npm run build
+
+      - name: Type-check (TypeScript strict)
+        run: npm run type-check
+
+      - name: Test (Vitest)
+        # `npm test` = `vitest run` (config par défaut), exclut
+        # `tests/sql-integration/**` (requiert Docker + supabase start —
+        # ces tests ont un workflow dédié si activés).
+        run: npm test
