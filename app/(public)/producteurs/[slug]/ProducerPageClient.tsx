@@ -232,8 +232,12 @@ export function ProducerPageClient({
           ) : (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
               {productsWithImage.map((prod) => (
-                <Link key={prod.id} href={`/producteurs/${producer.slug}/produits/${prod.id}`}>
-                  <ProductCard product={prod} onClick={() => {}} />
+                <Link
+                  key={prod.id}
+                  href={`/producteurs/${producer.slug}/produits/${prod.id}`}
+                  className="block rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-terra-700"
+                >
+                  <ProductCard product={prod} />
                 </Link>
               ))}
             </div>
