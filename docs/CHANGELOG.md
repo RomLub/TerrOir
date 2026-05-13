@@ -9,6 +9,32 @@ Pour les décisions structurantes (ADRs), voir [`decisions/`](./decisions/).
 
 ---
 
+## 2026-05-13 (PR3 admin-new-surfaces — users, refund-incidents, invitations)
+
+> PR `feature/admin-new-surfaces`. Troisième et dernière des 3 PR du chantier audit-driven admin (`docs/AUDIT_ADMIN.md`).
+>
+> 🟢 **3 nouvelles surfaces admin** câblées en UI alors que les données existaient déjà en DB (`AUDIT_ADMIN §6 P0 #3`, `§6 P1 #6`, `§6 P2 #9`) :
+>
+> - **`/users`** — vue globale users (recherche email, filtres rôle consumer/producer/admin, pagination cursor 50). Page détail `/users/[id]` avec 4 onglets : **Profil** (jointure `auth.users` pour `last_sign_in_at` + `email_confirmed_at`) / **Commandes** (filtré `consumer_id`) / **Reviews** (filtré `consumer_id`) / **Notifications** (filtré `user_id`, tri `created_at DESC` — traite le gap P1 deliverability). Visualisation seule, pas de mutation.
+>
+> - **`/refund-incidents`** — liste filtrée + drill-down `[id]` avec table `refund_incident_attempts`. Action "Marquer comme résolu manuellement" avec note obligatoire (min 5 chars). API route `/api/admin/refund-incidents/[id]/resolve` (POST) → trigger 409 si statut non-actionnable, UPDATE service_role + audit log `refund_incident_resolved_manually` (nouveau event_type) + `revalidatePath`.
+>
+> - **`/invitations`** — listing complet des `producer_invitations` avec statuts **computed côté query** (la table n'a pas de col `status`) : `sent` / `consumed` / `expired` / `revoked`. Action "Révoquer" via POST `/api/admin/invitations/[id]/revoke` → 409 si déjà consumed, 200 noop si déjà revoked (idempotent), succès UPDATE `revoked_at=now()` + audit log `invitation_revoked` (event pré-déclaré dans `log-auth-event.ts`, jamais émis avant).
+>
+> 🟢 **Migration `add_producer_invitations_revoked_at`** : `ALTER TABLE producer_invitations ADD COLUMN revoked_at TIMESTAMPTZ NULL` + **CHECK constraint exclusive** `NOT (used_at IS NOT NULL AND revoked_at IS NOT NULL)` (défense en profondeur DB, complète le 409 applicatif) + index partiel `WHERE revoked_at IS NOT NULL`. Appliquée via MCP, smoke tests OK (colonne, contrainte, index, tentative INSERT incohérent bloquée par CHECK).
+>
+> 🟢 **AdminSidebar étendue** : 3 nouvelles entrées (`Invitations`, `Utilisateurs`, `Incidents refund`) positionnées proches de leurs surfaces métier respectives. Test smoke check étendu (4 nouveaux tests : rendu + active state pour chaque entrée).
+>
+> 🟢 **Nouvelle catégorie audit-logs `refund`** (palette `red`, signal incident plus fort que `rose` email bounces) : règle préfixe `refund_incident_*`. Justification : cycle de vie technique refund (Stripe Refunds API + backoff retry cron T-102 + résolution manuelle) distinct du flow commande nominal — mérite sa propre couleur côté `/audit-logs` pour repérage forensique rapide. À terme, candidat pour migration des `order_refund_*` / `producer_refund_*` (12 events existants) vers cette catégorie.
+>
+> 🟢 **Précédence computed statuts invitations (defensive)** : si une row corrompue historique a `used_at` ET `revoked_at` malgré le CHECK, le helper `mapRowStatus` retourne `consumed` (état métier dominant). Test fetch dédié couvre ce cas.
+>
+> 🟢 **Nettoyage** : `tree.txt` parasite supprimé (jamais tracked, hors scope toutes PR mais polluait `git status`).
+>
+> Tests : **2678/2678 verts** (140 nouveaux : 46 users + 55 refund-incidents + 39 invitations). Lint, type-check, build : propres.
+
+---
+
 ## 2026-05-13 (refonte doctrine + tri TODO/backlog + ADRs + EOL normalisation)
 
 > Refonte structurelle session 2026-05-12/13. PR #122 (EOL) mergée + chantier `chore/cleanup-post-t300-and-doctrine-refresh` en cours.
