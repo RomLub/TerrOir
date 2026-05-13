@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Button, Input } from '@/components/ui';
 import { ProducerLayout } from '../_components/ProducerLayout';
 
@@ -19,9 +19,9 @@ function defaultRange() {
 }
 
 export default function ComptabilitePage() {
-  const initial = useMemo(defaultRange, []);
-  const [from, setFrom] = useState(initial.from);
-  const [to, setTo] = useState(initial.to);
+  const [{ from: initialFrom, to: initialTo }] = useState(defaultRange);
+  const [from, setFrom] = useState(initialFrom);
+  const [to, setTo] = useState(initialTo);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
