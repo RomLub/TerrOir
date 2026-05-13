@@ -299,3 +299,4 @@ Sans ces 3 critères, la whitelist devient un trou laissé ouvert. Avec, elle re
 - `docs/conventions/vitest-mocking-patterns.md` — pièges mock vitest (importOriginal, isolation worker, etc.). Référencer plutôt que dupliquer.
 - `docs/audits/audit-batch-axe1-coverage-2026-05-12.md` — méthodologie audit batch reproductible.
 - `CLAUDE.md` doctrines transverses (à mettre à jour Axe 5 chantier P1 pour pointer vers cette doctrine régression).
+- `scripts/cleanup-test-residuals-e2e.ts` — wrapper CLI standalone sur `sweepE2EResiduals` pour invocation hors Playwright lifecycle (cron, sweep manuel, debug). Livré chantier P1 commit `f2f8f77`.
