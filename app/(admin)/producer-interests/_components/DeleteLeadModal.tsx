@@ -2,8 +2,16 @@
 
 import { useState } from "react";
 import { AdminModal } from "@/components/ui";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { Lead } from "./types";
+
+// Modal de confirmation suppression d'un lead producteur.
+//
+// Refactor PR1 admin-pattern-uniform : la suppression passe désormais par
+// l'API route /api/admin/producer-interests/[id] (DELETE) plutôt que par un
+// .delete() direct browser client. Avantages :
+//   - audit log obligatoire côté serveur (snapshot complet du lead),
+//   - cohérence avec le pattern WRITE admin du reste du back-office,
+//   - défense in depth (auth check sur la route en plus de la RLS).
 
 export function DeleteLeadModal({
   lead,
@@ -20,17 +28,24 @@ export function DeleteLeadModal({
   const confirm = async () => {
     setBusy(true);
     setError(null);
-    const supabase = createSupabaseBrowserClient();
-    const { error: delError } = await supabase
-      .from("producer_interests")
-      .delete()
-      .eq("id", lead.id);
-    if (delError) {
-      setError(delError.message);
+    try {
+      const res = await fetch(
+        `/api/admin/producer-interests/${encodeURIComponent(lead.id)}`,
+        { method: "DELETE" },
+      );
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+        setError(body?.error ?? `Erreur HTTP ${res.status}`);
+        setBusy(false);
+        return;
+      }
+      onDeleted();
+    } catch (err) {
+      setError((err as Error).message);
       setBusy(false);
-      return;
     }
-    onDeleted();
   };
 
   return (

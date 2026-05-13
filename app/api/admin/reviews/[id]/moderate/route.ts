@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { logReviewModerationEvent } from "@/lib/audit-logs/log-review-moderation-event";
 import {
   revalidateProducerCard,
   revalidateProducerReviews,
@@ -70,6 +71,20 @@ export async function POST(request: Request, props: RouteContext) {
       { status: 500 },
     );
   }
+
+  // PR1 admin pattern : émission audit_logs (publish ET reject) — auparavant
+  // la route faisait un UPDATE silencieux, aucune trace forensique côté
+  // /audit-logs (cf. AUDIT_ADMIN § 1.2 "Audit log : —"). Helper fail-safe
+  // (swallow errors), pas de re-throw qui casserait la modération.
+  await logReviewModerationEvent({
+    eventType: isPublish ? "admin_review_published" : "admin_review_rejected",
+    userId: session.id,
+    metadata: {
+      review_id: review.id,
+      producer_id: review.producer_id,
+      previous_statut: review.statut,
+    },
+  });
 
   // Recalcul complet du cache (publish ET reject) : un rejet peut concerner
   // une review déjà published qui doit disparaître de la moyenne.

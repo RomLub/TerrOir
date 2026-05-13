@@ -106,6 +106,17 @@ export const AUDIT_EVENT_LABELS: Record<string, string> = {
   producer_response_removed_by_admin: "Réponse producteur supprimée (admin)",
   notification_preference_updated: "Préférence notification modifiée",
 
+  // ─── Modération avis admin (PR refactor/admin-pattern-uniform) ──────
+  admin_review_published: "Avis publié par admin",
+  admin_review_rejected: "Avis rejeté par admin",
+
+  // ─── Producteurs (admin) ────────────────────────────────────────────
+  admin_producer_statut_changed: "Producteur : changement de statut",
+
+  // ─── Leads producteurs (producer_interests) ─────────────────────────
+  admin_producer_interest_statut_changed: "Lead producteur : statut modifié",
+  admin_producer_interest_deleted: "Lead producteur supprimé",
+
   // ─── Légal / conformité ─────────────────────────────────────────────
   admin_legal_compliance_exported: "Export conformité CGU",
   admin_audit_logs_email_lookup: "Recherche email (audit-logs)",

@@ -488,6 +488,21 @@ la condition de déblocage.
   (`npx playwright test <spec> --workers=1`), ou utiliser
   `npm run build && npm run start` au lieu de `next dev`.
 
+### Git worktree + junction Windows node_modules
+
+- `git worktree add ../<path>` + jonction Windows
+  (`mklink /J node_modules ../main/node_modules`) marche pour `vitest`,
+  `tsc --noEmit`, `eslint`. Tous les checks classiques passent.
+- En revanche `next build` (Turbopack) échoue avec
+  `TurbopackInternalError` sur `Project::get_all_endpoint_groups_with_app_route_filter`
+  → le resolver Turbopack ne traverse pas correctement la jonction
+  Windows (probablement résolution canonique de path qui désynchronise
+  les root finders).
+- **Workaround** pour les patches courts : faire le travail sur le main
+  working tree directement (stash + branch switch + build + branch back
+  + stash pop). Pour les chantiers longs en parallèle : `npm install`
+  complet dans le worktree (lourd mais Turbopack est content).
+
 ### Stripe
 
 - Idempotency cancel orphelin : check `pi.id !== winningPiId` AVANT
