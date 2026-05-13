@@ -9,6 +9,22 @@ Pour les décisions structurantes (ADRs), voir [`decisions/`](./decisions/).
 
 ---
 
+## 2026-05-13 (PR1 admin-pattern-uniform — refactor 3 pages admin)
+
+> PR #128 `refactor/admin-pattern-uniform`. Première des 3 PR du chantier audit-driven admin (`docs/AUDIT_ADMIN.md`).
+>
+> 🟢 **`/avis`, `/gestion-producteurs`, `/producer-interests`** refactor en Server Component + `createSupabaseAdminClient()` (service_role) pour le READ + API routes `/api/admin/*` + audit log obligatoire pour le WRITE. Pattern uniformisé, plus de divergence browser-RLS vs server-service_role.
+>
+> 🟢 **Bug `AUDIT_ADMIN` §4.5 résolu par construction** : la page `/avis` lisait via browser-client + RLS, mais la table `reviews` n'a aucune policy admin. Conséquence : reviews `pending` invisibles côté admin dès qu'un consumer en publierait. Le passage en service_role les rend visibles. Validé en live via MCP Supabase (insertion review pending factice → fetch service_role OK → cleanup).
+>
+> 🟢 **5 nouveaux event_types `audit_logs`** (avec labels FR + catégories visuelles) : `admin_review_published`, `admin_review_rejected` (catégorie `review`), `admin_producer_statut_changed` (nouvelle catégorie `producers`, palette sky), `admin_producer_interest_statut_changed`, `admin_producer_interest_deleted` (nouvelle catégorie `producer_interests`, palette fuchsia). 3 nouveaux helpers `lib/audit-logs/log-*-event.ts` symétriques aux clusters existants.
+>
+> 🟢 **`lib/admin/{reviews,producers,producer-interests}/`** créés pour factoriser les helpers fetch + types + mappers (instruction lead PR1 : zéro duplication entre l'ancienne page CSR et la nouvelle SSR).
+>
+> Tests : 2616/2616 verts. Lint, type-check, build : propres.
+
+---
+
 ## 2026-05-13 (refonte doctrine + tri TODO/backlog + ADRs + EOL normalisation)
 
 > Refonte structurelle session 2026-05-12/13. PR #122 (EOL) mergée + chantier `chore/cleanup-post-t300-and-doctrine-refresh` en cours.
