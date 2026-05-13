@@ -34,6 +34,18 @@ import {
   REFUND_INCIDENTS_EVENT_TYPES,
   type RefundIncidentsEventType,
 } from "@/lib/audit-logs/log-refund-incidents-event";
+import {
+  REVIEW_MODERATION_EVENT_TYPES,
+  type ReviewModerationEventType,
+} from "@/lib/audit-logs/log-review-moderation-event";
+import {
+  PRODUCERS_ADMIN_EVENT_TYPES,
+  type ProducersAdminEventType,
+} from "@/lib/audit-logs/log-producers-admin-event";
+import {
+  PRODUCER_INTERESTS_EVENT_TYPES,
+  type ProducerInterestsEventType,
+} from "@/lib/audit-logs/log-producer-interests-event";
 
 // Source unique consolidée pour la page admin /audit-logs : concaténation
 // des clusters helpers sans duplication. L'ordre suit l'ordre d'apparition
@@ -49,6 +61,9 @@ export const ALL_EVENT_TYPES = [
   ...REVIEW_FOLLOWUP_EVENT_TYPES,
   ...PRODUCER_INDICATEURS_EVENT_TYPES,
   ...REFUND_INCIDENTS_EVENT_TYPES,
+  ...REVIEW_MODERATION_EVENT_TYPES,
+  ...PRODUCERS_ADMIN_EVENT_TYPES,
+  ...PRODUCER_INTERESTS_EVENT_TYPES,
 ] as const;
 
 export type AuditEventType =
@@ -60,4 +75,7 @@ export type AuditEventType =
   | PickupEventType
   | ReviewFollowupEventType
   | ProducerIndicateursEventType
-  | RefundIncidentsEventType;
+  | RefundIncidentsEventType
+  | ReviewModerationEventType
+  | ProducersAdminEventType
+  | ProducerInterestsEventType;

@@ -488,6 +488,21 @@ la condition de déblocage.
   (`npx playwright test <spec> --workers=1`), ou utiliser
   `npm run build && npm run start` au lieu de `next dev`.
 
+### Git worktree + junction Windows node_modules
+
+- `git worktree add ../<path>` + jonction Windows
+  (`mklink /J node_modules ../main/node_modules`) marche pour `vitest`,
+  `tsc --noEmit`, `eslint`. Tous les checks classiques passent.
+- En revanche `next build` (Turbopack) échoue avec
+  `TurbopackInternalError` sur `Project::get_all_endpoint_groups_with_app_route_filter`
+  → le resolver Turbopack ne traverse pas correctement la jonction
+  Windows (probablement résolution canonique de path qui désynchronise
+  les root finders).
+- **Workaround** pour les patches courts : faire le travail sur le main
+  working tree directement (stash + branch switch + build + branch back
+  + stash pop). Pour les chantiers longs en parallèle : `npm install`
+  complet dans le worktree (lourd mais Turbopack est content).
+
 ### Stripe
 
 - Idempotency cancel orphelin : check `pi.id !== winningPiId` AVANT
@@ -513,6 +528,27 @@ la condition de déblocage.
 - Helpers `SECURITY DEFINER` consommés par les policies RLS
   (`is_admin()`, `owns_producer(uuid)`, etc.) nécessitent EXECUTE pour
   `anon` + `authenticated`. Faux positif récurrent d'audit ACL.
+
+### Schémas DB
+
+- **`producer_invitations` n'a PAS de colonne `status`** — les états
+  (consommée / expirée / révoquée) doivent être **computed côté query** :
+  - consommée = `used_at IS NOT NULL`
+  - expirée = `used_at IS NULL AND expires_at < now()`
+  - en attente = `used_at IS NULL AND expires_at >= now()`
+  Si une PR future a besoin d'un statut révoqué explicite (cf. event
+  `invitation_revoked` pré-déclaré, jamais émis), ajouter une colonne
+  `revoked_at timestamptz NULL` plutôt qu'un enum `status`.
+
+### ESLint
+
+- L'apostrophe courbe U+2019 est interdite **aussi bien dans les
+  attributs JSX `"..."`** (valeurs de props string) **que dans le
+  texte JSX**. Le décodage `&rsquo;` se fait au parse JSX et donne
+  U+2019 dans la valeur d'attribut, ce qui trip la règle
+  `no-restricted-syntax` `Literal[value=/’/]`. Préférer ASCII `'`
+  dans les valeurs d'attribut quotées : `label="Chiffre d'affaires"`.
+  Dans le texte JSX, `&rsquo;` reste correct.
 
 ## 9. Communication entre Romain et CC
 

@@ -17,6 +17,8 @@ const ALL_CATEGORIES = [
   "email",
   "catalog",
   "refund",
+  "producers",
+  "producer_interests",
 ] as const;
 
 describe("categorizeEventType", () => {
@@ -72,6 +74,26 @@ describe("categorizeEventType", () => {
   it("préfixe 'refund_incident_' → catégorie 'refund' (PR3 admin-new-surfaces)", () => {
     expect(categorizeEventType("refund_incident_resolved_manually")).toBe(
       "refund",
+    );
+  });
+
+  it("préfixe 'admin_review_' → catégorie 'review' (PR admin-pattern-uniform)", () => {
+    expect(categorizeEventType("admin_review_published")).toBe("review");
+    expect(categorizeEventType("admin_review_rejected")).toBe("review");
+  });
+
+  it("préfixe 'admin_producer_' → catégorie 'producers' (PR admin-pattern-uniform)", () => {
+    expect(categorizeEventType("admin_producer_statut_changed")).toBe(
+      "producers",
+    );
+  });
+
+  it("préfixe 'admin_producer_interest_' → catégorie 'producer_interests' (avant admin_producer_)", () => {
+    expect(
+      categorizeEventType("admin_producer_interest_statut_changed"),
+    ).toBe("producer_interests");
+    expect(categorizeEventType("admin_producer_interest_deleted")).toBe(
+      "producer_interests",
     );
   });
 
