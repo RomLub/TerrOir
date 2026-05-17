@@ -155,5 +155,36 @@ Ces URLs sont chargées depuis `images.unsplash.com` à chaque render fallback (
 
 ---
 
-*Audit en lecture seule — aucune modification de code, aucun fichier
-image n'a été déplacé/renommé/intégré au repo.*
+*Audit initial en lecture seule — la section §6 ci-dessous trace les
+arbitrages pris à la suite de cet audit.*
+
+---
+
+## 6. Décisions arbitrées 2026-05-17
+
+Arbitrages explicites sur les emplacements et photos non couverts par les
+3 PRs en cours (PR1 hero home, PR2 `/notre-demarche`, PR3 fallbacks).
+
+### 6.1 — Photos sans usage immédiat
+
+| Photo                       | Décision                                                                                                                       | Action / suivi                                                                                                  |
+|-----------------------------|--------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------|
+| `photo11_troupeau-aligne`   | À intégrer plus tard sur `/devenir-producteur` (visuel hero éleveur), **mais pas tant que les boucles oreilles (2456) ne sont pas retouchées** | Issue [#141](https://github.com/RomLub/TerrOir/issues/141) "Retoucher photo11 — boucles oreilles 2456" + PR4 d'intégration post-retouche |
+| `photo13_champ-cielbleu`    | Pas d'usage immédiat. Dort dans l'inventaire jusqu'à rédaction étoffée de `/a-propos`                                            | Issue [#142](https://github.com/RomLub/TerrOir/issues/142) "Étoffer /a-propos avec photo13" comme rappel       |
+| `photo15_charolaise-veau`   | **Conservée en stock pour réseaux sociaux / communication externe**. Aucun usage prévu sur le site                              | Aucune issue côté site                                                                                          |
+
+### 6.2 — Pages sans intégration photo
+
+| Page                  | Décision                                                                                                                                                                                                                                                              |
+|-----------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `/comment-ca-marche`  | **Décision explicite : ne pas ajouter de photos**. La page reste fonctionnelle texte + icônes, cohérent avec la home `Steps.tsx` (SVG inline). Les 6 placeholders dégradés actuels seront remplacés par des SVG icônes ou simplement supprimés lors d'une prochaine itération design — pas par des photos. |
+
+### 6.3 — Rappel hors-scope des 3 PRs en cours
+
+- `/a-propos` panoramique → en attente (cf. issue #142 photo13)
+- `/devenir-producteur` hero → en attente (cf. issue #141 photo11)
+- Photo "famille devant la ferme" sur fiche producteur → laisser le
+  placeholder pour inciter l'éleveur à uploader sa propre photo
+- Fallback photos produits (beef/pork/lamb) → composant `ProductFallback`
+  réutilisable en PR3, pas de photo de l'inventaire (l'inventaire ne
+  contient aucune photo produit / découpe / charcuterie)
