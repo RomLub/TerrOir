@@ -170,7 +170,7 @@ Arbitrages explicites sur les emplacements et photos non couverts par les
 | Photo                       | Décision                                                                                                                       | Action / suivi                                                                                                  |
 |-----------------------------|--------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------|
 | `photo11_troupeau-aligne`   | À intégrer plus tard sur `/devenir-producteur` (visuel hero éleveur), **mais pas tant que les boucles oreilles (2456) ne sont pas retouchées** | Issue [#141](https://github.com/RomLub/TerrOir/issues/141) "Retoucher photo11 — boucles oreilles 2456" + PR4 d'intégration post-retouche |
-| `photo13_champ-cielbleu`    | Pas d'usage immédiat. Dort dans l'inventaire jusqu'à rédaction étoffée de `/a-propos`                                            | Issue [#142](https://github.com/RomLub/TerrOir/issues/142) "Étoffer /a-propos avec photo13" comme rappel       |
+| `photo13_champ-cielbleu`    | **Intégrée en PR3** pour le hero fallback fiche producteur (`DEFAULT_HERO_PHOTO`). L'usage `/a-propos` panoramique reste un emploi futur potentiel — l'issue de rappel n'est pas refermée. | Issue [#142](https://github.com/RomLub/TerrOir/issues/142) toujours ouverte pour le second usage `/a-propos` |
 | `photo15_charolaise-veau`   | **Conservée en stock pour réseaux sociaux / communication externe**. Aucun usage prévu sur le site                              | Aucune issue côté site                                                                                          |
 
 ### 6.2 — Pages sans intégration photo
@@ -188,3 +188,77 @@ Arbitrages explicites sur les emplacements et photos non couverts par les
 - Fallback photos produits (beef/pork/lamb) → composant `ProductFallback`
   réutilisable en PR3, pas de photo de l'inventaire (l'inventaire ne
   contient aucune photo produit / découpe / charcuterie)
+
+---
+
+## 7. PR3 — fallbacks Unsplash remplacés
+
+Trois dépendances `images.unsplash.com` hardcodées dans le code source
+ont été retirées au profit d'assets locaux ou de SVG inline.
+
+### 7.1 — `components/ui/producer-card.tsx`
+
+- **Avant** : `DEFAULT_PRODUCER_PHOTO = "https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=400"`
+- **Après** : `"/images/editorial/photo16_chemin-arbres_card-1x1.jpg"`
+- Format card-1x1 (606 KB source, Next l'optimise à la volée), sizes
+  `80px` côté ProducerCard inchangé.
+
+### 7.2 — `app/(public)/producteurs/[slug]/ProducerPageClient.tsx`
+
+- **Avant** : `DEFAULT_HERO_PHOTO = "https://images.unsplash.com/photo-1500595046743-cd271d694d30?w=1600"`
+- **Après** : `"/images/editorial/photo13_champ-cielbleu_hero-16x9.jpg"`
+- Format hero-16x9 (830 KB source). Choix de photo13 (et non photo06
+  qui est utilisée sur le hero home depuis PR1) pour éviter le doublon
+  visuel entre la home et la fiche producteur.
+
+### 7.3 — `PRODUCT_PHOTOS` beef/pork/lamb → `<ProductFallback />`
+
+Le triplet d'URLs Unsplash hardcodées + la fonction `pickProductImage(name)`
+(regex sur le nom du produit) ont été remplacés par un composant
+réutilisable `ProductFallback`.
+
+**Architecture** :
+- `components/icons/categories/{viande, charcuterie, legumes, fromages, miel, oeufs, autres, fallback}.tsx` — 8 SVG inline custom, style trait fin 1.5, viewBox 24×24, linecap/join round (cohérent avec `Steps.tsx` et `Reassurance.tsx`).
+- `components/ui/category-icon.tsx` — sélecteur slug → icône. Normalisation interne (NFD + remove combining + lowercase + ligatures œ/æ) pour accepter aussi bien `"viande"` que `"Viande"` que `"Œufs"`. Catégorie inconnue → `FallbackIcon` (panier).
+- `components/ui/product-fallback.tsx` — carré `bg-terra-100` + icône `text-terra-800` (validé pour contraste, surchargeable via `iconClassName`).
+- `components/ui/product-card.tsx` — utilise `<ProductFallback />` en interne quand `product.image` est null. Affecte automatiquement tous les usages de ProductCard (grilles produits, listings, panier, etc.).
+
+**Décisions clés** :
+- **SVG inline custom** plutôt que `lucide-react` (cohérence avec le pattern existant du repo, zéro dépendance ajoutée).
+- **Granularité catégorie seule** — la distinction beef/pork/lamb par regex sur le nom du produit n'existe plus. Décision produit assumée : un produit de catégorie "Viande" affiche l'icône os à moelle qu'il soit bœuf, porc ou agneau.
+- **Mapping catégorie → icône** :
+
+| Slug | Icône | Sémantique |
+|---|---|---|
+| `viande` | 4 cercles + cylindre central | Os à moelle stylisé |
+| `charcuterie` | Forme arrondie + ligatures | Saucisse |
+| `legumes` | Triangle + 3 feuilles | Carotte |
+| `fromages` | Triangle + 3 cercles | Quart de meule emmental |
+| `miel` | Hexagone + goutte centrale | Alvéole de ruche |
+| `oeufs` | Ovale asymétrique | Œuf |
+| `autres` | Anse + corps tressé | Panier en osier |
+| `fallback` (catégorie absente ou inconnue) | Identique à `autres` (fichier dédié pour évolution future indépendante) |
+
+### 7.4 — Hors-scope PR3 (à noter pour cohérence visuelle future)
+
+- `app/(public)/producteurs/[slug]/produits/[id]/ProductPageClient.tsx`
+  utilise encore son `PhotoPlaceholder` local (dégradé vert stripes)
+  pour le cas photo produit absente. Cohérence visuelle imparfaite avec
+  les grilles qui passent désormais par `ProductFallback`. Si tu veux
+  aligner, c'est trivial — j'ai laissé tel quel pour respecter le scope
+  PR3 strict (remplacement des fallbacks Unsplash uniquement).
+
+---
+
+## 8. Statut final inventaire (post-PR3)
+
+| Photo                       | Statut                                                                                                            |
+|-----------------------------|-------------------------------------------------------------------------------------------------------------------|
+| `photo06_paysage-piquets`   | **Intégrée** — hero home consumer (PR1)                                                                            |
+| `photo11_troupeau-aligne`   | **En attente retouche** — issue [#141](https://github.com/RomLub/TerrOir/issues/141) (boucles oreilles 2456) + PR4 d'intégration `/devenir-producteur` post-retouche |
+| `photo13_champ-cielbleu`    | **Intégrée** — hero fallback fiche producteur (PR3). Usage futur potentiel `/a-propos` (issue [#142](https://github.com/RomLub/TerrOir/issues/142) ouverte) |
+| `photo15_charolaise-veau`   | **En stock hors-site** — réservée réseaux sociaux / communication externe. Aucun usage prévu sur le site         |
+| `photo16_chemin-arbres`     | **Intégrée** — fallback `producer-card` (PR3)                                                                      |
+| `photo20_eolienne-orage`    | **Intégrée** — hero `/notre-demarche` (PR2)                                                                        |
+
+**Bilan** : 4 photos sur 6 actuellement servies par le site. 1 en attente conditionnée (retouche). 1 réservée usage externe. Zéro URL Unsplash hardcodée restante dans le code source.

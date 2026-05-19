@@ -2,9 +2,11 @@ import Image from "next/image";
 import { Badge } from "./badge";
 import { StarRating } from "./star-rating";
 
-// Visuel de secours tant qu'aucune photo n'a été uploadée — ferme générique Unsplash.
+// Visuel de secours tant qu'aucune photo n'a été uploadée — chemin de
+// campagne sarthois (PR3 audit photos 2026-05-17 : remplace l'URL
+// Unsplash hardcodée par un asset local en format card-1x1).
 const DEFAULT_PRODUCER_PHOTO =
-  "https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=400";
+  "/images/editorial/photo16_chemin-arbres_card-1x1.jpg";
 
 export type ProducerCardData = {
   name: string;
