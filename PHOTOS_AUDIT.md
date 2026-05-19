@@ -262,3 +262,43 @@ réutilisable `ProductFallback`.
 | `photo20_eolienne-orage`    | **Intégrée** — hero `/notre-demarche` (PR2)                                                                        |
 
 **Bilan** : 4 photos sur 6 actuellement servies par le site. 1 en attente conditionnée (retouche). 1 réservée usage externe. Zéro URL Unsplash hardcodée restante dans le code source.
+
+---
+
+## 9. Décisions arbitrées — clôture PR3 (2026-05-20)
+
+### 9.1 — Direction graphique des icônes catégorie
+
+- **Direction retenue : « gravure au trait » (option B des propositions
+  Claude Design)**. Style line-art avec détails fins : hachures
+  `stroke-width="0.5"`, persillage de la viande, grain de gras pointillé
+  (charcuterie / fromages), vannerie tressée du panier.
+- Note de traçabilité : seul le set final retenu (option B) a transité
+  par l'implémentation. Le détail des options A et C proposées par
+  Claude Design n'a pas été versé au dépôt — si besoin de les archiver,
+  les ajouter ici ultérieurement.
+- **7 SVG inline custom** dans `components/icons/categories/` :
+  `legumes` (carotte), `oeufs`, `miel` (alvéole hexagonale + goutte),
+  `viande`, `charcuterie` (saucisson tranché), `fromages`, `autres`
+  (panier en osier). viewBox uniforme 24×24, `currentColor` (couleur
+  appliquée par `ProductFallback` en `text-terra-800`).
+- Pas de dépendance `lucide-react` : SVG inline custom, cohérent avec
+  le pattern existant du repo (`Steps.tsx`, `Reassurance.tsx`).
+
+### 9.2 — Fallback générique
+
+- `components/icons/categories/fallback.tsx` : **re-export propre** du
+  panier `AutresIcon` (`export { AutresIcon as FallbackIcon } from "./autres"`)
+  plutôt qu'une duplication du SVG. Une seule source de vérité pour le
+  dessin du panier. Si le fallback doit un jour diverger sémantiquement
+  (ex : point d'interrogation), remplacer le re-export par un composant
+  dédié.
+
+### 9.3 — Relecture visuelle
+
+- Set validé sur `/dev/icons-preview` (page démo temporaire gated
+  `VERCEL_ENV !== "production"`) : 8 icônes nettes, lisibles, cohérentes
+  entre elles. Hachures fines `stroke-0.5` tiennent même en taille card.
+- Page démo `app/dev/icons-preview/page.tsx` supprimée à la clôture de
+  PR3 (commit dédié) — elle n'avait de valeur que le temps de la
+  relecture.
