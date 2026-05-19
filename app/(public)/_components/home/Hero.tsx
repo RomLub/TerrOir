@@ -1,12 +1,17 @@
+import Image from "next/image";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
 // Section Hero de la home consumer (homepage.html section .hero).
 //
-// Phase 1 : visuel = placeholder dégradé terra (3-stop linear-gradient
-// + radial highlight + texture stripes) avec tag overlay producteur en
-// dur. Phase 2 : remplacer le placeholder par une vraie photo et
-// alimenter le tag depuis Supabase via la prop `producer`.
+// Visuel hero : photo éditoriale `photo06_paysage-piquets` (bocage
+// sarthois, espace négatif ciel haut → garantit la lisibilité du tag
+// producteur overlay positionné en bas). Format 16/9 (PR1 audit photos
+// 2026-05-17 — décision : 16/9 par défaut partout, 4/5 conservé pour
+// les blocs story-like).
+//
+// Tag overlay producteur : Phase 1 statique (DEFAULT_PRODUCER),
+// Phase 2 alimenté depuis Supabase via la prop `producer`.
 //
 // Pas de stats inline dans le hero (Q2 validé pre-Phase C : on garde
 // <PublicStats /> en section dédiée après Hero, branchée Supabase live).
@@ -75,20 +80,15 @@ export function Hero({
           {/* Visuel (mobile : ordre 1 / desktop : ordre 2) */}
           <div
             className="relative order-1 overflow-hidden rounded-2xl shadow-lift md:order-2"
-            style={{
-              aspectRatio: "4 / 5",
-              background:
-                "radial-gradient(ellipse at 30% 20%, rgba(255,255,255,.4), transparent 50%), linear-gradient(135deg, #E5C9A6 0%, #B8713E 45%, #6B3620 100%)",
-            }}
-            aria-hidden="true"
+            style={{ aspectRatio: "16 / 9" }}
           >
-            {/* Texture stripes subtiles */}
-            <div
-              className="absolute inset-0"
-              style={{
-                backgroundImage:
-                  "repeating-linear-gradient(10deg, rgba(0,0,0,0) 0 24px, rgba(255,255,255,.04) 24px 26px), repeating-linear-gradient(-12deg, rgba(0,0,0,0) 0 38px, rgba(0,0,0,.05) 38px 40px)",
-              }}
+            <Image
+              src="/images/editorial/photo06_paysage-piquets_hero-16x9.jpg"
+              alt=""
+              fill
+              priority
+              sizes="(min-width: 768px) 48vw, 100vw"
+              className="object-cover"
             />
             {/* Tag overlay producteur (placeholder Phase 1) */}
             <div className="absolute inset-x-6 bottom-6 flex items-center gap-3.5 rounded-xl bg-white/92 p-3.5 backdrop-blur">
