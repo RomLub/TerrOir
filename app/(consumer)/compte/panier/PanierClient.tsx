@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Button, Badge } from '@/components/ui';
+import { ProductFallback } from '@/components/ui/product-fallback';
 import { useCartStore, type CartItem } from '@/lib/store/cart';
 import { itemKey, type ValidateResponse } from '@/lib/cart/validate';
 import { StaleItemsBanner, type StaleChange } from './_components/StaleItemsBanner';
@@ -220,9 +221,8 @@ function PanierClientInner() {
                   const s = step(it.unite);
                   return (
                     <li key={`${it.productId}-${it.creneauId}-${it.dateRetrait}`} className="p-5 flex items-start gap-4">
-                      <div className="relative w-20 h-20 rounded-xl shrink-0 overflow-hidden"
-                           style={!it.image ? { backgroundImage: 'repeating-linear-gradient(45deg, #D8F3DC 0 10px, #C9EAD0 10px 20px)' } : undefined}>
-                        {it.image && (
+                      <div className="relative w-20 h-20 rounded-xl shrink-0 overflow-hidden">
+                        {it.image ? (
                           <Image
                             src={it.image}
                             alt=""
@@ -230,6 +230,8 @@ function PanierClientInner() {
                             sizes="80px"
                             className="object-cover"
                           />
+                        ) : (
+                          <ProductFallback className="h-full w-full" />
                         )}
                       </div>
                       <div className="flex-1 min-w-0">

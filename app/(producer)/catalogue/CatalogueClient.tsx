@@ -4,6 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useState } from 'react';
 import { Button, Badge } from '@/components/ui';
+import { ProductFallback } from '@/components/ui/product-fallback';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { promoteProducerToPublicIfActive } from '@/lib/producers/promote-to-public';
 import {
@@ -186,8 +187,7 @@ export function CatalogueClient({
                 <article key={p.id} className={`bg-white rounded-2xl border shadow-soft overflow-hidden transition-opacity ${
                   p.active ? 'border-dark/[0.06]' : 'border-dark/[0.04] opacity-60'
                 }`}>
-                  <div className="aspect-4/3 relative flex items-center justify-center text-green-900/30 font-mono text-[10px] uppercase overflow-hidden"
-                       style={!p.image ? { backgroundImage: 'repeating-linear-gradient(45deg, #D8F3DC 0 12px, #C9EAD0 12px 24px)' } : undefined}>
+                  <div className="aspect-4/3 relative overflow-hidden">
                     {p.image ? (
                       <Image
                         src={p.image}
@@ -197,7 +197,7 @@ export function CatalogueClient({
                         className="object-cover"
                       />
                     ) : (
-                      'Photo produit'
+                      <ProductFallback className="h-full w-full" />
                     )}
                     {lowStock && <div className="absolute top-3 right-3"><Badge variant="terra">Stock faible</Badge></div>}
                     {empty && <div className="absolute top-3 right-3"><Badge variant="gray">Épuisé</Badge></div>}
