@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import Image from 'next/image';
 import Link from 'next/link';
 import { Button, Badge, ProductCard } from '@/components/ui';
+import { ProductFallback } from '@/components/ui/product-fallback';
 import { useCartStore } from '@/lib/store/cart';
 import { formatSlotTime, formatSlotRange } from '@/lib/slots/format-slot-time';
 import { useUserContext } from '@/components/providers/user-provider';
@@ -196,7 +197,7 @@ export function ProductPageClient({
                   className="object-cover"
                 />
               ) : (
-                <PhotoPlaceholder label={`Photo ${activePhoto + 1} — ${product.name}`} className="w-full h-full" />
+                <ProductFallback category={product.category} className="h-full w-full" />
               )}
               {product.category && (
                 <div className="absolute top-4 left-4">
@@ -223,7 +224,11 @@ export function ProductPageClient({
                       className="object-cover"
                     />
                   ) : (
-                    <PhotoPlaceholder label={`${i + 1}`} className="w-full h-full" />
+                    <ProductFallback
+                      category={product.category}
+                      className="h-full w-full"
+                      iconClassName="h-1/4 w-1/4 text-terra-800"
+                    />
                   )}
                 </button>
               ))}
@@ -701,17 +706,6 @@ function QtyStepper({
         className="w-11 h-11 flex items-center justify-center text-green-900 hover:bg-green-100 rounded-r-xl disabled:opacity-30 disabled:hover:bg-white"
         aria-label="Augmenter"
       >+</button>
-    </div>
-  );
-}
-
-function PhotoPlaceholder({ label, className = '' }: { label: string; className?: string }) {
-  return (
-    <div
-      className={`flex items-center justify-center text-green-900/30 font-mono text-[11px] tracking-wider uppercase ${className}`}
-      style={{ backgroundImage: 'repeating-linear-gradient(45deg, #D8F3DC 0 14px, #C9EAD0 14px 28px)' }}
-    >
-      {label}
     </div>
   );
 }
