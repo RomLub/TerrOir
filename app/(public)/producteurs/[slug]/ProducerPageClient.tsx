@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import {
@@ -17,21 +17,19 @@ import type {
 } from '@/lib/producers/score-carbone-enums';
 import { ScoreCarbonBlock } from './_components/ScoreCarbonBlock';
 
-// Visuels Unsplash de secours tant que le producteur n'a pas uploadé ses propres photos.
+// Visuel de secours hero tant que le producteur n'a pas uploadé sa propre
+// photo — champ moissonné Sarthe (PR3 audit photos 2026-05-17 : remplace
+// l'URL Unsplash hardcodée par un asset local en format hero-16x9). On
+// utilise photo13 ici, PAS photo06, pour éviter le doublon visuel avec
+// le hero home consumer.
 const DEFAULT_HERO_PHOTO =
-  'https://images.unsplash.com/photo-1500595046743-cd271d694d30?w=1600';
-const PRODUCT_PHOTOS = {
-  beef: 'https://images.unsplash.com/photo-1558030006-450675393462?w=800',
-  pork: 'https://images.unsplash.com/photo-1607623814075-e51df1bdc82f?w=800',
-  lamb: 'https://images.unsplash.com/photo-1548550023-2bdb3c5beed7?w=800',
-} as const;
-
-function pickProductImage(name: string): string {
-  const n = name.toLowerCase();
-  if (/porc|saucisson|lard|jambon|charcut/.test(n)) return PRODUCT_PHOTOS.pork;
-  if (/agneau|mouton|gigot|brebis/.test(n)) return PRODUCT_PHOTOS.lamb;
-  return PRODUCT_PHOTOS.beef;
-}
+  '/images/editorial/photo13_champ-cielbleu_hero-16x9.jpg';
+// PR3 audit photos 2026-05-17 : l'ancien fallback PRODUCT_PHOTOS
+// (3 URLs Unsplash beef/pork/lamb + heuristique regex pickProductImage)
+// a été retiré. Le fallback est désormais géré par <ProductFallback />
+// (terra-100 + icône catégorie SVG inline) directement dans ProductCard
+// quand `image` est null. Granularité catégorie seule — la distinction
+// beef/pork/lamb par regex sur le nom du produit n'existe plus.
 
 export type ProducerData = {
   slug: string;
@@ -100,10 +98,6 @@ export function ProducerPageClient({
   const visibleReviews = reviews.slice(0, page * REVIEWS_PER_PAGE);
   const canLoadMore = reviews.length > visibleReviews.length;
 
-  const productsWithImage = useMemo(
-    () => products.map((p) => ({ ...p, image: p.image ?? pickProductImage(p.name) })),
-    [products],
-  );
   const heroPhoto = producer.heroPhoto ?? DEFAULT_HERO_PHOTO;
 
   const scrollToProducts = () => {
@@ -231,7 +225,7 @@ export function ProducerPageClient({
             </div>
           ) : (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-              {productsWithImage.map((prod) => (
+              {products.map((prod) => (
                 <Link
                   key={prod.id}
                   href={`/producteurs/${producer.slug}/produits/${prod.id}`}

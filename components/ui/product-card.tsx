@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { Badge } from "./badge";
+import { ProductFallback } from "./product-fallback";
 
 export type ProductCardData = {
   id: string;
@@ -40,7 +41,7 @@ export function ProductCard({ product, className = "" }: ProductCardProps) {
     <article
       className={`group flex h-full flex-col overflow-hidden rounded-2xl border border-terroir-border bg-white shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md ${className}`}
     >
-      <div className="relative aspect-4/3 w-full overflow-hidden bg-terroir-green-100">
+      <div className="relative aspect-4/3 w-full overflow-hidden">
         {product.image ? (
           <Image
             src={product.image}
@@ -49,7 +50,12 @@ export function ProductCard({ product, className = "" }: ProductCardProps) {
             sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
             className="object-cover"
           />
-        ) : null}
+        ) : (
+          <ProductFallback
+            category={product.category}
+            className="h-full w-full"
+          />
+        )}
         {product.category ? (
           <div className="absolute left-2 top-2">
             <Badge variant="neutral">{product.category}</Badge>
