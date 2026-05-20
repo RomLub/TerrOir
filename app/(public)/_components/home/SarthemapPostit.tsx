@@ -1,13 +1,15 @@
 import Link from "next/link";
 import { MapSarthe } from "@/components/ui/map-sarthe";
-import { PostIt } from "@/components/ui/post-it";
 
-// Section "Carte Sarthe + Conseil de l'éleveur" (homepage.html
-// .map-section). Grid 2 cols desktop (1.4fr / 1fr), stack mobile.
+// Section "Les fermes en Sarthe" (homepage.html .map-section) — intro +
+// carte SVG évocatrice du département + CTA vers /carte.
 //
-// La citation Marie Phase 1 est hardcodée fidèle au screen. Phase 2 :
-// rotation depuis lib/queries/post-its/get-featured (rotation
-// hebdomadaire entre éleveurs publiés).
+// La sous-section "Le conseil de l'éleveur" (post-it) a été retirée le
+// 2026-05-20 : son contenu (producteur « Marie · Ferme des Tilleuls » +
+// conseil de cuisson) était entièrement inventé — fausse social proof,
+// en plus du risque d'usurpation. Réactivation conditionnée à un vrai
+// conseil producteur fourni avec autorisation écrite (cf.
+// docs/post-launch-checklist.md).
 
 export type SarthemapPostitProps = { className?: string };
 
@@ -20,8 +22,8 @@ export function SarthemapPostit({
       className={`border-y border-terroir-border bg-white ${className}`}
     >
       <div className="mx-auto max-w-6xl px-4 py-16 md:py-20">
-        <div className="grid items-start gap-12 md:grid-cols-[1.4fr_1fr] md:gap-14">
-          {/* Col 1 : intro + map + CTA */}
+        <div className="grid items-center gap-12 md:grid-cols-2 md:gap-14">
+          {/* Intro + CTA */}
           <div>
             <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-terra-700">
               Les fermes en Sarthe
@@ -37,9 +39,6 @@ export function SarthemapPostit({
               ferme la plus proche de chez toi — et son créneau de retrait
               du week-end.
             </p>
-            <div className="mt-7">
-              <MapSarthe />
-            </div>
             <Link
               href="/carte"
               className="mt-6 inline-flex items-center gap-2 text-[15px] font-medium text-terra-700 transition-colors hover:text-terra-900"
@@ -48,30 +47,9 @@ export function SarthemapPostit({
             </Link>
           </div>
 
-          {/* Col 2 : intro post-it + post-it */}
-          <div className="md:pt-6">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-terroir-muted">
-              Le conseil de l&rsquo;éleveur
-            </span>
-            <h2 className="mt-3 font-serif text-[26px] font-medium leading-[1.2] text-green-900 md:text-[32px]">
-              Avec chaque commande,
-              <br />
-              un mot de la ferme.
-            </h2>
-            <p className="mt-4 text-[15px] leading-[1.6] text-terroir-ink/[0.7]">
-              Marie, Julien, Claire et les autres glissent un conseil de
-              cuisson, une recette de saison ou simplement un mot de la
-              semaine à côté de ta commande. Le geste qu&rsquo;aucune grande
-              surface ne fait.
-            </p>
-            <div className="mt-8">
-              <PostIt
-                eyebrow="Le conseil de Marie"
-                quote="Faites cuire à basse température, 1h30 à 150°C, puis 10 min à 200°C pour la peau croustillante. Servez avec mes pommes de terre grenaille — vous m'en direz des nouvelles."
-                signature="Marie"
-                meta="Ferme des Tilleuls · Coulaines"
-              />
-            </div>
+          {/* Carte */}
+          <div>
+            <MapSarthe />
           </div>
         </div>
       </div>

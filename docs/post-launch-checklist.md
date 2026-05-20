@@ -411,3 +411,31 @@ décidé (clarification juridique, ajout indicateur, etc.), enchaîner :
   conformité screen-readers.
 - **Dépendance** : à inclure dans le scope T-003 audit avocat
   (vérification conformité a11y RGAA / loi française).
+
+---
+
+## Conditionné à premier producteur partenaire signé
+
+### Réactiver la section « Le conseil de l'éleveur » sur la home
+
+- **Condition de déblocage** : premier producteur partenaire signé qui
+  fournit un **vrai conseil** (cuisson / recette / mot de saison) avec
+  **autorisation écrite** d'afficher son nom, sa ferme et son conseil
+  sur la home.
+- **Contexte** : la sous-section « Le conseil de l'éleveur » de
+  `SarthemapPostit.tsx` a été retirée le 2026-05-20. Son contenu
+  (productrice « Marie · Ferme des Tilleuls · Coulaines » + conseil de
+  cuisson) était entièrement inventé : fausse social proof + risque
+  d'usurpation d'identité. Option « signataire neutre » écartée (ne
+  résout pas la malhonnêteté du conseil inventé), option « marquer
+  Exemple » écartée (signal démo public néfaste).
+- **Action** :
+  1. Réintroduire la colonne post-it dans `SarthemapPostit.tsx`
+     (revenir au grid `md:grid-cols-[1.4fr_1fr]`, cf. historique git
+     avant le retrait).
+  2. Réutiliser le composant `components/ui/post-it.tsx` (conservé,
+     non supprimé) avec les vraies valeurs `eyebrow` / `quote` /
+     `signature` / `meta` du producteur.
+  3. Idéalement, brancher la rotation dynamique depuis Supabase
+     (plusieurs producteurs publiés) plutôt qu'un contenu hardcodé,
+     pour éviter de recréer un point de contenu figé.

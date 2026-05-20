@@ -1,5 +1,10 @@
 // Post-it « Conseil de l'éleveur » — élément signature TerrOir.
 //
+// ⚠️ Composant temporairement non consommé : la sous-section "Le conseil
+// de l'éleveur" de la home a été retirée le 2026-05-20 (contenu inventé).
+// Le composant est conservé tel quel pour la réactivation, conditionnée à
+// un vrai conseil producteur autorisé (cf. docs/post-launch-checklist.md).
+//
 // Variant statique pour la home (section "Map + Conseil"). Pour la fiche
 // produit, prévoir Phase 2 le pattern trigger + popover documenté dans
 // design_system_cards/component-postit.html (icône amber-500 cliquable
@@ -19,9 +24,9 @@ export type PostItProps = {
   eyebrow: string;
   /** Citation courte, italique Cormorant (le composant ajoute les guillemets « »). */
   quote: string;
-  /** Signature après tiret cadratin, ex: "Marie" → rendu "— Marie" en Caveat manuscrit. */
+  /** Signature après tiret cadratin, rendu "— {signature}" en Caveat manuscrit. */
   signature: string;
-  /** Métadonnée fine sous la signature, ex: "Ferme des Tilleuls · Coulaines". */
+  /** Métadonnée fine sous la signature, ex: "Ferme des Quatre Vents · Loué". */
   meta?: string;
   className?: string;
 };
