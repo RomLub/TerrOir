@@ -29,9 +29,9 @@ export function SarthemapPostit({
               Les fermes en Sarthe
             </span>
             <h2 className="mt-3 font-serif text-[28px] font-medium leading-[1.15] tracking-[-0.005em] text-green-900 md:text-[38px]">
-              42 producteurs,
+              Des fermes locales,
               <br />
-              tous à moins de 60&nbsp;km du Mans.
+              toutes à moins de 60&nbsp;km du Mans.
             </h2>
             <p className="mt-3 max-w-[480px] text-base leading-[1.55] text-terroir-ink/[0.72]">
               Volaille à Coulaines, maraîchage à Allonnes, chèvrerie à

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 // distincte ciblée sur la conviction "achète chez l'éleveur, pas chez
 // l'intermédiaire".
 //
-// CtaBand homepage hardcode "320 produits / 42 fermes cette semaine" — copy
+// CtaBand homepage porte une copy orientée produits/fermes de saison — copy
 // inadaptée ici, d'où composant local plutôt que réutilisation directe.
 
 export type CtaSectionProps = { className?: string };
