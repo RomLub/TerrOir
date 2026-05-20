@@ -423,14 +423,15 @@ décidé (clarification juridique, ajout indicateur, etc.), enchaîner :
   **autorisation écrite** d'afficher son nom, sa ferme et son conseil
   sur la home.
 - **Contexte** : la sous-section « Le conseil de l'éleveur » de
-  `SarthemapPostit.tsx` a été retirée le 2026-05-20. Son contenu
+  `SarthemapSection.tsx` (ex-`SarthemapPostit.tsx`) a été retirée le
+  2026-05-20. Son contenu
   (productrice « Marie · Ferme des Tilleuls · Coulaines » + conseil de
   cuisson) était entièrement inventé : fausse social proof + risque
   d'usurpation d'identité. Option « signataire neutre » écartée (ne
   résout pas la malhonnêteté du conseil inventé), option « marquer
   Exemple » écartée (signal démo public néfaste).
 - **Action** :
-  1. Réintroduire la colonne post-it dans `SarthemapPostit.tsx`
+  1. Réintroduire la colonne post-it dans `SarthemapSection.tsx`
      (revenir au grid `md:grid-cols-[1.4fr_1fr]`, cf. historique git
      avant le retrait).
   2. Réutiliser le composant `components/ui/post-it.tsx` (conservé,
