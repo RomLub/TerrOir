@@ -439,3 +439,25 @@ décidé (clarification juridique, ajout indicateur, etc.), enchaîner :
   3. Idéalement, brancher la rotation dynamique depuis Supabase
      (plusieurs producteurs publiés) plutôt qu'un contenu hardcodé,
      pour éviter de recréer un point de contenu figé.
+
+---
+
+## Conditionné à Phase 2 (carte producteurs branchée sur la DB réelle)
+
+### Carte Sarthe `map-sarthe.tsx` — 9 pins hardcodés
+
+- **Condition de déblocage** : carte des producteurs branchée sur la DB
+  réelle (Phase 2).
+- **Contexte** : `components/ui/map-sarthe.tsx` affiche 9 communes en dur
+  (Coulaines, Allonnes, Vibraye, Saosnes, Mayet, Loué, Bonnétable,
+  Le Lude, Sillé) avec des coordonnées SVG fixes. C'est une carte
+  décorative, pas un reflet des producteurs réellement publiés. Laissée
+  telle quelle au chantier « nettoyage chiffres inventés » (PR-F) :
+  contrairement aux 4 claims chiffrés retirés, ces pins ne portent pas
+  d'allégation quantifiée fausse (« 42 producteurs »), juste un visuel
+  d'illustration géographique. Le retrait/branchement DB relève d'un
+  vrai travail de données, pas d'un nettoyage de wording.
+- **Action** : remplacer les pins statiques par les producteurs en
+  `statut = 'public'` géolocalisés (lat/lng → projection sur le SVG, ou
+  bascule vers une vraie carte interactive). Supprimer le tableau
+  hardcodé une fois la source DB en place.

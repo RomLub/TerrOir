@@ -12,8 +12,8 @@ import { getFeaturedProducts } from "@/lib/products/fetch-featured";
 // Si fetch fail-open → tableau vide → la section affiche le header sans
 // cards (cohérent avec getPublicStats).
 //
-// CTA "Voir les 320 produits" pointe vers /producteurs (Phase 1). Le
-// compte "320" reste statique acceptable MVP.
+// CTA "Voir tous les produits" pointe vers /producteurs (Phase 1).
+// Wording sans chiffre : le catalogue réel varie, pas de compte hardcodé.
 
 export type FeaturedProductsProps = { className?: string };
 
@@ -43,7 +43,7 @@ export async function FeaturedProducts({
             href="/producteurs"
             className="text-sm font-medium text-terra-700 transition-colors hover:text-terra-900"
           >
-            Voir les 320 produits&nbsp;→
+            Voir tous les produits&nbsp;→
           </Link>
         </div>
         {products.length > 0 ? (

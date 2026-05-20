@@ -65,7 +65,7 @@ export default function AProposPage() {
       </section>
 
       <section className="max-w-5xl mx-auto px-6 py-20 grid sm:grid-cols-3 gap-8 text-center">
-        {[{ n: '23', l: 'Éleveurs partenaires' }, { n: '6%', l: 'Commission unique' }, { n: '0', l: 'Grossiste' }].map((s) => (
+        {[{ n: 'Sarthe', l: 'Éleveurs partenaires' }, { n: '6%', l: 'Commission unique' }, { n: '0', l: 'Grossiste' }].map((s) => (
           <div key={s.l}>
             <div className="font-serif text-[64px] md:text-[80px] text-green-900 leading-none tabular-nums">{s.n}</div>
             <div className="mt-2 text-[12px] uppercase tracking-[0.14em] text-dark/60 font-semibold">{s.l}</div>
