@@ -11,11 +11,11 @@ import { MapSarthe } from "@/components/ui/map-sarthe";
 // conseil producteur fourni avec autorisation écrite (cf.
 // docs/post-launch-checklist.md).
 
-export type SarthemapPostitProps = { className?: string };
+export type SarthemapSectionProps = { className?: string };
 
-export function SarthemapPostit({
+export function SarthemapSection({
   className = "",
-}: SarthemapPostitProps) {
+}: SarthemapSectionProps) {
   return (
     <section
       id="producteurs"

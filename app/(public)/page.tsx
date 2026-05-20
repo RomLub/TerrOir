@@ -4,7 +4,7 @@ import { Hero } from "./_components/home/Hero";
 import { Steps } from "./_components/home/Steps";
 import { NotreDemarcheTeaser } from "./_components/home/NotreDemarcheTeaser";
 import { FeaturedProducts } from "./_components/home/FeaturedProducts";
-import { SarthemapPostit } from "./_components/home/SarthemapPostit";
+import { SarthemapSection } from "./_components/home/SarthemapSection";
 import { Reassurance } from "./_components/home/Reassurance";
 import { CtaBand } from "./_components/home/CtaBand";
 import { AccountDeletedBanner } from "./_components/home/AccountDeletedBanner";
@@ -41,7 +41,7 @@ export default async function HomePage({
       <Steps />
       <NotreDemarcheTeaser />
       <FeaturedProducts />
-      <SarthemapPostit />
+      <SarthemapSection />
       <Reassurance />
       <CtaBand />
     </>
