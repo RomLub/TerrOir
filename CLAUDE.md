@@ -522,9 +522,20 @@ la condition de déblocage.
 - Trigger `producers_block_owner_admin_columns` (BEFORE UPDATE) bloque
   les self-updates producteur sur 25 colonnes admin-only (lat/lng
   inclus).
-- Pour UPDATE admin manuel via SQL Studio Supabase : `SET ROLE
-  service_role` explicite obligatoire (superuser ne bypass pas le
-  trigger).
+- Pour UPDATE admin manuel sur ces colonnes (statut inclus) via SQL
+  Studio Supabase **ou via MCP `execute_sql`** : le bypass est
+  `set local request.jwt.claim.role = 'service_role';` en tête de la
+  même transaction que l'UPDATE — **PAS** `SET ROLE service_role`.
+  Raison : le trigger teste `auth.role()`, qui lit le claim JWT
+  (`current_setting('request.jwt.claim.role')`), pas le rôle Postgres
+  de la session. Changer le rôle Postgres (`SET ROLE`) ne touche pas
+  le claim, donc `auth.role()` ne renvoie pas `service_role` et le
+  trigger bloque quand même (le superuser ne bypass pas non plus).
+  En MCP, le `set local` + l'`update` doivent partir dans le même
+  appel `execute_sql` (string multi-statements = une seule transaction
+  implicite, condition pour que `set local` tienne). Vérifié 2026-05-20
+  sur la réactivation d'un producteur test. Pattern de référence :
+  migration `20260513220000_publish_validated_producers.sql`.
 - Helpers `SECURITY DEFINER` consommés par les policies RLS
   (`is_admin()`, `owns_producer(uuid)`, etc.) nécessitent EXECUTE pour
   `anon` + `authenticated`. Faux positif récurrent d'audit ACL.
