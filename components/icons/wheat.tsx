@@ -1,9 +1,9 @@
 // Icône épi de blé — avatar générique "producteur sarthois" pour la
 // carte tag du hero home (remplace la mention inventée "Ferme des
-// Tilleuls"). Direction "gravure au trait" (line-art, barbes + nervures
-// fines) cohérente avec le set catégories Claude Design intégré en PR3.
-// viewBox 24×24, currentColor. Hors components/icons/categories/ car ce
-// n'est pas une catégorie produit.
+// Tilleuls"). Set Claude Design, variante A élancée : tige nette,
+// barbes franches au sommet (signature de lecture à petite taille),
+// 4 paires de grains en chevron. viewBox 24×24, currentColor. Hors
+// components/icons/categories/ (pas une catégorie produit).
 
 type Props = { className?: string };
 
@@ -14,30 +14,26 @@ export function WheatIcon({ className = "" }: Props) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
+      strokeWidth="1"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
       className={className}
     >
-      <g strokeWidth="1">
-        <path d="M12 22 L12 12" />
-        <path d="M12 12 Q 13.6 8.5 12 4.5 Q 10.4 8.5 12 12 Z" />
-        <path d="M12 13 Q 14.6 11 15 7.8 Q 12.8 9.8 12 13 Z" />
-        <path d="M12 13 Q 9.4 11 9 7.8 Q 11.2 9.8 12 13 Z" />
-        <path d="M12 16 Q 14.8 14 15.2 10.8 Q 12.9 12.8 12 16 Z" />
-        <path d="M12 16 Q 9.2 14 8.8 10.8 Q 11.1 12.8 12 16 Z" />
-        <path d="M12 19 Q 14.6 17 15 13.8 Q 12.8 15.8 12 19 Z" />
-        <path d="M12 19 Q 9.4 17 9 13.8 Q 11.2 15.8 12 19 Z" />
-      </g>
-      <g strokeWidth="0.5">
-        <path d="M12 4.5 L12 2" />
-        <path d="M11.4 5 L10 2.8" />
-        <path d="M12.6 5 L14 2.8" />
-        <path d="M12 12.5 Q 13 10 13.5 7.5" />
-        <path d="M12 12.5 Q 11 10 10.5 7.5" />
-        <path d="M12 15.5 Q 13.2 13 13.7 10.5" />
-        <path d="M12 15.5 Q 10.8 13 10.3 10.5" />
-      </g>
+      <path d="M12 15 L12 22" />
+      <path d="M12 4 L12 1" />
+      <path d="M12 4 L10 1.4" />
+      <path d="M12 4 L14 1.4" />
+      <path d="M12 4 L8.5 2.2" />
+      <path d="M12 4 L15.5 2.2" />
+      <path d="M12 6 C 10 6, 8 5.5, 8.5 4 C 10 4.5, 11.5 5, 12 6 Z" />
+      <path d="M12 6 C 14 6, 16 5.5, 15.5 4 C 14 4.5, 12.5 5, 12 6 Z" />
+      <path d="M12 9 C 10 9, 8 8.5, 8.5 7 C 10 7.5, 11.5 8, 12 9 Z" />
+      <path d="M12 9 C 14 9, 16 8.5, 15.5 7 C 14 7.5, 12.5 8, 12 9 Z" />
+      <path d="M12 12 C 10 12, 8 11.5, 8.5 10 C 10 10.5, 11.5 11, 12 12 Z" />
+      <path d="M12 12 C 14 12, 16 11.5, 15.5 10 C 14 10.5, 12.5 11, 12 12 Z" />
+      <path d="M12 15 C 10 15, 8 14.5, 8.5 13 C 10 13.5, 11.5 14, 12 15 Z" />
+      <path d="M12 15 C 14 15, 16 14.5, 15.5 13 C 14 13.5, 12.5 14, 12 15 Z" />
     </svg>
   );
 }
