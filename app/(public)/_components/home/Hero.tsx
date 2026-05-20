@@ -1,42 +1,29 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { WheatIcon } from "@/components/icons/wheat";
 
 // Section Hero de la home consumer (homepage.html section .hero).
 //
 // Visuel hero : photo éditoriale `photo06_paysage-piquets` (bocage
 // sarthois, espace négatif ciel haut → garantit la lisibilité du tag
-// producteur overlay positionné en bas). Format 16/9 (PR1 audit photos
+// overlay positionné en bas). Format 16/9 (PR1 audit photos
 // 2026-05-17 — décision : 16/9 par défaut partout, 4/5 conservé pour
 // les blocs story-like).
 //
-// Tag overlay producteur : Phase 1 statique (DEFAULT_PRODUCER),
-// Phase 2 alimenté depuis Supabase via la prop `producer`.
+// Tag overlay : étiquette générique (avatar épi de blé + claim circuit
+// court). Ne porte AUCUNE mention de producteur nominative — la carte
+// "Ferme des Tilleuls" inventée a été retirée (risque usurpation +
+// crédibilité, audit photos 2026-05-20).
 //
 // Pas de stats inline dans le hero (Q2 validé pre-Phase C : on garde
 // <PublicStats /> en section dédiée après Hero, branchée Supabase live).
 
-export type HeroProducer = {
-  name: string;
-  commune: string;
-  pitch: string;
-};
-
 export type HeroProps = {
-  producer?: HeroProducer;
   className?: string;
 };
 
-const DEFAULT_PRODUCER: HeroProducer = {
-  name: "Ferme des Tilleuls",
-  commune: "Coulaines",
-  pitch: "volaille fermière depuis 1987",
-};
-
-export function Hero({
-  producer = DEFAULT_PRODUCER,
-  className = "",
-}: HeroProps) {
+export function Hero({ className = "" }: HeroProps) {
   return (
     <section className={`bg-terroir-bg ${className}`}>
       <div className="mx-auto max-w-6xl px-4 py-16 md:py-24 lg:py-28">
@@ -90,20 +77,18 @@ export function Hero({
               sizes="(min-width: 768px) 48vw, 100vw"
               className="object-cover"
             />
-            {/* Tag overlay producteur (placeholder Phase 1) */}
+            {/* Tag overlay générique (avatar épi de blé + claim circuit
+                court). Aucune mention de producteur nominative. */}
             <div className="absolute inset-x-6 bottom-6 flex items-center gap-3.5 rounded-xl bg-white/92 p-3.5 backdrop-blur">
-              <div
-                className="h-11 w-11 shrink-0 rounded-full"
-                style={{
-                  background: "linear-gradient(135deg, #95D5B2, #2D6A4F)",
-                }}
-              />
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-terra-100">
+                <WheatIcon className="h-7 w-7 text-terra-800" />
+              </div>
               <div className="min-w-0">
                 <div className="text-sm font-medium leading-tight text-terroir-ink">
-                  {producer.name}
+                  Producteurs sélectionnés · Sarthe
                 </div>
                 <div className="mt-0.5 text-xs leading-tight text-terroir-muted">
-                  {producer.commune} · {producer.pitch}
+                  Circuit court · de la ferme à ta table
                 </div>
               </div>
             </div>
