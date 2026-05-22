@@ -10,6 +10,7 @@ import {
 
 const PRODUCER_HOST = "pro.terroir-local.fr";
 const ADMIN_HOST = "admin.terroir-local.fr";
+const WWW_HOST = "www.terroir-local.fr";
 const CONSUMER_PROTECTED_PREFIX = "/compte";
 const LOGIN_PATH = "/connexion";
 const PRO_LANDING_PATH = "/pro-accueil";
@@ -249,6 +250,20 @@ export async function middleware(request: NextRequest) {
 
   const needsAuth = isProducerHost || isAdminHost || isConsumerProtected;
 
+  // Isolation rôles/sous-domaine (fix middleware-subdomain-isolation) :
+  // `/compte/*` est une route CONSUMER par nature → jamais servie sur pro.*.
+  // On redirige en ABSOLU vers www.* (préserve sous-chemin + query). Vaut pour
+  // TOUS les utilisateurs, y compris les producteurs (un producteur gère sa
+  // fiche sur pro.*, son compte consumer sur www.*) et les non-connectés
+  // (www.* gérera l'auth). Redirect absolu obligatoire : un redirect relatif
+  // resterait sur pro.* → boucle. Borné en dev (isProducerHost faux hors
+  // hostname prod), donc sans effet sur localhost.
+  if (isProducerHost && pathname.startsWith(CONSUMER_PROTECTED_PREFIX)) {
+    return NextResponse.redirect(
+      new URL(`${pathname}${request.nextUrl.search}`, `https://${WWW_HOST}`),
+    );
+  }
+
   // Canonicalisation cross-subdomain : /pro-accueil et /admin-accueil ne
   // doivent répondre que sur leur sous-domaine respectif. Si on tape
   // www.terroir-local.fr/pro-accueil, on 301 vers https://pro.../ (la
@@ -415,6 +430,27 @@ export async function middleware(request: NextRequest) {
       const redirectUrl = request.nextUrl.clone();
       redirectUrl.pathname = LOGIN_PATH;
       const redirectResponse = NextResponse.redirect(redirectUrl);
+      if (snapshot.needsRefresh) {
+        await setRoleSnapshotOnResponse(redirectResponse, host, {
+          user_id: user.id,
+          roles,
+          isAdmin,
+        });
+      }
+      return redirectResponse;
+    }
+
+    // 3a-bis. Isolation : utilisateur connecté SANS rôle producer (et non-admin)
+    //     sur pro.* → renvoyé vers l'espace consumer www.*. La racine pro.*
+    //     est déjà gérée plus haut (bloc 0b → /connexion) et /compte/* aussi
+    //     (redirect www.* avant l'auth) ; ce bloc couvre les AUTRES chemins
+    //     producteur tentés par un non-producteur. Redirect ABSOLU vers la
+    //     racine www.* (home consumer, dans PUBLIC_PATHS → pas de re-redirect,
+    //     donc pas de boucle).
+    if (isProducerHost && !isAdmin && !roles.includes("producer")) {
+      const redirectResponse = NextResponse.redirect(
+        new URL("/", `https://${WWW_HOST}`),
+      );
       if (snapshot.needsRefresh) {
         await setRoleSnapshotOnResponse(redirectResponse, host, {
           user_id: user.id,
