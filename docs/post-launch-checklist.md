@@ -413,3 +413,21 @@ production.
   `statut = 'public'` géolocalisés (lat/lng → projection sur le SVG, ou
   bascule vers une vraie carte interactive). Supprimer le tableau
   hardcodé une fois la source DB en place.
+
+---
+
+## Conditionné au déploiement prod du chantier Leads (merge PR #152)
+
+### Variable d'env `LEAD_PREFILL_TOKEN_SECRET` dans Vercel
+
+- **Condition de déblocage** : avant le déploiement production de
+  `feature/leads-refonte-2026-05` (la route `/devenir-producteur`, la route
+  `send-form` et le cron `leads-followups` génèrent/vérifient des liens
+  prefill signés HMAC).
+- **Action** : `vercel env add LEAD_PREFILL_TOKEN_SECRET` (Production +
+  Preview), valeur générée via `openssl rand -hex 32`. Documentée dans
+  `.env.example`. Sans cette variable, toute génération/vérification de lien
+  prefill throw (fail-fast).
+- **Vérif post-déploiement** : le cron `leads-followups` (vercel.json, 7h)
+  tourne sans erreur ; un envoi de formulaire prospect produit un lien
+  `/devenir-producteur?prefill=…` valide.

@@ -31,6 +31,8 @@ const SAMPLE_DATA: AdminDashboardData = {
     producers_pending_validation_count: 1,
     refund_incidents_count: 0,
     invitations_expired_count: 8,
+    publications_pending_count: 2,
+    bio_pending_count: 1,
   },
   business: {
     orders_today_count: 4,

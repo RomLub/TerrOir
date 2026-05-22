@@ -542,14 +542,12 @@ la condition de déblocage.
   direct.
 - **Plus de publication automatique** : le mécanisme `active → public`
   automatique (ex-`lib/producers/promote-to-public.ts`) a été **supprimé**
-  (chantier 3). Toute publication passe désormais par demande producteur →
-  validation admin.
-  ⚠️ **Note de transition** : du 22/05/2026 jusqu'au merge de la Phase 5 (écran
-  admin de validation des demandes de publication), il n'existe **aucun**
-  mécanisme automatique de promotion `active → public`. Les promotions
-  exceptionnelles se font à la main via SQL ad-hoc (ou une action admin
-  existante si présente). Cette note de transition disparaîtra au merge de la
-  Phase 5.
+  (chantier 3). Toute publication passe désormais par : le producteur clique
+  « Demander la publication » sur `/ma-page` (RPC `request_publication`,
+  vérifie les 6 critères) → l'admin valide depuis `/gestion-producteurs`
+  (bouton « Publier » → `statut = 'public'`, signal « Publication demandée »).
+  De même, la certification bio se déclare côté producteur et se valide côté
+  admin (`bio_validated_at`) avant exposition publique du badge/filtre.
 
 ### Privacy / RLS
 
