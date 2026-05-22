@@ -9,6 +9,20 @@ Pour les décisions structurantes (ADRs), voir [`decisions/`](./decisions/).
 
 ---
 
+## 2026-05-23 (Refonte admin — Chantier 1 : accès admin magic link auto)
+
+> PR `feature/chantier-1-magic-link-admin`. Premier chantier de la refonte admin.
+>
+> 🟢 **Bouton « Espace admin »** dans la navbar www, affiché UNIQUEMENT aux admins (gardé par `isAdmin`). Remplace l'ancien lien relatif `/tableau-de-bord` (qui pointait une route admin sur www).
+>
+> 🟢 **Action `requestAdminMagicLinkAction`** (session-based) : un admin connecté sur www déclenche en un clic un magic link envoyé à SA propre adresse, dont le callback tombe sur `admin.*` et y pose le cookie isolé `sb-admin-auth-token`. Réutilise `signInWithOtp` + le callback existant ; aucune migration, **aucun partage de cookie cross-subdomain** (isolation Chantier 4 préservée). Réservé aux admins (vérif serveur), rate-limité, audité (`account_login_magic_link` source=admin_button).
+>
+> 🟢 Tests : 4 cas unitaires (non connecté / non admin / admin OK / rate-limit) + anti-régression sur le magic link existant. `npm test` vert (2797), lint/type-check/build OK.
+>
+> ⚠️ **Incident infra (documenté CLAUDE.md § Pièges connus)** : la tentative initiale d'orchestration parallèle via agents en worktrees isolés a échoué sur ce setup Windows (tangle worktrees + reset cwd shell + `git worktree remove --force` qui a vidé le `node_modules` du main via une jonction). Aucune perte de code (restauré via `npm install`). Bascule actée vers le modèle séquentiel team-lead.
+
+---
+
 ## 2026-05-22 (Fix — isolation rôles/sous-domaine middleware)
 
 > PR `fix/middleware-subdomain-isolation`. Bug d'isolation surfacé post-merge chantier 3 (pré-existant) : un utilisateur **non-producteur** connecté pouvait charger des routes consumer (ex. `/compte`) sur `pro.terroir-local.fr` — le contenu consumer était servi sur le sous-domaine producteur. **Pas de fuite de données** (RLS intacte, données propres à l'utilisateur, identiques à `www`) mais violation de la doctrine d'isolation des rôles par sous-domaine.

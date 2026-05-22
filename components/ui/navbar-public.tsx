@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Logo } from "@/components/ui/logo";
 import { Badge } from "@/components/ui/badge";
+import { AdminAccessButton } from "@/components/ui/admin-access-button";
 import { RoleToggle } from "@/components/ui/role-toggle";
 import { useUserContext } from "@/components/providers/user-provider";
 import { useCartStore } from "@/lib/store/cart";
@@ -250,13 +251,17 @@ export function NavbarPublic({
         <div className="flex items-center gap-3">
           {user ? (
             <>
-              <Link
-                href={isAdmin ? "/tableau-de-bord" : "/compte"}
-                className="inline-flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-terroir-ink transition-colors hover:bg-terra-100 hover:text-terra-700"
-              >
-                <UserIcon className="h-5 w-5 text-terra-700" />
-                <span className="font-medium">{label}</span>
-              </Link>
+              {isAdmin ? (
+                <AdminAccessButton />
+              ) : (
+                <Link
+                  href="/compte"
+                  className="inline-flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-terroir-ink transition-colors hover:bg-terra-100 hover:text-terra-700"
+                >
+                  <UserIcon className="h-5 w-5 text-terra-700" />
+                  <span className="font-medium">{label}</span>
+                </Link>
+              )}
               {isAdmin ? <Badge variant="green">Admin</Badge> : null}
               <form onSubmit={handleLogout}>
                 <button
@@ -356,15 +361,20 @@ export function NavbarPublic({
         <div className="mt-auto border-t border-terroir-border pt-4">
           {user ? (
             <div className="flex flex-col gap-2">
-              <Link
-                href={isAdmin ? "/tableau-de-bord" : "/compte"}
-                onClick={() => setDrawerOpen(false)}
-                className="inline-flex items-center gap-2 rounded-md px-3 py-3 text-sm text-terroir-ink transition-colors hover:bg-terra-100 hover:text-terra-700"
-              >
-                <UserIcon className="h-5 w-5 text-terra-700" />
-                <span className="font-medium">{label}</span>
-                {isAdmin ? <Badge variant="green">Admin</Badge> : null}
-              </Link>
+              {isAdmin ? (
+                <div className="px-3 py-2">
+                  <AdminAccessButton />
+                </div>
+              ) : (
+                <Link
+                  href="/compte"
+                  onClick={() => setDrawerOpen(false)}
+                  className="inline-flex items-center gap-2 rounded-md px-3 py-3 text-sm text-terroir-ink transition-colors hover:bg-terra-100 hover:text-terra-700"
+                >
+                  <UserIcon className="h-5 w-5 text-terra-700" />
+                  <span className="font-medium">{label}</span>
+                </Link>
+              )}
               <form onSubmit={handleLogout}>
                 <button
                   type="submit"

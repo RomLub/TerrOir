@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getSessionUser } from "@/lib/auth/session";
 import { escapeIlikeEmail } from "@/lib/supabase/escape-ilike";
 import { loginSchema } from "@/lib/auth/validators";
 import { maskEmail } from "@/lib/rgpd/mask-email";
@@ -282,6 +283,80 @@ export async function requestMagicLinkAction(
   return {
     message:
       "Si cette adresse est connue, un lien vous a été envoyé. Consultez vos emails.",
+  };
+}
+
+// =============================================================================
+// Chantier 1 — Accès admin en un clic depuis www. Un admin connecté sur www
+// (cookie partagé .terroir-local.fr) ne peut PAS partager sa session avec
+// admin.* (cookie isolé sb-admin-auth-token, par design Chantier 4). Le pont
+// sécurisé = un magic link auto : on envoie à SA PROPRE adresse (session) un
+// lien dont le callback tombe sur admin.* et y pose le cookie admin isolé.
+//
+// Session-based (≠ requestMagicLinkAction qui prend un email en input) :
+//   - l'email cible = celui de la session (jamais arbitraire),
+//   - réservé aux admins (vérif serveur isAdmin via getSessionUser → lookup
+//     admin_users), refus générique sinon (le bouton est déjà admin-only UI).
+// Aucune migration, aucun partage de cookie cross-subdomain : on réutilise
+// signInWithOtp + le callback existant (qui pose sb-admin-auth-token sur
+// admin.* via cookieConfigForHost).
+// =============================================================================
+
+export async function requestAdminMagicLinkAction(
+  _prev: MagicLinkState,
+  _formData: FormData,
+): Promise<MagicLinkState> {
+  const session = await getSessionUser();
+  // Refus générique : ni l'existence d'un compte ni le statut admin ne fuit.
+  if (!session?.isAdmin || !session.email) {
+    return { error: "Accès non autorisé." };
+  }
+
+  // Rate-limit mutualisé avec le magic link classique (même surface d'envoi).
+  const { ipAddress } = extractRequestContext(await headers());
+  const rateLimit = await consumeRateLimit(
+    getMagicLinkRateLimit(),
+    ipAddress ?? "unknown",
+  );
+  if (!rateLimit.success) {
+    await logAuthEvent({
+      eventType: "rate_limit_exceeded",
+      userId: session.id,
+      metadata: {
+        route: "admin_magic_link",
+        cap: rateLimit.limit,
+        reset: rateLimit.reset,
+      },
+    });
+    return { error: "Trop de tentatives. Réessayez dans quelques minutes." };
+  }
+
+  // emailRedirectTo = callback admin.* → le callback pose sb-admin-auth-token
+  // (isolé) et route vers /tableau-de-bord (canonique du rôle admin). Pas de
+  // setRedirectAfterAuth nécessaire : la destination admin par défaut suffit.
+  try {
+    const supabase = await createSupabaseServerClient();
+    await supabase.auth.signInWithOtp({
+      email: session.email,
+      options: {
+        shouldCreateUser: false,
+        emailRedirectTo: getAuthCallbackUrl(true),
+      },
+    });
+  } catch (err) {
+    console.warn(
+      `ADMIN_MAGIC_LINK_SEND_WARN user_id=${session.id} error=${(err as Error).message}`,
+    );
+  }
+
+  await logAuthEvent({
+    eventType: "account_login_magic_link",
+    userId: session.id,
+    metadata: { email_masked: maskEmail(session.email), source: "admin_button" },
+  });
+
+  return {
+    message: "Lien d'accès admin envoyé à votre adresse. Consultez vos emails.",
   };
 }
 
