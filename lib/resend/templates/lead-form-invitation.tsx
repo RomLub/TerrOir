@@ -22,8 +22,9 @@ export default function LeadFormInvitation(props: Props) {
       <p>{bonjour}</p>
       <p>
         Suite à notre échange, voici le lien pour créer votre espace producteur
-        TerrOir en quelques minutes. Le formulaire est déjà pré-rempli avec les
-        informations que nous avons.
+        TerrOir en quelques minutes. Le formulaire reprend les informations que
+        vous nous avez transmises — vous n&rsquo;aurez qu&rsquo;à le compléter
+        et le valider.
       </p>
       <p>
         <a

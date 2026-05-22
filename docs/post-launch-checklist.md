@@ -413,26 +413,3 @@ production.
   `statut = 'public'` géolocalisés (lat/lng → projection sur le SVG, ou
   bascule vers une vraie carte interactive). Supprimer le tableau
   hardcodé une fois la source DB en place.
-
----
-
-## Conditionné à l'activation du cron `leads-followups` en prod (merge chantier Leads)
-
-### Nettoyer les 6 leads de test (mailinator) de `producer_interests`
-
-- **Condition de déblocage** : avant le merge en prod de
-  `feature/leads-refonte-2026-05` (le cron `leads-followups` est déclaré
-  dans `vercel.json` et devient actif au déploiement production).
-- **Contexte** : 6 leads `source='formulaire_public'`, statut new/contacted,
-  âgés de 27-31 j, sont des résidus de tests manuels de dev (adresses
-  `@mailinator.com`/`.org` : `test-phase3-newuser`, `test-phase4-resume`,
-  `test-optout-v2`, `test-leadbump-0423`, `test-onboard-conseil`, `test1`).
-  Ils ne matchent PAS le sentinel Playwright (`playwright-test-*`) donc le
-  cleanup E2E ne les attrape pas. Sans nettoyage, le cron leur enverrait des
-  relances (inoffensif car mailinator est jetable, mais pollue le funnel).
-  Les 3 leads `onboarded` (Romain, Chloé, Julien LELOUP) sont réels → à
-  conserver.
-- **Action** : `DELETE FROM producer_interests WHERE source='formulaire_public'
-  AND statut <> 'onboarded' AND email ILIKE '%@mailinator.%';` (vérifier le
-  count = 6 avant). Aucune dépendance (ces leads n'ont pas de followups ni de
-  compte producteur lié, jamais onboardés).

@@ -20,7 +20,7 @@ export default function LeadRelance1(props: Props) {
       </h1>
       <p>{bonjour}</p>
       <p>
-        Merci d&rsquo;avoir manifesté votre envie de rejoindre TerrOir et de
+        Merci d&rsquo;avoir manifesté votre souhait de rejoindre TerrOir et de
         vendre en circuit court près de chez vous. Il ne reste que quelques
         étapes pour finaliser votre espace et apparaître auprès des
         consommateurs de la Sarthe — comptez quelques minutes.
