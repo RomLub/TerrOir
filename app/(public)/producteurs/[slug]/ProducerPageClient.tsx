@@ -35,6 +35,7 @@ export type ProducerData = {
   scores: { stock: number; response: number; reliability: number };
   species: string[];
   labels: string[];
+  bio: boolean;
   generations: number | null;
   anneeCreation: number | null;
   rating: number;
@@ -166,10 +167,13 @@ export function ProducerPageClient({
                   <div className="flex flex-wrap gap-1.5 mb-4">{producer.species.map((s) => <Badge key={s}>{s}</Badge>)}</div>
                 </>
               )}
-              {producer.labels.length > 0 && (
+              {(producer.bio || producer.labels.length > 0) && (
                 <>
                   <div className="text-[11px] uppercase tracking-[0.14em] text-dark/60 font-semibold mb-2">Labels & certifications</div>
-                  <div className="flex flex-wrap gap-1.5">{producer.labels.map((l) => <Badge key={l} variant="terra">{l}</Badge>)}</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {producer.bio && <Badge>Agriculture Biologique</Badge>}
+                    {producer.labels.map((l) => <Badge key={l} variant="terra">{l}</Badge>)}
+                  </div>
                 </>
               )}
             </div>

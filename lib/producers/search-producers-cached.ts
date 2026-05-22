@@ -56,6 +56,8 @@ export type SearchProducersParams = {
   radius_km: number;
   especes: string[] | null;
   labels: string[] | null;
+  // Filtre bio (chantier 3) : true = uniquement producteurs bio validés.
+  bio?: boolean;
 };
 
 export type SearchProducersRow = {
@@ -95,6 +97,7 @@ export function buildSearchProducersCacheKey(
     `radius=${params.radius_km}`,
     `especes=${serializeMultiFilter(params.especes)}`,
     `labels=${serializeMultiFilter(params.labels)}`,
+    `bio=${params.bio ? "1" : "0"}`,
   ];
 }
 
@@ -130,6 +133,7 @@ export async function fetchSearchProducersCached(
         p_radius_km: params.radius_km,
         p_especes: params.especes,
         p_labels: params.labels,
+        p_bio: params.bio ?? false,
       });
       if (error) {
         return {

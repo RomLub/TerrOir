@@ -79,6 +79,8 @@ export async function GET(request: Request) {
     .split(",")
     .map((v) => v.trim())
     .filter(Boolean);
+  // Filtre bio (chantier 3) : ?bio=1 → uniquement producteurs bio validés.
+  const bio = url.searchParams.get("bio") === "1";
 
   // F-021 (audit pré-launch 2026-05) : la RPC `search_producers` reste
   // coûteuse (sous-requête corrélée products + haversine inline). Pour
@@ -93,6 +95,7 @@ export async function GET(request: Request) {
     radius_km: radius,
     especes: especes.length ? especes : null,
     labels: labels.length ? labels : null,
+    bio,
   });
 
   if (error) {

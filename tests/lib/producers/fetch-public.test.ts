@@ -83,6 +83,7 @@ function makeProducer(overrides: Partial<ProducerPublic> = {}): ProducerPublic {
     badge_annulation_score: null,
     note_moyenne: null,
     nb_avis: null,
+    bio: false,
     ...overrides,
   };
 }
@@ -107,6 +108,35 @@ describe("fetchPublicProducerBySlug — cas nominal", () => {
     const res = await fetchPublicProducerBySlug(client, "ferme-bio");
 
     expect(res).toEqual(producer);
+  });
+
+  it("bio gated : bio + bio_validated_at → bio=true, sans fuite de bio_validated_at", async () => {
+    const raw = {
+      ...makeProducer({ slug: "ferme-bio" }),
+      bio: true,
+      bio_validated_at: "2026-05-01T00:00:00Z",
+    };
+    const { client } = makeSupabase({ data: raw, error: null });
+
+    const res = await fetchPublicProducerBySlug(client, "ferme-bio");
+
+    expect(res?.bio).toBe(true);
+    expect(
+      (res as unknown as Record<string, unknown>).bio_validated_at,
+    ).toBeUndefined();
+  });
+
+  it("bio déclaré mais non validé (bio_validated_at null) → bio=false", async () => {
+    const raw = {
+      ...makeProducer({ slug: "ferme-bio" }),
+      bio: true,
+      bio_validated_at: null,
+    };
+    const { client } = makeSupabase({ data: raw, error: null });
+
+    const res = await fetchPublicProducerBySlug(client, "ferme-bio");
+
+    expect(res?.bio).toBe(false);
   });
 
   it("requête la table 'producers'", async () => {

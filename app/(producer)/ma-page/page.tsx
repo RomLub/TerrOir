@@ -11,6 +11,7 @@ import {
   revalidateProducersSearch,
 } from '@/lib/stats/revalidate';
 import { ProducerLayout } from '../_components/ProducerLayout';
+import { RequestPublicationPanel } from './_components/RequestPublicationPanel';
 
 function OnboardedBanner() {
   const searchParams = useSearchParams();
@@ -66,6 +67,8 @@ type Form = {
   labels: string[];
   commune: string;
   code_postal: string;
+  bio: boolean;
+  bio_certificate_number: string;
 };
 
 const EMPTY: Form = {
@@ -78,6 +81,8 @@ const EMPTY: Form = {
   labels: [],
   commune: '',
   code_postal: '',
+  bio: false,
+  bio_certificate_number: '',
 };
 
 export default function MaPagePage() {
@@ -87,6 +92,10 @@ export default function MaPagePage() {
   // C-5 — bloc producer cached 60s sur fiche publique).
   const [producerSlug, setProducerSlug] = useState<string | null>(null);
   const [form, setForm] = useState<Form>(EMPTY);
+  // Statut + demande publication + validation bio (lecture seule côté producteur).
+  const [statut, setStatut] = useState<string | null>(null);
+  const [publicationRequestedAt, setPublicationRequestedAt] = useState<string | null>(null);
+  const [bioValidatedAt, setBioValidatedAt] = useState<string | null>(null);
   const [heroPhoto, setHeroPhoto] = useState<string | null>(null);
   const [gallery, setGallery] = useState<string[]>([]);
   const [scores, setScores] = useState({ stock: 0, response: 0, reliability: 0 });
@@ -111,7 +120,7 @@ export default function MaPagePage() {
 
       const { data: prod, error: fetchError } = await supabase
         .from('producers')
-        .select('id, slug, nom_exploitation, description, histoire, generations, annee_creation, especes, labels, commune, code_postal, photo_principale, photos, note_moyenne, nb_avis, badge_stock_score, badge_confirmation_score, badge_annulation_score')
+        .select('id, slug, nom_exploitation, description, histoire, generations, annee_creation, especes, labels, commune, code_postal, photo_principale, photos, note_moyenne, nb_avis, badge_stock_score, badge_confirmation_score, badge_annulation_score, bio, bio_certificate_number, bio_validated_at, statut, publication_requested_at')
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -131,7 +140,12 @@ export default function MaPagePage() {
         labels: Array.isArray(prod.labels) ? prod.labels : [],
         commune: prod.commune ?? '',
         code_postal: prod.code_postal ?? '',
+        bio: Boolean(prod.bio),
+        bio_certificate_number: prod.bio_certificate_number ?? '',
       });
+      setStatut(prod.statut ?? null);
+      setPublicationRequestedAt(prod.publication_requested_at ?? null);
+      setBioValidatedAt(prod.bio_validated_at ?? null);
       setHeroPhoto(prod.photo_principale ?? null);
       setGallery(Array.isArray(prod.photos) ? prod.photos : []);
       setRating(Number(prod.note_moyenne ?? 0));
@@ -229,6 +243,14 @@ export default function MaPagePage() {
           code_postal: form.code_postal.trim() || null,
           photo_principale: heroUrl,
           photos: galleryUrls.length ? galleryUrls : null,
+          // Déclaration bio producteur. bio_validated_at reste admin-only
+          // (bloqué par le trigger producers_block_owner_admin_columns) :
+          // l'exposition publique (filtre + badge) est conditionnée à la
+          // validation admin. Si le producteur décoche bio, on efface le n°.
+          bio: form.bio,
+          bio_certificate_number: form.bio
+            ? form.bio_certificate_number.trim() || null
+            : null,
         })
         .eq('id', producerId);
 
@@ -329,6 +351,11 @@ export default function MaPagePage() {
         ) : (
           <div className="grid lg:grid-cols-[1fr_340px] gap-8 items-start">
             <div className="space-y-6">
+              <RequestPublicationPanel
+                statut={statut}
+                publicationRequestedAt={publicationRequestedAt}
+              />
+
               <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
                 <h2 className="font-serif text-[22px] text-green-900 mb-4">Informations générales</h2>
                 <div className="space-y-4">
@@ -432,6 +459,52 @@ export default function MaPagePage() {
                     );
                   })}
                 </div>
+              </section>
+
+              <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
+                <h2 className="font-serif text-[22px] text-green-900 mb-1">Certification bio</h2>
+                <p className="text-[13px] text-dark/60 mb-4">
+                  Si votre exploitation est certifiée Agriculture Biologique, le
+                  badge bio n&rsquo;apparaît publiquement qu&rsquo;après vérification
+                  de votre numéro d&rsquo;opérateur par l&rsquo;équipe TerrOir.
+                </p>
+                <label className="flex items-start gap-3 text-[14px] text-dark/80 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={form.bio}
+                    onChange={(e) => {
+                      setForm({ ...form, bio: e.target.checked });
+                      setSaved(false);
+                    }}
+                    className="mt-1 h-4 w-4 rounded border-dark/20 text-green-700 focus:ring-green-700/40"
+                  />
+                  <span>Je suis certifié Agriculture Biologique.</span>
+                </label>
+                {form.bio && (
+                  <div className="mt-4">
+                    <Input
+                      label="Numéro d'opérateur Agence Bio"
+                      value={form.bio_certificate_number}
+                      onChange={(e) => {
+                        setForm({ ...form, bio_certificate_number: e.target.value });
+                        setSaved(false);
+                      }}
+                      placeholder="Ex. FRBIO-XX-123456"
+                    />
+                    <p className="mt-2 text-[12px]">
+                      {bioValidatedAt ? (
+                        <span className="text-green-700">
+                          ✓ Certification validée — le badge bio est visible
+                          publiquement.
+                        </span>
+                      ) : (
+                        <span className="text-terra-700">
+                          En attente de validation par l&rsquo;équipe TerrOir.
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                )}
               </section>
 
               <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">

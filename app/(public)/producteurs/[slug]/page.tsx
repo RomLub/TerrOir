@@ -174,6 +174,7 @@ export default async function ProducteurPage(props: { params: Promise<{ slug: st
     },
     species: (producer.especes ?? []).map(labelEspece),
     labels: (producer.labels ?? []).map(labelLabel),
+    bio: producer.bio,
     generations: producer.generations,
     anneeCreation: producer.annee_creation,
     rating: Number(producer.note_moyenne ?? 0),

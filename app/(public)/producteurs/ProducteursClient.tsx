@@ -25,6 +25,7 @@ type SearchResult = {
   note_moyenne: number | null;
   nb_avis: number | null;
   product_count: number | null;
+  bio?: boolean;
 };
 
 type ApiResponse = { count: number; results: SearchResult[] } | { error: string };
@@ -70,6 +71,7 @@ function ProducteursClientInner() {
   const [labels, setLabels] = useState<string[]>(() =>
     searchParams.get('labels')?.split(',').filter(Boolean) ?? [],
   );
+  const [bio, setBio] = useState<boolean>(() => searchParams.get('bio') === '1');
   const [radius, setRadius] = useState<number>(() => Number(searchParams.get('rayon')) || 50);
 
   const [userLoc, setUserLoc] = useState<{ lat: number; lng: number } | null>(null);
@@ -104,10 +106,11 @@ function ProducteursClientInner() {
     const params = new URLSearchParams();
     if (especes.length) params.set('especes', especes.join(','));
     if (labels.length) params.set('labels', labels.join(','));
+    if (bio) params.set('bio', '1');
     if (radius !== 50) params.set('rayon', String(radius));
     const q = params.toString();
     router.replace(q ? `/producteurs?${q}` : '/producteurs', { scroll: false });
-  }, [especes, labels, radius, router]);
+  }, [especes, labels, bio, radius, router]);
 
   const abortRef = useRef<AbortController | null>(null);
   useEffect(() => {
@@ -123,6 +126,7 @@ function ProducteursClientInner() {
     });
     if (especes.length) params.set('especes', especes.join(','));
     if (labels.length) params.set('labels', labels.join(','));
+    if (bio) params.set('bio', '1');
 
     setLoading(true);
     setFetchError(null);
@@ -145,17 +149,17 @@ function ProducteursClientInner() {
       });
 
     return () => ctrl.abort();
-  }, [userLoc, radius, especes, labels]);
+  }, [userLoc, radius, especes, labels, bio]);
 
   const toggle = useCallback(<T extends string>(arr: T[], v: T, setter: (a: T[]) => void) => {
     setter(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
   }, []);
   const clearAll = () => {
-    setEspeces([]); setLabels([]); setRadius(50);
+    setEspeces([]); setLabels([]); setBio(false); setRadius(50);
   };
 
   const activeFilters =
-    especes.length + labels.length + (radius !== 50 ? 1 : 0);
+    especes.length + labels.length + (bio ? 1 : 0) + (radius !== 50 ? 1 : 0);
 
   const cards = useMemo(() => results.map((r) => {
     const commune = [r.commune, r.code_postal].filter(Boolean).join(' · ');
@@ -167,6 +171,7 @@ function ProducteursClientInner() {
         distanceKm: r.distance_km,
         species: (r.especes ?? []).map(labelEspece),
         labels: (r.labels ?? []).map(labelLabel),
+        bio: Boolean(r.bio),
         scores: {
           stock: Math.round(r.badge_stock_score ?? 0),
           response: Math.round(r.badge_confirmation_score ?? 0),
@@ -211,6 +216,10 @@ function ProducteursClientInner() {
                   {o.label}
                 </Chip>
               ))}
+              {/* Filtre bio dédié (flag validé admin), distinct des labels libres. */}
+              <Chip active={bio} onClick={() => setBio((v) => !v)}>
+                Bio
+              </Chip>
             </div>
           </FilterGroup>
           <FilterGroup label={`Rayon · ${radius} km`}>
