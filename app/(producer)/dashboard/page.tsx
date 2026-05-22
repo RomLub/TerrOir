@@ -8,10 +8,18 @@ import {
   formatSlotRange,
   formatLegacyTimeHHMM,
 } from '@/lib/slots/format-slot-time';
+import {
+  parseWeekOffset,
+  computeDashboardBounds,
+  formatWeekRangeLabel,
+  addDays,
+} from '@/lib/dates/week-navigation';
 import { ProducerLayout } from '../_components/ProducerLayout';
 import { DashboardClient, type DashboardData } from './DashboardClient';
 
 const TZ_PARIS = 'Europe/Paris';
+
+type SearchParams = Record<string, string | string[] | undefined>;
 
 // Extrait "YYYY-MM-DD" depuis un ISO timestamptz en Europe/Paris.
 // Utilisé pour matcher slots.starts_at au jour iso d'un planning semaine.
@@ -25,27 +33,10 @@ function slotDateInParis(iso: string): string {
 
 const WEEK_DAYS_LABEL = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 
-function startOfWeek(d: Date): Date {
-  const copy = new Date(d);
-  const day = (copy.getDay() + 6) % 7; // 0 = Monday
-  copy.setHours(0, 0, 0, 0);
-  copy.setDate(copy.getDate() - day);
-  return copy;
-}
-
-function addDays(d: Date, n: number): Date {
-  const c = new Date(d);
-  c.setDate(c.getDate() + n);
-  return c;
-}
-
-function startOfDay(d: Date): Date {
-  const c = new Date(d);
-  c.setHours(0, 0, 0, 0);
-  return c;
-}
-
-export default async function ProducerDashboardPage() {
+export default async function ProducerDashboardPage(props: {
+  searchParams: Promise<SearchParams>;
+}) {
+  const searchParams = await props.searchParams;
   const session = await getSessionUser();
   if (!session) redirect('/connexion');
 
@@ -55,20 +46,15 @@ export default async function ProducerDashboardPage() {
 
   const admin = createSupabaseAdminClient();
 
+  // Navigation par semaine (chantier 10) : `?week=-1` recule d'une semaine,
+  // `?week=2` avance de deux. Seules les bornes scopées semaine (planning +
+  // revenus semaine + comparaison) suivent l'offset ; les ancres « live »
+  // (today/yesterday/tomorrow, prochains retraits, alertes stock) restent
+  // sur le vrai now (cf. computeDashboardBounds).
   const now = new Date();
-  const todayStart = startOfDay(now);
-  const yesterdayStart = addDays(todayStart, -1);
-  const tomorrowStart = addDays(todayStart, 1);
-  const weekStart = startOfWeek(now);
-  const weekEnd = addDays(weekStart, 7);
-  const lastWeekStart = addDays(weekStart, -7);
-
-  // Week planning : slots sont désormais des instances matérialisées avec
-  // starts_at/ends_at timestamptz (Phase 1 créneaux). On fetch les slots de
-  // la semaine courante avec 1 jour de marge de part et d'autre pour absorber
-  // les edge cases TZ (weekStart en UTC vs slots.starts_at en Paris).
-  const slotsRangeStart = addDays(weekStart, -1);
-  const slotsRangeEnd = addDays(weekEnd, 1);
+  const weekOffset = parseWeekOffset(searchParams.week);
+  const bounds = computeDashboardBounds(now, weekOffset);
+  const { weekStart, todayStart } = bounds;
 
   // F-045 (audit pré-launch 2026-05-11) — RPC consolidée. Avant : 11 queries
   // Promise.all = 11 conn slots du pooler. Après : 1 RPC SECDEF = 1 conn.
@@ -78,17 +64,17 @@ export default async function ProducerDashboardPage() {
     {
       p_producer_id: producer.id,
       p_user_id: session.id,
-      p_today_start: todayStart.toISOString(),
-      p_yesterday_start: yesterdayStart.toISOString(),
-      p_tomorrow_start: tomorrowStart.toISOString(),
-      p_week_start: weekStart.toISOString(),
-      p_week_end: weekEnd.toISOString(),
-      p_last_week_start: lastWeekStart.toISOString(),
-      p_slots_range_start: slotsRangeStart.toISOString(),
-      p_slots_range_end: slotsRangeEnd.toISOString(),
-      p_today_iso: todayStart.toISOString().slice(0, 10),
-      p_week_start_iso: weekStart.toISOString().slice(0, 10),
-      p_week_end_iso: weekEnd.toISOString().slice(0, 10),
+      p_today_start: bounds.todayStart.toISOString(),
+      p_yesterday_start: bounds.yesterdayStart.toISOString(),
+      p_tomorrow_start: bounds.tomorrowStart.toISOString(),
+      p_week_start: bounds.weekStart.toISOString(),
+      p_week_end: bounds.weekEnd.toISOString(),
+      p_last_week_start: bounds.lastWeekStart.toISOString(),
+      p_slots_range_start: bounds.slotsRangeStart.toISOString(),
+      p_slots_range_end: bounds.slotsRangeEnd.toISOString(),
+      p_today_iso: bounds.todayIso,
+      p_week_start_iso: bounds.weekStartIso,
+      p_week_end_iso: bounds.weekEndIso,
     },
   );
 
@@ -257,6 +243,8 @@ export default async function ProducerDashboardPage() {
     producerId: producer.id,
     producerName: producer.nom_exploitation,
     firstName,
+    weekOffset,
+    weekPeriodLabel: formatWeekRangeLabel(weekStart),
     ordersToday: ordersToday ?? 0,
     ordersYesterday: ordersYesterday ?? 0,
     revenueWeek,

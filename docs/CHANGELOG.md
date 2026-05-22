@@ -9,6 +9,22 @@ Pour les décisions structurantes (ADRs), voir [`decisions/`](./decisions/).
 
 ---
 
+## 2026-05-23 (Chantier 10 — Navigation par semaine dashboard + revenus)
+
+> PR `feature/chantier-10-dashboard-producteur`. Le producteur peut désormais naviguer dans le temps (semaines précédentes/suivantes) sur son tableau de bord et sa page revenus, via un offset de semaine en query param (`?week=-1`, `?week=2`, …) et un sélecteur prev/next.
+>
+> 🟢 **Lib partagée `lib/dates/week-navigation.ts`.** Helpers purs testés : `parseWeekOffset` (clamp ±52 semaines, fail-safe sur valeur malformée), `computeDashboardBounds` (bornes ISO-week pour la RPC `get_producer_dashboard`), `computeRevenueWeekWindow` (fenêtre glissante de 8 semaines), `formatWeekRangeLabel`. Consolide les helpers `startOfWeek`/`addDays`/`startOfDay` jusque-là dupliqués inline dans les deux pages.
+>
+> 🟢 **Décision design.** Sur le dashboard, seules les données **scopées semaine** (planning + revenus semaine + comparaison semaine précédente) suivent l'offset. Les indicateurs « live » (commandes du jour, prochain retrait, alertes stock) restent ancrés sur le vrai jour — « commandes aujourd'hui » n'a pas de sens pour une semaine passée.
+>
+> 🟢 **Aucune migration.** La RPC `get_producer_dashboard` est déjà entièrement paramétrée par dates (F-045) ; on lui passe simplement les bornes décalées. La page revenus agrège côté query, fenêtre bornée haut + bas pour la navigation passée.
+>
+> 🟢 **Composant `WeekNavigator`** (producteur, partagé dashboard + revenus). Sélecteur prev/next SSR-friendly (`<Link>` qui pilotent `?week=`, préservent les autres params, désactivent les flèches aux bornes), avec lien « Revenir à cette semaine ».
+>
+> 🟢 **Tests** : 31 cas unitaires sur la lib de bornes + 9 cas sur le `WeekNavigator`. `npm test` vert (lint + type-check OK).
+
+---
+
 ## 2026-05-23 (Refonte admin — Chantier 1 : accès admin magic link auto)
 
 > PR `feature/chantier-1-magic-link-admin`. Premier chantier de la refonte admin.
