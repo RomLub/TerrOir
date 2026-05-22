@@ -30,6 +30,16 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 export const PRODUCER_INTERESTS_EVENT_TYPES = [
   "admin_producer_interest_statut_changed",
   "admin_producer_interest_deleted",
+  // Chantier 3 (Leads) — CRM + funnel.
+  "producer_interest_prospect_created",
+  "producer_interest_step_advanced",
+  "producer_interest_form_sent",
+  "producer_interest_followup_logged",
+  "producer_interest_assigned",
+  "producer_interest_abandoned_manual",
+  // Cron relances / abandon auto.
+  "producer_interest_auto_relance_sent",
+  "producer_interest_abandoned_auto",
 ] as const;
 
 export type ProducerInterestsEventType =

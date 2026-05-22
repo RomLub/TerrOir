@@ -27,6 +27,10 @@ export const PRODUCERS_ADMIN_EVENT_TYPES = [
   // suspension, réactivation, etc.). Embarque previous + new pour diff
   // visible côté /audit-logs.
   "admin_producer_statut_changed",
+  // Chantier 3 : demande de publication par le producteur lui-même (via la
+  // RPC request_publication). Producer-initiated mais event de la table
+  // producers → regroupé dans ce cluster pour la catégorie "Producteurs".
+  "producer_publication_requested",
 ] as const;
 
 export type ProducersAdminEventType =

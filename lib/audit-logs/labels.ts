@@ -112,10 +112,19 @@ export const AUDIT_EVENT_LABELS: Record<string, string> = {
 
   // ─── Producteurs (admin) ────────────────────────────────────────────
   admin_producer_statut_changed: "Producteur : changement de statut",
+  producer_publication_requested: "Producteur : publication demandée",
 
   // ─── Leads producteurs (producer_interests) ─────────────────────────
   admin_producer_interest_statut_changed: "Lead producteur : statut modifié",
   admin_producer_interest_deleted: "Lead producteur supprimé",
+  producer_interest_prospect_created: "Lead prospecté créé",
+  producer_interest_step_advanced: "Lead : étape avancée",
+  producer_interest_form_sent: "Lead : formulaire envoyé",
+  producer_interest_followup_logged: "Lead : interaction journalisée",
+  producer_interest_assigned: "Lead : référent assigné",
+  producer_interest_abandoned_manual: "Lead abandonné (manuel)",
+  producer_interest_auto_relance_sent: "Lead : relance auto envoyée",
+  producer_interest_abandoned_auto: "Lead abandonné (auto)",
 
   // ─── Légal / conformité ─────────────────────────────────────────────
   admin_legal_compliance_exported: "Export conformité CGU",

@@ -58,6 +58,14 @@ export function categorizeEventType(eventType: AuditEventType): EventCategory {
   // tomberait en `producers`).
   if (eventType.startsWith("admin_producer_interest_"))
     return "producer_interests";
+  // Chantier 3 (Leads) — events CRM/funnel + cron, préfixe `producer_interest_`
+  // (sans `admin_`). DOIT être testé AVANT le préfixe `producer_` (sinon
+  // tomberait en `producers`).
+  if (eventType.startsWith("producer_interest_"))
+    return "producer_interests";
+  // Chantier 3 : demande de publication producteur (producer-initiated) —
+  // event de la table producers, catégorie "producers".
+  if (eventType.startsWith("producer_publication_")) return "producers";
   // PR refactor/admin-pattern-uniform : mutations admin sur la table producers
   // (changement statut, etc.). Distinct de `admin_invite_*` (qui couvre
   // l'invitation pre-création) et `producer_response_*` (qui couvre la
