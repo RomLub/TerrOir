@@ -113,6 +113,7 @@ export const AUDIT_EVENT_LABELS: Record<string, string> = {
   // ─── Producteurs (admin) ────────────────────────────────────────────
   admin_producer_statut_changed: "Producteur : changement de statut",
   producer_publication_requested: "Producteur : publication demandée",
+  admin_producer_bio_validated: "Producteur : certification bio validée/refusée",
 
   // ─── Leads producteurs (producer_interests) ─────────────────────────
   admin_producer_interest_statut_changed: "Lead producteur : statut modifié",

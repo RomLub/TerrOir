@@ -218,6 +218,9 @@ function makeProducer(
     joinedAt: "15 janv. 2026",
     email: "f1@example.com",
     userId: "u1",
+    publicationRequested: false,
+    bioPending: false,
+    bioValidated: false,
     ...overrides,
   };
 }

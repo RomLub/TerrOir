@@ -187,6 +187,32 @@ function Inner({
     }
   };
 
+  // Chantier 3 Phase 5 — validation/refus de la certification bio.
+  const setBioValidation = async (id: string, validate: boolean) => {
+    setBusy(id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/producers/${id}/bio-validation`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ validate }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        setError(body?.error ?? `Erreur HTTP ${res.status}`);
+        setBusy(null);
+        return;
+      }
+      startTransition(() => {
+        router.refresh();
+        setBusy(null);
+      });
+    } catch (err) {
+      setError((err as Error).message || 'Erreur réseau');
+      setBusy(null);
+    }
+  };
+
   const buildPaginationUrl = () => {
     if (!initialNextCursor) return null;
     // On garde les autres search params actifs (show_all, user_id, invite…)
@@ -273,11 +299,48 @@ function Inner({
                       <td className="px-5 py-4 text-gray-700">{p.city}</td>
                       <td className="px-5 py-4">
                         <ProducerStatusBadge status={p.status} />
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {p.publicationRequested && (
+                            <span className="rounded-full bg-terra-50 px-2 py-0.5 text-[11px] text-terra-800">
+                              Publication demandée
+                            </span>
+                          )}
+                          {p.bioPending && (
+                            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] text-amber-800">
+                              Bio à valider
+                            </span>
+                          )}
+                          {p.bioValidated && (
+                            <span className="rounded-full bg-green-50 px-2 py-0.5 text-[11px] text-green-700">
+                              Bio ✓
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-5 py-4 text-gray-700">{p.plan}</td>
                       <td className="px-5 py-4 font-mono text-[13px] text-gray-500">{p.joinedAt}</td>
                       <td className="px-5 py-4">
                         <div className="flex flex-wrap items-center justify-end gap-2">
+                          {p.publicationRequested && p.status !== 'public' && (
+                            <TableActionButton variant="primary" onClick={() => setStatus(p.id, 'public')} disabled={disabled}>
+                              Publier
+                            </TableActionButton>
+                          )}
+                          {p.bioPending && (
+                            <>
+                              <TableActionButton variant="primary" onClick={() => setBioValidation(p.id, true)} disabled={disabled}>
+                                Valider bio
+                              </TableActionButton>
+                              <TableActionButton variant="ghost-danger" onClick={() => setBioValidation(p.id, false)} disabled={disabled}>
+                                Refuser bio
+                              </TableActionButton>
+                            </>
+                          )}
+                          {p.bioValidated && (
+                            <TableActionButton variant="ghost" onClick={() => setBioValidation(p.id, false)} disabled={disabled}>
+                              Révoquer bio
+                            </TableActionButton>
+                          )}
                           {p.status === 'pending' && (
                             <TableActionButton variant="primary" onClick={() => setValidating(p)} disabled={disabled}>
                               Valider

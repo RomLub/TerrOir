@@ -31,6 +31,9 @@ export const PRODUCERS_ADMIN_EVENT_TYPES = [
   // RPC request_publication). Producer-initiated mais event de la table
   // producers → regroupé dans ce cluster pour la catégorie "Producteurs".
   "producer_publication_requested",
+  // Chantier 3 : validation/refus admin de la certification bio (pose ou
+  // retire bio_validated_at). Acte admin à valeur juridique (allégation AB).
+  "admin_producer_bio_validated",
 ] as const;
 
 export type ProducersAdminEventType =

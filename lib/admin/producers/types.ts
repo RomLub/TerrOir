@@ -25,6 +25,13 @@ export type AdminProducerRow = {
   // Permet le pré-filtrage `?user_id=<uuid>` (deep-link depuis /audit-logs).
   // Peut être null sur les vieilles rows ou les producers en draft sans user lié.
   userId: string | null;
+  // Chantier 3 Phase 5 — signaux de validation admin :
+  //   publicationRequested : demande de publication en attente (non public).
+  //   bioPending           : bio déclaré, en attente de validation admin.
+  //   bioValidated         : bio déclaré ET validé (badge public actif).
+  publicationRequested: boolean;
+  bioPending: boolean;
+  bioValidated: boolean;
 };
 
 // Filtres UI exposés dans la page. 'all' = pas de filtre, les autres ciblent
