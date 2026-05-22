@@ -55,8 +55,7 @@ test.describe("Producer — Profil public (/ma-page + floutage GPS)", () => {
     const descInput = page.getByLabel(/Description courte/i);
     await descInput.fill(newDescription);
 
-    // exact:true sinon strict mode violation contre le bouton
-    // "Enregistrer mes indicateurs" rendu par IndicateursSection.
+    // exact:true pour cibler précisément le bouton "Enregistrer" du profil.
     await page
       .getByRole("button", { name: "Enregistrer", exact: true })
       .click();

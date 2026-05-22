@@ -1,5 +1,11 @@
 # Runbook admin — extraction snapshot DGCCRF
 
+> **⛔ OBSOLÈTE (2026-05-22)** — Le système score-carbone et la déclaration de
+> véracité DGCCRF ont été supprimés au chantier 3 (cf.
+> [ADR-0008](../../decisions/0008-suppression-score-carbone-flag-bio.md)). Les
+> colonnes `producers.declaration_indicateurs_*` n'existent plus, ce runbook
+> n'a plus d'objet. Conservé pour trace historique uniquement.
+
 > **À usage Romain** (admin TerrOir, plateforme), en cas de réquisition / contrôle DGCCRF demandant la trace probatoire de la déclaration sur l'honneur d'un ou plusieurs producteurs.
 >
 > Session de création : 2026-05-06 (T-279). Source à jour : `lib/producers/declaration-veracite.ts` § `DECLARATION_VERACITE_WORDINGS`.

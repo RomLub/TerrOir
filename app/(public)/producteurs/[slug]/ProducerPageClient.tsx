@@ -10,12 +10,7 @@ import {
   ProductCard,
   StarRating,
 } from '@/components/ui';
-import type {
-  Alimentation,
-  DensiteAnimale,
-  ModeElevage,
-} from '@/lib/producers/score-carbone-enums';
-import { ScoreCarbonBlock } from './_components/ScoreCarbonBlock';
+import { DemarcheBlock } from './_components/DemarcheBlock';
 
 // Visuel de secours hero tant que le producteur n'a pas uploadé sa propre
 // photo — champ moissonné Sarthe (PR3 audit photos 2026-05-17 : remplace
@@ -45,9 +40,6 @@ export type ProducerData = {
   rating: number;
   reviewCount: number;
   story: string[];
-  modeElevage: ModeElevage | null;
-  alimentation: Alimentation | null;
-  densiteAnimale: DensiteAnimale | null;
   latitude: number | null;
   longitude: number | null;
 };
@@ -290,10 +282,7 @@ export function ProducerPageClient({
         </div>
       </section>
 
-      <ScoreCarbonBlock
-        modeElevage={producer.modeElevage}
-        alimentation={producer.alimentation}
-        densiteAnimale={producer.densiteAnimale}
+      <DemarcheBlock
         producerLat={producer.latitude}
         producerLng={producer.longitude}
         producerName={producer.name}

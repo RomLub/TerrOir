@@ -55,9 +55,6 @@ const baseParams = {
   radius_km: 50,
   especes: null,
   labels: null,
-  mode_elevage: null,
-  alimentation: null,
-  densite_animale: null,
 };
 
 describe("buildSearchProducersCacheKey", () => {
@@ -118,11 +115,11 @@ describe("buildSearchProducersCacheKey", () => {
   it("varie quand un filtre multi-select est ajouté", () => {
     const k1 = buildSearchProducersCacheKey({
       ...baseParams,
-      mode_elevage: ["plein_air"],
+      labels: ["label_rouge"],
     });
     const k2 = buildSearchProducersCacheKey({
       ...baseParams,
-      mode_elevage: ["plein_air", "semi_plein_air"],
+      labels: ["label_rouge", "aop"],
     });
     expect(k1).not.toEqual(k2);
   });
@@ -162,12 +159,10 @@ describe("fetchSearchProducersCached — RPC integration (cache bypass)", () => 
     await fetchSearchProducersCached(client, {
       ...baseParams,
       especes: ["bovin", "ovin"],
-      labels: ["bio"],
-      mode_elevage: ["plein_air"],
+      labels: ["label_rouge"],
     });
     expect(rpcCalls[0]!.args.p_especes).toEqual(["bovin", "ovin"]);
-    expect(rpcCalls[0]!.args.p_labels).toEqual(["bio"]);
-    expect(rpcCalls[0]!.args.p_mode_elevage).toEqual(["plein_air"]);
+    expect(rpcCalls[0]!.args.p_labels).toEqual(["label_rouge"]);
   });
 
   it("propage l'erreur PostgREST sans throw (signature stable pour la route)", async () => {

@@ -7,35 +7,13 @@ import {
   getProducersSearchRateLimit,
 } from "@/lib/rate-limit";
 import { extractRequestContext } from "@/lib/audit-logs/log-auth-event";
-import {
-  ALIMENTATION_VALUES,
-  DENSITE_ANIMALE_VALUES,
-  MODE_ELEVAGE_VALUES,
-} from "@/lib/producers/score-carbone-enums";
 import { fetchSearchProducersCached } from "@/lib/producers/search-producers-cached";
 
 // GET /api/producers/search?lat=&lng=&radius=&especes=bovin,ovin&labels=bio
-//   &mode_elevage=plein_air,semi_plein_air&alimentation=pature_dominante
-//   &densite_animale=extensive
 //
-// T-205 : 3 nouveaux filtres optionnels facets score-carbone (multi-select
-// virgule-séparé). Validation whitelist côté serveur (rejet silencieux des
-// valeurs inconnues — un attaquant qui forge `?mode_elevage=lune` ne casse
-// pas la query, simplement ne match rien). RPC search_producers étendue à
-// 8 args via migration 20260507410000.
-function parseMultiSelect(
-  raw: string | null,
-  whitelist: readonly string[],
-): string[] | null {
-  if (!raw) return null;
-  const values = raw
-    .split(",")
-    .map((v) => v.trim())
-    .filter(Boolean)
-    .filter((v) => whitelist.includes(v));
-  return values.length > 0 ? values : null;
-}
-
+// Filtres optionnels : especes (multi-select) + labels (multi-select). Les
+// filtres facets score-carbone (mode_elevage / alimentation / densite) ont été
+// retirés chantier 3 (2026-05-22).
 export async function GET(request: Request) {
   // T-236 : rate-limit IP cap 30/min — anti-trilatération inverse. Couplé
   // au flou roundCoord côté résultats, rend économiquement non rentable
@@ -102,22 +80,6 @@ export async function GET(request: Request) {
     .map((v) => v.trim())
     .filter(Boolean);
 
-  // T-205 : facets score-carbone (multi-select). Whitelist Zod-style côté
-  // serveur — une valeur inconnue est silencieusement filtrée. Si après
-  // filtrage la liste est vide, on passe NULL au RPC (= pas de filtre).
-  const modeElevage = parseMultiSelect(
-    url.searchParams.get("mode_elevage"),
-    MODE_ELEVAGE_VALUES,
-  );
-  const alimentation = parseMultiSelect(
-    url.searchParams.get("alimentation"),
-    ALIMENTATION_VALUES,
-  );
-  const densiteAnimale = parseMultiSelect(
-    url.searchParams.get("densite_animale"),
-    DENSITE_ANIMALE_VALUES,
-  );
-
   // F-021 (audit pré-launch 2026-05) : la RPC `search_producers` reste
   // coûteuse (sous-requête corrélée products + haversine inline). Pour
   // absorber les pics, on délègue à `fetchSearchProducersCached` qui wrap
@@ -131,9 +93,6 @@ export async function GET(request: Request) {
     radius_km: radius,
     especes: especes.length ? especes : null,
     labels: labels.length ? labels : null,
-    mode_elevage: modeElevage,
-    alimentation: alimentation,
-    densite_animale: densiteAnimale,
   });
 
   if (error) {

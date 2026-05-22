@@ -43,6 +43,14 @@ export type OrdersStatut = (typeof ORDERS_STATUT_VALUES)[number];
 export const PAYOUTS_STATUT_VALUES = ["pending", "processing", "paid", "failed"] as const;
 export type PayoutsStatut = (typeof PAYOUTS_STATUT_VALUES)[number];
 
+// producer_interest_followups.channel (source: in, last migration: 20260522090000_leads_crm_columns_and_followups.sql)
+export const PRODUCER_INTEREST_FOLLOWUPS_CHANNEL_VALUES = ["email", "phone", "rdv"] as const;
+export type ProducerInterestFollowupsChannel = (typeof PRODUCER_INTEREST_FOLLOWUPS_CHANNEL_VALUES)[number];
+
+// producer_interest_followups.direction (source: in, last migration: 20260522090000_leads_crm_columns_and_followups.sql)
+export const PRODUCER_INTEREST_FOLLOWUPS_DIRECTION_VALUES = ["outbound", "inbound"] as const;
+export type ProducerInterestFollowupsDirection = (typeof PRODUCER_INTEREST_FOLLOWUPS_DIRECTION_VALUES)[number];
+
 // producer_interests.source (source: in, last migration: 20260426000000_add_source_to_producer_interests.sql)
 export const PRODUCER_INTERESTS_SOURCE_VALUES = ["formulaire_public", "invitation_directe"] as const;
 export type ProducerInterestsSource = (typeof PRODUCER_INTERESTS_SOURCE_VALUES)[number];
@@ -55,22 +63,6 @@ export type ProducerInterestsStatut = (typeof PRODUCER_INTERESTS_STATUT_VALUES)[
 export const PRODUCERS_ABONNEMENT_NIVEAU_VALUES = ["starter", "pro", "premium"] as const;
 export type ProducersAbonnementNiveau = (typeof PRODUCERS_ABONNEMENT_NIVEAU_VALUES)[number];
 
-// producers.alimentation (source: in, last migration: 20260503100000_t200_score_carbone.sql)
-export const PRODUCERS_ALIMENTATION_VALUES = ["pature_dominante", "mixte", "aliments_achetes"] as const;
-export type ProducersAlimentation = (typeof PRODUCERS_ALIMENTATION_VALUES)[number];
-
-// producers.declaration_indicateurs_enums_version (source: in, last migration: 20260506202622_t243_score_carbone_enums_version.sql)
-export const PRODUCERS_DECLARATION_INDICATEURS_ENUMS_VERSION_VALUES = ["v1.0"] as const;
-export type ProducersDeclarationIndicateursEnumsVersion = (typeof PRODUCERS_DECLARATION_INDICATEURS_ENUMS_VERSION_VALUES)[number];
-
-// producers.declaration_indicateurs_wording_version (source: in, last migration: 20260506183454_t292_declaration_wording_version_check.sql)
-export const PRODUCERS_DECLARATION_INDICATEURS_WORDING_VERSION_VALUES = ["v1.0", "v1.1"] as const;
-export type ProducersDeclarationIndicateursWordingVersion = (typeof PRODUCERS_DECLARATION_INDICATEURS_WORDING_VERSION_VALUES)[number];
-
-// producers.densite_animale (source: in, last migration: 20260503100000_t200_score_carbone.sql)
-export const PRODUCERS_DENSITE_ANIMALE_VALUES = ["extensive", "standard", "intensive"] as const;
-export type ProducersDensiteAnimale = (typeof PRODUCERS_DENSITE_ANIMALE_VALUES)[number];
-
 // producers.especes (source: subset_array, last migration: 20260419000000_initial_schema.sql)
 export const PRODUCERS_ESPECES_VALUES = ["bovin", "porcin", "ovin"] as const;
 export type ProducersEspeces = (typeof PRODUCERS_ESPECES_VALUES)[number];
@@ -82,10 +74,6 @@ export type ProducersFormeJuridique = (typeof PRODUCERS_FORME_JURIDIQUE_VALUES)[
 // producers.labels (source: subset_array, last migration: 20260419000000_initial_schema.sql)
 export const PRODUCERS_LABELS_VALUES = ["label_rouge", "bio", "aop", "boeuf_fermier_maine"] as const;
 export type ProducersLabels = (typeof PRODUCERS_LABELS_VALUES)[number];
-
-// producers.mode_elevage (source: in, last migration: 20260503100000_t200_score_carbone.sql)
-export const PRODUCERS_MODE_ELEVAGE_VALUES = ["plein_air", "semi_plein_air", "batiment_ouvert", "batiment_ferme"] as const;
-export type ProducersModeElevage = (typeof PRODUCERS_MODE_ELEVAGE_VALUES)[number];
 
 // producers.statut (source: in, last migration: 20260422200000_rgpd_account_deletion.sql)
 export const PRODUCERS_STATUT_VALUES = ["draft", "pending", "active", "public", "suspended", "deleted"] as const;

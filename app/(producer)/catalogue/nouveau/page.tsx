@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import { Button, Badge, Input, Select, Textarea, ProductCard } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { uploadProducerPhoto } from '@/lib/producers/upload';
-import { promoteProducerToPublicIfActive } from '@/lib/producers/promote-to-public';
 import {
   revalidatePublicStats,
   revalidatePublicProducts,
@@ -218,10 +217,8 @@ export default function ProductNewPage() {
 
       if (insertError || !inserted) throw insertError ?? new Error('Insertion impossible');
       if (form.active === true) {
-        await promoteProducerToPublicIfActive(supabase, producerId);
-        // Nouveau produit actif → +1 productsCount (et possiblement +1
-        // producersCount via auto-promotion). Si form.active=false, le
-        // produit n'entre pas dans le filtre, pas besoin d'invalider.
+        // Chantier 3 (2026-05-22) : plus d'auto-promotion active → public.
+        // Nouveau produit actif → +1 productsCount, on invalide les caches.
         await revalidatePublicStats({
           source: 'producer-catalogue-create',
           extra: { productId: inserted.id },
@@ -243,8 +240,6 @@ export default function ProductNewPage() {
         }
         // F-021 : un nouveau produit actif change l'`active_product_count`
         // retourné par la RPC search_producers (sous-requête corrélée).
-        // L'auto-promotion `pending → public` (cf. ligne 220) peut aussi
-        // exposer un producteur qui n'apparaissait pas avant.
         await revalidateProducersSearch({
           source: 'producer-catalogue-create',
           producerId,

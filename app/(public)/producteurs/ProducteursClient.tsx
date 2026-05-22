@@ -6,14 +6,6 @@ import Link from 'next/link';
 import { Button, ProducerCard } from '@/components/ui';
 import { GEOLOC_FALLBACK } from '@/lib/geoloc/fallback';
 import { labelEspece, labelLabel } from '@/lib/producers/labels';
-import {
-  ALIMENTATION_PUBLIC_LABELS,
-  ALIMENTATION_VALUES,
-  DENSITE_ANIMALE_PUBLIC_LABELS,
-  DENSITE_ANIMALE_VALUES,
-  MODE_ELEVAGE_PUBLIC_LABELS,
-  MODE_ELEVAGE_VALUES,
-} from '@/lib/producers/score-carbone-enums';
 
 type SearchResult = {
   id: string;
@@ -43,8 +35,9 @@ const ESPECE_OPTIONS: { value: string; label: string }[] = [
   { value: 'ovin', label: 'Agneau' },
 ];
 
+// Chantier 3 (2026-05-22) : 'bio' retiré des labels libres — devient un filtre
+// dédié sur le flag producers.bio validé (Phase 4). Les autres restent ici.
 const LABEL_OPTIONS: { value: string; label: string }[] = [
-  { value: 'bio', label: 'Bio' },
   { value: 'label_rouge', label: 'Label Rouge' },
   { value: 'aop', label: 'AOP' },
   { value: 'boeuf_fermier_maine', label: 'Bœuf du Maine' },
@@ -78,16 +71,6 @@ function ProducteursClientInner() {
     searchParams.get('labels')?.split(',').filter(Boolean) ?? [],
   );
   const [radius, setRadius] = useState<number>(() => Number(searchParams.get('rayon')) || 50);
-  // T-205 : 3 facets score-carbone, multi-select virgule-séparé persisté URL
-  const [modeElevage, setModeElevage] = useState<string[]>(() =>
-    searchParams.get('mode_elevage')?.split(',').filter(Boolean) ?? [],
-  );
-  const [alimentation, setAlimentation] = useState<string[]>(() =>
-    searchParams.get('alimentation')?.split(',').filter(Boolean) ?? [],
-  );
-  const [densiteAnimale, setDensiteAnimale] = useState<string[]>(() =>
-    searchParams.get('densite_animale')?.split(',').filter(Boolean) ?? [],
-  );
 
   const [userLoc, setUserLoc] = useState<{ lat: number; lng: number } | null>(null);
   const [locating, setLocating] = useState(false);
@@ -122,12 +105,9 @@ function ProducteursClientInner() {
     if (especes.length) params.set('especes', especes.join(','));
     if (labels.length) params.set('labels', labels.join(','));
     if (radius !== 50) params.set('rayon', String(radius));
-    if (modeElevage.length) params.set('mode_elevage', modeElevage.join(','));
-    if (alimentation.length) params.set('alimentation', alimentation.join(','));
-    if (densiteAnimale.length) params.set('densite_animale', densiteAnimale.join(','));
     const q = params.toString();
     router.replace(q ? `/producteurs?${q}` : '/producteurs', { scroll: false });
-  }, [especes, labels, radius, modeElevage, alimentation, densiteAnimale, router]);
+  }, [especes, labels, radius, router]);
 
   const abortRef = useRef<AbortController | null>(null);
   useEffect(() => {
@@ -143,9 +123,6 @@ function ProducteursClientInner() {
     });
     if (especes.length) params.set('especes', especes.join(','));
     if (labels.length) params.set('labels', labels.join(','));
-    if (modeElevage.length) params.set('mode_elevage', modeElevage.join(','));
-    if (alimentation.length) params.set('alimentation', alimentation.join(','));
-    if (densiteAnimale.length) params.set('densite_animale', densiteAnimale.join(','));
 
     setLoading(true);
     setFetchError(null);
@@ -168,19 +145,17 @@ function ProducteursClientInner() {
       });
 
     return () => ctrl.abort();
-  }, [userLoc, radius, especes, labels, modeElevage, alimentation, densiteAnimale]);
+  }, [userLoc, radius, especes, labels]);
 
   const toggle = useCallback(<T extends string>(arr: T[], v: T, setter: (a: T[]) => void) => {
     setter(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
   }, []);
   const clearAll = () => {
     setEspeces([]); setLabels([]); setRadius(50);
-    setModeElevage([]); setAlimentation([]); setDensiteAnimale([]);
   };
 
   const activeFilters =
-    especes.length + labels.length + (radius !== 50 ? 1 : 0)
-    + modeElevage.length + alimentation.length + densiteAnimale.length;
+    especes.length + labels.length + (radius !== 50 ? 1 : 0);
 
   const cards = useMemo(() => results.map((r) => {
     const commune = [r.commune, r.code_postal].filter(Boolean).join(' · ');
@@ -243,46 +218,6 @@ function ProducteursClientInner() {
               {RADIUS_OPTIONS.map((r) => (
                 <Chip key={r} active={radius === r} onClick={() => setRadius(r)}>
                   {r} km
-                </Chip>
-              ))}
-            </div>
-          </FilterGroup>
-          {/* T-205 — 3 facets score-carbone (multi-select chips, libellés public). */}
-          <FilterGroup label="Mode d'élevage">
-            <div className="flex flex-wrap gap-1.5">
-              {MODE_ELEVAGE_VALUES.map((v) => (
-                <Chip
-                  key={v}
-                  active={modeElevage.includes(v)}
-                  onClick={() => toggle(modeElevage, v, setModeElevage)}
-                >
-                  {MODE_ELEVAGE_PUBLIC_LABELS[v]}
-                </Chip>
-              ))}
-            </div>
-          </FilterGroup>
-          <FilterGroup label="Alimentation">
-            <div className="flex flex-wrap gap-1.5">
-              {ALIMENTATION_VALUES.map((v) => (
-                <Chip
-                  key={v}
-                  active={alimentation.includes(v)}
-                  onClick={() => toggle(alimentation, v, setAlimentation)}
-                >
-                  {ALIMENTATION_PUBLIC_LABELS[v]}
-                </Chip>
-              ))}
-            </div>
-          </FilterGroup>
-          <FilterGroup label="Densité animale">
-            <div className="flex flex-wrap gap-1.5">
-              {DENSITE_ANIMALE_VALUES.map((v) => (
-                <Chip
-                  key={v}
-                  active={densiteAnimale.includes(v)}
-                  onClick={() => toggle(densiteAnimale, v, setDensiteAnimale)}
-                >
-                  {DENSITE_ANIMALE_PUBLIC_LABELS[v]}
                 </Chip>
               ))}
             </div>

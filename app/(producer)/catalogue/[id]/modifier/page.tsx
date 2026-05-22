@@ -7,7 +7,6 @@ import { useParams, useRouter } from 'next/navigation';
 import { Button, Badge, Input, Select, Textarea, ProductCard } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { uploadProducerPhoto } from '@/lib/producers/upload';
-import { promoteProducerToPublicIfActive } from '@/lib/producers/promote-to-public';
 import {
   revalidatePublicStats,
   revalidatePublicProducts,
@@ -277,9 +276,7 @@ export default function ProductEditPage() {
         .eq('id', productId);
 
       if (updateError) throw updateError;
-      if (form.active === true) {
-        await promoteProducerToPublicIfActive(supabase, producerId);
-      }
+      // Chantier 3 (2026-05-22) : plus d'auto-promotion active → public.
       // Inconditionnel : on ne tracke pas l'état initial de form.active, donc
       // un éventuel true→false (qui retire le produit du count) doit aussi
       // invalider. Coût négligeable si rien n'a changé.

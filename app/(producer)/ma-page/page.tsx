@@ -10,13 +10,7 @@ import {
   revalidateProducerCard,
   revalidateProducersSearch,
 } from '@/lib/stats/revalidate';
-import {
-  type Alimentation,
-  type DensiteAnimale,
-  type ModeElevage,
-} from '@/lib/producers/score-carbone-enums';
 import { ProducerLayout } from '../_components/ProducerLayout';
-import { IndicateursSection } from './_components/IndicateursSection';
 
 function OnboardedBanner() {
   const searchParams = useSearchParams();
@@ -51,8 +45,10 @@ const ESPECE_OPTIONS = [
   { value: 'porcin', label: 'Porc' },
   { value: 'ovin', label: 'Agneau' },
 ];
+// Chantier 3 (2026-05-22) : 'bio' retiré des labels libres — devient un flag
+// dédié (producers.bio) validé par l'admin, géré dans une section propre
+// (Phase 4). Les autres labels/certifications restent en saisie libre ici.
 const LABEL_OPTIONS = [
-  { value: 'bio', label: 'Agriculture Biologique' },
   { value: 'label_rouge', label: 'Label Rouge' },
   { value: 'aop', label: 'AOP' },
   { value: 'boeuf_fermier_maine', label: 'Bœuf Fermier du Maine' },
@@ -71,11 +67,6 @@ type Form = {
   commune: string;
   code_postal: string;
 };
-
-// T-232 : les 3 enums score-carbone (mode_elevage, alimentation,
-// densite_animale) ne sont PLUS dans le formulaire principal — ils sont
-// gérés par IndicateursSection via la RPC update_producer_indicateurs
-// pour préserver la sémantique DGCCRF de re-dating snapshot.
 
 const EMPTY: Form = {
   nom_exploitation: '',
@@ -96,14 +87,6 @@ export default function MaPagePage() {
   // C-5 — bloc producer cached 60s sur fiche publique).
   const [producerSlug, setProducerSlug] = useState<string | null>(null);
   const [form, setForm] = useState<Form>(EMPTY);
-  // T-232 : indicateurs gérés séparément via IndicateursSection. État
-  // local ici uniquement pour passer initial values + recevoir update
-  // après save (callback onSaveSuccess).
-  const [indicateurs, setIndicateurs] = useState<{
-    mode_elevage: ModeElevage | null;
-    alimentation: Alimentation | null;
-    densite_animale: DensiteAnimale | null;
-  }>({ mode_elevage: null, alimentation: null, densite_animale: null });
   const [heroPhoto, setHeroPhoto] = useState<string | null>(null);
   const [gallery, setGallery] = useState<string[]>([]);
   const [scores, setScores] = useState({ stock: 0, response: 0, reliability: 0 });
@@ -128,7 +111,7 @@ export default function MaPagePage() {
 
       const { data: prod, error: fetchError } = await supabase
         .from('producers')
-        .select('id, slug, nom_exploitation, description, histoire, generations, annee_creation, especes, labels, commune, code_postal, photo_principale, photos, note_moyenne, nb_avis, badge_stock_score, badge_confirmation_score, badge_annulation_score, mode_elevage, alimentation, densite_animale')
+        .select('id, slug, nom_exploitation, description, histoire, generations, annee_creation, especes, labels, commune, code_postal, photo_principale, photos, note_moyenne, nb_avis, badge_stock_score, badge_confirmation_score, badge_annulation_score')
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -148,11 +131,6 @@ export default function MaPagePage() {
         labels: Array.isArray(prod.labels) ? prod.labels : [],
         commune: prod.commune ?? '',
         code_postal: prod.code_postal ?? '',
-      });
-      setIndicateurs({
-        mode_elevage: (prod.mode_elevage ?? null) as ModeElevage | null,
-        alimentation: (prod.alimentation ?? null) as Alimentation | null,
-        densite_animale: (prod.densite_animale ?? null) as DensiteAnimale | null,
       });
       setHeroPhoto(prod.photo_principale ?? null);
       setGallery(Array.isArray(prod.photos) ? prod.photos : []);
@@ -251,9 +229,6 @@ export default function MaPagePage() {
           code_postal: form.code_postal.trim() || null,
           photo_principale: heroUrl,
           photos: galleryUrls.length ? galleryUrls : null,
-          // T-232 : mode_elevage / alimentation / densite_animale ne sont
-          // plus dans ce UPDATE — ils passent par IndicateursSection +
-          // RPC update_producer_indicateurs (atomique, re-dating DGCCRF).
         })
         .eq('id', producerId);
 
@@ -458,13 +433,6 @@ export default function MaPagePage() {
                   })}
                 </div>
               </section>
-
-              <IndicateursSection
-                initial={indicateurs}
-                producerSlug={producerSlug}
-                onSaveSuccess={(next) => setIndicateurs(next)}
-              />
-
 
               <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
                 <div className="grid sm:grid-cols-2 gap-4">

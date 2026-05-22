@@ -83,12 +83,12 @@ export async function POST(request: Request) {
   const admin = createSupabaseAdminClient();
 
   // Audit Stripe M-6 (defense-in-depth) : guard pré-PI sur producer.charges_enabled.
-  // L'invariant promoteProducerToPublicIfActive empêche déjà un producer
-  // non-charges-enabled d'apparaître en statut='public' côté RLS, mais on
-  // attrape ici le cas limite producer charges_enabled au moment de l'order
-  // mais qui perd la capability ENTRE order create et PI create (latence
-  // webhook account.updated, KYC re-flagged). Évite aussi un transfer cron
-  // weekly qui échouera plus tard sans signal côté consumer.
+  // La validation admin de publication exige déjà stripe_charges_enabled (cf.
+  // critères request_publication), mais on attrape ici le cas limite producer
+  // charges_enabled au moment de l'order mais qui perd la capability ENTRE
+  // order create et PI create (latence webhook account.updated, KYC re-flagged).
+  // Évite aussi un transfer cron weekly qui échouera plus tard sans signal
+  // côté consumer.
   const { data: producer } = await admin
     .from("producers")
     .select("stripe_charges_enabled")

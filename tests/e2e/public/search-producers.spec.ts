@@ -4,9 +4,9 @@
  * NB sur le naming des query params : la page /producteurs lit ses
  * filtres côté CLIENT via useSearchParams (cf.
  * app/(public)/producteurs/ProducteursClient.tsx). Les params réels
- * acceptés sont `especes`, `labels`, `rayon`, `mode_elevage`,
- * `alimentation`, `densite_animale`. PAS `cp` ni `type=elevage`
- * comme suggéré initialement par la spec. Le filtrage géographique
+ * acceptés sont `especes`, `labels`, `rayon` (les facets score-carbone
+ * mode_elevage/alimentation/densite ont été retirées chantier 3). PAS
+ * `cp` ni `type=elevage` comme suggéré initialement. Le filtrage géographique
  * passe par navigator.geolocation côté client + radius — impossible
  * à driver côté SSR sans navigateur, donc on n'asserte que :
  *   - la page répond 200 même avec query params filtres
@@ -31,10 +31,10 @@ test.describe('recherche producers publique anon', () => {
     ).toBeVisible();
   });
 
-  test('/producteurs?labels=bio → page répond + heading visible', async ({
+  test('/producteurs?labels=label_rouge → page répond + heading visible', async ({
     page,
   }) => {
-    const response = await page.goto('/producteurs?labels=bio');
+    const response = await page.goto('/producteurs?labels=label_rouge');
     expect(response?.status(), '/producteurs filtré labels GET').toBeLessThan(
       400,
     );

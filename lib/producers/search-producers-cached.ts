@@ -38,8 +38,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 // Tag unique `producers-search`. Invalidation via `revalidateProducersSearch`
 // (cf. `lib/stats/revalidate.ts`). Appelée par tous les flows qui mutent
 // l'état visible côté search :
-//   - producer self-update (champs filtre : especes, labels, score carbone,
-//     mode_elevage, alimentation, densite_animale, indicateurs).
+//   - producer self-update (champs filtre : especes, labels).
 //   - producer admin update (mêmes champs).
 //   - producer onboarding completion / unpublish (changement de `statut`).
 //   - product create / update / toggle active (impacte
@@ -57,9 +56,6 @@ export type SearchProducersParams = {
   radius_km: number;
   especes: string[] | null;
   labels: string[] | null;
-  mode_elevage: string[] | null;
-  alimentation: string[] | null;
-  densite_animale: string[] | null;
 };
 
 export type SearchProducersRow = {
@@ -99,9 +95,6 @@ export function buildSearchProducersCacheKey(
     `radius=${params.radius_km}`,
     `especes=${serializeMultiFilter(params.especes)}`,
     `labels=${serializeMultiFilter(params.labels)}`,
-    `mode_elevage=${serializeMultiFilter(params.mode_elevage)}`,
-    `alimentation=${serializeMultiFilter(params.alimentation)}`,
-    `densite_animale=${serializeMultiFilter(params.densite_animale)}`,
   ];
 }
 
@@ -137,9 +130,6 @@ export async function fetchSearchProducersCached(
         p_radius_km: params.radius_km,
         p_especes: params.especes,
         p_labels: params.labels,
-        p_mode_elevage: params.mode_elevage,
-        p_alimentation: params.alimentation,
-        p_densite_animale: params.densite_animale,
       });
       if (error) {
         return {

@@ -16,7 +16,7 @@ import {
 
 // Audit Vercel C-5 (2026-05-05) : conserve force-dynamic au niveau page
 // (produits + reviews évoluent en temps réel), MAIS partial-cache le bloc
-// producer (header, photos, bio, score carbone, badges) via unstable_cache
+// producer (header, photos, badges) via unstable_cache
 // avec un tag par slug. Le bloc producer change rarement (édition manuelle
 // depuis ma-page) ; pas la peine de re-fetch à chaque visite. Invalidation
 // explicite via revalidateProducerCard({slug}) côté ma-page après save.
@@ -179,9 +179,6 @@ export default async function ProducteurPage(props: { params: Promise<{ slug: st
     rating: Number(producer.note_moyenne ?? 0),
     reviewCount: producer.nb_avis ?? 0,
     story: storyParts,
-    modeElevage: producer.mode_elevage,
-    alimentation: producer.alimentation,
-    densiteAnimale: producer.densite_animale,
     latitude: producer.latitude,
     longitude: producer.longitude,
   };

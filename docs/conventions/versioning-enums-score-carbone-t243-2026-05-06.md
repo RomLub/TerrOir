@@ -1,5 +1,10 @@
 # Versioning enums score carbone — convention T-243 (2026-05-06)
 
+> **⛔ OBSOLÈTE (2026-05-22)** — Les enums score-carbone ont été supprimés au
+> chantier 3 (cf.
+> [ADR-0008](../decisions/0008-suppression-score-carbone-flag-bio.md)).
+> Convention conservée pour trace historique uniquement.
+
 ## Objectif
 
 Permettre à un audit DGCCRF rétrospectif de répondre, pour toute

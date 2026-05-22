@@ -9,13 +9,9 @@ import { invitationBusinessInfoSchema } from "@/lib/auth/validators";
 import { maskEmail } from "@/lib/rgpd/mask-email";
 import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 import { logAdminInviteEvent } from "@/lib/audit-logs/log-admin-invite-event";
-import { DECLARATION_VERACITE_WORDING_VERSION } from "@/lib/producers/declaration-veracite";
-import { SCORE_CARBONE_ENUMS_VERSION } from "@/lib/producers/score-carbone-enums-versions";
 
 // errorField : path Zod du premier issue, exposé pour permettre à l'UI
-// d'ancrer le message à côté du champ fautif (cf. T-200 r6 — case
-// declaration_indicateurs_veracite affichée sous la zone score-carbone, sans
-// quoi le producteur ne voit que l'erreur globale en bas du formulaire).
+// d'ancrer le message à côté du champ fautif.
 export type State = { error?: string; errorField?: string };
 
 export async function completeOnboardingAction(
@@ -39,11 +35,6 @@ export async function completeOnboardingAction(
     type_production: formData.get("type_production"),
     type_production_precision:
       formData.get("type_production_precision") ?? undefined,
-    mode_elevage: formData.get("mode_elevage") ?? undefined,
-    alimentation: formData.get("alimentation") ?? undefined,
-    densite_animale: formData.get("densite_animale") ?? undefined,
-    declaration_indicateurs_veracite:
-      formData.get("declaration_indicateurs_veracite") ?? undefined,
   });
   if (!parsed.success) {
     const firstIssue = parsed.error.issues[0];
@@ -130,19 +121,8 @@ export async function completeOnboardingAction(
     return { error: `Mise à jour des infos personnelles échouée : ${userError.message}` };
   }
 
-  // T-241 — UPDATE atomique via RPC. La RPC update_producer_onboarding
-  // encapsule en un seul UPDATE :
-  //   - écriture des champs business + 3 enums score-carbone (T-200) avec
-  //     COALESCE — un enum NULL côté formulaire ne doit PAS écraser la
-  //     colonne (cas user qui n'a pas touché aux indicateurs) ;
-  //   - décision conditionnelle de re-persister les 3 colonnes
-  //     declaration_indicateurs_* via CASE WHEN, basée sur la comparaison
-  //     atomique du snapshot précédemment archivé aux enums effectifs.
-  // Pas de SELECT JS pré-UPDATE : la lecture des valeurs courantes + la
-  // décision + l'UPDATE se font dans la même transaction PostgreSQL avec
-  // SELECT FOR UPDATE — élimine la fenêtre lecture-modification non
-  // atomique sur double-clic / retry concurrent (cf. CLAUDE.md projet
-  // « soigner l'atomicité des RPC »).
+  // UPDATE atomique via RPC update_producer_onboarding : écrit les champs
+  // business + bascule statut='draft' → 'pending', en une seule transaction.
   const { error: producerError } = await admin.rpc("update_producer_onboarding", {
     p_user_id: session.id,
     p_nom_exploitation: parsed.data.nom_exploitation,
@@ -156,12 +136,6 @@ export async function completeOnboardingAction(
       parsed.data.type_production === "autre"
         ? (parsed.data.type_production_precision ?? null)
         : null,
-    p_mode_elevage: parsed.data.mode_elevage ?? null,
-    p_alimentation: parsed.data.alimentation ?? null,
-    p_densite_animale: parsed.data.densite_animale ?? null,
-    p_declaration_cochee: parsed.data.declaration_indicateurs_veracite,
-    p_wording_version: DECLARATION_VERACITE_WORDING_VERSION,
-    p_enums_version: SCORE_CARBONE_ENUMS_VERSION,
   });
 
   if (producerError) {

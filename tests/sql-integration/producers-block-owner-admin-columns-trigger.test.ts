@@ -1,10 +1,11 @@
 // Test F-008 — Trigger `producers_block_owner_admin_columns`
 // (audit pré-launch 2026-05-10, finding HAUT).
 //
-// Cible : BEFORE UPDATE trigger qui bloque les self-updates owner sur 25
-// colonnes admin-only de `public.producers` (statut, badges, declaration_
-// indicateurs_*, stripe_*, slug, user_id, lat/lng, etc. — cf. T-218 +
-// T-218-bis).
+// Cible : BEFORE UPDATE trigger qui bloque les self-updates owner sur les
+// colonnes admin-only de `public.producers` (statut, badges, stripe_*, slug,
+// user_id, lat/lng, publication_requested_at, bio_validated_at — cf. T-218,
+// T-218-bis + chantier 3). bio / bio_certificate_number restent
+// producer-writable (le producteur déclare, l'admin valide via bio_validated_at).
 //
 // Le trigger discrimine sur auth.role() :
 //   - service_role → bypass (return new)
@@ -132,22 +133,54 @@ describeIfLocal(
         );
       });
 
-      it("UPDATE declaration_indicateurs_snapshot ⇒ raise 42501 (anti falsification DGCCRF)", async () => {
+      it("UPDATE publication_requested_at ⇒ raise 42501 (chantier 3 : seule la RPC request_publication la pose)", async () => {
         prodSession = await seedAuthenticatedProducer(SUPABASE);
 
         const { error } = await prodSession.client
           .from("producers")
-          .update({
-            declaration_indicateurs_snapshot: {
-              mode_elevage: "plein_air_attacker_forged",
-            },
-          })
+          .update({ publication_requested_at: new Date().toISOString() })
           .eq("id", prodSession.producerId);
 
         expect(error?.code).toBe("42501");
         expect(error?.message ?? "").toMatch(
-          /producers\.declaration_indicateurs_snapshot is admin-only/i,
+          /producers\.publication_requested_at is admin-only/i,
         );
+      });
+
+      it("UPDATE bio_validated_at ⇒ raise 42501 (chantier 3 : validation cert bio = acte admin)", async () => {
+        prodSession = await seedAuthenticatedProducer(SUPABASE);
+
+        const { error } = await prodSession.client
+          .from("producers")
+          .update({ bio_validated_at: new Date().toISOString() })
+          .eq("id", prodSession.producerId);
+
+        expect(error?.code).toBe("42501");
+        expect(error?.message ?? "").toMatch(
+          /producers\.bio_validated_at is admin-only/i,
+        );
+      });
+
+      it("UPDATE bio + bio_certificate_number ⇒ OK (producer-writable, déclaration auto-service)", async () => {
+        prodSession = await seedAuthenticatedProducer(SUPABASE);
+
+        const { error } = await prodSession.client
+          .from("producers")
+          .update({ bio: true, bio_certificate_number: "FR-BIO-01-12345" })
+          .eq("id", prodSession.producerId);
+
+        expect(error).toBeNull();
+
+        const { data } = await SUPABASE
+          .from("producers")
+          .select("bio, bio_certificate_number, bio_validated_at")
+          .eq("id", prodSession.producerId)
+          .single();
+        expect(data?.bio).toBe(true);
+        expect(data?.bio_certificate_number).toBe("FR-BIO-01-12345");
+        // Déclarer bio ne le valide PAS : bio_validated_at reste null jusqu'à
+        // l'acte admin.
+        expect(data?.bio_validated_at).toBeNull();
       });
 
       // ─── T-218-bis régression : lat/lng admin-only ────────────────────

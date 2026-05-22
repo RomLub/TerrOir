@@ -134,9 +134,6 @@ export const AUDIT_EVENT_LABELS: Record<string, string> = {
   review_followup_skipped: "Relance avis ignorée",
   review_followup_dedup_blocked: "Relance avis bloquée (déjà envoyée)",
 
-  // ─── Producteur — rectification indicateurs (T-232) ─────────────────
-  producer_indicateurs_updated: "Indicateurs producteur modifiés",
-
   // ─── Catalogue / catégorisation produit (T-130) ─────────────────────
   admin_category_created: "Catégorie créée",
   admin_category_updated: "Catégorie modifiée",
