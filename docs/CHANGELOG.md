@@ -9,6 +9,28 @@ Pour les décisions structurantes (ADRs), voir [`decisions/`](./decisions/).
 
 ---
 
+## 2026-05-22 (Chantier 3 — Refonte Leads producteurs, PR #152)
+
+> PR `feature/leads-refonte-2026-05`. Refonte complète du funnel d'acquisition producteurs (prospection CRM + inscription self-service), suppression du score-carbone, ajout d'un flag bio validé admin.
+>
+> 🟢 **Phase 1 — Schéma + suppressions.** Colonnes CRM sur `producer_interests` (`assigned_to`, `current_step` 1-6, `first/last_contact_at`, `next_follow_up_at`, `abandoned_at/reason`, `prefill_token`). Table `producer_interest_followups` (interactions, RLS admin). Flag bio (`bio`, `bio_certificate_number` producer-writable ; `bio_validated_at` admin-only via trigger). Colonne `publication_requested_at` + RPC `request_publication` (6 critères serveur). **Suppression** du score-carbone (3 indicateurs + véracité DGCCRF), des 3 filtres de recherche associés, et de la **publication automatique** (`promote-to-public.ts`). ADR-0008 (supersede 0002). Widget distance « ~1500 km » préservé.
+>
+> 🟢 **Phase 2 — Backend Leads.** Lien prefill HMAC 30j (`lib/leads/prefill-token`). 7 routes admin `/api/admin/leads/*` (prospects, step, send-form, followup, assign, abandon, liste) + route producteur `request-publication`. Cron `leads-followups` (relances R1 J+3 / R2 J+10 / R3 J+20, abandon auto J+40, idempotent, un seul mail final pour les leads backlog). 4 templates email (3 relances + envoi formulaire).
+>
+> 🟢 **Phase 2bis — `/devenir-producteur` self-service.** Le formulaire crée le compte (auth + users consumer+producer + producers draft, accès immédiat via cookie partagé `.terroir-local.fr`) au lieu d'une candidature. Email existant → message clair + lien connexion (oracle B2B assumé). Convergence prospect (prefill → update lead étape 4). Email de bienvenue. **Politique mot de passe 12 caractères** progressive (`strongPasswordSchema` 8→12, sans invalidation de session).
+>
+> 🟢 **Phase 3 — UI Admin Leads.** Frises funnel 6 étapes distinctes prospecté/spontané. Page détail `/producer-interests/[id]` (frise + actions + timeline interactions). Filtre par parcours + bouton « Nouveau prospect ».
+>
+> 🟢 **Phase 4 — UI pro + bio public.** `/ma-page` : panneau « Demander la publication » (critères manquants) + section « Certification bio ». Exposition publique gated (`producers_public.bio = bio AND bio_validated_at NOT NULL`, `search_producers` filtre + colonne bio, anti-fuite `bio_validated_at`). Badge « Agriculture Biologique » fiche + carte, filtre Bio recherche.
+>
+> 🟢 **Phase 5 — Validation admin.** `/gestion-producteurs` : signaux + actions Publier / Valider-Refuser-Révoquer bio. Route `bio-validation` + audit `admin_producer_bio_validated`.
+>
+> 🟢 **Phase 6 — Finalisation.** Cockpit dashboard : compteurs « Publications à valider » + « Certifications bio à valider » (RPC `get_admin_dashboard` étendue). Nettoyage checklist post-launch (items véracité/score-carbone obsolètes, clause CGU bio). Suivi env `LEAD_PREFILL_TOKEN_SECRET` (Vercel avant déploiement).
+>
+> Toutes les migrations appliquées en prod + smoke tests MCP. `npm test` vert (~2800 tests), lint/type-check/build OK à chaque phase. 6 leads de test (mailinator) purgés de la prod.
+
+---
+
 ## 2026-05-13 (PR3 admin-new-surfaces — users, refund-incidents, invitations)
 
 > PR `feature/admin-new-surfaces`. Troisième et dernière des 3 PR du chantier audit-driven admin (`docs/AUDIT_ADMIN.md`).

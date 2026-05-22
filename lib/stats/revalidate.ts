@@ -148,9 +148,8 @@ export async function revalidateCoverageDepartments(opts: {
 // du cache de la RPC `search_producers` wrap dans
 // `lib/producers/search-producers-cached.ts`. Appelée après toute mutation
 // qui change l'état visible côté search :
-//   - producer self-update / admin update (especes, labels, score carbone,
-//     mode_elevage, alimentation, densite_animale, indicateurs DGCCRF qui
-//     entrent dans le ranking, statut public/pending).
+//   - producer self-update / admin update (especes, labels, statut
+//     public/pending qui entrent dans le ranking/filtrage).
 //   - product create / update / toggle active (impacte la sous-requête
 //     corrélée `count(*) FROM products WHERE active=true` retournée par
 //     la RPC).

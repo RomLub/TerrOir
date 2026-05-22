@@ -213,13 +213,9 @@ let _exportComptaLimiter: Ratelimit | null | undefined;
 // session admin est forte (login + isAdmin check).
 let _adminInviteLimiter: Ratelimit | null | undefined;
 
-// sec-P3-1 (T9 2026-05-07) — Route /api/producer-interests POST anon. Cap
-// 5/min keying par IP : formulaire candidature producteur public, volume
-// nominal très bas (1-3 soumissions/jour côté business). Au-delà = scripting,
-// énumération du form, ou flood spam. Le helper upsertProducerInterest est
-// idempotent (catch 23505 → UPDATE) donc pas de risque DB, mais le coût
-// applicatif (écriture audit log + run de validation Zod) justifie le cap.
-let _producerInterestLimiter: Ratelimit | null | undefined;
+// Signup producteur self-service /devenir-producteur (chantier 3) — remplace
+// l'ancien limiter producer_interest (route /api/producer-interests supprimée).
+let _producerSignupLimiter: Ratelimit | null | undefined;
 
 // F-003 (audit pré-launch 2026-05-10) — Webhook Stripe POST. Cap 100/min/IP :
 // généreux pour absorber les retries Stripe (même event peut être rejoué
@@ -378,15 +374,14 @@ export function getAdminInviteRateLimit(): Ratelimit | null {
   return _adminInviteLimiter;
 }
 
-export function getProducerInterestRateLimit(): Ratelimit | null {
-  if (_producerInterestLimiter === undefined) {
-    _producerInterestLimiter = createRateLimiter(
-      5,
-      "60 s",
-      "producer_interest",
-    );
+// Chantier 3 (2026-05) : signup producteur self-service via /devenir-producteur
+// (création de compte). 10 tentatives / IP / heure — on rate-limite la
+// soumission du formulaire elle-même (par IP, pas par identifiant).
+export function getProducerSignupRateLimit(): Ratelimit | null {
+  if (_producerSignupLimiter === undefined) {
+    _producerSignupLimiter = createRateLimiter(10, "1 h", "producer_signup");
   }
-  return _producerInterestLimiter;
+  return _producerSignupLimiter;
 }
 
 export function getStripeWebhookRateLimit(): Ratelimit | null {

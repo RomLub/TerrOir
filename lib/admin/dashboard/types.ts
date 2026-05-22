@@ -20,6 +20,9 @@ export type AdminDashboardCockpit = {
   producers_pending_validation_count: number;
   refund_incidents_count: number;
   invitations_expired_count: number;
+  // Chantier 3 Phase 6.
+  publications_pending_count: number;
+  bio_pending_count: number;
 };
 
 export type AdminDashboardInvitationConversion = {

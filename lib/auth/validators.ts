@@ -1,11 +1,6 @@
 import { z } from "zod";
-import {
-  ALIMENTATION_VALUES,
-  DENSITE_ANIMALE_VALUES,
-  MODE_ELEVAGE_VALUES,
-} from "@/lib/producers/score-carbone-enums";
 
-// Mot de passe création/changement : 8+ chars + minuscule + majuscule + chiffre.
+// Mot de passe création/changement : 12+ chars + minuscule + majuscule + chiffre.
 // Aligné avec les règles Auth Dashboard Supabase (paramétrage 29/04/2026).
 // Évite l'incohérence où Zod accepterait un mdp simple que Supabase rejetterait
 // ensuite avec un message anglais brut peu user-friendly.
@@ -13,9 +8,18 @@ import {
 // loginSchema ne l'utilise PAS : un login passe le mdp existant à Supabase
 // qui vérifie le hash. Si la politique change, les anciens mdp doivent
 // continuer de pouvoir se logger.
+//
+// Politique progressive 12 caractères (chantier 3, 2026-05) : ce schéma valide
+// la CRÉATION et le CHANGEMENT de mot de passe (signup producteur + consumer,
+// invitation, reset, change-password) — jamais le login. Le passage de 8 → 12
+// caractères n'invalide NI les sessions actives (cookies JWT indépendants du
+// mot de passe) NI les comptes existants (hashs bcrypt opaques, vérifiés tels
+// quels au login). Les comptes < 12 restent valables et migrent naturellement
+// à leur prochain reset/changement (où ce schéma s'applique). Aucune migration
+// DB nécessaire.
 export const strongPasswordSchema = z
   .string()
-  .min(8, "Mot de passe : 8 caractères minimum")
+  .min(12, "Mot de passe : 12 caractères minimum")
   .regex(/[a-z]/, "Doit contenir au moins une minuscule")
   .regex(/[A-Z]/, "Doit contenir au moins une majuscule")
   .regex(/[0-9]/, "Doit contenir au moins un chiffre");
@@ -52,6 +56,53 @@ export const loginSchema = z.object({
   email: z.string().trim().email("Email invalide"),
   password: z.string().min(1, "Mot de passe requis"),
 });
+
+// Chantier 3 (2026-05) — signup producteur self-service via /devenir-producteur.
+// Crée le compte (auth + users + producers draft) + le lead. Champs business
+// obligatoires (0.6c). prefillToken optionnel : présent quand un prospect
+// arrive via son lien personnel (formulaire pré-rempli, email verrouillé).
+export const producerSignupSchema = z
+  .object({
+    prenom: z.string().trim().min(1, "Prénom requis").max(120),
+    nom: z.string().trim().min(1, "Nom requis").max(120),
+    email: z.string().trim().toLowerCase().email("Email invalide"),
+    password: strongPasswordSchema,
+    passwordConfirm: z.string(),
+    telephone: z.string().trim().min(1, "Téléphone requis").max(40),
+    nom_exploitation: z
+      .string()
+      .trim()
+      .min(1, "Nom de l'exploitation requis")
+      .max(200),
+    commune: z.string().trim().min(1, "Commune requise").max(120),
+    code_postal: z.string().trim().regex(/^\d{5}$/, "Code postal : 5 chiffres"),
+    especes: z.array(z.string().trim().min(1)).max(20).optional(),
+    message: z
+      .string()
+      .trim()
+      .max(5000)
+      .optional()
+      .transform((v) => (v === "" ? undefined : v)),
+    // Lien personnel prospect (HMAC) — optionnel. Validé côté action.
+    prefillToken: z
+      .string()
+      .optional()
+      .transform((v) => (v === "" ? undefined : v)),
+    cgu_accepted: z
+      .union([z.boolean(), z.string()])
+      .transform((v) => v === true || v === "on" || v === "true")
+      .refine((v) => v === true, {
+        message: "Vous devez accepter les conditions d'utilisation",
+      }),
+    // Honeypot anti-bot : doit rester vide (rempli = bot → 200 silencieux).
+    website: z.string().optional(),
+  })
+  .refine((d) => d.password === d.passwordConfirm, {
+    message: "Les mots de passe ne correspondent pas",
+    path: ["passwordConfirm"],
+  });
+
+export type ProducerSignupInput = z.infer<typeof producerSignupSchema>;
 
 export const inviteProducerSchema = z.object({
   email: z.string().trim().email("Email invalide"),
@@ -96,30 +147,6 @@ export const typeProductionEnum = z.enum([
   "autre",
 ]);
 
-// Cast en tuple mutable pour préserver le typage strict des littéraux côté
-// z.infer (le `as const` de score-carbone-enums.ts produit un readonly tuple
-// que z.enum n'accepte pas directement).
-export const modeElevageEnum = z.enum(
-  MODE_ELEVAGE_VALUES as unknown as [
-    (typeof MODE_ELEVAGE_VALUES)[number],
-    ...(typeof MODE_ELEVAGE_VALUES)[number][],
-  ],
-);
-
-export const alimentationEnum = z.enum(
-  ALIMENTATION_VALUES as unknown as [
-    (typeof ALIMENTATION_VALUES)[number],
-    ...(typeof ALIMENTATION_VALUES)[number][],
-  ],
-);
-
-export const densiteAnimaleEnum = z.enum(
-  DENSITE_ANIMALE_VALUES as unknown as [
-    (typeof DENSITE_ANIMALE_VALUES)[number],
-    ...(typeof DENSITE_ANIMALE_VALUES)[number][],
-  ],
-);
-
 export const invitationBusinessInfoSchema = z
   .object({
     // Token optionnel : absent en mode reprise d'onboarding (Phase 4) où la
@@ -146,20 +173,6 @@ export const invitationBusinessInfoSchema = z
       .trim()
       .optional()
       .transform((v) => (v === "" ? undefined : v)),
-    mode_elevage: modeElevageEnum.optional(),
-    alimentation: alimentationEnum.optional(),
-    densite_animale: densiteAnimaleEnum.optional(),
-    // T-200 r5 — déclaration sur l'honneur conditionnelle. Les libellés
-    // grand public (« Plein air », etc.) recoupent partiellement des
-    // dénominations encadrées par les règlements UE (œufs/volailles/porcs).
-    // On exige l'engagement déclaratif du producteur dès qu'au moins un
-    // des 3 indicateurs est saisi — sinon la case est ignorée. La checkbox
-    // HTML envoie "on" quand cochée, rien sinon : on accepte les deux
-    // formes sérialisées de "vrai".
-    declaration_indicateurs_veracite: z
-      .union([z.literal("on"), z.literal("true"), z.boolean()])
-      .optional()
-      .transform((v) => v === true || v === "on" || v === "true"),
   })
   .refine(
     (d) =>
@@ -169,25 +182,9 @@ export const invitationBusinessInfoSchema = z
       message: "Précisez votre type de production",
       path: ["type_production_precision"],
     },
-  )
-  .refine(
-    (d) => {
-      const anyEnumSet = Boolean(
-        d.mode_elevage || d.alimentation || d.densite_animale,
-      );
-      return !anyEnumSet || d.declaration_indicateurs_veracite === true;
-    },
-    {
-      message:
-        "Pour publier ces indicateurs, certifie qu'ils correspondent à ta pratique réelle.",
-      path: ["declaration_indicateurs_veracite"],
-    },
   );
 
 export type SignupInput = z.infer<typeof signupSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type FormeJuridique = z.infer<typeof formeJuridiqueEnum>;
 export type TypeProduction = z.infer<typeof typeProductionEnum>;
-export type ModeElevageInput = z.infer<typeof modeElevageEnum>;
-export type AlimentationInput = z.infer<typeof alimentationEnum>;
-export type DensiteAnimaleInput = z.infer<typeof densiteAnimaleEnum>;

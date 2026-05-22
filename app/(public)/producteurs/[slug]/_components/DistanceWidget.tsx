@@ -7,7 +7,7 @@ import { geocodePostalCodeViaApi } from "@/lib/geo/geocode-postal-client";
 import {
   GMS_DISTANCE_KM_REFERENCE,
   GMS_DISTANCE_SOURCE_LABEL,
-} from "@/lib/producers/score-carbone-enums";
+} from "@/lib/producers/gms-distance";
 
 // Persistance volontairement réduite à sessionStorage : aucune donnée
 // ne survit à la fermeture de l'onglet (RGPD light, pas de cookie ni DB).

@@ -84,6 +84,18 @@ export default async function AdminDashboardPage() {
             href="/gestion-producteurs"
           />
           <CockpitCard
+            label="Publications à valider"
+            count={cockpit.publications_pending_count}
+            hint="Producteurs ayant demandé la mise en ligne"
+            href="/gestion-producteurs"
+          />
+          <CockpitCard
+            label="Certifications bio à valider"
+            count={cockpit.bio_pending_count}
+            hint="Bio déclaré, certificat à vérifier"
+            href="/gestion-producteurs"
+          />
+          <CockpitCard
             label="Incidents refund"
             count={cockpit.refund_incidents_count}
             hint="Refunds Stripe échoués (cron retry)"

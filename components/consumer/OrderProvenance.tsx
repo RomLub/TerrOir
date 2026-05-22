@@ -9,7 +9,7 @@ import {
 import {
   GMS_DISTANCE_KM_REFERENCE,
   GMS_DISTANCE_SOURCE_LABEL,
-} from "@/lib/producers/score-carbone-enums";
+} from "@/lib/producers/gms-distance";
 
 // T-222 — section "D'où vient ma viande" affichée sur la page confirmation
 // (/compte/confirmation/[id]) et la page détail commande

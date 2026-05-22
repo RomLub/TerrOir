@@ -1,8 +1,16 @@
 # ADR-0002 — Pattern déclarations engageantes producteur : snapshot daté + version
 
-- **Statut** : Accepted
+- **Statut** : Superseded par [ADR-0008](0008-suppression-score-carbone-flag-bio.md) (2026-05-22)
 - **Date** : 2026-05-13 (cadrage 2026-05-04, livré 2026-05-06)
 - **Décideurs** : Romain
+
+> **⚠️ Superseded (2026-05-22)** — Le seul cas d'usage de ce pattern (les 3
+> indicateurs score-carbone + déclaration de véracité DGCCRF) a été supprimé
+> au chantier 3 (cf. [ADR-0008](0008-suppression-score-carbone-flag-bio.md)).
+> Le code associé (`lib/producers/declaration-veracite.ts`, colonnes
+> `producers.declaration_indicateurs_*`, RPC) n'existe plus. Ce document reste
+> consultable comme cadre de réflexion réutilisable si une future déclaration
+> engageante réintroduit le besoin, mais il n'est plus implémenté.
 
 ## Contexte
 

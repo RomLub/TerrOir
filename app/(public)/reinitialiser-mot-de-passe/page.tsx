@@ -46,7 +46,7 @@ export default async function ReinitialiserMotDePassePage(
           </h1>
           <p className="mt-1 text-sm text-terroir-muted">
             {isShapeValid
-              ? "Choisis un mot de passe d'au moins 8 caractères."
+              ? "Choisis un mot de passe d'au moins 12 caractères."
               : "Le lien que tu as utilisé est invalide ou incomplet."}
           </p>
         </div>

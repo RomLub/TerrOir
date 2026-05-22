@@ -19,6 +19,8 @@ export type ProducerCardData = {
   reviewCount: number;
   productCount: number;
   photo?: string | null;
+  // Bio gated (déclaré + validé admin) — chantier 3.
+  bio?: boolean;
 };
 
 export type ProducerCardProps = {
@@ -75,8 +77,9 @@ export function ProducerCard({ producer, className = "" }: ProducerCardProps) {
           </div>
         </div>
 
-        {(species?.length || labels?.length) ? (
+        {(producer.bio || species?.length || labels?.length) ? (
           <div className="mt-1 flex flex-wrap gap-1">
+            {producer.bio ? <Badge variant="green">Agriculture Biologique</Badge> : null}
             {species?.map((s) => (
               <Badge key={`sp-${s}`} variant="green">
                 {s}

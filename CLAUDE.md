@@ -509,19 +509,53 @@ la condition de déblocage.
   cancel le PI, sinon 2 POST simultanés mêmes params déclenchent
   l'idempotency match Stripe et compensent en cancel le PI gagnant
   lui-même.
-- Wording certifié DGCCRF (`lib/producers/declaration-veracite.ts`) :
-  immutable strict. Toute modif (même typo) = nouvelle version `v1.x`,
-  jamais correction sur version courante (valeur probatoire des
-  snapshots).
 - Wording Stripe Connect interdit : « jamais détenus par TerrOir ».
   Préférer : « transitent par Stripe » + mention chargeback CB + Connect
   indépendant.
 
+### Producteurs / score-carbone & bio (chantier 3, 2026-05-22)
+
+- **Score-carbone supprimé** : les 3 indicateurs (`mode_elevage`,
+  `alimentation`, `densite_animale`) + la déclaration de véracité DGCCRF
+  (`declaration_indicateurs_*`) ont été **entièrement supprimés** (colonnes,
+  RPC `update_producer_indicateurs`, filtres de recherche publics, fiche
+  publique, `lib/producers/declaration-veracite.ts`). Cf.
+  `docs/decisions/0008-suppression-score-carbone-flag-bio.md`. Ne pas les
+  ré-introduire sans nouvel ADR.
+- **La comparaison distance « circuit court vs ~1500 km »** (D'où vient ta
+  viande + widget distance fiche publique) est **préservée** et vit
+  désormais dans `lib/producers/gms-distance.ts` (extraite de l'ancien
+  module score-carbone).
+- **Flag bio** : `producers.bio` + `bio_certificate_number` sont
+  **producer-writable** (le producteur déclare), mais `bio_validated_at` est
+  **admin-only** (validation du certificat = acte admin). Exposition publique
+  (filtre + badge) **conditionnée** à `bio = true AND bio_validated_at IS NOT
+  NULL` — ne jamais exposer une mention bio non validée (protection
+  juridique). Le « bio » n'est plus une valeur de `producers.labels[]`.
+- **Intégration Agence Bio automatique = Deferred** : la validation du numéro
+  d'opérateur est manuelle (admin) pour le MVP. À automatiser au déclencheur
+  volume.
+- **Demande de publication** : `producers.publication_requested_at` est posée
+  exclusivement par la RPC SECDEF `request_publication(p_user_id)` (appelée via
+  client service_role, après vérif des 6 critères côté serveur). La colonne est
+  admin-only dans le trigger — un producteur ne peut pas la poser par UPDATE
+  direct.
+- **Plus de publication automatique** : le mécanisme `active → public`
+  automatique (ex-`lib/producers/promote-to-public.ts`) a été **supprimé**
+  (chantier 3). Toute publication passe désormais par : le producteur clique
+  « Demander la publication » sur `/ma-page` (RPC `request_publication`,
+  vérifie les 6 critères) → l'admin valide depuis `/gestion-producteurs`
+  (bouton « Publier » → `statut = 'public'`, signal « Publication demandée »).
+  De même, la certification bio se déclare côté producteur et se valide côté
+  admin (`bio_validated_at`) avant exposition publique du badge/filtre.
+
 ### Privacy / RLS
 
 - Trigger `producers_block_owner_admin_columns` (BEFORE UPDATE) bloque
-  les self-updates producteur sur 25 colonnes admin-only (lat/lng
-  inclus).
+  les self-updates producteur sur les colonnes admin-only (lat/lng,
+  statut, badges, stripe_*, slug, user_id, et — chantier 3 —
+  `publication_requested_at` + `bio_validated_at`). `bio` et
+  `bio_certificate_number` restent producer-writable.
 - Pour UPDATE admin manuel sur ces colonnes (statut inclus) via SQL
   Studio Supabase **ou via MCP `execute_sql`** : le bypass est
   `set local request.jwt.claim.role = 'service_role';` en tête de la

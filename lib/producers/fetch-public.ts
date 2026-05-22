@@ -1,9 +1,4 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type {
-  ModeElevage,
-  Alimentation,
-  DensiteAnimale,
-} from "@/lib/producers/score-carbone-enums";
 import { roundCoord } from "@/lib/producers/coords";
 
 // Fields publics exposés côté consumer. Exclut les colonnes internes
@@ -44,13 +39,12 @@ export interface ProducerPublic {
   badge_annulation_score: number | null;
   note_moyenne: number | null;
   nb_avis: number | null;
-  mode_elevage: ModeElevage | null;
-  alimentation: Alimentation | null;
-  densite_animale: DensiteAnimale | null;
+  // Bio gated : true UNIQUEMENT si déclaré ET validé admin (chantier 3).
+  bio: boolean;
 }
 
 const PUBLIC_COLUMNS =
-  "id, slug, nom_exploitation, commune, code_postal, adresse, latitude, longitude, photo_principale, photos, description, histoire, annee_creation, generations, especes, labels, badge_stock_score, badge_confirmation_score, badge_annulation_score, note_moyenne, nb_avis, mode_elevage, alimentation, densite_animale, users:user_id(prenom)";
+  "id, slug, nom_exploitation, commune, code_postal, adresse, latitude, longitude, photo_principale, photos, description, histoire, annee_creation, generations, especes, labels, badge_stock_score, badge_confirmation_score, badge_annulation_score, note_moyenne, nb_avis, bio, bio_validated_at, users:user_id(prenom)";
 
 // Helper canonical pour fetch un producer visible publiquement par son slug.
 // Garanties :
@@ -86,16 +80,25 @@ export async function fetchPublicProducerBySlug(
   // Supabase JS peut typer une jointure FK 1:1 comme objet OU array selon la
   // version du client. Normalisation systématique vers `{ prenom } | null`
   // pour que l'interface ProducerPublic reste simple côté consumers.
-  const raw = data as Omit<ProducerPublic, "users"> & {
+  const { bio_validated_at, bio: rawBio, ...rest } = data as Omit<
+    ProducerPublic,
+    "users" | "bio"
+  > & {
     users: { prenom: string | null } | { prenom: string | null }[] | null;
+    bio: boolean | null;
+    bio_validated_at: string | null;
   };
-  const usersField = Array.isArray(raw.users)
-    ? (raw.users[0] ?? null)
-    : (raw.users ?? null);
+  const usersField = Array.isArray(rest.users)
+    ? (rest.users[0] ?? null)
+    : (rest.users ?? null);
   return {
-    ...raw,
+    ...rest,
     users: usersField,
-    latitude: roundCoord(raw.latitude),
-    longitude: roundCoord(raw.longitude),
+    // Gating bio : déclaré ET validé admin (l'allégation publique n'apparaît
+    // qu'après vérification du certificat Agence Bio). bio_validated_at est
+    // destructuré hors de l'objet retourné — ne jamais l'exposer publiquement.
+    bio: Boolean(rawBio && bio_validated_at),
+    latitude: roundCoord(rest.latitude),
+    longitude: roundCoord(rest.longitude),
   };
 }

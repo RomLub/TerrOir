@@ -76,7 +76,7 @@ import { signupAction } from "@/app/(consumer)/auth/inscription/actions";
 
 // --- Helpers --------------------------------------------------------------
 
-const VALID_PASSWORD = "Pass1234";
+const VALID_PASSWORD = "Pass1234abcd";
 const VALID_EMAIL = "user@example.com";
 
 function makeFormData(overrides: Record<string, string> = {}): FormData {
@@ -168,7 +168,7 @@ describe("signupAction", () => {
       makeFormData({ password: "Sh1" }),
     );
 
-    expect(res.error).toMatch(/8 caractères/);
+    expect(res.error).toMatch(/12 caractères/);
     expect(supabaseSignUpMock).not.toHaveBeenCalled();
     expect(adminInsertMock).not.toHaveBeenCalled();
     expect(adminDeleteUserMock).not.toHaveBeenCalled();

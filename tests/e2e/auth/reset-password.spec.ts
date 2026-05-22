@@ -130,8 +130,8 @@ test.describe("Auth — Reset password (étape 2)", () => {
       .getByRole("button", { name: /Définir mon nouveau mot de passe/i })
       .click();
 
-    // Le message Zod canonique : "Mot de passe : 8 caractères minimum"
-    await expect(page.getByText(/8 caractères minimum/i)).toBeVisible({
+    // Le message Zod canonique : "Mot de passe : 12 caractères minimum"
+    await expect(page.getByText(/12 caractères minimum/i)).toBeVisible({
       timeout: 10_000,
     });
 

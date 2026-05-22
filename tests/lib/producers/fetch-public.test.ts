@@ -83,9 +83,7 @@ function makeProducer(overrides: Partial<ProducerPublic> = {}): ProducerPublic {
     badge_annulation_score: null,
     note_moyenne: null,
     nb_avis: null,
-    mode_elevage: null,
-    alimentation: null,
-    densite_animale: null,
+    bio: false,
     ...overrides,
   };
 }
@@ -110,6 +108,35 @@ describe("fetchPublicProducerBySlug — cas nominal", () => {
     const res = await fetchPublicProducerBySlug(client, "ferme-bio");
 
     expect(res).toEqual(producer);
+  });
+
+  it("bio gated : bio + bio_validated_at → bio=true, sans fuite de bio_validated_at", async () => {
+    const raw = {
+      ...makeProducer({ slug: "ferme-bio" }),
+      bio: true,
+      bio_validated_at: "2026-05-01T00:00:00Z",
+    };
+    const { client } = makeSupabase({ data: raw, error: null });
+
+    const res = await fetchPublicProducerBySlug(client, "ferme-bio");
+
+    expect(res?.bio).toBe(true);
+    expect(
+      (res as unknown as Record<string, unknown>).bio_validated_at,
+    ).toBeUndefined();
+  });
+
+  it("bio déclaré mais non validé (bio_validated_at null) → bio=false", async () => {
+    const raw = {
+      ...makeProducer({ slug: "ferme-bio" }),
+      bio: true,
+      bio_validated_at: null,
+    };
+    const { client } = makeSupabase({ data: raw, error: null });
+
+    const res = await fetchPublicProducerBySlug(client, "ferme-bio");
+
+    expect(res?.bio).toBe(false);
   });
 
   it("requête la table 'producers'", async () => {
@@ -210,10 +237,9 @@ describe("fetchPublicProducerBySlug — défense en profondeur (sécurité)", ()
     expect(cols).toContain("nom_exploitation");
   });
 
-  it("inclut les 3 colonnes score carbone (T-200) dans le SELECT", async () => {
-    // Smoke test : les 3 colonnes catégorielles consommées par
-    // ScoreCarbonBlock sur la fiche producteur publique doivent figurer
-    // dans le SELECT public.
+  it("inclut les colonnes coords (floutées) dans le SELECT", async () => {
+    // Smoke test : latitude/longitude doivent figurer dans le SELECT public
+    // (consommées par le widget distance, floutées avant retour).
     const { client, captured } = makeSupabase({
       data: makeProducer(),
       error: null,
@@ -222,9 +248,6 @@ describe("fetchPublicProducerBySlug — défense en profondeur (sécurité)", ()
     await fetchPublicProducerBySlug(client, "ferme-bio");
 
     const cols = captured.select[0] ?? "";
-    expect(cols).toContain("mode_elevage");
-    expect(cols).toContain("alimentation");
-    expect(cols).toContain("densite_animale");
     expect(cols).toContain("latitude");
     expect(cols).toContain("longitude");
   });
@@ -352,37 +375,5 @@ describe("fetchPublicProducerBySlug — T-200 sécurité : floutage coords produ
 
     expect(res?.latitude).toBeNull();
     expect(res?.longitude).toBeNull();
-  });
-});
-
-describe("fetchPublicProducerBySlug — T-200 robustesse champs catégoriels", () => {
-  it("retourne null sur les 3 enums quand le producteur ne les a pas saisis", async () => {
-    const producer = makeProducer({
-      mode_elevage: null,
-      alimentation: null,
-      densite_animale: null,
-    });
-    const { client } = makeSupabase({ data: producer, error: null });
-
-    const res = await fetchPublicProducerBySlug(client, "ferme-bio");
-
-    expect(res?.mode_elevage).toBeNull();
-    expect(res?.alimentation).toBeNull();
-    expect(res?.densite_animale).toBeNull();
-  });
-
-  it("propage les 3 enums tels quels quand renseignés", async () => {
-    const producer = makeProducer({
-      mode_elevage: "plein_air",
-      alimentation: "pature_dominante",
-      densite_animale: "extensive",
-    });
-    const { client } = makeSupabase({ data: producer, error: null });
-
-    const res = await fetchPublicProducerBySlug(client, "ferme-bio");
-
-    expect(res?.mode_elevage).toBe("plein_air");
-    expect(res?.alimentation).toBe("pature_dominante");
-    expect(res?.densite_animale).toBe("extensive");
   });
 });

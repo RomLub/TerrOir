@@ -17,7 +17,6 @@ export async function seedProducer(
   overrides?: Partial<{
     statut: string;
     nom_exploitation: string;
-    declaration_indicateurs_snapshot: Record<string, string> | null;
   }>,
 ): Promise<SeededProducer> {
   // Crée un user auth.users via service_role admin API.
@@ -62,8 +61,6 @@ export async function seedProducer(
       slug,
       statut: overrides?.statut ?? "draft",
       nom_exploitation: overrides?.nom_exploitation ?? "Ferme test T-296",
-      declaration_indicateurs_snapshot:
-        overrides?.declaration_indicateurs_snapshot ?? null,
     })
     .select("id")
     .single();

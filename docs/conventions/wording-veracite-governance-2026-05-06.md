@@ -1,5 +1,11 @@
 # Convention — gouvernance du wording certifié `DECLARATION_VERACITE_WORDINGS`
 
+> **⛔ OBSOLÈTE (2026-05-22)** — `lib/producers/declaration-veracite.ts` et le
+> système score-carbone/véracité ont été supprimés au chantier 3 (cf.
+> [ADR-0008](../decisions/0008-suppression-score-carbone-flag-bio.md)). Cette
+> convention de gouvernance du wording n'a plus d'objet. Conservée pour trace
+> historique uniquement.
+
 > Source canonique : `lib/producers/declaration-veracite.ts` § `DECLARATION_VERACITE_WORDINGS`.
 >
 > Session de création : 2026-05-06 (T-282). Articulation T-241 (chantier d'origine), T-279 (runbook extraction DGCCRF), T-292 (CHECK constraint DB), T-288 / T-278 (déclencheur business + UX re-coche), T-293 (runbook bump v1.0 → v1.1).

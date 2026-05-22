@@ -44,7 +44,7 @@ export default function PasswordPage() {
           Mot de passe
         </h1>
         <p className="mt-2 text-sm text-terroir-muted">
-          Change ton mot de passe. Minimum 8 caractères avec une majuscule,
+          Change ton mot de passe. Minimum 12 caractères avec une majuscule,
           une minuscule et un chiffre.
         </p>
       </header>

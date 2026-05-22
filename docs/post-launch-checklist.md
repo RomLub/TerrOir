@@ -181,26 +181,18 @@ production.
   - Mention `sessionStorage` + géocodage tiers
     `api-adresse.data.gouv.fr` + calcul distance Haversine dans la
     politique de confidentialité.
-  - Clause CGU producteur sur la véracité des allégations
-    score-carbone déclaratives (`mode_elevage`, `alimentation`,
-    `densite_animale`).
-  - Clause CGU producteur sur l'horodatage de la déclaration sur
-    l'honneur (traçabilité probatoire DGCCRF).
   - Clause CGV email_suppressions : conservation table malgré
     suppression compte RGPD Art 17 (intérêt légitime Art 6.1.f
     pour reputation anti-spam Resend).
-  - Registre des traitements Art. 30 RGPD : ajouter les 3 colonnes
-    `declaration_indicateurs_*` avec finalité (preuve engagement
-    déclaratif producteur sur indicateurs score-carbone publics)
-    + base légale (intérêt légitime loyauté info consumer +
-    obligation légale DGCCRF) + durée de conservation
-    (prescription DGCCRF, typiquement 2 ans après fin relation
-    commerciale).
-  - Politique de purge/anonymisation des `declaration_indicateurs_*`
-    à la suppression d'un compte producteur : archive intermédiaire
-    pendant délai DGCCRF puis purge, OU anonymisation des colonnes
-    (suppression lien `user_id` mais conservation snapshot pour
-    stats agrégées). À intégrer à la RPC `delete_user_account`.
+  - **Mention bio certifiée (chantier 3, 2026-05)** : clause CGU
+    producteur sur l'allégation « Agriculture Biologique » —
+    `producers.bio` + `bio_certificate_number` (n° opérateur Agence
+    Bio) déclarés par le producteur, exposés publiquement (filtre +
+    badge) UNIQUEMENT après validation admin (`bio_validated_at`).
+    Faire valider par l'avocat : responsabilité TerrOir sur l'allégation
+    bio affichée, process de validation du certificat, et mention de la
+    base légale du traitement du n° d'opérateur. (Remplace les anciennes
+    clauses score-carbone/véracité DGCCRF, supprimées au chantier 3.)
 
 ---
 
@@ -291,39 +283,6 @@ production.
 
 ---
 
-## Conditionné à évolution du wording véracité (v1.0 → v1.1)
-
-Le wording certifié `DECLARATION_VERACITE_WORDINGS` est immuable
-historiquement (cf. ADR-0002). Quand un bump de version sera
-décidé (clarification juridique, ajout indicateur, etc.), enchaîner :
-
-### Runbook bump wording v1.x
-
-- **Condition de déblocage** : décision Romain (souvent juriste) de
-  bumper le wording certifié.
-- **Action** :
-  1. Ajouter `DECLARATION_VERACITE_WORDINGS["v1.X"]` dans
-     `lib/producers/declaration-veracite.ts` (NE JAMAIS toucher les
-     versions précédentes).
-  2. Bumper `DECLARATION_VERACITE_WORDING_VERSION = "v1.X"` dans
-     le même fichier.
-  3. Migration SQL : `DROP CONSTRAINT producers_declaration_indicateurs_wording_version_check`
-     + `ADD CONSTRAINT ... CHECK (... IN ('v1.0', ..., 'v1.X'))`.
-  4. Appliquer la politique re-coche définie ci-dessous.
-
-### Politique re-coche producteurs déjà certifiés
-
-- **Condition de déblocage** : bump wording effectué (item précédent).
-- **Action** : trancher entre 3 options :
-  - Re-coche explicite mise en avant + notification email.
-  - Bandeau d'information persistant dashboard producteur sans
-    blocage.
-  - Blocage soft dashboard tant que pas re-coché.
-- L'absence de mécanisme rend la version courante artefactuelle
-  (les producteurs anciens restent en v1.0 indéfiniment).
-
----
-
 ## Conditionné à élargissement géographique (Sarthe → Pays de la Loire → France)
 
 ### Adaptation widget distance + référence ADEME
@@ -340,14 +299,6 @@ décidé (clarification juridique, ajout indicateur, etc.), enchaîner :
     si extension hors France.
   - Source `api-adresse.data.gouv.fr` (service public français) à
     généraliser hors France.
-
-### Conditionner le bloc score-carbone à une distance seuil
-
-- **Condition de déblocage** : élargissement géo activé.
-- **Action** : décider si le bloc score-carbone reste affiché
-  inconditionnellement (faible visibilité, OK), ou s'il est
-  conditionné à une distance seuil (« en-dessous de X km, le bloc
-  est affiché ; au-dessus, il est masqué »).
 
 ---
 
@@ -462,3 +413,21 @@ décidé (clarification juridique, ajout indicateur, etc.), enchaîner :
   `statut = 'public'` géolocalisés (lat/lng → projection sur le SVG, ou
   bascule vers une vraie carte interactive). Supprimer le tableau
   hardcodé une fois la source DB en place.
+
+---
+
+## Conditionné au déploiement prod du chantier Leads (merge PR #152)
+
+### Variable d'env `LEAD_PREFILL_TOKEN_SECRET` dans Vercel
+
+- **Condition de déblocage** : avant le déploiement production de
+  `feature/leads-refonte-2026-05` (la route `/devenir-producteur`, la route
+  `send-form` et le cron `leads-followups` génèrent/vérifient des liens
+  prefill signés HMAC).
+- **Action** : `vercel env add LEAD_PREFILL_TOKEN_SECRET` (Production +
+  Preview), valeur générée via `openssl rand -hex 32`. Documentée dans
+  `.env.example`. Sans cette variable, toute génération/vérification de lien
+  prefill throw (fail-fast).
+- **Vérif post-déploiement** : le cron `leads-followups` (vercel.json, 7h)
+  tourne sans erreur ; un envoi de formulaire prospect produit un lien
+  `/devenir-producteur?prefill=…` valide.

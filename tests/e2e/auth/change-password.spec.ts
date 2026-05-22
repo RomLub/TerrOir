@@ -16,7 +16,7 @@
  * Server action source : app/(consumer)/compte/password/_actions/change-password.ts
  *
  * NB : la doctrine projet (cf. validators.ts strongPasswordSchema) impose
- * 8+ chars, 1 majuscule, 1 minuscule, 1 chiffre. Le helper createTestUser
+ * 12+ chars, 1 majuscule, 1 minuscule, 1 chiffre. Le helper createTestUser
  * génère déjà un password compatible "A1<random>" — on en génère un autre
  * du même format pour le new.
  */
@@ -30,10 +30,10 @@ import {
 import { getReadOnlyAdminClient } from '../helpers/supabase-admin';
 
 function generateNewPassword(): string {
-  // Format compatible strongPasswordSchema (1maj + 1min + 1chiffre + 8+ chars)
+  // Format compatible strongPasswordSchema (1maj + 1min + 1chiffre + 12+ chars)
   // distinct du password initial de createTestUser (qui démarre par "A1").
   const rand = Math.random().toString(36).slice(2, 10);
-  return `Z9${rand}Test`;
+  return `Z9${rand}TestPassword`; // ≥ 14 chars garantis
 }
 
 test.describe('Change password', () => {

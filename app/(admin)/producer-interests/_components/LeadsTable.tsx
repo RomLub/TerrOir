@@ -1,11 +1,13 @@
 "use client";
 
 import { Fragment, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { StatusPanel, TableActionButton } from "@/components/ui";
 import { formatDateFr } from "@/lib/format/date";
 import { LeadStatusBadge } from "./LeadStatusBadge";
 import { LeadSourceBadge } from "./LeadSourceBadge";
+import { LeadFunnel } from "./LeadFunnel";
 import type { Lead, LeadStatus } from "./types";
 
 export function LeadsTable({
@@ -44,6 +46,7 @@ export function LeadsTable({
               <th className="px-5 py-3 font-semibold">Reçu le</th>
               <th className="px-5 py-3 font-semibold">Contact</th>
               <th className="px-5 py-3 font-semibold">Exploitation</th>
+              <th className="px-5 py-3 font-semibold">Parcours</th>
               <th className="px-5 py-3 font-semibold">Statut</th>
               <th className="px-5 py-3 text-right font-semibold">Actions</th>
             </tr>
@@ -84,6 +87,14 @@ export function LeadsTable({
                       </div>
                     </td>
                     <td className="px-5 py-4">
+                      <LeadFunnel
+                        source={lead.source}
+                        currentStep={lead.current_step}
+                        abandoned={Boolean(lead.abandoned_at)}
+                        compact
+                      />
+                    </td>
+                    <td className="px-5 py-4">
                       <LeadStatusBadge status={lead.statut} />
                     </td>
                     <td
@@ -91,6 +102,12 @@ export function LeadsTable({
                       onClick={(e) => e.stopPropagation()}
                     >
                       <div className="flex flex-wrap items-center justify-end gap-2">
+                        <Link
+                          href={`/producer-interests/${lead.id}`}
+                          className="text-[13px] font-medium text-terroir-green-700 underline hover:text-terroir-green-700/80"
+                        >
+                          Détail →
+                        </Link>
                         {lead.statut === "new" && (
                           <>
                             <TableActionButton
@@ -139,7 +156,7 @@ export function LeadsTable({
                   </tr>
                   {expanded && (
                     <tr className="border-b border-gray-200 bg-gray-50 last:border-0">
-                      <td colSpan={5} className="px-5 py-4">
+                      <td colSpan={6} className="px-5 py-4">
                         <dl className="grid grid-cols-1 gap-x-8 gap-y-3 text-[13px] md:grid-cols-3">
                           <div>
                             <dt className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500">

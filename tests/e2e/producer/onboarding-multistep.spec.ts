@@ -1,23 +1,14 @@
 /**
- * E2E producer — Multistep onboarding wizard StepInfos (déclaration véracité
- * T-241 + T-282).
+ * E2E producer — Multistep onboarding wizard StepInfos.
  *
- * Note doctrine TerrOir : DECLARATION_VERACITE_WORDING_VERSION = 'v1.0'
- * actuellement en production (cf. lib/producers/declaration-veracite.ts).
- * Le brief mentionne 'v1.1' mais le code source pointe sur v1.0 — on
- * teste la version courante telle qu'exposée par helper
- * getDeclarationVeraciteText() (single source of truth runtime). Si bump
- * v1.1 est livré, le test continuera de matcher car on lit la version
- * vivante.
+ * Chantier 3 (2026-05-22) : les indicateurs score-carbone + la déclaration de
+ * véracité DGCCRF ont été supprimés du formulaire. Le wizard ne collecte plus
+ * que les champs business de l'exploitation.
  *
- * Couverture (3 tests) :
- *   1. Affichage wording courant : la page /invitation rend le texte exact
- *      de la version courante (single source helper).
- *   2. Submit happy path avec déclaration → producers.declaration_*
- *      colonnes persistées (wording_version + at NOT NULL + snapshot).
- *   3. Submit avec enums score-carbone non cochée → erreur Zod
- *      "certifie qu'ils correspondent" sur le champ veracite (refine
- *      conditionnel cf. validators.ts).
+ * Couverture (1 test) :
+ *   - Submit happy path : remplissage des champs business → la RPC
+ *     update_producer_onboarding bascule le producteur draft → pending et
+ *     redirige vers /ma-page.
  */
 
 import { test, expect } from '../helpers/test-context';
@@ -26,16 +17,6 @@ import {
   getRawAdminClient,
   type TestContext,
 } from '../helpers/supabase-admin';
-
-// Doctrine T-241 : on duplique ici les valeurs probatoires du wording
-// certifié pour éviter un import cross-package (@/lib/...) depuis un
-// fichier .spec.ts Playwright. Si le helper côté lib bump (v1.0 → v1.1+),
-// ce test devient un signal contractuel : il échouera et forcera la
-// mise à jour intentionnelle. Vérité runtime reste lib/producers/
-// declaration-veracite.ts (single source of truth).
-const EXPECTED_WORDING_VERSION = 'v1.0';
-const EXPECTED_WORDING_TEXT_PREFIX =
-  'Je certifie que les indicateurs déclarés';
 
 const STRONG_PASSWORD = 'Aa1' + 'XR5tq8ZpL3vBn';
 
@@ -157,29 +138,8 @@ async function deleteInvitation(invitationId: string) {
 // Le route group bug P1 a été résolu en Phase 1 (déplacement /invitation
 // vers (public) — cf. app/(public)/invitation/page.tsx). Les 3 tests
 // ci-dessous sont maintenant exécutés.
-test.describe('Producer onboarding — multistep StepInfos + déclaration véracité', () => {
-  test('affiche le wording certifié de la version courante (single source)', async ({
-    page,
-    ctx,
-  }) => {
-    test.setTimeout(90_000);
-
-    const { invitationId } = await setupDraftProducerSession(page, ctx, 'wording');
-
-    try {
-      // Le label de la checkbox certification doit contenir le texte exact
-      // exposé par getDeclarationVeraciteText() côté UI (lib/producers/
-      // declaration-veracite.ts). Test contractuel : si version bump,
-      // mettre à jour EXPECTED_WORDING_TEXT_PREFIX intentionnellement.
-      await expect(
-        page.getByText(EXPECTED_WORDING_TEXT_PREFIX, { exact: false }),
-      ).toBeVisible({ timeout: 10_000 });
-    } finally {
-      await deleteInvitation(invitationId);
-    }
-  });
-
-  test('submit happy path avec déclaration cochée → DB persiste wording_version + snapshot', async ({
+test.describe('Producer onboarding — multistep StepInfos', () => {
+  test('submit happy path → statut draft devient pending + redirect /ma-page', async ({
     page,
     ctx,
   }) => {
@@ -202,24 +162,16 @@ test.describe('Producer onboarding — multistep StepInfos + déclaration vérac
       await page.locator('input[name="commune"]').fill('Le Mans');
       await page.locator('select[name="type_production"]').selectOption('elevage');
 
-      // Cocher au moins 1 enum score-carbone (déclenche refine veracite)
-      await page.locator('input[name="mode_elevage"]').first().check();
-      // Cocher la déclaration véracité
-      await page.locator('input[name="declaration_indicateurs_veracite"]').check();
-
       await page.getByRole('button', { name: /Finaliser ma demande/i }).click();
 
       // Redirect vers /ma-page?onboarded=1 attendu (revalidatePath +
       // redirect côté server action). On vise un marqueur d'URL.
       await page.waitForURL(/\/ma-page/, { timeout: 30_000 });
 
-      // DB assertions : producers.declaration_indicateurs_*
       const admin = getRawAdminClient();
       const { data: prod, error: prodErr } = await admin
         .from('producers')
-        .select(
-          'statut, declaration_indicateurs_wording_version, declaration_indicateurs_veracite_at, declaration_indicateurs_snapshot, mode_elevage',
-        )
+        .select('statut, nom_exploitation')
         .eq('user_id', userId)
         .maybeSingle();
       expect(prodErr, prodErr?.message).toBeNull();
@@ -227,51 +179,7 @@ test.describe('Producer onboarding — multistep StepInfos + déclaration vérac
 
       // statut bascule de 'draft' → 'pending' (RPC update_producer_onboarding)
       expect(prod!.statut).toBe('pending');
-      // wording_version doit matcher la version courante archivée
-      expect(prod!.declaration_indicateurs_wording_version).toBe(
-        EXPECTED_WORDING_VERSION,
-      );
-      // timestamp horodatage présent
-      expect(prod!.declaration_indicateurs_veracite_at).not.toBeNull();
-      // snapshot reflète au moins 1 enum non NULL (mode_elevage choisi)
-      expect(prod!.mode_elevage).not.toBeNull();
-      const snapshot = prod!.declaration_indicateurs_snapshot as Record<string, unknown> | null;
-      expect(snapshot).not.toBeNull();
-    } finally {
-      await deleteInvitation(invitationId);
-    }
-  });
-
-  test('submit avec enum coché mais déclaration NON cochée → erreur Zod refine', async ({
-    page,
-    ctx,
-  }) => {
-    test.setTimeout(120_000);
-
-    const { invitationId } = await setupDraftProducerSession(page, ctx, 'no-decl');
-
-    try {
-      // Pattern : locators par name= (cf. test précédent) — labels sans htmlFor.
-      await page.locator('input[name="prenom"]').fill('Test');
-      await page.locator('input[name="nom"]').fill('Producer');
-      await page.locator('input[name="telephone"]').fill('0612345678');
-      await page.locator('input[name="nom_exploitation"]').fill('Ferme NoDecl');
-      await page.locator('select[name="forme_juridique"]').selectOption('ei');
-      await page.locator('input[name="siret"]').fill('12345678901234');
-      await page.locator('input[name="adresse"]').fill('2 rue Test');
-      await page.locator('input[name="code_postal"]').fill('72000');
-      await page.locator('input[name="commune"]').fill('Le Mans');
-      await page.locator('select[name="type_production"]').selectOption('elevage');
-
-      // Coche enum SANS cocher la déclaration véracité → Zod refine fail
-      await page.locator('input[name="mode_elevage"]').first().check();
-
-      await page.getByRole('button', { name: /Finaliser ma demande/i }).click();
-
-      // Le message d'erreur Zod ancré sur le champ declaration_indicateurs_veracite
-      await expect(page.getByText(/certifie qu.ils correspondent/i)).toBeVisible({
-        timeout: 15_000,
-      });
+      expect(prod!.nom_exploitation).toBe('Ferme Playwright');
     } finally {
       await deleteInvitation(invitationId);
     }

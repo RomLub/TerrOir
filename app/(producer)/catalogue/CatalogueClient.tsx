@@ -6,7 +6,6 @@ import { useState } from 'react';
 import { Button, Badge } from '@/components/ui';
 import { ProductFallback } from '@/components/ui/product-fallback';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
-import { promoteProducerToPublicIfActive } from '@/lib/producers/promote-to-public';
 import {
   revalidatePublicStats,
   revalidatePublicProducts,
@@ -66,12 +65,9 @@ export function CatalogueClient({
       .eq('id', id);
     if (!upError) {
       setProducts((arr) => arr.map((p) => p.id === id ? { ...p, active: next } : p));
-      if (next === true) {
-        await promoteProducerToPublicIfActive(supabase, producerId);
-      }
-      // Toggle actif change toujours productsCount (et possiblement
-      // producersCount via l'auto-promotion). Le helper swallow toute
-      // exception, pas de wrapper externe nécessaire.
+      // Chantier 3 (2026-05-22) : plus d'auto-promotion active → public ici.
+      // La publication passe désormais par demande producteur + validation admin.
+      // Toggle actif change toujours productsCount → on invalide les caches.
       await revalidatePublicStats({ source: 'producer-catalogue-list' });
       // Audit Vercel C-5 (2026-05-05) : invalide aussi le cache 'public-products'
       // (route /produits cachée 60s + tag) — toggle actif modifie la grille

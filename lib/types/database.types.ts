@@ -666,48 +666,137 @@ export type Database = {
       }
       producer_interests: {
         Row: {
+          abandoned_at: string | null
+          abandoned_reason: string | null
+          assigned_to: string | null
           commune: string | null
           created_at: string | null
+          current_step: number
           email: string
           especes: string[] | null
+          first_contact_at: string | null
           id: string
+          last_contact_at: string | null
           message: string | null
+          next_follow_up_at: string | null
           nom: string
           nom_exploitation: string | null
+          prefill_token: string | null
+          prefill_token_expires_at: string | null
           prenom: string | null
           source: string
           statut: string | null
           telephone: string | null
         }
         Insert: {
+          abandoned_at?: string | null
+          abandoned_reason?: string | null
+          assigned_to?: string | null
           commune?: string | null
           created_at?: string | null
+          current_step?: number
           email: string
           especes?: string[] | null
+          first_contact_at?: string | null
           id?: string
+          last_contact_at?: string | null
           message?: string | null
+          next_follow_up_at?: string | null
           nom: string
           nom_exploitation?: string | null
+          prefill_token?: string | null
+          prefill_token_expires_at?: string | null
           prenom?: string | null
           source?: string
           statut?: string | null
           telephone?: string | null
         }
         Update: {
+          abandoned_at?: string | null
+          abandoned_reason?: string | null
+          assigned_to?: string | null
           commune?: string | null
           created_at?: string | null
+          current_step?: number
           email?: string
           especes?: string[] | null
+          first_contact_at?: string | null
           id?: string
+          last_contact_at?: string | null
           message?: string | null
+          next_follow_up_at?: string | null
           nom?: string
           nom_exploitation?: string | null
+          prefill_token?: string | null
+          prefill_token_expires_at?: string | null
           prenom?: string | null
           source?: string
           statut?: string | null
           telephone?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "producer_interests_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      producer_interest_followups: {
+        Row: {
+          channel: string
+          created_at: string
+          created_by: string | null
+          direction: string
+          id: string
+          is_automatic: boolean
+          lead_id: string
+          note: string | null
+          occurred_at: string
+          relance_step: number | null
+        }
+        Insert: {
+          channel: string
+          created_at?: string
+          created_by?: string | null
+          direction: string
+          id?: string
+          is_automatic?: boolean
+          lead_id: string
+          note?: string | null
+          occurred_at?: string
+          relance_step?: number | null
+        }
+        Update: {
+          channel?: string
+          created_at?: string
+          created_by?: string | null
+          direction?: string
+          id?: string
+          is_automatic?: boolean
+          lead_id?: string
+          note?: string | null
+          occurred_at?: string
+          relance_step?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "producer_interest_followups_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "producer_interest_followups_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "producer_interests"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       producer_invitations: {
         Row: {
@@ -744,20 +833,17 @@ export type Database = {
           abonnement_expire_at: string | null
           abonnement_niveau: string | null
           adresse: string | null
-          alimentation: string | null
           annee_creation: number | null
           badge_annulation_score: number | null
           badge_confirmation_score: number | null
           badge_stock_score: number | null
+          bio: boolean
+          bio_certificate_number: string | null
+          bio_validated_at: string | null
           code_postal: string | null
           commune: string | null
           created_at: string | null
-          declaration_indicateurs_enums_version: string | null
-          declaration_indicateurs_snapshot: Json | null
-          declaration_indicateurs_veracite_at: string | null
-          declaration_indicateurs_wording_version: string | null
           deleted_at: string | null
-          densite_animale: string | null
           description: string | null
           especes: string[] | null
           forme_juridique: string | null
@@ -767,12 +853,12 @@ export type Database = {
           labels: string[] | null
           latitude: number | null
           longitude: number | null
-          mode_elevage: string | null
           nb_avis: number
           nom_exploitation: string
           note_moyenne: number
           photo_principale: string | null
           photos: string[] | null
+          publication_requested_at: string | null
           siret: string | null
           slug: string
           statut: string | null
@@ -789,20 +875,17 @@ export type Database = {
           abonnement_expire_at?: string | null
           abonnement_niveau?: string | null
           adresse?: string | null
-          alimentation?: string | null
           annee_creation?: number | null
           badge_annulation_score?: number | null
           badge_confirmation_score?: number | null
           badge_stock_score?: number | null
+          bio?: boolean
+          bio_certificate_number?: string | null
+          bio_validated_at?: string | null
           code_postal?: string | null
           commune?: string | null
           created_at?: string | null
-          declaration_indicateurs_enums_version?: string | null
-          declaration_indicateurs_snapshot?: Json | null
-          declaration_indicateurs_veracite_at?: string | null
-          declaration_indicateurs_wording_version?: string | null
           deleted_at?: string | null
-          densite_animale?: string | null
           description?: string | null
           especes?: string[] | null
           forme_juridique?: string | null
@@ -812,12 +895,12 @@ export type Database = {
           labels?: string[] | null
           latitude?: number | null
           longitude?: number | null
-          mode_elevage?: string | null
           nb_avis?: number
           nom_exploitation: string
           note_moyenne?: number
           photo_principale?: string | null
           photos?: string[] | null
+          publication_requested_at?: string | null
           siret?: string | null
           slug: string
           statut?: string | null
@@ -834,20 +917,17 @@ export type Database = {
           abonnement_expire_at?: string | null
           abonnement_niveau?: string | null
           adresse?: string | null
-          alimentation?: string | null
           annee_creation?: number | null
           badge_annulation_score?: number | null
           badge_confirmation_score?: number | null
           badge_stock_score?: number | null
+          bio?: boolean
+          bio_certificate_number?: string | null
+          bio_validated_at?: string | null
           code_postal?: string | null
           commune?: string | null
           created_at?: string | null
-          declaration_indicateurs_enums_version?: string | null
-          declaration_indicateurs_snapshot?: Json | null
-          declaration_indicateurs_veracite_at?: string | null
-          declaration_indicateurs_wording_version?: string | null
           deleted_at?: string | null
-          densite_animale?: string | null
           description?: string | null
           especes?: string[] | null
           forme_juridique?: string | null
@@ -857,12 +937,12 @@ export type Database = {
           labels?: string[] | null
           latitude?: number | null
           longitude?: number | null
-          mode_elevage?: string | null
           nb_avis?: number
           nom_exploitation?: string
           note_moyenne?: number
           photo_principale?: string | null
           photos?: string[] | null
+          publication_requested_at?: string | null
           siret?: string | null
           slug?: string
           statut?: string | null
@@ -1606,19 +1686,20 @@ export type Database = {
           incident_status: string
         }[]
       }
+      request_publication: {
+        Args: { p_user_id: string }
+        Returns: Json
+      }
       revive_order_with_stock_check: {
         Args: { p_order_id: string }
         Returns: string
       }
       search_producers: {
         Args: {
-          p_alimentation?: string[]
-          p_densite_animale?: string[]
           p_especes?: string[]
           p_labels?: string[]
           p_lat: number
           p_lng: number
-          p_mode_elevage?: string[]
           p_radius_km: number
         }
         Returns: {
@@ -1641,35 +1722,17 @@ export type Database = {
           slug: string
         }[]
       }
-      update_producer_indicateurs: {
-        Args: {
-          p_alimentation: string
-          p_declaration_cochee: boolean
-          p_densite_animale: string
-          p_enums_version: string
-          p_mode_elevage: string
-          p_user_id: string
-          p_wording_version: string
-        }
-        Returns: undefined
-      }
       update_producer_onboarding: {
         Args: {
           p_adresse: string
-          p_alimentation: string
           p_code_postal: string
           p_commune: string
-          p_declaration_cochee: boolean
-          p_densite_animale: string
-          p_enums_version: string
           p_forme_juridique: string
-          p_mode_elevage: string
           p_nom_exploitation: string
           p_siret: string
           p_type_production: string
           p_type_production_precision: string
           p_user_id: string
-          p_wording_version: string
         }
         Returns: undefined
       }

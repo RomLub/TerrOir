@@ -161,12 +161,12 @@ describe("updatePasswordAction — fix navbar post password recovery (T-306)", (
     expect(vi.mocked(logAuthEvent)).not.toHaveBeenCalled();
   });
 
-  it("validation Zod : password < 8 caractères → error, aucun side effect (pas de verifyOtp, pas de revalidatePath, pas de redirect)", async () => {
+  it("validation Zod : password < 12 caractères → error, aucun side effect (pas de verifyOtp, pas de revalidatePath, pas de redirect)", async () => {
     const result = await runAction(
       makeFormData({ password: "abc12", passwordConfirm: "abc12" }),
     );
 
-    expect(result?.error).toContain("8 caractères");
+    expect(result?.error).toContain("12 caractères");
     expect(vi.mocked(revalidatePath)).not.toHaveBeenCalled();
     expect(vi.mocked(logAuthEvent)).not.toHaveBeenCalled();
   });

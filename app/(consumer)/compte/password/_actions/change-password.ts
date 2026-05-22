@@ -22,8 +22,8 @@
 //     nonce reauthenticate() côté user-client. Légitime car identité déjà
 //     vérifiée. Symétrique avec delete-account-action.ts:232.
 //
-// Validation Zod via strongPasswordSchema : 8+ chars + minuscule + majuscule
-// + chiffre, aligné Dashboard Supabase 29/04/2026 (T-312 partiel).
+// Validation Zod via strongPasswordSchema : 12+ chars + minuscule + majuscule
+// + chiffre (politique progressive chantier 3, 2026-05).
 // =============================================================================
 
 import { createElement } from "react";

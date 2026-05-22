@@ -50,6 +50,9 @@ type RawProducerRow = {
   abonnement_niveau: string | null;
   created_at: string;
   user_id: string | null;
+  bio: boolean | null;
+  bio_validated_at: string | null;
+  publication_requested_at: string | null;
   // Supabase remonte la jointure 1:1 soit en objet, soit en array selon les
   // versions du client (compat ascendante). On normalise dans le mapper.
   user: { email: string | null } | Array<{ email: string | null }> | null;
@@ -62,7 +65,7 @@ export async function fetchAdminProducersList(
   let itemsQuery = admin
     .from("producers")
     .select(
-      "id, slug, nom_exploitation, commune, code_postal, statut, abonnement_niveau, created_at, user_id, user:user_id ( email )",
+      "id, slug, nom_exploitation, commune, code_postal, statut, abonnement_niveau, created_at, user_id, bio, bio_validated_at, publication_requested_at, user:user_id ( email )",
     );
   let countQuery = admin
     .from("producers")
@@ -108,6 +111,10 @@ export async function fetchAdminProducersList(
       joinedAt: formatDateFr(p.created_at),
       email: user?.email ?? "—",
       userId: p.user_id ?? null,
+      publicationRequested:
+        p.publication_requested_at != null && p.statut !== "public",
+      bioPending: Boolean(p.bio) && p.bio_validated_at == null,
+      bioValidated: Boolean(p.bio) && p.bio_validated_at != null,
     };
   });
 

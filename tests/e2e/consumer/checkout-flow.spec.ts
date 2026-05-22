@@ -293,7 +293,7 @@ test.describe('Consumer — checkout flow (API)', () => {
       });
       if (orderRes.status() !== 200) {
         // Si order create refuse aussi (variante config), le test passe :
-        // l'invariant promoteProducerToPublicIfActive peut bloquer en amont.
+        // un producer non publiable peut être bloqué en amont.
         return;
       }
       const orderBody = (await orderRes.json()) as { order_id: string };

@@ -19,7 +19,7 @@ import {
   trackUserId,
 } from "../helpers/supabase-admin";
 
-const STRONG_PASSWORD = "Test1234"; // matche strongPasswordSchema
+const STRONG_PASSWORD = "Test1234abcd"; // matche strongPasswordSchema
 
 test.describe("Auth — Signup", () => {
   test("happy path : submit form valide → success page + user créé en DB", async ({
@@ -180,10 +180,10 @@ test.describe("Auth — Signup", () => {
       .getByRole("button", { name: "Créer mon compte", exact: true })
       .click();
 
-    // Le message Zod canonique est "Mot de passe : 8 caractères minimum".
+    // Le message Zod canonique est "Mot de passe : 12 caractères minimum".
     // signupAction renvoie state.error avec ce message, qui est rendu dans
     // un .rounded-md.bg-red-50.
-    await expect(page.getByText(/8 caractères minimum/i)).toBeVisible({
+    await expect(page.getByText(/12 caractères minimum/i)).toBeVisible({
       timeout: 10_000,
     });
   });
