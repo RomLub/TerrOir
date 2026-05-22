@@ -85,8 +85,8 @@ const VALID_TOKEN = "a".repeat(32);
 function makeFormData(overrides: Record<string, string> = {}): FormData {
   const fd = new FormData();
   fd.set("token", VALID_TOKEN);
-  fd.set("password", "Password123");
-  fd.set("passwordConfirm", "Password123");
+  fd.set("password", "Password1234");
+  fd.set("passwordConfirm", "Password1234");
   for (const [k, v] of Object.entries(overrides)) fd.set(k, v);
   return fd;
 }
@@ -152,16 +152,16 @@ describe("createAccountAction", () => {
     expect(createUserMock).toHaveBeenCalledTimes(1);
     expect(signInMock).toHaveBeenCalledWith({
       email: "new@example.com",
-      password: "Password123",
+      password: "Password1234",
     });
   });
 
-  it("schema invalide (password < 8 chars) → error sans toucher la DB", async () => {
+  it("schema invalide (password < 12 chars) → error sans toucher la DB", async () => {
     const fd = makeFormData({ password: "short", passwordConfirm: "short" });
 
     const res = await createAccountAction({}, fd);
 
-    expect(res.error).toMatch(/8 caractères/);
+    expect(res.error).toMatch(/12 caractères/);
     expect(res.success).toBeUndefined();
     expect(captured.fromCalls).toEqual([]);
     expect(createUserMock).not.toHaveBeenCalled();

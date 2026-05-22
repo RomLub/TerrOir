@@ -28,7 +28,7 @@ import {
   trackUserId,
 } from "../helpers/supabase-admin";
 
-const STRONG_PASSWORD = "Test1234"; // matche strongPasswordSchema (8+ / aA / 9)
+const STRONG_PASSWORD = "Test1234abcd"; // matche strongPasswordSchema (8+ / aA / 9)
 
 test.describe("Inscription CGU (opposabilité juridique)", () => {
   test("checkbox CGU non cochée : bouton submit reste désactivé", async ({

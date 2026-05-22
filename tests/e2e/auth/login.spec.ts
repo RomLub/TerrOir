@@ -12,7 +12,7 @@ import { generateTestEmail } from "../helpers/guards";
 import { createTestUser, loginAs } from "../helpers/user-lifecycle";
 import { getReadOnlyAdminClient } from "../helpers/supabase-admin";
 
-const STRONG_PASSWORD = "Test1234";
+const STRONG_PASSWORD = "Test1234abcd";
 
 test.describe("Auth — Login", () => {
   test("happy path : login UI → redirect /compte + session active", async ({

@@ -83,7 +83,7 @@ import { changePasswordAction } from "@/app/(consumer)/compte/password/_actions/
 // --- Helpers --------------------------------------------------------------
 
 const VALID_CURRENT = "OldPass123";
-const VALID_NEW = "NewPass456";
+const VALID_NEW = "NewPass456789";
 
 function makeFormData(overrides: Record<string, string> = {}): FormData {
   const fd = new FormData();
@@ -170,13 +170,13 @@ describe("changePasswordAction", () => {
     expect(logAuthEventMock).not.toHaveBeenCalled();
   });
 
-  it("new password trop court (< 8 chars) → Zod fail, aucun appel Supabase", async () => {
+  it("new password trop court (< 12 chars) → Zod fail, aucun appel Supabase", async () => {
     const res = await changePasswordAction(
       {},
       makeFormData({ newPassword: "Sh1", newPasswordConfirm: "Sh1" }),
     );
 
-    expect(res.error).toMatch(/8 caractères/);
+    expect(res.error).toMatch(/12 caractères/);
     expect(tempSignInMock).not.toHaveBeenCalled();
     expect(adminUpdateUserMock).not.toHaveBeenCalled();
     expect(logAuthEventMock).not.toHaveBeenCalled();
@@ -186,8 +186,8 @@ describe("changePasswordAction", () => {
     const res = await changePasswordAction(
       {},
       makeFormData({
-        newPassword: "newpass123",
-        newPasswordConfirm: "newpass123",
+        newPassword: "newpass123456",
+        newPasswordConfirm: "newpass123456",
       }),
     );
 
