@@ -181,26 +181,18 @@ production.
   - Mention `sessionStorage` + géocodage tiers
     `api-adresse.data.gouv.fr` + calcul distance Haversine dans la
     politique de confidentialité.
-  - Clause CGU producteur sur la véracité des allégations
-    score-carbone déclaratives (`mode_elevage`, `alimentation`,
-    `densite_animale`).
-  - Clause CGU producteur sur l'horodatage de la déclaration sur
-    l'honneur (traçabilité probatoire DGCCRF).
   - Clause CGV email_suppressions : conservation table malgré
     suppression compte RGPD Art 17 (intérêt légitime Art 6.1.f
     pour reputation anti-spam Resend).
-  - Registre des traitements Art. 30 RGPD : ajouter les 3 colonnes
-    `declaration_indicateurs_*` avec finalité (preuve engagement
-    déclaratif producteur sur indicateurs score-carbone publics)
-    + base légale (intérêt légitime loyauté info consumer +
-    obligation légale DGCCRF) + durée de conservation
-    (prescription DGCCRF, typiquement 2 ans après fin relation
-    commerciale).
-  - Politique de purge/anonymisation des `declaration_indicateurs_*`
-    à la suppression d'un compte producteur : archive intermédiaire
-    pendant délai DGCCRF puis purge, OU anonymisation des colonnes
-    (suppression lien `user_id` mais conservation snapshot pour
-    stats agrégées). À intégrer à la RPC `delete_user_account`.
+  - **Mention bio certifiée (chantier 3, 2026-05)** : clause CGU
+    producteur sur l'allégation « Agriculture Biologique » —
+    `producers.bio` + `bio_certificate_number` (n° opérateur Agence
+    Bio) déclarés par le producteur, exposés publiquement (filtre +
+    badge) UNIQUEMENT après validation admin (`bio_validated_at`).
+    Faire valider par l'avocat : responsabilité TerrOir sur l'allégation
+    bio affichée, process de validation du certificat, et mention de la
+    base légale du traitement du n° d'opérateur. (Remplace les anciennes
+    clauses score-carbone/véracité DGCCRF, supprimées au chantier 3.)
 
 ---
 
@@ -291,39 +283,6 @@ production.
 
 ---
 
-## Conditionné à évolution du wording véracité (v1.0 → v1.1)
-
-Le wording certifié `DECLARATION_VERACITE_WORDINGS` est immuable
-historiquement (cf. ADR-0002). Quand un bump de version sera
-décidé (clarification juridique, ajout indicateur, etc.), enchaîner :
-
-### Runbook bump wording v1.x
-
-- **Condition de déblocage** : décision Romain (souvent juriste) de
-  bumper le wording certifié.
-- **Action** :
-  1. Ajouter `DECLARATION_VERACITE_WORDINGS["v1.X"]` dans
-     `lib/producers/declaration-veracite.ts` (NE JAMAIS toucher les
-     versions précédentes).
-  2. Bumper `DECLARATION_VERACITE_WORDING_VERSION = "v1.X"` dans
-     le même fichier.
-  3. Migration SQL : `DROP CONSTRAINT producers_declaration_indicateurs_wording_version_check`
-     + `ADD CONSTRAINT ... CHECK (... IN ('v1.0', ..., 'v1.X'))`.
-  4. Appliquer la politique re-coche définie ci-dessous.
-
-### Politique re-coche producteurs déjà certifiés
-
-- **Condition de déblocage** : bump wording effectué (item précédent).
-- **Action** : trancher entre 3 options :
-  - Re-coche explicite mise en avant + notification email.
-  - Bandeau d'information persistant dashboard producteur sans
-    blocage.
-  - Blocage soft dashboard tant que pas re-coché.
-- L'absence de mécanisme rend la version courante artefactuelle
-  (les producteurs anciens restent en v1.0 indéfiniment).
-
----
-
 ## Conditionné à élargissement géographique (Sarthe → Pays de la Loire → France)
 
 ### Adaptation widget distance + référence ADEME
@@ -340,14 +299,6 @@ décidé (clarification juridique, ajout indicateur, etc.), enchaîner :
     si extension hors France.
   - Source `api-adresse.data.gouv.fr` (service public français) à
     généraliser hors France.
-
-### Conditionner le bloc score-carbone à une distance seuil
-
-- **Condition de déblocage** : élargissement géo activé.
-- **Action** : décider si le bloc score-carbone reste affiché
-  inconditionnellement (faible visibilité, OK), ou s'il est
-  conditionné à une distance seuil (« en-dessous de X km, le bloc
-  est affiché ; au-dessus, il est masqué »).
 
 ---
 
@@ -462,3 +413,26 @@ décidé (clarification juridique, ajout indicateur, etc.), enchaîner :
   `statut = 'public'` géolocalisés (lat/lng → projection sur le SVG, ou
   bascule vers une vraie carte interactive). Supprimer le tableau
   hardcodé une fois la source DB en place.
+
+---
+
+## Conditionné à l'activation du cron `leads-followups` en prod (merge chantier Leads)
+
+### Nettoyer les 6 leads de test (mailinator) de `producer_interests`
+
+- **Condition de déblocage** : avant le merge en prod de
+  `feature/leads-refonte-2026-05` (le cron `leads-followups` est déclaré
+  dans `vercel.json` et devient actif au déploiement production).
+- **Contexte** : 6 leads `source='formulaire_public'`, statut new/contacted,
+  âgés de 27-31 j, sont des résidus de tests manuels de dev (adresses
+  `@mailinator.com`/`.org` : `test-phase3-newuser`, `test-phase4-resume`,
+  `test-optout-v2`, `test-leadbump-0423`, `test-onboard-conseil`, `test1`).
+  Ils ne matchent PAS le sentinel Playwright (`playwright-test-*`) donc le
+  cleanup E2E ne les attrape pas. Sans nettoyage, le cron leur enverrait des
+  relances (inoffensif car mailinator est jetable, mais pollue le funnel).
+  Les 3 leads `onboarded` (Romain, Chloé, Julien LELOUP) sont réels → à
+  conserver.
+- **Action** : `DELETE FROM producer_interests WHERE source='formulaire_public'
+  AND statut <> 'onboarded' AND email ILIKE '%@mailinator.%';` (vérifier le
+  count = 6 avant). Aucune dépendance (ces leads n'ont pas de followups ni de
+  compte producteur lié, jamais onboardés).
