@@ -288,3 +288,118 @@ describe("middleware — role snapshot cookie cache (T-321)", () => {
     expect(mockAdminUsersMaybeSingle).toHaveBeenCalledTimes(1);
   });
 });
+
+// fix/middleware-subdomain-isolation — routes consumer (/compte) = www-only,
+// routes producer = pro-only. Le middleware gate sur les hostnames PROD
+// (pro.terroir-local.fr) → non testable en E2E localhost (host = localhost
+// → isProducerHost faux). Couverture au niveau unitaire en forçant l'URL pro.
+describe("middleware — isolation rôles/sous-domaine (pro.* vs www.*)", () => {
+  async function snapshotCookie(roles: string[], isAdmin = false) {
+    return signRoleSnapshot({
+      user_id: "user-1",
+      roles,
+      isAdmin,
+      expires_at: Date.now() + 60_000,
+    });
+  }
+
+  it("consumer-only connecté sur pro.*/compte → 307 vers www.*/compte (pas de boucle)", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
+    const res = await middleware(
+      buildRequest({
+        url: "https://pro.terroir-local.fr/compte",
+        host: "pro.terroir-local.fr",
+        cookies: { "__Secure-terroir_role_snapshot": await snapshotCookie(["consumer"]) },
+      }),
+    );
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toBe("https://www.terroir-local.fr/compte");
+  });
+
+  it("producteur connecté sur pro.*/compte → 307 vers www.*/compte (compte = consumer)", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
+    const res = await middleware(
+      buildRequest({
+        url: "https://pro.terroir-local.fr/compte/factures",
+        host: "pro.terroir-local.fr",
+        cookies: {
+          "__Secure-terroir_role_snapshot": await snapshotCookie(["consumer", "producer"]),
+        },
+      }),
+    );
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toBe(
+      "https://www.terroir-local.fr/compte/factures",
+    );
+  });
+
+  it("non-connecté sur pro.*/compte → 307 vers www.*/compte (l'auth se fera sur www)", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: null } });
+    const res = await middleware(
+      buildRequest({
+        url: "https://pro.terroir-local.fr/compte",
+        host: "pro.terroir-local.fr",
+      }),
+    );
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toBe("https://www.terroir-local.fr/compte");
+  });
+
+  it("consumer-only connecté sur pro.*/dashboard (chemin producteur) → 307 vers www.* racine", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
+    const res = await middleware(
+      buildRequest({
+        url: "https://pro.terroir-local.fr/dashboard",
+        host: "pro.terroir-local.fr",
+        cookies: { "__Secure-terroir_role_snapshot": await snapshotCookie(["consumer"]) },
+      }),
+    );
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toBe("https://www.terroir-local.fr/");
+  });
+
+  it("non-connecté sur pro.*/dashboard → /connexion (flow existant, pas de fuite vers www)", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: null } });
+    const res = await middleware(
+      buildRequest({
+        url: "https://pro.terroir-local.fr/dashboard",
+        host: "pro.terroir-local.fr",
+      }),
+    );
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toContain("/connexion");
+  });
+
+  it("producteur (statut active) sur pro.*/dashboard → reste sur pro.* (pas de redirect www)", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
+    mockProducersMaybeSingle.mockResolvedValue({ data: { statut: "active" }, error: null });
+    const res = await middleware(
+      buildRequest({
+        url: "https://pro.terroir-local.fr/dashboard",
+        host: "pro.terroir-local.fr",
+        cookies: {
+          "__Secure-terroir_role_snapshot": await snapshotCookie(["consumer", "producer"]),
+        },
+      }),
+    );
+    expect(res.headers.get("location") ?? "").not.toContain("www.terroir-local.fr");
+  });
+
+  it("producteur (statut draft) sur pro.*/ma-page → /onboarding (signup), pas www.*", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
+    mockProducersMaybeSingle.mockResolvedValue({ data: { statut: "draft" }, error: null });
+    const res = await middleware(
+      buildRequest({
+        url: "https://pro.terroir-local.fr/ma-page",
+        host: "pro.terroir-local.fr",
+        cookies: {
+          "__Secure-terroir_role_snapshot": await snapshotCookie(["consumer", "producer"]),
+        },
+      }),
+    );
+    expect(res.status).toBe(307);
+    const loc = res.headers.get("location") ?? "";
+    expect(loc).toContain("/onboarding");
+    expect(loc).not.toContain("www.terroir-local.fr");
+  });
+});

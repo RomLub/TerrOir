@@ -9,6 +9,20 @@ Pour les décisions structurantes (ADRs), voir [`decisions/`](./decisions/).
 
 ---
 
+## 2026-05-22 (Fix — isolation rôles/sous-domaine middleware)
+
+> PR `fix/middleware-subdomain-isolation`. Bug d'isolation surfacé post-merge chantier 3 (pré-existant) : un utilisateur **non-producteur** connecté pouvait charger des routes consumer (ex. `/compte`) sur `pro.terroir-local.fr` — le contenu consumer était servi sur le sous-domaine producteur. **Pas de fuite de données** (RLS intacte, données propres à l'utilisateur, identiques à `www`) mais violation de la doctrine d'isolation des rôles par sous-domaine.
+>
+> 🟢 **Cause** : une seule app Next sert les 3 sous-domaines ; les route-groups n'isolent pas par host. Le middleware bloquait la **racine** `pro.*` pour les non-producteurs (→ `/connexion`) mais **pas les autres chemins** (le garde-fou rôle ne se déclenchait que pour les users *avec* le rôle producer).
+>
+> 🟢 **Fix `middleware.ts`** : (1) `/compte/*` sur `pro.*` → redirect absolu vers `www.*/compte…` pour **tous** (consumer, producteur, non-connecté — `/compte` est consumer par nature) ; (2) utilisateur connecté sans rôle `producer` (non-admin) sur `pro.*` (hors racine + hors `/compte`) → redirect absolu vers `www.*`. Redirects **absolus** (anti-boucle). Producteurs et admins inchangés.
+>
+> 🟢 **Vérifs pré-fix** : signup producteur (Phase 2bis) attache le rôle `producer` **synchrone** avant redirect → pas renvoyé vers www ; liens `/compte` relatifs/absolus-www audités → pas de boucle.
+>
+> 🟢 **Tests** : 7 cas unitaires `tests/middleware.test.ts` (host PROD forcé, car non testable en E2E localhost). Doctrine documentée dans `CLAUDE.md` § Pièges connus. `npm test` vert, lint/type-check/build OK.
+
+---
+
 ## 2026-05-22 (Chantier 3 — Refonte Leads producteurs, PR #152)
 
 > PR `feature/leads-refonte-2026-05`. Refonte complète du funnel d'acquisition producteurs (prospection CRM + inscription self-service), suppression du score-carbone, ajout d'un flag bio validé admin.

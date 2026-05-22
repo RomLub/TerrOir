@@ -466,6 +466,34 @@ la condition de déblocage.
   authentifié DKIM via Resend SMTP custom). Tout email d'auth doit partir
   depuis ce subdomain — ne pas régresser sous peine de retour en spam.
 
+### Isolation rôles / sous-domaines (middleware)
+
+- **Une seule app Next sert les 3 sous-domaines.** Les route-groups
+  `(consumer)` / `(producer)` / `(admin)` n'ajoutent **aucun préfixe d'URL**
+  ni isolation par host : un path (ex. `/compte`, défini dans `(consumer)`)
+  est techniquement servable sur `www`, `pro` ET `admin`. L'isolation repose
+  **entièrement sur `middleware.ts`**.
+- **Doctrine** : routes **consumer = www-only** (`/compte/*`), routes
+  **producer = pro-only** (`/dashboard`, `/ma-page`, `/onboarding`, etc.),
+  routes **admin = admin-only**. Le middleware **enforce** :
+  - `/compte/*` sur `pro.*` → redirect **absolu** vers
+    `https://www.terroir-local.fr/compte…` (pour TOUS : consumer, producteur,
+    non-connecté). Une route consumer ne doit jamais être servie sur `pro.*`.
+  - utilisateur connecté **sans rôle `producer`** (et non-admin) sur `pro.*`
+    (hors racine, gérée séparément → `/connexion`) → redirect absolu vers
+    `https://www.terroir-local.fr/`.
+- **Anti-boucle** : ces redirects cross-sous-domaine doivent être **absolus**
+  (`https://www.…`). Un redirect **relatif** resterait sur `pro.*` → boucle.
+- **Borné en dev** : le middleware gate sur les hostnames PROD
+  (`pro.terroir-local.fr`). En dev (`localhost`), `isProducerHost` est faux →
+  la logique d'isolation ne s'applique pas. ⇒ **non testable en E2E
+  localhost**, couverture au niveau **unitaire** (`tests/middleware.test.ts`,
+  on force l'URL `https://pro.terroir-local.fr/...`).
+- **Signup producteur** : `signupProducerAction` attache `roles:
+  ['consumer','producer']` **synchrone** (INSERT `users`) avant le redirect →
+  le nouveau producteur n'est PAS renvoyé vers www par le middleware (il a
+  bien le rôle au premier hit). Ne pas régresser vers un attachement async.
+
 ### Next 16 / React 19 (validés en prod)
 
 - Server action sur route protégée : `redirect()` serveur >
