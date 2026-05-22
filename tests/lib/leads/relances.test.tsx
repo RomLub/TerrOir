@@ -119,13 +119,18 @@ describe("runLeadsFollowups — relances", () => {
     const res = await runLeadsFollowups(client, { nowMs: NOW });
 
     expect(res.relancesSent).toBe(1);
+    // un seul email (R3 final), jamais R3 puis R2 puis R1 à rebours
     expect(mockSend).toHaveBeenCalledOnce();
     expect(mockSend.mock.calls[0][0].template).toBe("lead_relance_3");
-    // followup auto inséré avec relance_step=3
+    // followups insérés : R3 envoyé + R1/R2 supersédés (lead backlog 25j)
     const fuInsert = calls.find(
       (c) => c.table === "producer_interest_followups" && c.op === "insert",
     );
-    expect(fuInsert?.row).toMatchObject({ is_automatic: true, relance_step: 3 });
+    const rows = fuInsert?.row as unknown as Array<{ relance_step: number; note: string }>;
+    expect(Array.isArray(rows)).toBe(true);
+    expect(rows.map((r) => r.relance_step).sort()).toEqual([1, 2, 3]);
+    expect(rows.find((r) => r.relance_step === 3)?.note).toMatch(/Relance auto R3/);
+    expect(rows.find((r) => r.relance_step === 1)?.note).toMatch(/supersédée/);
     // current_step bumpé à 4
     const stepUpdate = calls.find(
       (c) => c.table === "producer_interests" && c.op === "update" && c.row?.current_step === 4,
@@ -187,6 +192,33 @@ describe("runLeadsFollowups — relances", () => {
     const res = await runLeadsFollowups(client, { nowMs: NOW });
     expect(res.relancesSent).toBe(1);
     expect(mockSend.mock.calls[0][0].template).toBe("lead_relance_2");
+  });
+
+  it("dry-run : liste le palier dû SANS envoyer ni écrire", async () => {
+    const lead = {
+      id: "lead-1",
+      prenom: "Jean",
+      email: "jean@y.fr",
+      created_at: daysAgo(12),
+      current_step: 2,
+      prefill_token: null,
+      prefill_token_expires_at: null,
+    };
+    const { client, calls } = makeClient((s) => {
+      if (isEligibleSelect(s)) return { data: [lead], error: null };
+      if (s.table === "producer_interest_followups" && s.op === "select")
+        return { data: [], error: null };
+      if (isAbandonSelect(s)) return { data: [], error: null };
+      return { data: null, error: null };
+    });
+
+    const res = await runLeadsFollowups(client, { nowMs: NOW, dryRun: true });
+    expect(res.dryRun).toBe(true);
+    expect(res.byStep[2]).toBe(1); // R2 dû à J+12
+    expect(res.details.relances).toEqual([{ id: "lead-1", email: "jean@y.fr", step: 2 }]);
+    // Aucun envoi, aucune écriture (insert/update)
+    expect(mockSend).not.toHaveBeenCalled();
+    expect(calls.some((c) => c.op === "insert" || c.op === "update")).toBe(false);
   });
 
   it("lead créé il y a 1j → aucun palier dû", async () => {

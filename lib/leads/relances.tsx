@@ -88,25 +88,37 @@ const RELANCE_TEMPLATES: Record<
 
 export type LeadsFollowupsResult = {
   relancesSent: number;
+  byStep: { 1: number; 2: number; 3: number };
   abandoned: number;
   errors: string[];
+  dryRun: boolean;
+  // Détail (utile en dry-run / audit ops) : qui serait/a été touché.
+  details: {
+    relances: { id: string; email: string; step: number }[];
+    abandons: { id: string; email: string }[];
+  };
 };
 
 function ageDays(createdAtIso: string, nowMs: number): number {
   return (nowMs - new Date(createdAtIso).getTime()) / DAY_MS;
 }
 
-// Palier le plus haut dû (age ≥ seuil) ET non encore envoyé.
-function dueRelanceStep(
+// Tous les paliers dûs (age ≥ seuil) ET non encore envoyés, ordre croissant.
+// Cas nominal (lead créé après le déploiement) : le cron tourne chaque jour,
+// donc un seul palier devient dû à la fois → [N]. Cas backlog (lead ancien
+// jamais relancé) : plusieurs paliers dûs → [1,2,3]. On envoie alors UNIQUEMENT
+// le plus haut (la "dernière relance") et on marque les inférieurs comme
+// supersédés (followup posé, pas d'email) — un lead ancien reçoit un seul mail
+// final, jamais R3 puis R2 puis R1 à rebours.
+function duePaliers(
   lead: EligibleLead,
   sent: Set<number>,
   nowMs: number,
-): RelanceStep | null {
+): RelanceStep[] {
   const age = ageDays(lead.created_at, nowMs);
-  for (const step of [3, 2, 1] as RelanceStep[]) {
-    if (age >= RELANCE_THRESHOLD_DAYS[step] && !sent.has(step)) return step;
-  }
-  return null;
+  return ([1, 2, 3] as RelanceStep[]).filter(
+    (step) => age >= RELANCE_THRESHOLD_DAYS[step] && !sent.has(step),
+  );
 }
 
 async function ensurePrefillUrl(
@@ -137,6 +149,7 @@ async function processRelances(
   admin: SupabaseClient,
   nowMs: number,
   result: LeadsFollowupsResult,
+  dryRun: boolean,
 ): Promise<void> {
   const { data: leads, error } = await admin
     .from("producer_interests")
@@ -171,12 +184,19 @@ async function processRelances(
   }
 
   for (const lead of eligible) {
-    const step = dueRelanceStep(
-      lead,
-      sentByLead.get(lead.id) ?? new Set(),
-      nowMs,
-    );
-    if (!step) continue;
+    const due = duePaliers(lead, sentByLead.get(lead.id) ?? new Set(), nowMs);
+    if (due.length === 0) continue;
+    const step = due[due.length - 1]!; // palier le plus haut = celui qu'on envoie
+    const superseded = due.slice(0, -1); // paliers inférieurs dûs → marqués sans envoi
+
+    result.byStep[step] += 1;
+    result.details.relances.push({ id: lead.id, email: lead.email, step });
+
+    // Dry-run : on liste qui serait touché, sans token, sans email, sans write.
+    if (dryRun) {
+      result.relancesSent += 1;
+      continue;
+    }
 
     try {
       const ctaUrl = await ensurePrefillUrl(admin, lead, nowMs);
@@ -195,42 +215,56 @@ async function processRelances(
         metadata: { lead_id: lead.id, relance_step: step },
       });
 
-      // On pose le followup si l'envoi a réussi OU a été supprimé (opt-out) :
-      // dans les deux cas inutile de réessayer ce palier. Un échec technique
-      // (render/5xx) ne pose pas de followup → retry au prochain run.
+      // On pose le(s) followup(s) si l'envoi a réussi OU a été supprimé
+      // (opt-out) : dans les deux cas inutile de réessayer. Un échec technique
+      // (render/5xx) ne pose rien → retry au prochain run.
       if (!send.ok && !send.skipped) {
         result.errors.push(`relance_send lead=${lead.id} step=${step}`);
         continue;
       }
 
-      await admin.from("producer_interest_followups").insert({
-        lead_id: lead.id,
-        channel: "email",
-        direction: "outbound",
-        is_automatic: true,
-        relance_step: step,
-        note: `Relance auto R${step}`,
-      });
+      // Followup du palier réellement envoyé + followups "supersédés" pour les
+      // paliers inférieurs dûs (lead backlog) → jamais renvoyés ensuite.
+      const rows = [
+        {
+          lead_id: lead.id,
+          channel: "email",
+          direction: "outbound",
+          is_automatic: true,
+          relance_step: step,
+          note: `Relance auto R${step}`,
+        },
+        ...superseded.map((p) => ({
+          lead_id: lead.id,
+          channel: "email",
+          direction: "outbound",
+          is_automatic: true,
+          relance_step: p,
+          note: `Relance R${p} supersédée par R${step} (lead ancien)`,
+        })),
+      ];
+      await admin.from("producer_interest_followups").insert(rows);
 
       // Avance la frise spontané (R1→2, R2→3, R3→4), advance-only.
       const nextStep = Math.max(lead.current_step, step + 1);
-      if (nextStep !== lead.current_step) {
-        await admin
-          .from("producer_interests")
-          .update({ current_step: nextStep, last_contact_at: new Date(nowMs).toISOString() })
-          .eq("id", lead.id);
-      } else {
-        await admin
-          .from("producer_interests")
-          .update({ last_contact_at: new Date(nowMs).toISOString() })
-          .eq("id", lead.id);
-      }
+      await admin
+        .from("producer_interests")
+        .update({
+          current_step: nextStep,
+          last_contact_at: new Date(nowMs).toISOString(),
+        })
+        .eq("id", lead.id);
 
       if (send.ok) {
         await logProducerInterestsEvent({
           eventType: "producer_interest_auto_relance_sent",
           userId: null,
-          metadata: { interest_id: lead.id, email: lead.email, relance_step: step },
+          metadata: {
+            interest_id: lead.id,
+            email: lead.email,
+            relance_step: step,
+            superseded,
+          },
         });
         result.relancesSent += 1;
       }
@@ -246,6 +280,7 @@ async function processAbandons(
   admin: SupabaseClient,
   nowMs: number,
   result: LeadsFollowupsResult,
+  dryRun: boolean,
 ): Promise<void> {
   const cutoffIso = new Date(nowMs - ABANDON_THRESHOLD_DAYS * DAY_MS).toISOString();
   const { data: leads, error } = await admin
@@ -302,6 +337,12 @@ async function processAbandons(
     const requestedPub = auth ? pubByUser.get(auth.id) != null : false;
     if (signedIn || requestedPub) continue; // engagé → on ne touche pas
 
+    result.details.abandons.push({ id: lead.id, email: lead.email });
+    if (dryRun) {
+      result.abandoned += 1;
+      continue;
+    }
+
     try {
       await admin
         .from("producer_interests")
@@ -326,15 +367,19 @@ async function processAbandons(
 
 export async function runLeadsFollowups(
   admin: SupabaseClient,
-  opts: { nowMs?: number } = {},
+  opts: { nowMs?: number; dryRun?: boolean } = {},
 ): Promise<LeadsFollowupsResult> {
   const nowMs = opts.nowMs ?? Date.now();
+  const dryRun = opts.dryRun ?? false;
   const result: LeadsFollowupsResult = {
     relancesSent: 0,
+    byStep: { 1: 0, 2: 0, 3: 0 },
     abandoned: 0,
     errors: [],
+    dryRun,
+    details: { relances: [], abandons: [] },
   };
-  await processRelances(admin, nowMs, result);
-  await processAbandons(admin, nowMs, result);
+  await processRelances(admin, nowMs, result, dryRun);
+  await processAbandons(admin, nowMs, result, dryRun);
   return result;
 }
