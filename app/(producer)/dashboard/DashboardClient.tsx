@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { Button, ProducerBadge } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { WeekNavigator } from '../_components/WeekNavigator';
 
 type PendingOrder = {
   id: string;
@@ -20,6 +21,10 @@ export type DashboardData = {
   producerId: string;
   producerName: string;
   firstName: string;
+  /** Offset de semaine consulté (0 = semaine en cours, négatif = passé). */
+  weekOffset: number;
+  /** Libellé de la semaine consultée (ex. « 19 – 25 mai »). */
+  weekPeriodLabel: string;
   ordersToday: number;
   ordersYesterday: number;
   revenueWeek: number;
@@ -69,6 +74,8 @@ export function DashboardClient({ data: initial }: { data: DashboardData }) {
     ? Math.round(((data.revenueWeek - data.revenueLastWeek) / data.revenueLastWeek) * 100)
     : null;
 
+  const isCurrentWeek = data.weekOffset === 0;
+
   const metrics = [
     {
       label: "Commandes aujourd'hui",
@@ -77,7 +84,7 @@ export function DashboardClient({ data: initial }: { data: DashboardData }) {
       tone: 'green' as const,
     },
     {
-      label: 'Revenus cette semaine',
+      label: isCurrentWeek ? 'Revenus cette semaine' : 'Revenus de la semaine',
       value: euros(data.revenueWeek),
       sub: revenueDelta === null ? '—' : `${revenueDelta >= 0 ? '+' : ''}${revenueDelta}% vs semaine passée`,
       tone: 'green' as const,
@@ -181,7 +188,10 @@ export function DashboardClient({ data: initial }: { data: DashboardData }) {
       </section>
 
       <section className="mb-10">
-        <h2 className="font-serif text-[28px] text-green-900 leading-tight mb-4">Planning de la semaine</h2>
+        <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
+          <h2 className="font-serif text-[28px] text-green-900 leading-tight">Planning de la semaine</h2>
+          <WeekNavigator weekOffset={data.weekOffset} periodLabel={data.weekPeriodLabel} />
+        </div>
         <div className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-5">
           <div className="grid grid-cols-7 gap-2">
             {data.weekPlanning.map((d) => (

@@ -5,18 +5,18 @@ import { getSessionUser } from '@/lib/auth/session';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { fetchProducerForUser } from '@/lib/producers/context';
+import {
+  parseWeekOffset,
+  computeRevenueWeekWindow,
+  formatWeekRangeLabel,
+  startOfWeek,
+  addDays,
+} from '@/lib/dates/week-navigation';
 import { ProducerLayout } from '../_components/ProducerLayout';
+import { WeekNavigator } from '../_components/WeekNavigator';
 import { mapStatusToBadge } from './_lib/badge-mapping';
 
-function startOfWeek(d: Date): Date {
-  const copy = new Date(d);
-  const day = (copy.getDay() + 6) % 7;
-  copy.setHours(0, 0, 0, 0);
-  copy.setDate(copy.getDate() - day);
-  return copy;
-}
-
-function addDays(d: Date, n: number): Date { const c = new Date(d); c.setDate(c.getDate() + n); return c; }
+type SearchParams = Record<string, string | string[] | undefined>;
 
 function weekLabel(d: Date): string {
   const jan4 = new Date(d.getFullYear(), 0, 4);
@@ -42,7 +42,10 @@ function formatEuro(n: number): string {
   return `${n.toFixed(2).replace('.', ',')} €`;
 }
 
-export default async function RevenusPage() {
+export default async function RevenusPage(props: {
+  searchParams: Promise<SearchParams>;
+}) {
+  const searchParams = await props.searchParams;
   const session = await getSessionUser();
   if (!session) redirect('/connexion');
 
@@ -51,6 +54,11 @@ export default async function RevenusPage() {
   if (!producer) redirect('/invitation');
 
   const admin = createSupabaseAdminClient();
+
+  // Navigation par semaine (chantier 10) : la fenêtre de 8 semaines du graphe
+  // se termine sur la semaine ciblée par `?week=`. offset 0 = 8 dernières
+  // semaines (semaine courante en dernière barre).
+  const weekOffset = parseWeekOffset(searchParams.week);
 
   const { data: payouts } = await admin
     .from('payouts')
@@ -66,19 +74,22 @@ export default async function RevenusPage() {
   const nextPending = (payouts ?? []).find((p) => p.statut === 'pending');
   const historicalPayouts = (payouts ?? []).filter((p) => p.statut !== 'pending');
 
-  // Aggregate last 8 ISO weeks from orders (completed not cancelled).
+  // Aggregate 8 ISO weeks from orders (completed not cancelled), fenêtre
+  // décalable par l'offset de semaine (chantier 10). On borne aussi par le
+  // haut (rangeEnd) pour ne pas charger des commandes au-delà de la semaine
+  // consultée quand on navigue vers le passé.
   const now = new Date();
-  const weekStarts: Date[] = [];
-  for (let i = 7; i >= 0; i--) {
-    weekStarts.push(addDays(startOfWeek(now), -i * 7));
-  }
-  const eightWeeksAgo = weekStarts[0];
+  const { weekStarts, rangeStart, rangeEnd } = computeRevenueWeekWindow(
+    now,
+    weekOffset,
+  );
 
   const { data: orders } = await admin
     .from('orders')
     .select('montant_net_producteur, statut, completed_at, created_at')
     .eq('producer_id', producer.id)
-    .gte('created_at', eightWeeksAgo.toISOString());
+    .gte('created_at', rangeStart.toISOString())
+    .lt('created_at', rangeEnd.toISOString());
 
   const revenueByWeek = weekStarts.map((ws) => {
     const we = addDays(ws, 7);
@@ -95,6 +106,10 @@ export default async function RevenusPage() {
   });
 
   const max = Math.max(1, ...revenueByWeek.map((w) => w.value));
+
+  // Libellé navigation : la dernière semaine de la fenêtre = semaine ciblée.
+  const targetWeekStart = weekStarts[weekStarts.length - 1]!;
+  const chartPeriodLabel = formatWeekRangeLabel(targetWeekStart);
 
   // Orders count for next pending payout
   let nextOrderCount = 0;
@@ -140,9 +155,12 @@ export default async function RevenusPage() {
         </section>
 
         <section className="mb-10 bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6 md:p-8">
-          <div className="flex items-end justify-between mb-6">
-            <h2 className="font-serif text-[24px] text-green-900">Évolution sur 8 semaines</h2>
-            <span className="text-[12px] mono text-dark/50">en €</span>
+          <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
+            <div className="flex items-end gap-3">
+              <h2 className="font-serif text-[24px] text-green-900">Évolution sur 8 semaines</h2>
+              <span className="text-[12px] mono text-dark/50 pb-1">en €</span>
+            </div>
+            <WeekNavigator weekOffset={weekOffset} periodLabel={chartPeriodLabel} />
           </div>
           <div className="h-56 flex items-end justify-between gap-3">
             {revenueByWeek.map((w, i) => {
