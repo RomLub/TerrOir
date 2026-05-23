@@ -41,6 +41,26 @@ vi.mock(
 
 import AdminRefundIncidentsPage from "@/app/(admin)/refund-incidents/page";
 
+// Chantier 5 — la page enveloppe désormais le client dans un Fragment avec
+// <RefundsTabNav> (onglets Remboursements). On extrait l'élément client
+// (celui qui porte initialRows) parmi les enfants du Fragment.
+function getClientProps(
+  result: ReactElement & { props: Record<string, unknown> },
+): Record<string, unknown> {
+  const children = (result.props as { children?: unknown }).children;
+  const arr = (Array.isArray(children) ? children : [children]).flat();
+  const client = arr.find(
+    (c): c is ReactElement & { props: Record<string, unknown> } =>
+      !!c &&
+      typeof c === "object" &&
+      "props" in c &&
+      !!(c as { props?: Record<string, unknown> }).props &&
+      "initialRows" in (c as { props: Record<string, unknown> }).props,
+  );
+  if (!client) throw new Error("Client element introuvable dans le Fragment");
+  return client.props;
+}
+
 beforeEach(() => {
   mockFetch.mockReset();
 });
@@ -148,12 +168,13 @@ describe("AdminRefundIncidentsPage — Server Component", () => {
       searchParams: Promise.resolve({}),
     })) as unknown as ReactElement & { props: Record<string, unknown> };
 
-    expect(result.props.initialRows).toEqual(rows);
-    expect(result.props.initialTotal).toBe(1);
-    expect(result.props.initialNextCursor).toBeNull();
-    expect(result.props.initialError).toBeNull();
-    expect(result.props.initialStatusFilter).toBe("pending");
-    expect(result.props.isPaginated).toBe(false);
+    const props = getClientProps(result);
+    expect(props.initialRows).toEqual(rows);
+    expect(props.initialTotal).toBe(1);
+    expect(props.initialNextCursor).toBeNull();
+    expect(props.initialError).toBeNull();
+    expect(props.initialStatusFilter).toBe("pending");
+    expect(props.isPaginated).toBe(false);
   });
 
   it("isPaginated=true si cursor présent dans searchParams", async () => {
@@ -169,6 +190,6 @@ describe("AdminRefundIncidentsPage — Server Component", () => {
         before_id: "inc-1",
       }),
     })) as unknown as ReactElement & { props: Record<string, unknown> };
-    expect(result.props.isPaginated).toBe(true);
+    expect(getClientProps(result).isPaginated).toBe(true);
   });
 });

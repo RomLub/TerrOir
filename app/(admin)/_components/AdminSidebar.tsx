@@ -20,9 +20,10 @@ type NavItem = {
   href: string;
   label: string;
   icon: ReactElement;
-  // F-014 v2 followup : badge optionnel pour signaler des items actionnables
-  // (ex: pending refunds count). Rendu uniquement si > 0.
-  badgeKey?: "pendingRefundsCount";
+  // F-014 v2 followup : badge optionnel pour signaler des items actionnables.
+  // Chantier 5 : badge agrégé Remboursements (demandes + incidents). Rendu
+  // uniquement si > 0.
+  badgeKey?: "refundsBadgeCount";
 };
 
 type NavGroup = {
@@ -268,23 +269,6 @@ const UsersIcon = (
   </svg>
 );
 
-const RefundIncidentsIcon = (
-  <svg
-    aria-hidden="true"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    className="h-4 w-4"
-  >
-    <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-    <line x1="12" y1="9" x2="12" y2="13" />
-    <line x1="12" y1="17" x2="12.01" y2="17" />
-  </svg>
-);
-
 const InvitationsIcon = (
   <svg
     aria-hidden="true"
@@ -302,12 +286,15 @@ const InvitationsIcon = (
 );
 
 // Chantier 0 — structure cible de la nav admin par sections métier (group
-// headers plats, mécanisme T-130/chantier-7, sans collapsible JS). Certaines
-// entrées arrivent dans les chantiers ultérieurs : « Comptes consommateurs »
-// (chantier 5, sous Consommateurs), « Admins » (chantier 6, sous Gouvernance),
-// section « Mails » (chantier 9). « Utilisateurs » (/users) est transitoire :
-// le chantier 5 l'éclatera (consumer → Comptes consommateurs, admin →
-// Gouvernance) puis le supprimera.
+// headers plats, mécanisme T-130/chantier-7, sans collapsible JS).
+//
+// Chantier 5 — section Consommateurs : « Remboursements » fusionne désormais
+// les deux vues (demandes à arbitrer + incidents techniques) en une seule
+// entrée à onglets (cf. RefundsTabNav), badge agrégé. « Comptes
+// consommateurs » remplace l'ancienne entrée « Utilisateurs » ici.
+// « Utilisateurs » (/users, vue toutes-rôles, défaut admin) est déplacée sous
+// Gouvernance — bridge transitoire : le chantier 6 (Page Admins) la remplacera
+// par une page « Administrateurs » dédiée puis supprimera /users.
 const NAV: NavEntry[] = [
   { kind: "item", href: "/tableau-de-bord", label: "Tableau de bord", icon: DashboardIcon },
 
@@ -320,15 +307,15 @@ const NAV: NavEntry[] = [
   // ─── Consommateurs ──────────────────────────────────────────────────
   { kind: "group", label: "Consommateurs" },
   { kind: "item", href: "/suivi-commandes", label: "Suivi commandes", icon: OrdersIcon },
-  { kind: "item", href: "/refunds/pending", label: "Remboursements", icon: RefundsPendingIcon, badgeKey: "pendingRefundsCount" },
-  { kind: "item", href: "/refund-incidents", label: "Incidents de remboursement", icon: RefundIncidentsIcon },
-  { kind: "item", href: "/users", label: "Utilisateurs", icon: UsersIcon },
+  { kind: "item", href: "/refunds/pending", label: "Remboursements", icon: RefundsPendingIcon, badgeKey: "refundsBadgeCount" },
+  { kind: "item", href: "/comptes-consommateurs", label: "Comptes consommateurs", icon: UsersIcon },
 
   // ─── Gouvernance ────────────────────────────────────────────────────
   { kind: "group", label: "Gouvernance" },
   { kind: "item", href: "/audit-logs", label: "Journal d'audit", icon: AuditLogsIcon },
   { kind: "item", href: "/avis", label: "Avis", icon: ReviewsIcon },
   { kind: "item", href: "/legal-compliance", label: "Conformité légale", icon: ComplianceIcon },
+  { kind: "item", href: "/users?role=admin", label: "Utilisateurs", icon: UsersIcon },
 
   // ─── Référentiels (chantier 7) ──────────────────────────────────────
   { kind: "group", label: "Référentiels" },
@@ -341,22 +328,26 @@ const NAV: NavEntry[] = [
 
 function isActive(pathname: string | null, href: string): boolean {
   if (!pathname) return false;
-  return pathname === href || pathname.startsWith(`${href}/`);
+  // Chantier 5 : certains hrefs portent un query param de défaut (ex:
+  // /users?role=admin). L'active-state se compare sur le chemin seul.
+  const path = href.split("?")[0];
+  return pathname === path || pathname.startsWith(`${path}/`);
 }
 
 type AdminSidebarProps = {
-  // F-014 v2 followup : count pending refunds fetché côté layout server,
-  // affiché en badge sur l'item /refunds/pending si > 0.
-  pendingRefundsCount?: number;
+  // Chantier 5 : badge agrégé Remboursements (demandes à arbitrer + incidents
+  // techniques actifs) fetché côté layout server, affiché sur l'entrée
+  // « Remboursements » si > 0.
+  refundsBadgeCount?: number;
 };
 
 export function AdminSidebar({
-  pendingRefundsCount = 0,
+  refundsBadgeCount = 0,
 }: AdminSidebarProps = {}) {
   const pathname = usePathname();
 
   const badgeValues: Record<NonNullable<NavItem["badgeKey"]>, number> = {
-    pendingRefundsCount,
+    refundsBadgeCount,
   };
 
   return (

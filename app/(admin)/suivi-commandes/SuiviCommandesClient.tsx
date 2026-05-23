@@ -4,8 +4,7 @@ import { useMemo, useState } from 'react';
 import { formatDateFr } from '@/lib/format/date';
 import { formatEuro } from '@/lib/format/currency';
 import { AdminPageHeader, MetricCard, StatusDotBadge, TableStatus } from '@/components/ui';
-
-export type Status = 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'refunded';
+import type { AdminOrder, Status } from '@/lib/admin/orders/types';
 
 // Pseudo-statuts UI : commandes cancelled avec closure_reason
 // spécifiques au flow Stripe webhook. 2 pseudo-statuts distincts pour
@@ -16,19 +15,6 @@ type DisplayStatus =
   | 'payment_failed_pseudo'
   | 'revival_blocked_stock_pseudo'
   | 'revival_blocked_slot_pseudo';
-
-export type AdminOrder = {
-  id: string;
-  code_commande: string | null;
-  client: string;
-  producer: string;
-  created_at: string;
-  date_retrait: string | null;
-  slot_label: string;
-  total: number;
-  status: Status;
-  closure_reason: string | null;
-};
 
 type Filter =
   | 'all'

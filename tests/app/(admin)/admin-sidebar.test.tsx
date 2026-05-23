@@ -13,8 +13,8 @@ vi.mock("next/navigation", () => ({
 
 import { AdminSidebar } from "@/app/(admin)/_components/AdminSidebar";
 
-function render(): string {
-  const el = AdminSidebar() as ReactElement;
+function render(props?: { refundsBadgeCount?: number }): string {
+  const el = AdminSidebar(props) as ReactElement;
   return renderToStaticMarkup(el);
 }
 
@@ -106,30 +106,57 @@ describe("AdminSidebar — entrées Catégorisation produits (T-130)", () => {
   });
 });
 
-describe("AdminSidebar — PR3 admin-new-surfaces (3 nouvelles entrées)", () => {
-  it("rend les 3 nouvelles entrées /invitations /users /refund-incidents avec leurs labels", () => {
+describe("AdminSidebar — section Consommateurs / Gouvernance (chantier 5)", () => {
+  it("Remboursements fusionné : une seule entrée /refunds/pending, plus d'entrée /refund-incidents", () => {
     currentPathname = "/tableau-de-bord";
     const html = render();
-    expect(html).toContain('href="/invitations"');
-    expect(html).toContain('href="/users"');
-    expect(html).toContain('href="/refund-incidents"');
-    expect(html).toContain("Invitations");
-    expect(html).toContain("Utilisateurs");
-    expect(html).toContain("Incidents de remboursement");
+    expect(html).toContain('href="/refunds/pending"');
+    expect(html).toContain("Remboursements");
+    // L'onglet incidents n'est plus une entrée de sidebar (fusionné via tabs).
+    expect(html).not.toContain('href="/refund-incidents"');
+    expect(html).not.toContain("Incidents de remboursement");
   });
 
-  it("active state sur /users", () => {
+  it("Comptes consommateurs remplace Utilisateurs dans la section Consommateurs", () => {
+    currentPathname = "/tableau-de-bord";
+    const html = render();
+    expect(html).toContain('href="/comptes-consommateurs"');
+    expect(html).toContain("Comptes consommateurs");
+  });
+
+  it("Utilisateurs déplacé sous Gouvernance (href /users?role=admin)", () => {
+    currentPathname = "/tableau-de-bord";
+    const html = render();
+    expect(html).toContain('href="/users?role=admin"');
+    expect(html).toContain("Utilisateurs");
+    // Sous Gouvernance, donc après le group header Gouvernance.
+    const gouvIdx = html.indexOf(">Gouvernance</li>");
+    expect(html.indexOf('href="/users?role=admin"')).toBeGreaterThan(gouvIdx);
+  });
+
+  it("badge agrégé Remboursements rendu quand refundsBadgeCount > 0", () => {
+    currentPathname = "/tableau-de-bord";
+    const html = render({ refundsBadgeCount: 7 });
+    // Le badge "7" est rendu (aria-label "7 en attente").
+    expect(html).toContain("7 en attente");
+  });
+
+  it("pas de badge quand refundsBadgeCount = 0", () => {
+    currentPathname = "/tableau-de-bord";
+    const html = render({ refundsBadgeCount: 0 });
+    expect(html).not.toContain("en attente");
+  });
+
+  it("active state sur /users via /users?role=admin (path strippé du query)", () => {
     currentPathname = "/users";
     const html = render();
-    expect(isActive(html, "/users")).toBe(true);
-    expect(isActive(html, "/invitations")).toBe(false);
-    expect(isActive(html, "/refund-incidents")).toBe(false);
+    expect(isActive(html, "/users?role=admin")).toBe(true);
   });
 
-  it("active state sur /refund-incidents", () => {
-    currentPathname = "/refund-incidents";
+  it("active state sur /comptes-consommateurs", () => {
+    currentPathname = "/comptes-consommateurs";
     const html = render();
-    expect(isActive(html, "/refund-incidents")).toBe(true);
+    expect(isActive(html, "/comptes-consommateurs")).toBe(true);
   });
 
   it("active state sur /invitations (et sous-routes)", () => {
@@ -218,7 +245,7 @@ describe("AdminSidebar — sections métier (chantier 0)", () => {
     expect(pos("Référentiels")).toBeGreaterThan(pos("Gouvernance"));
   });
 
-  it("items rangés sous la bonne section (Leads/Gestion/Invitations sous Producteurs ; commandes/remboursements/users sous Consommateurs)", () => {
+  it("items rangés sous la bonne section (Producteurs ; Consommateurs : commandes/remboursements/comptes consommateurs)", () => {
     currentPathname = "/tableau-de-bord";
     const html = render();
     const prod = html.indexOf(">Producteurs</li>");
@@ -230,19 +257,20 @@ describe("AdminSidebar — sections métier (chantier 0)", () => {
       expect(i).toBeGreaterThan(prod);
       expect(i).toBeLessThan(conso);
     }
-    // Consommateurs : suivi-commandes + remboursements + incidents + users, avant Gouvernance.
-    for (const href of ["/suivi-commandes", "/refunds/pending", "/refund-incidents", "/users"]) {
+    // Consommateurs (chantier 5) : suivi-commandes + remboursements + comptes
+    // consommateurs, avant Gouvernance. /users est passé sous Gouvernance.
+    for (const href of ["/suivi-commandes", "/refunds/pending", "/comptes-consommateurs"]) {
       const i = html.indexOf(`href="${href}"`);
       expect(i).toBeGreaterThan(conso);
       expect(i).toBeLessThan(gouv);
     }
+    expect(html.indexOf('href="/users?role=admin"')).toBeGreaterThan(gouv);
   });
 
-  it("libellés français : Remboursements + Incidents de remboursement (plus de 'Refunds')", () => {
+  it("libellés français : Remboursements (plus de 'Refunds')", () => {
     currentPathname = "/tableau-de-bord";
     const html = render();
     expect(html).toContain("Remboursements");
-    expect(html).toContain("Incidents de remboursement");
     expect(html).not.toContain("Refunds");
   });
 });

@@ -5,6 +5,7 @@ import {
   REFUND_INCIDENT_STATUS_FILTERS,
   type RefundIncidentStatusFilter,
 } from "@/lib/admin/refund-incidents/types";
+import { RefundsTabNav } from "../_components/RefundsTabNav";
 import { RefundIncidentsListClient } from "./_components/RefundIncidentsListClient";
 
 // Page admin /refund-incidents (PR3 feature/admin-new-surfaces — gap
@@ -55,13 +56,16 @@ export default async function AdminRefundIncidentsPage(props: Props) {
   });
 
   return (
-    <RefundIncidentsListClient
-      initialRows={result.rows}
-      initialTotal={result.total}
-      initialNextCursor={result.nextCursor}
-      initialError={result.error}
-      initialStatusFilter={statusFilter}
-      isPaginated={Boolean(cursor.before && cursor.beforeId)}
-    />
+    <>
+      <RefundsTabNav active="incidents" />
+      <RefundIncidentsListClient
+        initialRows={result.rows}
+        initialTotal={result.total}
+        initialNextCursor={result.nextCursor}
+        initialError={result.error}
+        initialStatusFilter={statusFilter}
+        isPaginated={Boolean(cursor.before && cursor.beforeId)}
+      />
+    </>
   );
 }
