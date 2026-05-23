@@ -530,6 +530,21 @@ la condition de déblocage.
   working tree directement (stash + branch switch + build + branch back
   + stash pop). Pour les chantiers longs en parallèle : `npm install`
   complet dans le worktree (lourd mais Turbopack est content).
+- **⚠️ DANGER `git worktree remove --force` (incident 2026-05-23)** : si le
+  worktree contient une **jonction Windows** `node_modules → main/node_modules`,
+  `git worktree remove --force` (ou `rm -rf`) **suit la jonction** et **vide le
+  `node_modules` du main working tree** (0 entrée → `tsc`/`eslint`/`vitest`
+  introuvables). Récupération : `npm install` complet sur le main. **Avant de
+  supprimer un worktree, supprimer/déréférencer d'abord la jonction
+  node_modules** (`rmdir node_modules` sans `/s` pour ne pas suivre la
+  jonction), PUIS `git worktree remove`.
+- **Sub-agents Team en worktree sur ce setup** : l'orchestration parallèle
+  via agents en worktrees isolés s'est révélée **non fiable sur Windows**
+  (tangle de worktrees sur mauvaises branches, reset répété du cwd du shell
+  team-lead vers un worktree d'agent, et le danger jonction ci-dessus). Pour
+  les chantiers multi-features : **modèle séquentiel team-lead** (un chantier
+  = une branche = une PR, sur le main working tree, relue + mergée par le
+  lead). Cf. abandon TA/TB/TC/TT § 2.
 
 ### Stripe
 
