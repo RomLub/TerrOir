@@ -151,4 +151,35 @@ describe("Server Component /gestion-producteurs", () => {
     })) as ReactElement;
     expect(getClientProps(node).initialError).toBe("db boom");
   });
+
+  it("?status=pending → initialStatusFilter='pending' (deep-link cockpit)", async () => {
+    mockFetch.mockResolvedValue({
+      rows: [],
+      total: 0,
+      nextCursor: null,
+      error: null,
+    });
+    const node = (await AdminProducteursPage({
+      searchParams: Promise.resolve({ status: "pending" }),
+    })) as ReactElement;
+    expect(getClientProps(node).initialStatusFilter).toBe("pending");
+  });
+
+  it("?status absent ou invalide → initialStatusFilter='all' (fail-safe)", async () => {
+    mockFetch.mockResolvedValue({
+      rows: [],
+      total: 0,
+      nextCursor: null,
+      error: null,
+    });
+    const noParam = (await AdminProducteursPage({
+      searchParams: Promise.resolve({}),
+    })) as ReactElement;
+    expect(getClientProps(noParam).initialStatusFilter).toBe("all");
+
+    const garbage = (await AdminProducteursPage({
+      searchParams: Promise.resolve({ status: "garbage" }),
+    })) as ReactElement;
+    expect(getClientProps(garbage).initialStatusFilter).toBe("all");
+  });
 });

@@ -1,6 +1,7 @@
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { parseCursor } from '@/lib/pagination/cursor';
 import { fetchAdminProducersList } from '@/lib/admin/producers/fetch';
+import { parseProducerStatusFilter } from '@/lib/admin/producers/types';
 import { GestionProducteursClient } from './_components/GestionProducteursClient';
 
 // Server Component admin /gestion-producteurs (PR refactor/admin-pattern-uniform).
@@ -23,6 +24,9 @@ type SearchParams = {
   show_all?: string;
   invite?: string;
   user_id?: string;
+  // Chantier 4 — deep-link filtre statut (cockpit dashboard « Producteurs à
+  // valider » → ?status=pending, journal d'audit, etc.).
+  status?: string;
 };
 
 // Next 16 App Router : `searchParams` est un Promise (sync sync) qu'il faut
@@ -32,6 +36,7 @@ export default async function AdminProducteursPage(
 ) {
   const sp = await props.searchParams;
   const showAll = sp.show_all === '1';
+  const initialStatusFilter = parseProducerStatusFilter(sp.status);
 
   // Réutilise parseCursor du helper canonique (lib/pagination/cursor). On
   // doit lui passer un objet `{ get(name) }` — un simple wrapper sur l'objet
@@ -56,6 +61,7 @@ export default async function AdminProducteursPage(
       initialError={error}
       showAll={showAll}
       isPaginated={cursor.before !== null}
+      initialStatusFilter={initialStatusFilter}
     />
   );
 }
