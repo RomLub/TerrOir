@@ -301,20 +301,36 @@ const InvitationsIcon = (
   </svg>
 );
 
+// Chantier 0 — structure cible de la nav admin par sections métier (group
+// headers plats, mécanisme T-130/chantier-7, sans collapsible JS). Certaines
+// entrées arrivent dans les chantiers ultérieurs : « Comptes consommateurs »
+// (chantier 5, sous Consommateurs), « Admins » (chantier 6, sous Gouvernance),
+// section « Mails » (chantier 9). « Utilisateurs » (/users) est transitoire :
+// le chantier 5 l'éclatera (consumer → Comptes consommateurs, admin →
+// Gouvernance) puis le supprimera.
 const NAV: NavEntry[] = [
   { kind: "item", href: "/tableau-de-bord", label: "Tableau de bord", icon: DashboardIcon },
-  { kind: "item", href: "/producer-interests", label: "Leads producteurs", icon: LeadsIcon },
+
+  // ─── Producteurs ────────────────────────────────────────────────────
+  { kind: "group", label: "Producteurs" },
+  { kind: "item", href: "/producer-interests", label: "Leads", icon: LeadsIcon },
   { kind: "item", href: "/gestion-producteurs", label: "Gestion producteurs", icon: ProducersIcon },
   { kind: "item", href: "/invitations", label: "Invitations", icon: InvitationsIcon },
-  { kind: "item", href: "/users", label: "Utilisateurs", icon: UsersIcon },
+
+  // ─── Consommateurs ──────────────────────────────────────────────────
+  { kind: "group", label: "Consommateurs" },
   { kind: "item", href: "/suivi-commandes", label: "Suivi commandes", icon: OrdersIcon },
-  { kind: "item", href: "/refunds/pending", label: "Refunds en attente", icon: RefundsPendingIcon, badgeKey: "pendingRefundsCount" },
-  { kind: "item", href: "/refund-incidents", label: "Incidents refund", icon: RefundIncidentsIcon },
+  { kind: "item", href: "/refunds/pending", label: "Remboursements", icon: RefundsPendingIcon, badgeKey: "pendingRefundsCount" },
+  { kind: "item", href: "/refund-incidents", label: "Incidents de remboursement", icon: RefundIncidentsIcon },
+  { kind: "item", href: "/users", label: "Utilisateurs", icon: UsersIcon },
+
+  // ─── Gouvernance ────────────────────────────────────────────────────
+  { kind: "group", label: "Gouvernance" },
   { kind: "item", href: "/audit-logs", label: "Journal d'audit", icon: AuditLogsIcon },
   { kind: "item", href: "/avis", label: "Avis", icon: ReviewsIcon },
   { kind: "item", href: "/legal-compliance", label: "Conformité légale", icon: ComplianceIcon },
+
   // ─── Référentiels (chantier 7) ──────────────────────────────────────
-  // Regroupe les données de référence : prix GMS + catégorisation produits.
   { kind: "group", label: "Référentiels" },
   { kind: "item", href: "/gms-prices", label: "Données GMS", icon: GmsPricesIcon },
   { kind: "subgroup", label: "Catégorisation produits" },

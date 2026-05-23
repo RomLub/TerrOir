@@ -115,7 +115,7 @@ describe("AdminSidebar — PR3 admin-new-surfaces (3 nouvelles entrées)", () =>
     expect(html).toContain('href="/refund-incidents"');
     expect(html).toContain("Invitations");
     expect(html).toContain("Utilisateurs");
-    expect(html).toContain("Incidents refund");
+    expect(html).toContain("Incidents de remboursement");
   });
 
   it("active state sur /users", () => {
@@ -194,5 +194,55 @@ describe("AdminSidebar — regroupement Référentiels (chantier 7)", () => {
     currentPathname = "/categorisation/categories";
     html = render();
     expect(isActive(html, "/categorisation/categories")).toBe(true);
+  });
+});
+
+describe("AdminSidebar — sections métier (chantier 0)", () => {
+  it("rend les group headers Producteurs / Consommateurs / Gouvernance (non cliquables)", () => {
+    currentPathname = "/tableau-de-bord";
+    const html = render();
+    for (const label of ["Producteurs", "Consommateurs", "Gouvernance"]) {
+      expect(html).toMatch(
+        new RegExp(`<li[^>]*role="presentation"[^>]*>${label}</li>`),
+      );
+    }
+  });
+
+  it("ordre des sections : Producteurs < Consommateurs < Gouvernance < Référentiels", () => {
+    currentPathname = "/tableau-de-bord";
+    const html = render();
+    const pos = (s: string) => html.indexOf(`>${s}</li>`);
+    expect(pos("Producteurs")).toBeGreaterThan(0);
+    expect(pos("Consommateurs")).toBeGreaterThan(pos("Producteurs"));
+    expect(pos("Gouvernance")).toBeGreaterThan(pos("Consommateurs"));
+    expect(pos("Référentiels")).toBeGreaterThan(pos("Gouvernance"));
+  });
+
+  it("items rangés sous la bonne section (Leads/Gestion/Invitations sous Producteurs ; commandes/remboursements/users sous Consommateurs)", () => {
+    currentPathname = "/tableau-de-bord";
+    const html = render();
+    const prod = html.indexOf(">Producteurs</li>");
+    const conso = html.indexOf(">Consommateurs</li>");
+    const gouv = html.indexOf(">Gouvernance</li>");
+    // Producteurs : producer-interests + gestion + invitations, avant Consommateurs.
+    for (const href of ["/producer-interests", "/gestion-producteurs", "/invitations"]) {
+      const i = html.indexOf(`href="${href}"`);
+      expect(i).toBeGreaterThan(prod);
+      expect(i).toBeLessThan(conso);
+    }
+    // Consommateurs : suivi-commandes + remboursements + incidents + users, avant Gouvernance.
+    for (const href of ["/suivi-commandes", "/refunds/pending", "/refund-incidents", "/users"]) {
+      const i = html.indexOf(`href="${href}"`);
+      expect(i).toBeGreaterThan(conso);
+      expect(i).toBeLessThan(gouv);
+    }
+  });
+
+  it("libellés français : Remboursements + Incidents de remboursement (plus de 'Refunds')", () => {
+    currentPathname = "/tableau-de-bord";
+    const html = render();
+    expect(html).toContain("Remboursements");
+    expect(html).toContain("Incidents de remboursement");
+    expect(html).not.toContain("Refunds");
   });
 });

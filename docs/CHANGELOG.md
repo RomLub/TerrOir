@@ -9,6 +9,20 @@ Pour les décisions structurantes (ADRs), voir [`decisions/`](./decisions/).
 
 ---
 
+## 2026-05-23 (Refonte admin — Chantier 0 : fondations sidebar/nav par sections)
+
+> PR `feature/chantier-0-sidebar`. Structuration de la nav admin en sections métier (aucun code fonctionnel modifié — réorganisation + libellés).
+>
+> 🟢 Sections (group headers plats, mécanisme T-130/chantier-7, sans collapsible JS) : **Tableau de bord** · **Producteurs** (Leads / Gestion producteurs / Invitations) · **Consommateurs** (Suivi commandes / Remboursements / Incidents de remboursement / Utilisateurs) · **Gouvernance** (Journal d'audit / Avis / Conformité légale) · **Référentiels** (Données GMS / Catégorisation).
+>
+> 🟢 **Mise au français** : « Refunds en attente » → « Remboursements », « Incidents refund » → « Incidents de remboursement ». « Leads producteurs » → « Leads » (sous Producteurs).
+>
+> 🟢 Entrées à venir slottées par leurs chantiers : « Comptes consommateurs » (chantier 5), « Admins » (chantier 6), section « Mails » (chantier 9). `/users` transitoire jusqu'au chantier 5.
+>
+> 🟢 Tests : +4 cas (group headers, ordre des sections, rattachement, libellés FR). lint/type-check/build OK, `npm test` vert.
+
+---
+
 ## 2026-05-23 (Refonte admin — Chantier 7 : regroupement nav Référentiels)
 
 > PR `feature/chantier-7-referentiels`. Réorganisation nav de la sidebar admin (aucun code fonctionnel modifié — pages GMS/catégorisation existantes inchangées).
