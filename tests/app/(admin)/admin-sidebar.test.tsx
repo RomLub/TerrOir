@@ -124,14 +124,16 @@ describe("AdminSidebar — section Consommateurs / Gouvernance (chantier 5)", ()
     expect(html).toContain("Comptes consommateurs");
   });
 
-  it("Utilisateurs déplacé sous Gouvernance (href /users?role=admin)", () => {
+  it("Administrateurs sous Gouvernance (chantier 6, /comptes-admins)", () => {
     currentPathname = "/tableau-de-bord";
     const html = render();
-    expect(html).toContain('href="/users?role=admin"');
-    expect(html).toContain("Utilisateurs");
+    expect(html).toContain('href="/comptes-admins"');
+    expect(html).toContain("Administrateurs");
+    // Plus d'entrée /users LIST (supprimée au chantier 6).
+    expect(html).not.toContain('href="/users?role=admin"');
     // Sous Gouvernance, donc après le group header Gouvernance.
     const gouvIdx = html.indexOf(">Gouvernance</li>");
-    expect(html.indexOf('href="/users?role=admin"')).toBeGreaterThan(gouvIdx);
+    expect(html.indexOf('href="/comptes-admins"')).toBeGreaterThan(gouvIdx);
   });
 
   it("badge agrégé Remboursements rendu quand refundsBadgeCount > 0", () => {
@@ -147,10 +149,10 @@ describe("AdminSidebar — section Consommateurs / Gouvernance (chantier 5)", ()
     expect(html).not.toContain("en attente");
   });
 
-  it("active state sur /users via /users?role=admin (path strippé du query)", () => {
-    currentPathname = "/users";
+  it("active state sur /comptes-admins (Administrateurs)", () => {
+    currentPathname = "/comptes-admins";
     const html = render();
-    expect(isActive(html, "/users?role=admin")).toBe(true);
+    expect(isActive(html, "/comptes-admins")).toBe(true);
   });
 
   it("active state sur /comptes-consommateurs", () => {
@@ -258,13 +260,14 @@ describe("AdminSidebar — sections métier (chantier 0)", () => {
       expect(i).toBeLessThan(conso);
     }
     // Consommateurs (chantier 5) : suivi-commandes + remboursements + comptes
-    // consommateurs, avant Gouvernance. /users est passé sous Gouvernance.
+    // consommateurs, avant Gouvernance.
     for (const href of ["/suivi-commandes", "/refunds/pending", "/comptes-consommateurs"]) {
       const i = html.indexOf(`href="${href}"`);
       expect(i).toBeGreaterThan(conso);
       expect(i).toBeLessThan(gouv);
     }
-    expect(html.indexOf('href="/users?role=admin"')).toBeGreaterThan(gouv);
+    // Chantier 6 : Administrateurs sous Gouvernance.
+    expect(html.indexOf('href="/comptes-admins"')).toBeGreaterThan(gouv);
   });
 
   it("libellés français : Remboursements (plus de 'Refunds')", () => {

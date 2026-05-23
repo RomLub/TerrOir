@@ -7,6 +7,10 @@
 // (Zod, UI radio, helpers) doit importer ici pour éviter la dérive
 // TS↔SQL silencieuse. Cf. T-220.
 
+// enum admin_privilege (source: create_type, last migration: 20260523140000_admin_privilege_suspension.sql)
+export const ADMIN_PRIVILEGE_VALUES = ["super_admin", "standard"] as const;
+export type AdminPrivilege = (typeof ADMIN_PRIVILEGE_VALUES)[number];
+
 // enum pending_refund_status (source: create_type, last migration: 20260511004000_p0_sweep_f014_pending_refunds.sql)
 export const PENDING_REFUND_STATUS_VALUES = ["pending", "approved", "denied", "expired"] as const;
 export type PendingRefundStatus = (typeof PENDING_REFUND_STATUS_VALUES)[number];

@@ -9,6 +9,28 @@ Pour les décisions structurantes (ADRs), voir [`decisions/`](./decisions/).
 
 ---
 
+## 2026-05-23 (Refonte admin — Chantier 6 : page Administrateurs, sécu critique)
+
+> PR `feature/chantier-6-admins`. Gestion du cycle de vie des comptes admins. Voir [ADR-0009](./decisions/0009-modele-comptes-admins.md). **Migration appliquée + smoke-testée en prod.**
+>
+> 🟢 **Deux niveaux** (`admin_privilege` enum) : `super_admin` (gère les autres admins) / `standard` (opérationnel, mais lecture seule sur les comptes admins). Bootstrap : admins existants → super_admin.
+>
+> 🟢 **Suspension** (`suspended_at`) : `isAdmin` = présent dans admin_users ET non suspendu, dérivé aux 4 points (getSessionUser, isAdmin, getInitialUserPayload, middleware). Le trigger de révocation du snapshot de rôle est étendu à `UPDATE OF suspended_at` (sinon accès résiduel via snapshot caché). `isSuperAdmin` toujours lu en live.
+>
+> 🟢 **Promotion / retrait = MOVE atomique** entre `public.users` et `admin_users` (exclusivité mutuelle) via RPC SECURITY DEFINER (`admin_promote_user`, `admin_revoke`, `admin_suspend`, `admin_reactivate`, `admin_set_privilege`) — atomicité obligatoire. Identité de connexion (`auth.users`) préservée. « Retirer » garde le compte client.
+>
+> 🟢 **Gardes sécu** : pas d'auto-action (suspend/retrait/rétrograder soi-même — garde RPC + boutons désactivés UI + tooltip) ; le **dernier super_admin actif** ne peut être ni suspendu, ni retiré, ni rétrogradé ; toutes les actions auditées (cluster `admin_accounts`).
+>
+> 🟢 **Mur FK promotion** : un compte avec activité client (commandes/avis/producteur) ne peut être promu (DELETE users bloqué) → refus `has_client_activity` + message clair. Adresses admin dédiées (cf. ADR).
+>
+> 🟢 **5 emails** de notification (template `admin-lifecycle` paramétré) : promotion / suspension / retrait / changement de niveau / réactivation.
+>
+> 🟢 **`/users` LIST supprimé** (consumers → Comptes consommateurs ch.5, admins → Administrateurs). Détail partagé `/users/[id]` conservé.
+>
+> 🟢 Tests : RPC (smoke prod gardes + move), operations (mapping + email/audit), routes (gate super_admin + erreurs), AdminsClient (lecture seule standard + self-row désactivée), session (suspendu/super), fetch, template email. lint/type-check/build OK, `npm test` vert (2910).
+
+---
+
 ## 2026-05-23 (Refonte admin — Chantier 5 : Consommateurs)
 
 > PR `feature/chantier-5-consommateurs`. Réorganisation de la section Consommateurs : fusion des remboursements, page comptes consommateurs, factorisation des queries.
