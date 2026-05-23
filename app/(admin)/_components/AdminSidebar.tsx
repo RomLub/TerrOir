@@ -4,11 +4,17 @@ import type { ReactElement } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-// T-130 : la sidebar supporte désormais des "group headers" inline en plus
-// des items cliquables. Choix retenu : entrées plates groupées avec
-// séparateur + label uppercase (la sidebar actuelle est plate, sans
-// support natif du nesting collapsible — ajouter un drawer collapsible
-// pour 3 entrées seulement serait une sur-ingénierie).
+// T-130 : la sidebar supporte des "group headers" inline en plus des items
+// cliquables. Choix retenu : entrées plates groupées avec séparateur + label
+// uppercase (la sidebar actuelle est plate, sans support natif du nesting
+// collapsible — ajouter un drawer collapsible JS-stateful serait une
+// sur-ingénierie).
+//
+// Chantier 7 : regroupement « Référentiels ». Les référentiels (Prix GMS +
+// Catégorisation) sont rassemblés sous un même group header « Référentiels ».
+// Comme « Catégorisation » est elle-même une sous-famille (catégories /
+// espèces animales / morceaux), on l'exprime avec un sous-en-tête `subgroup`
+// indenté — extension minimale du mécanisme de groupes existant, sans état JS.
 type NavItem = {
   kind: "item";
   href: string;
@@ -24,7 +30,14 @@ type NavGroup = {
   label: string;
 };
 
-type NavEntry = NavItem | NavGroup;
+// Chantier 7 : sous-en-tête imbriqué sous un group header (ex: « Catégorisation »
+// sous « Référentiels »). Rendu non cliquable, indenté pour marquer le nesting.
+type NavSubgroup = {
+  kind: "subgroup";
+  label: string;
+};
+
+type NavEntry = NavItem | NavGroup | NavSubgroup;
 
 const DashboardIcon = (
   <svg
@@ -300,9 +313,11 @@ const NAV: NavEntry[] = [
   { kind: "item", href: "/audit-logs", label: "Journal d'audit", icon: AuditLogsIcon },
   { kind: "item", href: "/avis", label: "Avis", icon: ReviewsIcon },
   { kind: "item", href: "/legal-compliance", label: "Conformité légale", icon: ComplianceIcon },
-  { kind: "item", href: "/gms-prices", label: "Prix GMS", icon: GmsPricesIcon },
-  // ─── Catégorisation produits (T-130) ────────────────────────────────
-  { kind: "group", label: "Catégorisation produits" },
+  // ─── Référentiels (chantier 7) ──────────────────────────────────────
+  // Regroupe les données de référence : prix GMS + catégorisation produits.
+  { kind: "group", label: "Référentiels" },
+  { kind: "item", href: "/gms-prices", label: "Données GMS", icon: GmsPricesIcon },
+  { kind: "subgroup", label: "Catégorisation produits" },
   { kind: "item", href: "/categorisation/categories", label: "Catégories", icon: CategoryIcon },
   { kind: "item", href: "/categorisation/animaux", label: "Espèces animales", icon: AnimalIcon },
   { kind: "item", href: "/categorisation/morceaux", label: "Morceaux", icon: CutIcon },
@@ -339,6 +354,20 @@ export function AdminSidebar({
                   key={`group-${idx}`}
                   role="presentation"
                   className="mt-3 border-t border-gray-200 px-4 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-terroir-green-700"
+                >
+                  {entry.label}
+                </li>
+              );
+            }
+            if (entry.kind === "subgroup") {
+              // Chantier 7 : sous-en-tête imbriqué (ex: Catégorisation sous
+              // Référentiels). Indenté, sans bordure haute, pour marquer le
+              // nesting sans casser la continuité visuelle du group parent.
+              return (
+                <li
+                  key={`subgroup-${idx}`}
+                  role="presentation"
+                  className="px-4 pb-1 pt-2 pl-6 text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400"
                 >
                   {entry.label}
                 </li>

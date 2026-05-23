@@ -9,6 +9,18 @@ Pour les décisions structurantes (ADRs), voir [`decisions/`](./decisions/).
 
 ---
 
+## 2026-05-23 (Refonte admin — Chantier 7 : regroupement nav Référentiels)
+
+> PR `feature/chantier-7-referentiels`. Réorganisation nav de la sidebar admin (aucun code fonctionnel modifié — pages GMS/catégorisation existantes inchangées).
+>
+> 🟢 Nouvelle section **« Référentiels »** regroupant **Données GMS** (ex-« Prix GMS ») + un sous-en-tête imbriqué **Catégorisation produits** (catégories / espèces animales / morceaux).
+>
+> 🟢 Ajout d'un variant `subgroup` (sous-en-tête indenté, non cliquable, `role="presentation"`) — extension minimale du mécanisme de groupes plats existant, **sans collapsible JS** (cohérent avec la décision T-130 : sur-ingénierie pour si peu d'entrées). « nesting préservé » au sens du mécanisme existant.
+>
+> 🟢 Tests : +6 cas sidebar (group header, rattachement, nesting, ordre, active state). lint/type-check/build OK, `npm test` vert.
+
+---
+
 ## 2026-05-23 (Chantier 10 — Navigation par semaine dashboard + revenus)
 
 > PR `feature/chantier-10-dashboard-producteur`. Le producteur peut désormais naviguer dans le temps (semaines précédentes/suivantes) sur son tableau de bord et sa page revenus, via un offset de semaine en query param (`?week=-1`, `?week=2`, …) et un sélecteur prev/next.
