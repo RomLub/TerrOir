@@ -217,6 +217,8 @@ function makeProducer(
     plan: "Pro",
     joinedAt: "15 janv. 2026",
     email: "f1@example.com",
+    contactName: "Jean Dupont",
+    phone: "0612345678",
     userId: "u1",
     publicationRequested: false,
     bioPending: false,
@@ -236,6 +238,7 @@ function makeProps(
     initialError: null,
     showAll: false,
     isPaginated: false,
+    initialStatusFilter: "all" as const,
     ...overrides,
   };
 }
@@ -352,7 +355,11 @@ describe("GestionProducteursClient — boutons d'action selon status", () => {
     expect(findActionBtn("Suspendre")).toBeDefined();
     const link = findActionLink("Voir page publique");
     expect(link).toBeDefined();
-    expect(link!.getAttribute("href")).toBe("/producteurs/ferme-x");
+    // Chantier 4 — lien désormais ABSOLU vers le sous-domaine www (fix bug
+    // lien relatif qui résolvait sur admin.*).
+    expect(link!.getAttribute("href")).toMatch(
+      /^https?:\/\/.+\/producteurs\/ferme-x$/,
+    );
   });
 
   it("status=suspended : 'Réactiver' visible, pas de 'Suspendre' ni 'Valider'", () => {
@@ -569,5 +576,91 @@ describe("GestionProducteursClient — InviteModal flux conditionnels", () => {
     );
     // router.refresh appelé après onSuccess (cf. handler InviteModal)
     expect(mockRefresh).toHaveBeenCalled();
+  });
+});
+
+// =======================================================================
+// 6. Chantier 4 — colonnes contact + lien page publique + filtre ?status=
+// =======================================================================
+
+function findAnchorByHrefIncludes(fragment: string): HTMLAnchorElement | undefined {
+  return Array.from(container.querySelectorAll("a")).find((a) =>
+    a.getAttribute("href")?.includes(fragment),
+  ) as HTMLAnchorElement | undefined;
+}
+
+describe("GestionProducteursClient — colonnes contact (chantier 4)", () => {
+  it("affiche Contact (prenom nom), Email en mailto, Téléphone en tel", () => {
+    render(
+      <GestionProducteursClient
+        {...makeProps([
+          makeProducer({
+            contactName: "Jean Dupont",
+            email: "f1@example.com",
+            phone: "0612345678",
+          }),
+        ])}
+      />,
+    );
+    expect(container.textContent).toContain("Jean Dupont");
+
+    const mailto = findAnchorByHrefIncludes("mailto:f1@example.com");
+    expect(mailto).toBeDefined();
+    expect(mailto!.textContent).toContain("f1@example.com");
+
+    const tel = findAnchorByHrefIncludes("tel:0612345678");
+    expect(tel).toBeDefined();
+    expect(tel!.textContent).toContain("0612345678");
+  });
+
+  it("email='—' / phone=null → pas de lien mailto/tel, '—' affiché", () => {
+    render(
+      <GestionProducteursClient
+        {...makeProps([
+          makeProducer({ email: "—", phone: null, contactName: "—" }),
+        ])}
+      />,
+    );
+    expect(findAnchorByHrefIncludes("mailto:")).toBeUndefined();
+    expect(findAnchorByHrefIncludes("tel:")).toBeUndefined();
+  });
+
+  it("status=public → nom lié (absolu) vers la page publique www", () => {
+    render(
+      <GestionProducteursClient
+        {...makeProps([makeProducer({ status: "public", slug: "ferme-x", name: "Ferme X" })])}
+      />,
+    );
+    const nameLink = findAnchorByHrefIncludes("/producteurs/ferme-x");
+    expect(nameLink).toBeDefined();
+    expect(nameLink!.getAttribute("href")).toMatch(/^https?:\/\//);
+    expect(nameLink!.textContent).toContain("Ferme X");
+  });
+
+  it("status=active → nom NON lié (page publique inexistante)", () => {
+    render(
+      <GestionProducteursClient
+        {...makeProps([makeProducer({ status: "active", slug: "ferme-y", name: "Ferme Y" })])}
+      />,
+    );
+    // Aucun lien (name link ni action) ne pointe vers la page publique.
+    expect(findAnchorByHrefIncludes("/producteurs/ferme-y")).toBeUndefined();
+    expect(container.textContent).toContain("Ferme Y");
+  });
+
+  it("initialStatusFilter='pending' → seules les rows pending affichées au mount", () => {
+    render(
+      <GestionProducteursClient
+        {...makeProps(
+          [
+            makeProducer({ id: "p1", status: "pending" }),
+            makeProducer({ id: "p2", status: "active" }),
+          ],
+          { initialStatusFilter: "pending" },
+        )}
+      />,
+    );
+    const rows = container.querySelectorAll("tbody tr");
+    expect(rows.length).toBe(1);
   });
 });

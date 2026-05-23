@@ -9,6 +9,22 @@ Pour les décisions structurantes (ADRs), voir [`decisions/`](./decisions/).
 
 ---
 
+## 2026-05-23 (Refonte admin — Chantier 4 : gestion producteurs UI)
+
+> PR `feature/chantier-4-gestion-producteurs`. Refonte du tableau de la page admin /gestion-producteurs (orientation contact + fix deep-link).
+>
+> 🟢 **Nouvelles colonnes** : Exploitation (nom, **cliquable vers la page publique www** quand `statut = public`, commune en sous-titre), Contact (prénom nom via jointure `public.users`), Email (lien `mailto:`), Téléphone (lien `tel:` via jointure users), Abonnement, Inscription, Actions. Colonne Statut conservée (badge + signaux « Publication demandée » / « Bio à valider » du chantier 3 — pas de régression).
+>
+> 🟢 **Jointure users étendue** : `fetchAdminProducersList` remonte désormais `email, prenom, nom, telephone` (toujours sur `public.users`, jointure embarquée PostgREST). Mapping → `contactName` (« — » si vide) + `phone` (null si absent).
+>
+> 🟢 **Filtre statut lu depuis l'URL** : `?status=` parsé côté server (`parseProducerStatusFilter`, fail-safe → `all`) et passé en filtre initial du client. **Fix du deep-link** cockpit dashboard « Producteurs à valider » → `/gestion-producteurs?status=pending` (le param était ignoré auparavant) et journal d'audit.
+>
+> 🟢 **Fix lien page publique** : le lien « Voir page publique » utilisait une URL relative (`/producteurs/[slug]`) qui résolvait sur le sous-domaine `admin.*` — désormais absolu vers `www` (`NEXT_PUBLIC_APP_URL`).
+>
+> 🟢 Tests : `parseProducerStatusFilter` (fail-safe), fetch (mapping contact email/prenom/nom/telephone + cas vides), page (`?status` → filtre initial), client (colonnes contact, mailto/tel, lien nom public absolu, filtre initial). Pas de migration (UI + extension query). lint/type-check/build OK, `npm test` vert (2858).
+
+---
+
 ## 2026-05-23 (Refonte admin — Chantier 2 : dashboard refonte)
 
 > PR `feature/chantier-2-dashboard`. Refonte du tableau de bord admin.

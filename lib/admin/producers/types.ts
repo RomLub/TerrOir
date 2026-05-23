@@ -22,6 +22,11 @@ export type AdminProducerRow = {
   plan: string;
   joinedAt: string;
   email: string;
+  // Chantier 4 — coordonnées de contact via jointure public.users :
+  //   contactName : "prenom nom" (ou "—" si les deux sont vides).
+  //   phone       : telephone brut (ou null) — rendu en lien tel: côté UI.
+  contactName: string;
+  phone: string | null;
   // Permet le pré-filtrage `?user_id=<uuid>` (deep-link depuis /audit-logs).
   // Peut être null sur les vieilles rows ou les producers en draft sans user lié.
   userId: string | null;
@@ -43,6 +48,30 @@ export type ProducerStatusFilter =
   | "suspended"
   | "draft"
   | "deleted";
+
+// Source de vérité des valeurs de filtre UI (sert au parsing du query param
+// `?status=` et aux tests). Ordre = ordre d'affichage des onglets.
+export const PRODUCER_STATUS_FILTERS = [
+  "all",
+  "pending",
+  "active",
+  "suspended",
+  "draft",
+  "deleted",
+] as const satisfies readonly ProducerStatusFilter[];
+
+// Parse fail-safe du query param `?status=` (deep-link depuis le cockpit
+// dashboard « Producteurs à valider » → ?status=pending, ou depuis le journal
+// d'audit). Toute valeur absente/invalide retombe sur 'all'. Mirroir du
+// pattern parseDashboardPeriod (chantier 2).
+export function parseProducerStatusFilter(
+  raw: string | string[] | undefined,
+): ProducerStatusFilter {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return (PRODUCER_STATUS_FILTERS as readonly string[]).includes(value ?? "")
+    ? (value as ProducerStatusFilter)
+    : "all";
+}
 
 // Liste des statuts considérés comme "valides côté UI". Le check constraint
 // DB liste exactement ces 6 valeurs (cf. producers_statut_check, migration

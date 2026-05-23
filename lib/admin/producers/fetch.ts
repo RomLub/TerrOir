@@ -55,7 +55,15 @@ type RawProducerRow = {
   publication_requested_at: string | null;
   // Supabase remonte la jointure 1:1 soit en objet, soit en array selon les
   // versions du client (compat ascendante). On normalise dans le mapper.
-  user: { email: string | null } | Array<{ email: string | null }> | null;
+  // public.users (PAS auth.users) → jointure embarquée PostgREST OK.
+  user: RawUserJoin | RawUserJoin[] | null;
+};
+
+type RawUserJoin = {
+  email: string | null;
+  prenom: string | null;
+  nom: string | null;
+  telephone: string | null;
 };
 
 export async function fetchAdminProducersList(
@@ -65,7 +73,7 @@ export async function fetchAdminProducersList(
   let itemsQuery = admin
     .from("producers")
     .select(
-      "id, slug, nom_exploitation, commune, code_postal, statut, abonnement_niveau, created_at, user_id, bio, bio_validated_at, publication_requested_at, user:user_id ( email )",
+      "id, slug, nom_exploitation, commune, code_postal, statut, abonnement_niveau, created_at, user_id, bio, bio_validated_at, publication_requested_at, user:user_id ( email, prenom, nom, telephone )",
     );
   let countQuery = admin
     .from("producers")
@@ -101,6 +109,8 @@ export async function fetchAdminProducersList(
       p.commune,
       p.code_postal ? `(${p.code_postal.slice(0, 2)})` : null,
     ].filter(Boolean);
+    const contactName =
+      [user?.prenom, user?.nom].filter(Boolean).join(" ").trim() || "—";
     return {
       id: p.id,
       slug: p.slug,
@@ -110,6 +120,8 @@ export async function fetchAdminProducersList(
       plan: PLAN_LABEL[p.abonnement_niveau ?? ""] ?? "—",
       joinedAt: formatDateFr(p.created_at),
       email: user?.email ?? "—",
+      contactName,
+      phone: user?.telephone ?? null,
       userId: p.user_id ?? null,
       publicationRequested:
         p.publication_requested_at != null && p.statut !== "public",

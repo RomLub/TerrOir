@@ -14,6 +14,7 @@ import {
   getProducerStatusLabel,
 } from '@/components/ui';
 import { ListingHeader } from '@/components/listings/ListingHeader';
+import { NEXT_PUBLIC_APP_URL } from '@/lib/env/urls';
 import type {
   AdminProducerRow,
   ProducerStatus,
@@ -65,6 +66,9 @@ export type GestionProducteursClientProps = {
   // True quand un cursor `before` est actif → banner ListingHeader affiche
   // "page suivante" (rendu déjà cohérent avec ancien comportement page CSR).
   isPaginated: boolean;
+  // Chantier 4 — filtre statut initial lu depuis `?status=` côté server
+  // (deep-link cockpit dashboard / journal d'audit). Fail-safe 'all'.
+  initialStatusFilter: ProducerStatusFilter;
 };
 
 export function GestionProducteursClient(props: GestionProducteursClientProps) {
@@ -82,10 +86,11 @@ function Inner({
   initialError,
   showAll,
   isPaginated,
+  initialStatusFilter,
 }: GestionProducteursClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [filter, setFilter] = useState<ProducerStatusFilter>('all');
+  const [filter, setFilter] = useState<ProducerStatusFilter>(initialStatusFilter);
   const [error, setError] = useState<string | null>(initialError);
   const [busy, setBusy] = useState<string | null>(null);
   const [inviting, setInviting] = useState(false);
@@ -278,7 +283,9 @@ function Inner({
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-100 text-left text-[11px] uppercase tracking-[0.14em] text-gray-600">
                   <th className="px-5 py-3 font-semibold">Exploitation</th>
-                  <th className="px-5 py-3 font-semibold">Commune</th>
+                  <th className="px-5 py-3 font-semibold">Contact</th>
+                  <th className="px-5 py-3 font-semibold">Email</th>
+                  <th className="px-5 py-3 font-semibold">Téléphone</th>
                   <th className="px-5 py-3 font-semibold">Statut</th>
                   <th className="px-5 py-3 font-semibold">Abonnement</th>
                   <th className="px-5 py-3 font-semibold">Inscription</th>
@@ -287,16 +294,52 @@ function Inner({
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <TableStatus kind="empty" colSpan={6} emptyLabel="Aucun producteur." />
+                  <TableStatus kind="empty" colSpan={8} emptyLabel="Aucun producteur." />
                 ) : filtered.map((p) => {
                   const disabled = busy === p.id;
+                  const publicUrl = `${NEXT_PUBLIC_APP_URL}/producteurs/${p.slug}`;
                   return (
                     <tr key={p.id} className="border-b border-gray-200 last:border-0 hover:bg-gray-50">
                       <td className="px-5 py-4">
-                        <div className="font-serif text-[17px] leading-tight text-gray-900">{p.name}</div>
-                        <div className="mt-0.5 text-[12px] text-gray-500">{p.email}</div>
+                        {p.status === 'public' ? (
+                          <a
+                            href={publicUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-serif text-[17px] leading-tight text-terroir-green-700 hover:underline"
+                          >
+                            {p.name}
+                          </a>
+                        ) : (
+                          <div className="font-serif text-[17px] leading-tight text-gray-900">{p.name}</div>
+                        )}
+                        <div className="mt-0.5 text-[12px] text-gray-500">{p.city}</div>
                       </td>
-                      <td className="px-5 py-4 text-gray-700">{p.city}</td>
+                      <td className="px-5 py-4 text-gray-700">{p.contactName}</td>
+                      <td className="px-5 py-4">
+                        {p.email !== '—' ? (
+                          <a
+                            href={`mailto:${p.email}`}
+                            className="text-[13px] text-terroir-green-700 hover:underline"
+                          >
+                            {p.email}
+                          </a>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-5 py-4">
+                        {p.phone ? (
+                          <a
+                            href={`tel:${p.phone.replace(/\s+/g, '')}`}
+                            className="font-mono text-[13px] text-terroir-green-700 hover:underline"
+                          >
+                            {p.phone}
+                          </a>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </td>
                       <td className="px-5 py-4">
                         <ProducerStatusBadge status={p.status} />
                         <div className="mt-1 flex flex-wrap gap-1">
@@ -357,7 +400,7 @@ function Inner({
                             </TableActionButton>
                           )}
                           {p.status === 'public' && (
-                            <TableActionButton variant="ghost" href={`/producteurs/${p.slug}`} target="_blank">
+                            <TableActionButton variant="ghost" href={publicUrl} target="_blank">
                               Voir page publique &#x2197;
                             </TableActionButton>
                           )}

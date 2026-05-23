@@ -120,7 +120,7 @@ describe("fetchAdminProducersList", () => {
     expect(filter).toContain("id.lt.abc");
   });
 
-  it("mappe la jointure user.email vers row.email + city/plan/joinedAt formatés", async () => {
+  it("mappe la jointure user (email/prenom/nom/telephone) + city/plan/joinedAt formatés", async () => {
     const rawRow = {
       id: "p1",
       slug: "ma-ferme",
@@ -131,7 +131,12 @@ describe("fetchAdminProducersList", () => {
       abonnement_niveau: "pro",
       created_at: "2026-01-15T12:00:00Z",
       user_id: "user-1",
-      user: { email: "ma-ferme@example.com" },
+      user: {
+        email: "ma-ferme@example.com",
+        prenom: "Jean",
+        nom: "Dupont",
+        telephone: "0612345678",
+      },
     };
     const { admin } = makeAdminMock({
       itemsResp: { data: [rawRow], error: null },
@@ -152,8 +157,35 @@ describe("fetchAdminProducersList", () => {
       status: "active",
       plan: "Pro",
       email: "ma-ferme@example.com",
+      contactName: "Jean Dupont",
+      phone: "0612345678",
       userId: "user-1",
     });
+  });
+
+  it("contactName='—' + phone=null quand prenom/nom/telephone absents", async () => {
+    const rawRow = {
+      id: "p3",
+      slug: "f3",
+      nom_exploitation: "F3",
+      commune: "Sablé",
+      code_postal: "72300",
+      statut: "active",
+      abonnement_niveau: "pro",
+      created_at: "2026-01-15T12:00:00Z",
+      user_id: "user-3",
+      user: { email: "f3@y.fr", prenom: null, nom: null, telephone: null },
+    };
+    const { admin } = makeAdminMock({
+      itemsResp: { data: [rawRow], error: null },
+      countResp: { count: 1, error: null },
+    });
+    const res = await fetchAdminProducersList(admin, {
+      cursor: { before: null, beforeId: null },
+      includeDraftsAndDeleted: false,
+    });
+    expect(res.rows[0].contactName).toBe("—");
+    expect(res.rows[0].phone).toBeNull();
   });
 
   it("supporte la jointure user retournée en array (compat client supabase)", async () => {
@@ -167,7 +199,7 @@ describe("fetchAdminProducersList", () => {
       abonnement_niveau: null,
       created_at: "2026-01-15T12:00:00Z",
       user_id: null,
-      user: [{ email: "x@y.fr" }],
+      user: [{ email: "x@y.fr", prenom: "Marie", nom: null, telephone: "0700000000" }],
     };
     const { admin } = makeAdminMock({
       itemsResp: { data: [rawRow], error: null },
@@ -178,6 +210,8 @@ describe("fetchAdminProducersList", () => {
       includeDraftsAndDeleted: false,
     });
     expect(res.rows[0].email).toBe("x@y.fr");
+    expect(res.rows[0].contactName).toBe("Marie");
+    expect(res.rows[0].phone).toBe("0700000000");
     expect(res.rows[0].city).toBe("—");
     expect(res.rows[0].plan).toBe("—");
     expect(res.rows[0].userId).toBeNull();
