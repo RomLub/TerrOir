@@ -9,6 +9,24 @@ Pour les décisions structurantes (ADRs), voir [`decisions/`](./decisions/).
 
 ---
 
+## 2026-05-23 (Refonte admin — Chantier 2 : dashboard refonte)
+
+> PR `feature/chantier-2-dashboard`. Refonte du tableau de bord admin.
+>
+> 🟢 **Bandeau temporel** : sélecteur Aujourd'hui / Cette semaine / Ce mois-ci / Cette année (query param `?period=`), avec 4 KPIs sur la période : commandes, chiffre d'affaires, consommateurs actifs, producteurs actifs.
+>
+> 🟢 **RPC `get_admin_dashboard` paramétrée** : signature `(p_period text default 'today')` ; bornes calculées en Europe/Paris (date_trunc). Bloc `period` (4 KPIs) ajouté ; bloc `business` today/7d supprimé (remplacé par le bandeau) ; conversion promue top-level `conversion_30d`. Migration appliquée + smoke test (today/week/month/year). ⚠️ changement de shape → coordonné avec le déploiement du code.
+>
+> 🟢 **Ordre des zones** : Période → À traiter (cockpit) → Conversion → Activité récente.
+>
+> 🟢 **Cockpit : toutes les cartes cliquables** — fix « Incidents de remboursement » (→ /refund-incidents) et « Invitations expirées » (→ /invitations) qui pointaient vers `#` ; « Producteurs à valider » → /gestion-producteurs?status=pending. « Litiges ouverts » reste en attente (branché au chantier 8).
+>
+> 🟢 **Mise au français** : Refunds en attente → Remboursements en attente, Incidents refund → Incidents de remboursement, etc. Carte « Publications à valider » (chantier 3) conservée sans duplication.
+>
+> 🟢 Tests : lib period (parsing fail-safe) + page (bandeau, KPIs, cockpit cliquable, conversion, activité). lint/type-check/build OK, `npm test` vert.
+
+---
+
 ## 2026-05-23 (Refonte admin — Chantier 0 : fondations sidebar/nav par sections)
 
 > PR `feature/chantier-0-sidebar`. Structuration de la nav admin en sections métier (aucun code fonctionnel modifié — réorganisation + libellés).

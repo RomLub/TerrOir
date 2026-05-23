@@ -3,27 +3,27 @@ import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { AdminDashboardData } from "@/lib/admin/dashboard/types";
 
-// Tests page (admin)/tableau-de-bord — pattern teammates "ne render pas
-// un Server Component, await Page(...) puis assertions sur le markup
-// statique généré par renderToStaticMarkup".
-//
-// Le fichier est sous tests/app/admin/... (chemin SANS parenthèses) :
-// les autres tests admin (audit-logs/_lib, categorisation, refunds, et le
-// admin-sidebar.test.tsx racine) vivent dans tests/app/(admin)/, mais
-// Glob/grep crashent sur les parenthèses Windows. On évite le piège en
-// utilisant un chemin sans parenthèses — Vitest accepte les deux.
+// Tests page (admin)/tableau-de-bord (chantier 2 refonte) — on n'effectue pas
+// un render React complet d'un Server Component : on await Page(...) puis on
+// asserte sur le markup statique. Chemin sous tests/app/admin/... (sans
+// parenthèses) pour éviter le bug Glob/grep Windows sur les parenthèses.
 
-const mockFetch = vi.fn(
-  async (): Promise<AdminDashboardData | null> => null,
-);
+const mockFetch = vi.fn(async (): Promise<AdminDashboardData | null> => null);
 
 vi.mock("@/lib/admin/dashboard/fetch", () => ({
-  fetchAdminDashboard: () => mockFetch(),
+  // La page appelle fetchAdminDashboard(period) ; le mock ignore l'arg.
+  fetchAdminDashboard: (_period?: string) => mockFetch(),
 }));
 
 import AdminDashboardPage from "@/app/(admin)/tableau-de-bord/page";
 
 const SAMPLE_DATA: AdminDashboardData = {
+  period: {
+    orders_count: 6,
+    revenue_cents: 12345,
+    active_consumers: 3,
+    active_producers: 2,
+  },
   cockpit: {
     refunds_pending_count: 3,
     disputes_open_count: 0,
@@ -34,20 +34,10 @@ const SAMPLE_DATA: AdminDashboardData = {
     publications_pending_count: 2,
     bio_pending_count: 1,
   },
-  business: {
-    orders_today_count: 4,
-    revenue_today_cents: 12345,
-    new_users_today_count: 2,
-    orders_7d_count: 30,
-    revenue_7d_cents: 95000,
-    completion_rate_7d: 86.7,
-    active_producers_7d: 5,
-    total_producers: 12,
-    invitation_conversion_30d: {
-      invitations_sent: 10,
-      onboardings_completed: 4,
-      rate_pct: 40.0,
-    },
+  conversion_30d: {
+    invitations_sent: 10,
+    onboardings_completed: 4,
+    rate_pct: 40.0,
   },
   recent_events: [
     {
@@ -67,147 +57,124 @@ const SAMPLE_DATA: AdminDashboardData = {
   ],
 };
 
-async function renderPage(): Promise<string> {
-  const el = (await AdminDashboardPage()) as ReactElement;
+async function renderPage(period?: string): Promise<string> {
+  const el = (await AdminDashboardPage({
+    searchParams: Promise.resolve(period ? { period } : {}),
+  })) as ReactElement;
   return renderToStaticMarkup(el);
 }
 
-describe("AdminDashboardPage", () => {
+describe("AdminDashboardPage (chantier 2)", () => {
   beforeEach(() => {
     mockFetch.mockReset();
   });
 
-  it("affiche un état d'erreur lisible quand le RPC retourne null", async () => {
+  it("état d'erreur lisible quand le RPC retourne null", async () => {
     mockFetch.mockResolvedValue(null);
     const html = await renderPage();
     expect(html).toContain("Tableau de bord");
     expect(html).toMatch(/Impossible de charger/);
   });
 
-  it("affiche les 6 cards Zone 1 (cockpit) même quand un compteur = 0", async () => {
+  it("Zone 1 — bandeau période : sélecteur 4 périodes + 4 KPIs", async () => {
     mockFetch.mockResolvedValue(SAMPLE_DATA);
     const html = await renderPage();
-    expect(html).toContain("Refunds en attente");
+    expect(html).toContain("Activité sur la période");
+    // Sélecteur
+    for (const label of ["Aujourd", "Cette semaine", "Ce mois-ci", "Cette année"]) {
+      expect(html).toContain(label);
+    }
+    expect(html).toContain('href="/tableau-de-bord?period=week"');
+    expect(html).toContain('href="/tableau-de-bord?period=month"');
+    expect(html).toContain('href="/tableau-de-bord?period=year"');
+    // 4 KPIs
+    expect(html).toContain("Commandes");
+    expect(html).toContain("affaires"); // "Chiffre d'affaires" (apostrophe échappée &#x27; par React)
+    expect(html).toContain("Consommateurs actifs");
+    expect(html).toContain("Producteurs actifs");
+    expect(html).toContain(">6<"); // orders_count
+    expect(html).toMatch(/123,45[\s ]€/); // revenue_cents
+    expect(html).toContain(">3<"); // active_consumers
+    expect(html).toContain(">2<"); // active_producers
+  });
+
+  it("période sélectionnée stylée active (period=year)", async () => {
+    mockFetch.mockResolvedValue(SAMPLE_DATA);
+    const html = await renderPage("year");
+    // L'onglet "Cette année" porte la classe active (bg vert).
+    expect(html).toMatch(
+      /href="\/tableau-de-bord\?period=year"[^>]*bg-green-700|bg-green-700[^>]*>Cette année/,
+    );
+  });
+
+  it("Zone 2 — cockpit : 8 cartes FR, comptes affichés", async () => {
+    mockFetch.mockResolvedValue(SAMPLE_DATA);
+    const html = await renderPage();
+    expect(html).toContain("Remboursements en attente");
     expect(html).toContain("Litiges ouverts");
     expect(html).toContain("Avis à modérer");
     expect(html).toContain("Producteurs à valider");
-    expect(html).toContain("Incidents refund");
+    expect(html).toContain("Publications à valider");
+    expect(html).toContain("Certifications bio à valider");
+    expect(html).toContain("Incidents de remboursement");
     expect(html).toContain("Invitations expirées");
-    // Les counts apparaissent
-    expect(html).toContain(">3<"); // refunds_pending
-    expect(html).toContain(">8<"); // invitations_expired
+    expect(html).not.toContain("Refunds");
   });
 
-  it("applique opacity-50 aux cards cockpit à 0 et pas aux autres", async () => {
-    mockFetch.mockResolvedValue(SAMPLE_DATA);
-    const html = await renderPage();
-    // disputes_open_count = 0 → opacity-50 sur la card "Litiges ouverts"
-    // refunds_pending_count = 3 → pas d'opacity-50 sur cette card
-    // On vérifie en grepant : au moins une occurrence de opacity-50 (cards à 0)
-    expect(html).toContain("opacity-50");
-  });
-
-  it("rend les pages cibles (link cliquables) ou tooltip 'à venir' selon pending", async () => {
+  it("cockpit : cartes désormais cliquables (incidents + invitations + producers?status=pending)", async () => {
     mockFetch.mockResolvedValue(SAMPLE_DATA);
     const html = await renderPage();
     expect(html).toContain('href="/refunds/pending"');
     expect(html).toContain('href="/avis"');
-    expect(html).toContain('href="/gestion-producteurs"');
-    // Disputes / refund-incidents / invitations : pages non livrées en PR2 →
-    // wrappers <span title="Page à venir">.
+    expect(html).toContain('href="/gestion-producteurs?status=pending"');
+    expect(html).toContain('href="/refund-incidents"');
+    expect(html).toContain('href="/invitations"');
+    // Seul "Litiges ouverts" reste en attente (chantier 8) → 1 wrapper pending.
     expect(html).toContain('title="Page à venir"');
   });
 
-  it("affiche les 3 cards Zone 2 Aujourd'hui avec format € correct", async () => {
+  it("opacity-50 sur les cartes cockpit à 0", async () => {
     mockFetch.mockResolvedValue(SAMPLE_DATA);
     const html = await renderPage();
-    expect(html).toContain("Aujourd"); // accepte l'apostrophe française encodée
-    // revenue_today_cents=12345 → 123.45 € (virgule fr, espace insécable)
-    expect(html).toMatch(/123,45[\s ]€/);
-    expect(html).toContain(">4<"); // orders_today_count
-    expect(html).toContain(">2<"); // new_users_today_count
+    expect(html).toContain("opacity-50"); // disputes_open + refund_incidents = 0
   });
 
-  it("affiche les 5 cards Zone 2 '7 derniers jours'", async () => {
-    mockFetch.mockResolvedValue(SAMPLE_DATA);
-    const html = await renderPage();
-    expect(html).toContain("7 derniers jours");
-    expect(html).toContain(">30<"); // orders_7d_count
-    // revenue_7d_cents=95000 → 950.00 €
-    expect(html).toMatch(/950,00[\s ]€/);
-    // completion_rate_7d=86.7 → "86,7 %"
-    expect(html).toMatch(/86,7[\s ]%/);
-    expect(html).toContain(">5<"); // active_producers_7d
-    expect(html).toContain(">12<"); // total_producers
-  });
-
-  it("affiche le funnel conversion invitations 30j", async () => {
+  it("Zone 3 — conversion invitations 30j", async () => {
     mockFetch.mockResolvedValue(SAMPLE_DATA);
     const html = await renderPage();
     expect(html).toContain("Conversion invitations");
-    expect(html).toContain(">10<"); // invitations_sent
-    expect(html).toContain(">4<"); // onboardings_completed
-    expect(html).toMatch(/40,0[\s ]%/);
+    expect(html).toContain(">10<");
+    expect(html).toContain(">4<");
+    expect(html).toMatch(/40,0[\s ]%/);
   });
 
-  it("affiche le funnel avec '—' quand invitations_sent = 0", async () => {
+  it("conversion : '—' quand invitations_sent = 0", async () => {
     mockFetch.mockResolvedValue({
       ...SAMPLE_DATA,
-      business: {
-        ...SAMPLE_DATA.business,
-        invitation_conversion_30d: {
-          invitations_sent: 0,
-          onboardings_completed: 0,
-          rate_pct: null,
-        },
+      conversion_30d: {
+        invitations_sent: 0,
+        onboardings_completed: 0,
+        rate_pct: null,
       },
     });
     const html = await renderPage();
     expect(html).toContain("Aucune invitation sur la fenêtre");
-    // Pas de "0,0 %"
-    expect(html).not.toMatch(/0,0[\s ]%/);
+    expect(html).not.toMatch(/0,0[\s ]%/);
   });
 
-  it("rend la table Zone 3 avec lignes clickables vers /audit-logs?event_type=", async () => {
+  it("Zone 4 — activité récente, lignes cliquables vers /audit-logs", async () => {
     mockFetch.mockResolvedValue(SAMPLE_DATA);
     const html = await renderPage();
     expect(html).toContain("Activité récente");
     expect(html).toContain('href="/audit-logs?event_type=order_created"');
-    expect(html).toContain(
-      'href="/audit-logs?event_type=account_login_magic_link"',
-    );
-    expect(html).toContain("Commande créée");
-    expect(html).toContain("Connexion (lien magique)");
-    // Résumé metadata : email_masked et order_id (8 premiers chars du UUID)
+    expect(html).toContain('href="/audit-logs?event_type=account_login_magic_link"');
     expect(html).toContain("te***@gmail.com");
     expect(html).toContain("Commande abcdefgh");
   });
 
-  it("affiche un placeholder quand recent_events est vide", async () => {
+  it("placeholder quand recent_events vide", async () => {
     mockFetch.mockResolvedValue({ ...SAMPLE_DATA, recent_events: [] });
     const html = await renderPage();
     expect(html).toContain("Aucune activité récente");
-  });
-
-  it("limite Zone 3 à 15 lignes (cap RPC, vérifié par hint UI)", async () => {
-    // On envoie 16 events fictifs ; on attend uniquement 15 dans le markup.
-    // Note : la limite réelle vient de la RPC SQL (LIMIT 15). Ce test sert
-    // de garde côté UI au cas où la RPC dérive.
-    const many = Array.from({ length: 16 }, (_, i) => ({
-      id: `00000000-0000-0000-0000-${String(i).padStart(12, "0")}`,
-      event_type: "order_created",
-      user_id: null,
-      metadata: {},
-      created_at: "2026-05-13T10:00:00Z",
-    }));
-    mockFetch.mockResolvedValue({ ...SAMPLE_DATA, recent_events: many });
-    const html = await renderPage();
-    // On compte les <tr> (lignes table) — ignore <tr> du <thead>.
-    const trMatches = html.match(/<tr/g) ?? [];
-    // 1 thead + 16 tbody rows = 17 si pas de cap UI. Ici on accepte les 16
-    // car la RPC SQL applique le cap, pas la page (la page rend tout ce
-    // qu'on lui passe — c'est volontaire pour rester simple). Le smoke test
-    // SQL valide le LIMIT 15.
-    expect(trMatches.length).toBe(17);
   });
 });

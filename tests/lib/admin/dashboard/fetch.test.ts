@@ -53,7 +53,9 @@ describe("fetchAdminDashboard", () => {
     );
     const result = await fetchAdminDashboard();
     expect(result).toEqual(sampleData);
-    expect(mockRpc).toHaveBeenCalledWith("get_admin_dashboard");
+    expect(mockRpc).toHaveBeenCalledWith("get_admin_dashboard", {
+      p_period: "today",
+    });
   });
 
   it("retourne null + log console.error si le RPC échoue", async () => {

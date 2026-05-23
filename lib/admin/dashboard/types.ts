@@ -32,17 +32,15 @@ export type AdminDashboardInvitationConversion = {
   rate_pct: number | null;
 };
 
-export type AdminDashboardBusiness = {
-  orders_today_count: number;
-  revenue_today_cents: number;
-  new_users_today_count: number;
-  orders_7d_count: number;
-  revenue_7d_cents: number;
-  // 0 quand orders_7d_count = 0 (cf. RPC), sinon 0..100 avec 1 décimale.
-  completion_rate_7d: number;
-  active_producers_7d: number;
-  total_producers: number;
-  invitation_conversion_30d: AdminDashboardInvitationConversion;
+// Chantier 2 — bloc « période » du bandeau temporel (4 KPIs sur la période
+// sélectionnée : Aujourd'hui / Cette semaine / Ce mois-ci / Cette année).
+// « actifs » = comptes ayant transacté sur la période (distinct consumer_id /
+// producer_id sur les commandes créées dans la fenêtre).
+export type AdminDashboardPeriod = {
+  orders_count: number;
+  revenue_cents: number;
+  active_consumers: number;
+  active_producers: number;
 };
 
 export type AdminDashboardRecentEvent = {
@@ -57,8 +55,9 @@ export type AdminDashboardRecentEvent = {
 };
 
 export type AdminDashboardData = {
+  period: AdminDashboardPeriod;
   cockpit: AdminDashboardCockpit;
-  business: AdminDashboardBusiness;
+  conversion_30d: AdminDashboardInvitationConversion;
   recent_events: AdminDashboardRecentEvent[];
 };
 
