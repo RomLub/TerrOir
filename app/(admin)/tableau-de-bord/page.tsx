@@ -1,32 +1,37 @@
+import Link from "next/link";
 import { AdminPageHeader } from "@/components/ui/admin-page-header";
 import { MetricCard } from "@/components/ui/metric-card";
 import { formatEuro } from "@/lib/format/currency";
 import { fetchAdminDashboard } from "@/lib/admin/dashboard/fetch";
 import { centsToEuro } from "@/lib/admin/dashboard/types";
+import {
+  DASHBOARD_PERIODS,
+  PERIOD_LABELS,
+  parseDashboardPeriod,
+} from "@/lib/admin/dashboard/period";
 import { CockpitCard } from "./_components/CockpitCard";
 import { RecentActivityTable } from "./_components/RecentActivityTable";
 
-// PR2 admin dashboard — page d'accueil back-office. Server Component
-// dynamique : appelle la RPC SECURITY DEFINER `get_admin_dashboard()` via
-// `createSupabaseAdminClient` (service_role). Trois zones :
-//   1. Cockpit : 6 compteurs d'attention (refunds pending, disputes…),
-//      opacité réduite quand count=0, clickable vers la page domaine.
-//   2. Business : 3 cards "Aujourd'hui" + 5 cards "7 derniers jours" +
-//      funnel invitation 30j.
-//   3. Recent events : table 15 derniers events whitelist, clickable vers
-//      /audit-logs?event_type=<event> pour drill-down.
+// Chantier 2 — dashboard admin refonte. Server Component dynamique. RPC
+// SECURITY DEFINER `get_admin_dashboard(p_period)` via service_role.
+// Zones (ordre) : 1. Période (bandeau temporel + 4 KPIs) → 2. À traiter
+// (cockpit, toutes cartes cliquables) → 3. Conversion invitations 30j →
+// 4. Activité récente.
 //
-// Pas de import barrel `@/components/ui` : Footer transitif throw quand
-// NEXT_PUBLIC_APP_URL absent (tests jsdom). On importe directement.
-//
-// Fail-safe : si la RPC retourne null (DB down, etc.), on affiche un état
-// d'erreur lisible plutôt qu'un crash 500.
+// Pas de barrel `@/components/ui` (Footer transitif throw sans NEXT_PUBLIC_APP_URL
+// en tests jsdom). Fail-safe : RPC null → état d'erreur lisible, pas de 500.
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default async function AdminDashboardPage() {
-  const data = await fetchAdminDashboard();
+export default async function AdminDashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ period?: string }>;
+}) {
+  const sp = await searchParams;
+  const period = parseDashboardPeriod(sp.period);
+  const data = await fetchAdminDashboard(period);
 
   if (!data) {
     return (
@@ -41,8 +46,7 @@ export default async function AdminDashboardPage() {
     );
   }
 
-  const { cockpit, business, recent_events } = data;
-  const conv = business.invitation_conversion_30d;
+  const { period: kpi, cockpit, conversion_30d: conv, recent_events } = data;
 
   return (
     <div>
@@ -52,14 +56,56 @@ export default async function AdminDashboardPage() {
         subtitle="État du back-office TerrOir"
       />
 
-      {/* ─── Zone 1 — Cockpit (compteurs d'attention) ───────────────── */}
+      {/* ─── Zone 1 — Période (bandeau temporel) ─────────────────────── */}
+      <section className="mb-10">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-[12px] font-semibold uppercase tracking-[0.18em] text-gray-600">
+            Activité sur la période
+          </h2>
+          <div className="flex flex-wrap gap-1.5">
+            {DASHBOARD_PERIODS.map((p) => (
+              <Link
+                key={p}
+                href={p === "today" ? "/tableau-de-bord" : `/tableau-de-bord?period=${p}`}
+                className={`rounded-full px-3 py-1 text-[13px] transition-colors ${
+                  p === period
+                    ? "bg-green-700 text-white"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                }`}
+              >
+                {PERIOD_LABELS[p]}
+              </Link>
+            ))}
+          </div>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <MetricCard label="Commandes" value={kpi.orders_count} hint="Créées sur la période" />
+          <MetricCard
+            label="Chiffre d'affaires"
+            value={formatEuro(centsToEuro(kpi.revenue_cents))}
+            hint="Commandes complétées sur la période"
+          />
+          <MetricCard
+            label="Consommateurs actifs"
+            value={kpi.active_consumers}
+            hint="Au moins 1 commande passée"
+          />
+          <MetricCard
+            label="Producteurs actifs"
+            value={kpi.active_producers}
+            hint="Au moins 1 commande reçue"
+          />
+        </div>
+      </section>
+
+      {/* ─── Zone 2 — À traiter (cockpit) ────────────────────────────── */}
       <section className="mb-10">
         <h2 className="mb-4 text-[12px] font-semibold uppercase tracking-[0.18em] text-gray-600">
           À traiter
         </h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <CockpitCard
-            label="Refunds en attente"
+            label="Remboursements en attente"
             count={cockpit.refunds_pending_count}
             hint="Demandes producteur > cap, à arbitrer"
             href="/refunds/pending"
@@ -74,14 +120,14 @@ export default async function AdminDashboardPage() {
           <CockpitCard
             label="Avis à modérer"
             count={cockpit.reviews_pending_count}
-            hint="Avis consumer en attente de publication"
+            hint="Avis consommateur en attente de publication"
             href="/avis"
           />
           <CockpitCard
             label="Producteurs à valider"
             count={cockpit.producers_pending_validation_count}
             hint="Onboarding terminé, en attente de décision"
-            href="/gestion-producteurs"
+            href="/gestion-producteurs?status=pending"
           />
           <CockpitCard
             label="Publications à valider"
@@ -96,92 +142,28 @@ export default async function AdminDashboardPage() {
             href="/gestion-producteurs"
           />
           <CockpitCard
-            label="Incidents refund"
+            label="Incidents de remboursement"
             count={cockpit.refund_incidents_count}
-            hint="Refunds Stripe échoués (cron retry)"
-            href="#"
-            pending
+            hint="Remboursements Stripe échoués (cron retry)"
+            href="/refund-incidents"
           />
           <CockpitCard
             label="Invitations expirées"
             count={cockpit.invitations_expired_count}
             hint="Lien envoyé mais jamais consommé"
-            href="#"
-            pending
+            href="/invitations"
           />
         </div>
       </section>
 
-      {/* ─── Zone 2 — Santé business ─────────────────────────────────── */}
-      <section className="mb-10">
-        <h2 className="mb-4 text-[12px] font-semibold uppercase tracking-[0.18em] text-gray-600">
-          Aujourd&rsquo;hui
-        </h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <MetricCard
-            label="Commandes"
-            value={business.orders_today_count}
-            hint="Créées depuis 00:00 (heure Paris)"
-          />
-          <MetricCard
-            label="Chiffre d'affaires"
-            value={formatEuro(centsToEuro(business.revenue_today_cents))}
-            hint="Total commandes complétées"
-          />
-          <MetricCard
-            label="Nouveaux comptes"
-            value={business.new_users_today_count}
-            hint="Inscriptions consumer + producteur"
-          />
-        </div>
-      </section>
-
-      <section className="mb-10">
-        <h2 className="mb-4 text-[12px] font-semibold uppercase tracking-[0.18em] text-gray-600">
-          7 derniers jours
-        </h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <MetricCard
-            label="Commandes"
-            value={business.orders_7d_count}
-            hint="Toutes commandes créées"
-          />
-          <MetricCard
-            label="Chiffre d'affaires"
-            value={formatEuro(centsToEuro(business.revenue_7d_cents))}
-            hint="Total commandes complétées"
-          />
-          <MetricCard
-            label="Taux de complétion"
-            value={`${business.completion_rate_7d.toFixed(1).replace(".", ",")} %`}
-            hint="Commandes complétées / créées"
-          />
-          <MetricCard
-            label="Producteurs actifs"
-            value={business.active_producers_7d}
-            hint="Au moins 1 commande reçue"
-          />
-          <MetricCard
-            label="Producteurs visibles"
-            value={business.total_producers}
-            hint="Statut actif ou public"
-          />
-        </div>
-      </section>
-
+      {/* ─── Zone 3 — Conversion invitations (30 jours) ──────────────── */}
       <section className="mb-10">
         <h2 className="mb-4 text-[12px] font-semibold uppercase tracking-[0.18em] text-gray-600">
           Conversion invitations (30 derniers jours)
         </h2>
         <div className="grid gap-4 sm:grid-cols-3">
-          <MetricCard
-            label="Invitations envoyées"
-            value={conv.invitations_sent}
-          />
-          <MetricCard
-            label="Onboardings complétés"
-            value={conv.onboardings_completed}
-          />
+          <MetricCard label="Invitations envoyées" value={conv.invitations_sent} />
+          <MetricCard label="Onboardings complétés" value={conv.onboardings_completed} />
           <MetricCard
             label="Taux de conversion"
             value={
@@ -198,7 +180,7 @@ export default async function AdminDashboardPage() {
         </div>
       </section>
 
-      {/* ─── Zone 3 — Activité récente ───────────────────────────────── */}
+      {/* ─── Zone 4 — Activité récente ───────────────────────────────── */}
       <section>
         <h2 className="mb-4 text-[12px] font-semibold uppercase tracking-[0.18em] text-gray-600">
           Activité récente

@@ -1,6 +1,7 @@
 import "server-only";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { AdminDashboardData } from "./types";
+import type { DashboardPeriod } from "./period";
 
 // PR2 admin dashboard — wrapper d'appel à la RPC `get_admin_dashboard()`.
 // Server-only : la RPC est SECURITY DEFINER + service_role uniquement
@@ -11,9 +12,13 @@ import type { AdminDashboardData } from "./types";
 // serveur et on retourne null. La page consommatrice doit afficher un
 // état d'erreur lisible (pas un crash 500).
 
-export async function fetchAdminDashboard(): Promise<AdminDashboardData | null> {
+export async function fetchAdminDashboard(
+  period: DashboardPeriod = "today",
+): Promise<AdminDashboardData | null> {
   const admin = createSupabaseAdminClient();
-  const { data, error } = await admin.rpc("get_admin_dashboard");
+  const { data, error } = await admin.rpc("get_admin_dashboard", {
+    p_period: period,
+  });
 
   if (error) {
     console.error(
