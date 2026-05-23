@@ -34,7 +34,7 @@ export const ADMIN_OP_ERROR_MESSAGES: Record<string, string> = {
   no_account:
     "Cet email n'a pas de compte TerrOir. Demandez à la personne de s'inscrire comme client d'abord, puis revenez la promouvoir.",
   has_client_activity:
-    "Ce compte a déjà une activité client (commandes, avis). Utilisez une adresse dédiée à l'administration.",
+    "Ce compte a déjà une activité client (commandes ou avis) : il ne peut pas devenir administrateur. Créez un compte dédié à l'administration (avec une autre adresse email), inscrit comme client, puis promouvez-le.",
   already_suspended: "Ce compte est déjà suspendu.",
   not_suspended: "Ce compte n'est pas suspendu.",
   no_change: "Aucun changement : le niveau est déjà celui demandé.",
