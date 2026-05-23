@@ -15,7 +15,10 @@ import type { ReactNode } from "react";
 // affichaient un `<p>` d'erreur au même endroit).
 
 export type AdminPageHeaderProps = {
-  eyebrow: string;
+  // Optionnel (chantier 5) : certaines pages fournissent leur contexte de
+  // section autrement (ex: barre d'onglets Remboursements au-dessus). Non
+  // rendu si absent.
+  eyebrow?: string;
   title: string;
   subtitle?: string;
   right?: ReactNode;
@@ -32,9 +35,11 @@ export function AdminPageHeader({
   return (
     <header className="mb-8 flex flex-wrap items-end justify-between gap-4">
       <div>
-        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-terroir-green-700">
-          {eyebrow}
-        </div>
+        {eyebrow && (
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-terroir-green-700">
+            {eyebrow}
+          </div>
+        )}
         <h1 className="mt-1 font-serif text-[40px] leading-tight text-gray-900">
           {title}
         </h1>

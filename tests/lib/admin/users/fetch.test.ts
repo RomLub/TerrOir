@@ -285,6 +285,26 @@ describe("fetchAdminUsersList", () => {
     expect(notCalls[0].val).toBe("{producer}");
   });
 
+  it("roleFilter='consumer_inclusive' (chantier 5) -> .contains('roles', ['consumer'])", async () => {
+    const { admin, calls } = makeAdminMock({
+      responses: [
+        { data: [], error: null },
+        { count: 0, error: null },
+      ],
+    });
+    await fetchAdminUsersList(admin, {
+      cursor: { before: null, beforeId: null },
+      roleFilter: "consumer_inclusive",
+      q: null,
+    });
+    const containsCalls = calls.filter((c) => c.op === "contains");
+    expect(containsCalls.length).toBeGreaterThanOrEqual(2); // items + count
+    expect(containsCalls[0].col).toBe("roles");
+    expect(containsCalls[0].val).toEqual(["consumer"]);
+    // Pas de négation `.not` (syntaxe éprouvée, double-rôle inclus).
+    expect(calls.filter((c) => c.op === "not.cs")).toHaveLength(0);
+  });
+
   it("roleFilter='admin' avec admin_users vide -> rows vides sans erreur", async () => {
     const { admin } = makeAdminMock({
       responses: [

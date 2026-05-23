@@ -116,10 +116,9 @@ export function RefundIncidentsListClient({
   const nextHref = buildPaginationUrl();
 
   return (
-    <div>
+    <div className="px-6 pb-6 pt-4">
       <AdminPageHeader
-        eyebrow="Refunds"
-        title="Incidents refund"
+        title="Incidents techniques"
         subtitle={`${initialTotal} incident${initialTotal > 1 ? "s" : ""} (${getStatusFilterDescription(initialStatusFilter)})`}
         error={initialError}
       />

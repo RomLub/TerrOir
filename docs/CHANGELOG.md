@@ -9,6 +9,24 @@ Pour les décisions structurantes (ADRs), voir [`decisions/`](./decisions/).
 
 ---
 
+## 2026-05-23 (Refonte admin — Chantier 5 : Consommateurs)
+
+> PR `feature/chantier-5-consommateurs`. Réorganisation de la section Consommateurs : fusion des remboursements, page comptes consommateurs, factorisation des queries.
+>
+> 🟢 **Remboursements fusionnés** : une seule section à deux onglets (`RefundsTabNav`) — « Demandes à arbitrer » (`/refunds/pending`) + « Incidents techniques » (`/refund-incidents`). Onglets implémentés comme deux routes (deep-linkables, back-button natif) plutôt qu'un état JS. Sidebar : une seule entrée « Remboursements » avec **badge agrégé** (demandes en attente + incidents actifs pending/retrying), calculé par `fetchRefundsBadgeCount`.
+>
+> 🟢 **Comptes consommateurs** (nouvelle page `/comptes-consommateurs`) : set `consumer_inclusive` = tout compte ayant le rôle consommateur, **double-rôle producteur+conso inclus** (présents ici ET dans /gestion-producteurs). Vérifié en prod : 10/12 comptes sont double-rôle — le filtre strict « non-producteur » n'en aurait montré que 2. Réutilise le détail partagé `/users/[id]` (pas de split de la route détail → zéro ré-câblage des liens). Badge « Aussi producteur » pour signaler le double-rôle.
+>
+> 🟢 **Factorisation queries** : `lib/admin/orders/fetch.ts` (suivi commandes) + `lib/admin/refunds/fetch.ts` (demandes), extraites des pages inline (testabilité, cohérence lib/admin/*).
+>
+> 🟢 **Utilisateurs → Gouvernance** : l'entrée `/users` (vue toutes-rôles, défaut `?role=admin`) passe sous Gouvernance. **Bridge transitoire** : la suppression effective de `/users` est reportée au chantier 6 (Page Admins) pour la coupler atomiquement à sa page de remplacement « Administrateurs » — évite un split de la route détail partagée + une fenêtre sans vue admin.
+>
+> 🟢 `AdminPageHeader.eyebrow` rendu optionnel (la section fournit son contexte via la barre d'onglets).
+>
+> 🟢 Tests : helpers refunds/orders (mapping + agrégation badge), `consumer_inclusive` (contains, pas de négation OR), page comptes consommateurs, `RefundsTabNav` (onglets + actif), sidebar (nav chantier 5). Pas de migration. lint/type-check/build OK, `npm test` vert (2879).
+
+---
+
 ## 2026-05-23 (Refonte admin — Chantier 4 : gestion producteurs UI)
 
 > PR `feature/chantier-4-gestion-producteurs`. Refonte du tableau de la page admin /gestion-producteurs (orientation contact + fix deep-link).

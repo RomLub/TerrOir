@@ -77,14 +77,14 @@ export function PendingRefundsClient({ rows }: { rows: Row[] }) {
   const decidedRows = rows.filter((r) => r.status !== "pending");
 
   return (
-    <div className="p-6">
-      <header className="mb-6 border-b border-gray-200 pb-4">
+    <div className="px-6 pb-6 pt-4">
+      <header className="mb-6">
         <h1 className="font-serif text-2xl text-gray-900">
-          Refunds en attente d&rsquo;approbation
+          Demandes à arbitrer
         </h1>
         <p className="mt-2 text-sm text-gray-600">
-          Producteurs ayant demandé un refund au-delà du plafond. Approbation
-          déclenche le refund Stripe immédiat.
+          Producteurs ayant demandé un remboursement au-delà du plafond.
+          L&rsquo;approbation déclenche le remboursement Stripe immédiat.
         </p>
       </header>
 

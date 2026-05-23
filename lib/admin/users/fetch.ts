@@ -37,8 +37,10 @@ export const ADMIN_USERS_PAGE_SIZE = PAGE_SIZE;
 
 export type FetchAdminUsersOptions = {
   cursor: ParsedCursor;
-  // 'all' = pas de filtre rôle ; sinon filtre exact côté DB.
-  roleFilter: "all" | AdminUserRole;
+  // 'all' = pas de filtre rôle ; sinon filtre côté DB.
+  // 'consumer_inclusive' (chantier 5) = set « comptes consommateurs » : tout
+  // compte ayant le rôle 'consumer' (inclut les double-rôle producteur+conso).
+  roleFilter: "all" | AdminUserRole | "consumer_inclusive";
   // Recherche email — ILIKE %q% (case insensitive). null/undefined = pas
   // de filtre. Wildcards Postgres neutralisés côté helper.
   q: string | null;
@@ -106,6 +108,16 @@ export async function fetchAdminUsersList(
     // les users non-producer.
     itemsQuery = itemsQuery.not("roles", "cs", "{producer}");
     countQuery = countQuery.not("roles", "cs", "{producer}");
+  } else if (opts.roleFilter === "consumer_inclusive") {
+    // Chantier 5 — set « comptes consommateurs » : tout compte ayant le rôle
+    // 'consumer'. Tout compte en reçoit un au signup, donc ce filtre inclut
+    // les comptes producteur+consommateur (double rôle → présents ici ET dans
+    // /gestion-producteurs), conformément au spec. La clause spec « OR roles
+    // ne contient pas producer » est un no-op sous l'invariant signup
+    // (vérifié : 0 compte sans rôle consumer). `cs` (contains) = syntaxe
+    // éprouvée (cf. filtre producer ci-dessus), pas de négation dans un OR.
+    itemsQuery = itemsQuery.contains("roles", ["consumer"]);
+    countQuery = countQuery.contains("roles", ["consumer"]);
   }
 
   const finalItemsQuery = applyCursor(itemsQuery, opts.cursor)
