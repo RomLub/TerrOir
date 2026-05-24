@@ -19,12 +19,11 @@ import type { Lead } from "./_components/types";
 //
 // Mutations : passent par les API routes /api/admin/producer-interests/[id]
 // + /[id]/statut. Audit log obligatoire côté serveur.
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
-// Coquille synchrone : la liste des leads (fetch service_role) est streamée
-// via <Suspense> pour que le shell admin reste fixe.
-export default async function AdminProducerInterestsPage() {
+// Coquille SYNCHRONE (streaming Suspense) : aucun accès dynamique en tête, la liste
+// des leads (fetch service_role) est streamée via <Suspense> pour que le shell
+// admin soit rendu tout de suite (Suspense).
+export default function AdminProducerInterestsPage() {
   return (
     <Suspense fallback={<ListSkeleton rows={8} />}>
       <ProducerInterestsContent />

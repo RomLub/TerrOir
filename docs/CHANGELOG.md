@@ -9,6 +9,22 @@ Pour les décisions structurantes (ADRs), voir [`decisions/`](./decisions/).
 
 ---
 
+## 2026-05-25 (Perf — navigation instantanée : cadre persistant, fin de l'écran intermédiaire)
+
+> PR `perf/instant-navigation`. Supprime l'écran de chargement plein écran affiché à chaque clic dans les espaces connectés (acheteur/compte, producteur, admin). Approche standard « comme Amazon/Gmail » — voir [ADR-0013](./decisions/0013-latence-navigation-streaming-suspense.md) (mise à jour 2026-05-25).
+>
+> 🟢 **Cadre persistant** : suppression des `loading.tsx` de groupe (producer/admin/compte) → le layout (navbar/sidebar) reste affiché en permanence, au clic **seul le contenu se rafraîchit** (Suspense + pattern Gate : page synchrone, session/searchParams/fetch lus dans le flux). 29 pages acheteur + admin converties ; le producteur (déjà Gate via #184) profite de la suppression de son `loading.tsx`.
+>
+> 🟡 **cacheComponents (PPR Next 16) ÉVALUÉ puis ÉCARTÉ** : conflit avec la CSP nonce par requête (incompatible avec un shell statique) + nécessiterait de revoir la fondation d'auth (flash d'état connecté) + les pages connectées ne doivent PAS être mises en cache (vie privée, fuite inter-utilisateur). On garde l'approche standard. Détail dans ADR-0013.
+>
+> 🟢 **Vie privée / sécurité** : aucune page connectée mise en cache. Auth (getClaims) + CSP inchangés.
+>
+> 🟢 **Méthode** : Agent Teams (équipiers acheteur / admin + corrections de tests) coordonnés par le lead.
+>
+> 🟢 Tests : 7 fichiers de tests pages adaptés au pattern Gate (résolution Gate→Content, assertions métier inchangées). lint / type-check / build OK, `npm test` vert (3109).
+
+---
+
 ## 2026-05-24 (Perf — latence navigation : streaming Suspense + getClaims)
 
 > PR `perf/latence-navigation`. Supprime le skeleton plein écran qui clignotait de façon furtive entre deux clics + réduit la latence de navigation perçue. Voir [ADR-0013](./decisions/0013-latence-navigation-streaming-suspense.md). Constat audit : la base répond en 20-30 ms ; le coût était dans la vérification de session (appel réseau par requête) et le rendu dynamique sans préfetch, pas dans les données.

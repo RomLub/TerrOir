@@ -24,8 +24,6 @@ import { SectionSkeleton } from "../_components/ContentSkeletons";
 // donc ici ET dans /gestion-producteurs). Visualisation seule (pas de WRITE).
 //
 // Auth gardée par app/(admin)/layout.tsx (redirect /connexion si !isAdmin).
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
 type SearchParams = {
   before?: string;
@@ -44,14 +42,35 @@ const ROLE_BADGE: Record<
   admin: { label: "Admin", variant: "danger" },
 };
 
-// Coquille synchrone : l'en-tête + le formulaire de recherche s'affichent
-// immédiatement (le shell admin reste fixe), la liste (fetch service_role) est
-// streamée via <Suspense>. Le sous-titre « N comptes » dépend du fetch, il vit
-// donc dans le contenu streamé.
-export default async function AdminComptesConsommateursPage(props: {
+// Coquille SYNCHRONE (streaming Suspense) : aucun accès dynamique en tête. Seul
+// l'en-tête (statique) reste dans le shell ; le formulaire de recherche dépend
+// de `q` (searchParams) et le sous-titre « N comptes » dépend du fetch — les
+// deux vivent donc dans le contenu streamé via <Suspense>.
+export default function AdminComptesConsommateursPage(props: {
   searchParams: Promise<SearchParams>;
 }) {
-  const sp = await props.searchParams;
+  return (
+    <div>
+      <AdminPageHeader
+        eyebrow="Consommateurs"
+        title="Comptes consommateurs"
+      />
+
+      <Suspense fallback={<SectionSkeleton rows={8} />}>
+        <ComptesGate searchParams={props.searchParams} />
+      </Suspense>
+    </div>
+  );
+}
+
+// Gate DANS le <Suspense> : await + parse du searchParams (q + cursor), rend le
+// formulaire de recherche (defaultValue dépend de q) puis délègue à la liste.
+async function ComptesGate({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
+  const sp = await searchParams;
   const q = (sp.q ?? "").trim();
 
   const cursor = parseCursor({
@@ -61,12 +80,7 @@ export default async function AdminComptesConsommateursPage(props: {
   });
 
   return (
-    <div>
-      <AdminPageHeader
-        eyebrow="Consommateurs"
-        title="Comptes consommateurs"
-      />
-
+    <>
       <form
         method="get"
         action="/comptes-consommateurs"
@@ -95,10 +109,8 @@ export default async function AdminComptesConsommateursPage(props: {
         ) : null}
       </form>
 
-      <Suspense fallback={<SectionSkeleton rows={8} />}>
-        <ComptesContent cursor={cursor} q={q} />
-      </Suspense>
-    </div>
+      <ComptesContent cursor={cursor} q={q} />
+    </>
   );
 }
 

@@ -44,18 +44,25 @@ vi.mock(
 
 import AdminProducteursPage from "@/app/(admin)/gestion-producteurs/page";
 
-// Lot B perf : la page retourne désormais <Suspense><ProducteursContent/></Suspense>.
-// La logique data (fetch + props client) vit dans ProducteursContent (async).
-// resolveContent extrait l'enfant <ProducteursContent> du <Suspense> rendu par
-// la page (donc on teste toujours le parsing searchParams réel de la page),
-// puis l'exécute pour obtenir le <GestionProducteursClient /> final.
+// Lot B perf (pattern Gate) : la page retourne désormais
+// <Suspense><ProducteursGate/></Suspense>. Le Gate (async) await + parse le
+// searchParams puis retourne <ProducteursContent/> (async) qui fait le fetch +
+// propage les props au client. resolveContent traverse donc DEUX couches :
+//   1. enfant du <Suspense> = <ProducteursGate/>  → exécuté → <ProducteursContent/>
+//   2. <ProducteursContent/>                       → exécuté → <GestionProducteursClient/>
+// On teste ainsi le parsing searchParams réel (dans le Gate) ET la propagation
+// des props (dans le Content).
 async function resolveContent(pageNode: ReactElement): Promise<ReactElement> {
-  const content = (pageNode.props as { children?: ReactElement }).children;
-  if (!content) throw new Error("Suspense child (content) introuvable");
-  const Comp = content.type as (
+  const gate = (pageNode.props as { children?: ReactElement }).children;
+  if (!gate) throw new Error("Suspense child (gate) introuvable");
+  const Gate = gate.type as (
     props: unknown,
   ) => Promise<ReactElement> | ReactElement;
-  return (await Comp(content.props)) as ReactElement;
+  const content = (await Gate(gate.props)) as ReactElement;
+  const Content = content.type as (
+    props: unknown,
+  ) => Promise<ReactElement> | ReactElement;
+  return (await Content(content.props)) as ReactElement;
 }
 
 function getClientProps(node: ReactElement): Record<string, unknown> {

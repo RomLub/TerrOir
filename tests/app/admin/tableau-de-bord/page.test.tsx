@@ -57,21 +57,28 @@ const SAMPLE_DATA: AdminDashboardData = {
   ],
 };
 
-// Lot B perf : la page retourne désormais <Suspense><AdminDashboardContent/></Suspense>.
-// renderToStaticMarkup ne résout pas les Server Components async sous Suspense
-// (il rendrait le skeleton). On extrait donc l'enfant <AdminDashboardContent>
-// du <Suspense> rendu par la page (on teste toujours le parsing period réel),
-// puis on l'exécute pour obtenir le markup data.
+// Lot B perf (pattern Gate) : la page synchrone retourne
+// <Suspense><AdminDashboardGate/></Suspense>. Le Gate (async) await + parse le
+// `period` puis retourne <AdminDashboardContent/> (async) qui fait le RPC + rend
+// les zones. renderToStaticMarkup ne résout pas les Server Components async sous
+// Suspense, donc on traverse DEUX couches manuellement :
+//   1. enfant du <Suspense> = <AdminDashboardGate/> → exécuté → <AdminDashboardContent/>
+//   2. <AdminDashboardContent/>                      → exécuté → markup data
+// On teste ainsi le parsing period réel (dans le Gate) ET le rendu des zones.
 async function renderPage(period?: string): Promise<string> {
   const page = (await AdminDashboardPage({
     searchParams: Promise.resolve(period ? { period } : {}),
   })) as ReactElement;
-  const content = (page.props as { children?: ReactElement }).children;
-  if (!content) throw new Error("Suspense child (content) introuvable");
-  const Comp = content.type as (
+  const gate = (page.props as { children?: ReactElement }).children;
+  if (!gate) throw new Error("Suspense child (gate) introuvable");
+  const Gate = gate.type as (
     props: unknown,
   ) => Promise<ReactElement> | ReactElement;
-  const resolved = (await Comp(content.props)) as ReactElement;
+  const content = (await Gate(gate.props)) as ReactElement;
+  const Content = content.type as (
+    props: unknown,
+  ) => Promise<ReactElement> | ReactElement;
+  const resolved = (await Content(content.props)) as ReactElement;
   return renderToStaticMarkup(resolved);
 }
 

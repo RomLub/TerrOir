@@ -18,8 +18,6 @@ import { SectionSkeleton } from "../_components/ContentSkeletons";
 // Chantier 9 — boîte mails admin (top niveau). Onglets Producteurs /
 // Consommateurs / Public (tag automatique de l'expéditeur). Lecture seule de
 // la table inbound_emails (alimentée par le cron IMAP).
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
 function parseTag(raw: string | undefined): InboundTag {
   return (INBOUND_TAGS as string[]).includes(raw ?? "")
@@ -27,14 +25,13 @@ function parseTag(raw: string | undefined): InboundTag {
     : "producteur";
 }
 
-// Coquille synchrone : l'en-tête s'affiche immédiatement (shell admin fixe),
-// les onglets (avec compteurs non-lus) + la liste sont streamés via <Suspense>.
-export default async function AdminMailsPage(props: {
+// Coquille SYNCHRONE (streaming Suspense) : aucun accès dynamique en tête.
+// L'en-tête (statique) s'affiche immédiatement (shell admin fixe), le
+// searchParams (`tag`) est lu DANS le Gate. Les onglets (avec compteurs non-lus)
+// + la liste sont streamés via <Suspense>.
+export default function AdminMailsPage(props: {
   searchParams: Promise<{ tag?: string }>;
 }) {
-  const sp = await props.searchParams;
-  const tag = parseTag(sp.tag);
-
   return (
     <div>
       <AdminPageHeader
@@ -44,10 +41,22 @@ export default async function AdminMailsPage(props: {
       />
 
       <Suspense fallback={<SectionSkeleton rows={8} />}>
-        <MailsContent tag={tag} />
+        <MailsGate searchParams={props.searchParams} />
       </Suspense>
     </div>
   );
+}
+
+// Gate DANS le <Suspense> : await + parse du searchParams (tag), puis délègue au
+// contenu data.
+async function MailsGate({
+  searchParams,
+}: {
+  searchParams: Promise<{ tag?: string }>;
+}) {
+  const sp = await searchParams;
+  const tag = parseTag(sp.tag);
+  return <MailsContent tag={tag} />;
 }
 
 async function MailsContent({ tag }: { tag: InboundTag }) {

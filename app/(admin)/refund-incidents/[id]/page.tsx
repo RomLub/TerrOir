@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
@@ -11,6 +12,7 @@ import {
 } from "@/lib/admin/refund-incidents/types";
 import { AdminPageHeader } from "@/components/ui";
 import { formatDateFr } from "@/lib/format/date";
+import { ListSkeleton } from "../../_components/ContentSkeletons";
 import { ResolveIncidentModalLauncher } from "./_components/ResolveIncidentModal";
 
 // Page admin /refund-incidents/[id] (PR3 feature/admin-new-surfaces —
@@ -20,7 +22,6 @@ import { ResolveIncidentModalLauncher } from "./_components/ResolveIncidentModal
 //
 // Server Component force-dynamic + service_role (cohérent pattern PR1).
 // Auth gardée par app/(admin)/layout.tsx.
-export const dynamic = "force-dynamic";
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -43,7 +44,18 @@ function formatDateTimeFr(iso: string | null | undefined): string {
   });
 }
 
-export default async function AdminRefundIncidentDetailPage(props: Props) {
+// Coquille SYNCHRONE (streaming Suspense) : aucun accès dynamique en tête (params +
+// fetch sont DANS le Gate). Le titre dépend de la donnée fetchée, donc tout le
+// contenu est streamé via <Suspense>.
+export default function AdminRefundIncidentDetailPage(props: Props) {
+  return (
+    <Suspense fallback={<ListSkeleton rows={4} />}>
+      <RefundIncidentDetailGate params={props.params} />
+    </Suspense>
+  );
+}
+
+async function RefundIncidentDetailGate(props: Props) {
   const { id } = await props.params;
   const admin = createSupabaseAdminClient();
 

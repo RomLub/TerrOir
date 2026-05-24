@@ -17,8 +17,6 @@ import { SectionSkeleton } from "../_components/ContentSkeletons";
 // au détail pour soumettre des preuves.
 //
 // Auth gardée par app/(admin)/layout.tsx (redirect /connexion si !isAdmin).
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
 const STATUS_VARIANT: Record<DisputeStatus, "green" | "terra" | "danger" | "gray"> = {
   needs_response: "terra",
@@ -30,9 +28,10 @@ const STATUS_VARIANT: Record<DisputeStatus, "green" | "terra" | "danger" | "gray
   warning_closed: "gray",
 };
 
-// Coquille synchrone : l'en-tête s'affiche immédiatement (shell admin fixe),
-// la liste des litiges est streamée via <Suspense>.
-export default async function AdminLitigesPage() {
+// Coquille SYNCHRONE (streaming Suspense) : aucun accès dynamique en tête,
+// l'en-tête s'affiche immédiatement (shell admin fixe), la liste des litiges est
+// streamée via <Suspense>.
+export default function AdminLitigesPage() {
   return (
     <div>
       <AdminPageHeader eyebrow="Gouvernance" title="Litiges" />

@@ -1,6 +1,6 @@
 # ADR-0013 — Latence de navigation : getClaims + streaming Suspense maintenant, cacheComponents différé
 
-- **Statut** : Accepted (migration cacheComponents : Deferred)
+- **Statut** : Accepted (migration cacheComponents : **Rejected** — cf. mise à jour 2026-05-25 en fin de document)
 - **Date** : 2026-05-24
 - **Décideurs** : Romain (constat terrain + arbitrage risque) + CC (audit + proposition + pushback)
 
@@ -87,3 +87,53 @@ une étape plus petite et plus sûre, pas un big-bang.
   invalidation par tag (staleness ≤ 5 min sur une page éducative, acceptée) ;
   l'invalidation immédiate sera câblée lors du chantier cacheComponents (via
   `updateTag`).
+
+---
+
+## Mise à jour (2026-05-25) — cacheComponents évalué puis ÉCARTÉ ; approche standard adoptée
+
+Le « chantier cacheComponents » mentionné en décision n°3 a été **tenté pour de
+vrai** (flag activé, build de diagnostic complet, migration partielle), puis
+**abandonné** au profit de l'approche standard des gros sites. Statut de la
+décision n°3 : **Deferred → Rejected**.
+
+### Pourquoi cacheComponents est écarté
+
+Au-delà de l'ampleur déjà notée (~50 fichiers, toute la couche auth), deux
+blocages de fond sont apparus, plus une confirmation de l'état de l'art :
+
+1. **Conflit avec la CSP nonce.** TerrOir génère un nonce CSP **par requête**
+   (middleware). Une page **statiquement prérendue** ne peut pas porter un nonce
+   régénéré à chaque requête → `cacheComponents` (shell statique) est
+   incompatible avec l'approche CSP nonce actuelle. La résoudre imposerait de
+   modifier le dispositif de sécurité CSP.
+2. **Fondation d'auth + flash.** Le `RootLayout` fournit l'état de session à
+   toute l'UI via `getInitialUserPayload()` (lecture cookies). Pour des shells
+   statiques, cette lecture devrait basculer côté client → **flash d'état
+   connecté** au premier rendu de chaque page.
+3. **Vie privée (état de l'art).** Les gros sites ne mettent pas en cache / ne
+   pré-construisent pas les pages connectées : une page connectée mise en cache
+   puis resservie fuiterait des données entre utilisateurs. Règle standard :
+   « bypass cache pour tout utilisateur connecté ». `cacheComponents` poussait
+   dans la direction opposée.
+
+### Approche adoptée (standard, « comme Amazon/Gmail »)
+
+- **Pages publiques** : cache (`revalidate`) + streaming (état Lots B/C,
+  inchangé) ; pré-chargées par Next quand statiques.
+- **Espaces connectés** (acheteur / producteur / admin) : **non mis en cache**
+  (vie privée). Suppression de l'**écran de chargement plein écran**
+  (`loading.tsx` de groupe) → le **cadre (layout) reste affiché en permanence**
+  (non re-rendu entre pages sœurs), au clic **seul le contenu se rafraîchit**
+  (Suspense + pattern Gate : page synchrone, lecture session/searchParams/fetch
+  dans le flux). Ressenti « app » sans cache de données privées.
+- **Aucun changement** sur la fondation d'auth ni sur la CSP. Pas de flash
+  d'état connecté ajouté.
+
+### Conséquences de la mise à jour
+
+- ✅ Disparition de l'écran intermédiaire au clic dans les espaces connectés.
+- ✅ Sécurité / vie privée préservées (aucune page connectée mise en cache).
+- ✅ lint + type-check + build + `npm test` (3109) verts.
+- 🚫 Ne PAS réactiver `cacheComponents` sans résoudre d'abord (1) la CSP nonce et
+  (2) la fondation d'auth, et en gardant les pages connectées hors cache.

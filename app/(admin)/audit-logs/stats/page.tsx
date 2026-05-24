@@ -19,12 +19,11 @@ import { SectionSkeleton } from "../../_components/ContentSkeletons";
 // `/audit-logs` avec date_from / date_to + filtre `admin_invite_sent` pour
 // affiner ad-hoc.
 
-export const dynamic = "force-dynamic";
 
-// Coquille synchrone : l'en-tête + la note explicative s'affichent
-// immédiatement (shell admin fixe), les métriques (agrégation count) sont
-// streamées via <Suspense>.
-export default async function AuditLogsStatsPage() {
+// Coquille SYNCHRONE (streaming Suspense) : aucun accès dynamique en tête,
+// l'en-tête + la note explicative s'affichent immédiatement (shell admin fixe),
+// les métriques (agrégation count) sont streamées via <Suspense>.
+export default function AuditLogsStatsPage() {
   return (
     <div>
       <AdminPageHeader

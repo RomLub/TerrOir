@@ -45,43 +45,42 @@ import AdminRefundIncidentsPage, {
 
 // Chantier 5 — la page enveloppe le client dans un Fragment avec
 // <RefundsTabNav> (onglets Remboursements).
-// Lot B perf — le client est désormais streamé : le Fragment contient
-// <RefundsTabNav> + <Suspense><RefundIncidentsContent cursor statusFilter/></Suspense>.
-// resolveContent extrait les props de <RefundIncidentsContent> du tree (donc on
-// teste le parsing searchParams réel de la page), puis exécute le contenu pour
-// obtenir le <RefundIncidentsListClient /> final.
-function findContentProps(
+// Lot B perf (pattern Gate) — le Fragment contient <RefundsTabNav> +
+// <Suspense><RefundIncidentsGate searchParams/></Suspense>. Le Gate (async)
+// await + parse le searchParams puis retourne <RefundIncidentsContent/> (async)
+// qui fait le fetch + retourne le <RefundIncidentsListClient/> final.
+// findGate extrait le <RefundIncidentsGate/> du <Suspense> ; getClientProps
+// exécute Gate → Content → client pour récupérer les props du client (on teste
+// donc le parsing searchParams réel + la propagation des props).
+function findGate(
   result: ReactElement & { props: Record<string, unknown> },
-): Record<string, unknown> {
+): ReactElement {
   const children = (result.props as { children?: unknown }).children;
   const arr = (Array.isArray(children) ? children : [children]).flat();
-  // L'enfant <Suspense> porte le <RefundIncidentsContent> dans ses children.
+  // L'enfant <Suspense> porte le <RefundIncidentsGate> dans ses children.
   for (const c of arr) {
     if (!c || typeof c !== "object") continue;
     const el = c as ReactElement & { props?: { children?: unknown } };
     const inner = el.props?.children as
-      | (ReactElement & {
-          type?: { name?: string };
-          props?: Record<string, unknown>;
-        })
+      | (ReactElement & { type?: unknown })
       | undefined;
-    if (
-      inner &&
-      typeof inner.type === "function" &&
-      (inner.type as { name?: string }).name === "RefundIncidentsContent"
-    ) {
-      return inner.props as Record<string, unknown>;
+    if (inner && typeof inner.type === "function") {
+      return inner;
     }
   }
-  throw new Error("RefundIncidentsContent introuvable dans le Fragment");
+  throw new Error("RefundIncidentsGate introuvable dans le Fragment");
 }
 
 async function getClientProps(
   result: ReactElement & { props: Record<string, unknown> },
 ): Promise<Record<string, unknown>> {
-  const contentProps = findContentProps(result);
+  const gate = findGate(result);
+  const Gate = gate.type as (
+    props: unknown,
+  ) => Promise<ReactElement> | ReactElement;
+  const content = (await Gate(gate.props)) as ReactElement;
   const client = (await RefundIncidentsContent(
-    contentProps as Parameters<typeof RefundIncidentsContent>[0],
+    content.props as Parameters<typeof RefundIncidentsContent>[0],
   )) as ReactElement & { props: Record<string, unknown> };
   return client.props;
 }

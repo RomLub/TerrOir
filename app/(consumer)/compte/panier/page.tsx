@@ -7,8 +7,6 @@ import { PanierClient } from './PanierClient';
 // contenu du panier (pas de table cart_items persistée). La validation
 // /api/cart/validate au mount reste légitime (seule façon de détecter les
 // items orphelins post-hydratation).
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
 
 export default function PanierPage() {
   return (

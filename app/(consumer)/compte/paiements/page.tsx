@@ -14,13 +14,12 @@ import PaymentMethodsList, {
 // uniquement au 1er "Ajouter une carte" (createSetupIntentAction → getOrCreate).
 // Donc un user qui n'a jamais payé ni ajouté de carte n'a pas de customer_id
 // en base et voit l'état vide.
-// Coquille synchrone : l'en-tête s'affiche immédiatement (post-garde), la
-// liste des moyens de paiement (lookup Supabase + appels Stripe) est streamée
-// via <Suspense> — c'est le fetch le plus lent de la zone /compte.
-export default async function PaiementsPage() {
-  const session = await getSessionUser();
-  if (!session) redirect("/connexion");
-
+// Coquille SYNCHRONE (streaming Suspense) : l'en-tête (chrome statique) s'affiche
+// immédiatement, AUCUN await en tête de page. La garde session est déplacée
+// DANS le flux (PaiementsGate, sous <Suspense>) ; la liste des moyens de
+// paiement (lookup Supabase + appels Stripe) reste streamée — c'est le fetch
+// le plus lent de la zone /compte.
+export default function PaiementsPage() {
   return (
     <main className="mx-auto max-w-2xl">
       <header className="mb-8">
@@ -36,10 +35,17 @@ export default async function PaiementsPage() {
       </header>
 
       <Suspense fallback={<SectionSkeleton rows={2} />}>
-        <PaiementsContent userId={session.id} />
+        <PaiementsGate />
       </Suspense>
     </main>
   );
+}
+
+async function PaiementsGate() {
+  const session = await getSessionUser();
+  if (!session) redirect("/connexion");
+
+  return <PaiementsContent userId={session.id} />;
 }
 
 async function PaiementsContent({ userId }: { userId: string }) {
