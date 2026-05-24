@@ -44,6 +44,23 @@ describe("POST /api/public/siret/verify", () => {
     expect(await res.json()).toEqual({ ok: true, found: true, legalName: "FERME X" });
   });
 
+  it("transmet la forme juridique déduite", async () => {
+    h.verify.mockResolvedValueOnce({
+      ok: true,
+      found: true,
+      legalName: "ARC LUDIS",
+      formeJuridique: "sas",
+    });
+    const res = await POST(req({ siret: SIRET }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      ok: true,
+      found: true,
+      legalName: "ARC LUDIS",
+      formeJuridique: "sas",
+    });
+  });
+
   it("introuvable → 200 found:false", async () => {
     h.verify.mockResolvedValueOnce({ ok: true, found: false });
     const res = await POST(req({ siret: SIRET }));

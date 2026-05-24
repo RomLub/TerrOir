@@ -11,11 +11,29 @@
 // sens RGPD) : pas de contrainte de la doctrine garde-fou-cp. On passe quand
 // même par POST côté route + rate-limit (protection de l'API amont).
 
+import type { FormeJuridique } from "@/lib/auth/validators";
+
 const ENDPOINT = "https://recherche-entreprises.api.gouv.fr/search";
 const DEFAULT_TIMEOUT_MS = 6_000;
 
+// Catégorie juridique INSEE (niveau III, champ `nature_juridique`) → option du
+// formulaire. Codes vérifiés sur l'API : EI=1000, SAS=5710/SASU=5720,
+// SARL=5499/EURL=5498, GAEC=6533, EARL=6598, SCEA=6597. Code inconnu → on ne
+// présélectionne rien (l'utilisateur choisit). Présélection indicative,
+// modifiable.
+const NATURE_TO_FORME: Record<string, FormeJuridique> = {
+  "1000": "ei",
+  "5710": "sas",
+  "5720": "sas",
+  "5499": "sarl",
+  "5498": "sarl",
+  "6533": "gaec",
+  "6598": "earl",
+  "6597": "scea",
+};
+
 export type SiretVerification =
-  | { ok: true; found: true; legalName: string }
+  | { ok: true; found: true; legalName: string; formeJuridique?: FormeJuridique }
   | { ok: true; found: false }
   | { ok: false; code: "invalid_format" | "network" | "timeout" };
 
@@ -24,6 +42,7 @@ type FetchLike = typeof fetch;
 type SearchResult = {
   nom_complet?: string;
   nom_raison_sociale?: string;
+  nature_juridique?: string;
   siege?: { siret?: string };
   matching_etablissements?: Array<{ siret?: string }>;
 };
@@ -61,7 +80,10 @@ export async function verifySiret(
     if (!match) return { ok: true, found: false };
 
     const legalName = (match.nom_complet ?? match.nom_raison_sociale ?? "").trim();
-    return { ok: true, found: true, legalName };
+    const formeJuridique = match.nature_juridique
+      ? NATURE_TO_FORME[match.nature_juridique]
+      : undefined;
+    return { ok: true, found: true, legalName, formeJuridique };
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") {
       return { ok: false, code: "timeout" };
