@@ -1,10 +1,11 @@
 import { redirect } from "next/navigation";
-import { NavbarPublic, Footer } from "@/components/ui";
+import { Footer } from "@/components/ui";
 import { getSessionUser } from "@/lib/auth/session";
 import { Sidebar } from "./_components/Sidebar";
+import { ConsumerHeader } from "./_components/ConsumerHeader";
 
 // Layout partagé pour /compte/* :
-// - NavbarPublic en haut, Footer en bas (mutualisés depuis chaque page)
+// - ConsumerHeader (barre épurée, parité producteur) en haut, Footer en bas
 // - Sidebar de navigation interne à gauche en md+, scroll horizontal en haut
 //   sur mobile
 //
@@ -22,7 +23,7 @@ export default async function CompteLayout({
 
   return (
     <div className="flex min-h-screen flex-col bg-terroir-bg">
-      <NavbarPublic />
+      <ConsumerHeader />
       <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 md:py-10">
         <div className="grid gap-6 md:grid-cols-[220px_1fr]">
           <Sidebar />
