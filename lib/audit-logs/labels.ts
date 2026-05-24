@@ -83,6 +83,8 @@ export const AUDIT_EVENT_LABELS: Record<string, string> = {
   stripe_dispute: "Stripe : litige ouvert",
   stripe_dispute_deadline_warning: "Stripe : alerte deadline litige",
   stripe_dispute_deadline_missed: "Stripe : deadline litige dépassée",
+  stripe_dispute_evidence_saved: "Litige : preuves enregistrées (brouillon)",
+  stripe_dispute_evidence_submitted: "Litige : preuves soumises à Stripe",
   stripe_transfer_failed: "Stripe : échec transfer",
   stripe_transfer_initiated: "Stripe : transfer initié",
   stripe_payout_failed: "Stripe : échec payout",

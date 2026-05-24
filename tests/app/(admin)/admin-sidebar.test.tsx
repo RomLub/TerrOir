@@ -166,6 +166,21 @@ describe("AdminSidebar — section Consommateurs / Gouvernance (chantier 5)", ()
     const html = render();
     expect(isActive(html, "/invitations")).toBe(true);
   });
+
+  it("chantier 8 : entrée Litiges sous Gouvernance", () => {
+    currentPathname = "/tableau-de-bord";
+    const html = render();
+    expect(html).toContain('href="/litiges"');
+    expect(html).toContain("Litiges");
+    const gouvIdx = html.indexOf(">Gouvernance</li>");
+    expect(html.indexOf('href="/litiges"')).toBeGreaterThan(gouvIdx);
+  });
+
+  it("active state sur /litiges (et détail)", () => {
+    currentPathname = "/litiges/abc";
+    const html = render();
+    expect(isActive(html, "/litiges")).toBe(true);
+  });
 });
 
 describe("AdminSidebar — regroupement Référentiels (chantier 7)", () => {
