@@ -3,9 +3,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // Chantier 6 — getSessionUser + isSuperAdmin : un admin suspendu n'est plus
 // admin ; super_admin actif → isSuperAdmin. Sécu critique (gate des actions).
 
+// Perf (Lot A) : getSessionUser() vérifie la session via auth.getClaims()
+// (validation locale du JWT) et non plus getUser(). serverState.claims porte
+// la shape des claims (sub→id, email) ; null = pas de session (fail-closed).
 const { serverState, adminState } = vi.hoisted(() => ({
   serverState: {
-    user: { id: "u1", email: "a@x.fr" } as { id: string; email: string } | null,
+    claims: { sub: "u1", email: "a@x.fr", iat: 1_700_000_000 } as
+      | { sub: string; email?: string; iat: number }
+      | null,
     usersData: null as unknown,
     adminData: null as unknown,
   },
@@ -14,7 +19,12 @@ const { serverState, adminState } = vi.hoisted(() => ({
 
 vi.mock("@/lib/supabase/server", () => ({
   createSupabaseServerClient: async () => ({
-    auth: { getUser: async () => ({ data: { user: serverState.user }, error: null }) },
+    auth: {
+      getClaims: async () =>
+        serverState.claims
+          ? { data: { claims: serverState.claims }, error: null }
+          : { data: null, error: null },
+    },
     from: (table: string) => {
       const b: Record<string, unknown> = {};
       b.select = () => b;
@@ -48,7 +58,7 @@ vi.mock("@/lib/supabase/admin", () => ({
 import { getSessionUser, isSuperAdmin, isAdmin } from "@/lib/auth/session";
 
 beforeEach(() => {
-  serverState.user = { id: "u1", email: "a@x.fr" };
+  serverState.claims = { sub: "u1", email: "a@x.fr", iat: 1_700_000_000 };
   serverState.usersData = null;
   serverState.adminData = null;
   adminState.data = null;
@@ -88,6 +98,33 @@ describe("getSessionUser — admin / super_admin / suspendu (chantier 6)", () =>
     expect(s?.isAdmin).toBe(false);
     expect(s?.isSuperAdmin).toBe(false);
     expect(s?.roles).toEqual(["consumer"]);
+  });
+});
+
+describe("getSessionUser — vérification via getClaims (Lot A)", () => {
+  it("mappe claims.sub→id et claims.email→email dans SessionUser", async () => {
+    serverState.claims = {
+      sub: "u-42",
+      email: "bob@example.com",
+      iat: 1_700_000_000,
+    };
+    serverState.usersData = { roles: ["consumer"] };
+    const s = await getSessionUser();
+    expect(s?.id).toBe("u-42");
+    expect(s?.email).toBe("bob@example.com");
+  });
+
+  it("claims sans email → email = null (jamais undefined)", async () => {
+    serverState.claims = { sub: "u-1", iat: 1_700_000_000 };
+    serverState.usersData = { roles: ["consumer"] };
+    const s = await getSessionUser();
+    expect(s?.email).toBeNull();
+  });
+
+  it("fail-closed : pas de claims (JWT invalide/absent) → null", async () => {
+    serverState.claims = null;
+    const s = await getSessionUser();
+    expect(s).toBeNull();
   });
 });
 

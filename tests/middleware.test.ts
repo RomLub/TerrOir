@@ -8,7 +8,12 @@ const ORIGINAL_SUPABASE_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 // Mocks @supabase/ssr injectés via vi.mock factory (hoisting). On expose
 // des hooks mutables pour customiser par test.
-const mockGetUser = vi.fn();
+// Perf (Lot A) : le middleware vérifie la session via auth.getClaims() (et non
+// plus getUser()). On mocke getClaims avec sa vraie shape :
+//   { data: { claims: { sub, email } }, error } | { data: null, error }
+// Les helpers claimsResult(id) / noClaimsResult() (plus bas) produisent ces
+// deux variantes.
+const mockGetClaims = vi.fn();
 const mockUsersRolesMaybeSingle = vi.fn();
 const mockAdminUsersMaybeSingle = vi.fn();
 const mockProducersMaybeSingle = vi.fn();
@@ -18,7 +23,7 @@ const mockRpcGetRevocation = vi.fn();
 vi.mock("@supabase/ssr", () => ({
   createServerClient: () => ({
     auth: {
-      getUser: () => mockGetUser(),
+      getClaims: () => mockGetClaims(),
     },
     from: (table: string) => {
       if (table === "users") {
@@ -59,11 +64,21 @@ import {
   parseAndVerifyRoleSnapshot,
 } from "@/lib/auth/role-snapshot-cookie";
 
+// Helpers de lisibilité pour produire la shape de retour de getClaims().
+// Session valide → data.claims.sub = id (claims.email optionnel).
+function claimsResult(userId: string, email?: string) {
+  return { data: { claims: { sub: userId, email } }, error: null };
+}
+// Pas de session (anonyme / JWT invalide) → data = null (fail-closed).
+function noClaimsResult() {
+  return { data: null, error: null };
+}
+
 beforeEach(() => {
   process.env.ROLE_SNAPSHOT_SECRET = TEST_SECRET;
   process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
-  mockGetUser.mockReset();
+  mockGetClaims.mockReset();
   mockUsersRolesMaybeSingle.mockReset();
   mockAdminUsersMaybeSingle.mockReset();
   mockProducersMaybeSingle.mockReset();
@@ -103,7 +118,7 @@ function buildRequest(opts: {
 
 describe("middleware — role snapshot cookie cache (T-321)", () => {
   it("cache HIT : cookie valide + user.id match → skip DB lookup users/admin_users", async () => {
-    mockGetUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
+    mockGetClaims.mockResolvedValue(claimsResult("user-1"));
 
     const cookieValue = await signRoleSnapshot({
       user_id: "user-1",
@@ -126,7 +141,7 @@ describe("middleware — role snapshot cookie cache (T-321)", () => {
   });
 
   it("cache MISS (cookie absent) : DB lookup parallèle users + admin_users + cookie posé en réponse", async () => {
-    mockGetUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
+    mockGetClaims.mockResolvedValue(claimsResult("user-1"));
     mockUsersRolesMaybeSingle.mockResolvedValue({
       data: { roles: ["consumer"] },
     });
@@ -149,7 +164,7 @@ describe("middleware — role snapshot cookie cache (T-321)", () => {
   });
 
   it("chantier 6 : admin SUSPENDU au DB lookup → snapshot posé avec isAdmin=false", async () => {
-    mockGetUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
+    mockGetClaims.mockResolvedValue(claimsResult("user-1"));
     mockUsersRolesMaybeSingle.mockResolvedValue({ data: null });
     // Le lookup admin_users remonte une ligne suspendue (suspended_at non null).
     mockAdminUsersMaybeSingle.mockResolvedValue({
@@ -174,7 +189,7 @@ describe("middleware — role snapshot cookie cache (T-321)", () => {
   });
 
   it("cache INVALID (signature corrompue) : fallback DB lookup", async () => {
-    mockGetUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
+    mockGetClaims.mockResolvedValue(claimsResult("user-1"));
     mockUsersRolesMaybeSingle.mockResolvedValue({
       data: { roles: ["consumer"] },
     });
@@ -196,7 +211,7 @@ describe("middleware — role snapshot cookie cache (T-321)", () => {
   });
 
   it("cache EXPIRÉ : fallback DB lookup", async () => {
-    mockGetUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
+    mockGetClaims.mockResolvedValue(claimsResult("user-1"));
     mockUsersRolesMaybeSingle.mockResolvedValue({
       data: { roles: ["consumer"] },
     });
@@ -222,7 +237,7 @@ describe("middleware — role snapshot cookie cache (T-321)", () => {
   });
 
   it("F-026 — snapshot frais (issued_at > min_issued_at) → utilise cache, pas de DB lookup", async () => {
-    mockGetUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
+    mockGetClaims.mockResolvedValue(claimsResult("user-1"));
 
     // Cookie émis maintenant (expires_at = now + TTL → issued_at = now).
     const cookieValue = await signRoleSnapshot({
@@ -256,7 +271,7 @@ describe("middleware — role snapshot cookie cache (T-321)", () => {
   });
 
   it("F-026 — snapshot stale (min_issued_at > issued_at) → force DB lookup refresh", async () => {
-    mockGetUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
+    mockGetClaims.mockResolvedValue(claimsResult("user-1"));
     mockUsersRolesMaybeSingle.mockResolvedValue({
       data: { roles: ["consumer", "producer"] }, // promu producer entre temps
     });
@@ -291,7 +306,7 @@ describe("middleware — role snapshot cookie cache (T-321)", () => {
   });
 
   it("cache USER_ID MISMATCH : autre user dans le cookie → fallback DB lookup", async () => {
-    mockGetUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
+    mockGetClaims.mockResolvedValue(claimsResult("user-1"));
     mockUsersRolesMaybeSingle.mockResolvedValue({
       data: { roles: ["consumer"] },
     });
@@ -332,7 +347,7 @@ describe("middleware — isolation rôles/sous-domaine (pro.* vs www.*)", () => 
   }
 
   it("consumer-only connecté sur pro.*/compte → 307 vers www.*/compte (pas de boucle)", async () => {
-    mockGetUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
+    mockGetClaims.mockResolvedValue(claimsResult("user-1"));
     const res = await middleware(
       buildRequest({
         url: "https://pro.terroir-local.fr/compte",
@@ -345,7 +360,7 @@ describe("middleware — isolation rôles/sous-domaine (pro.* vs www.*)", () => 
   });
 
   it("producteur connecté sur pro.*/compte → 307 vers www.*/compte (compte = consumer)", async () => {
-    mockGetUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
+    mockGetClaims.mockResolvedValue(claimsResult("user-1"));
     const res = await middleware(
       buildRequest({
         url: "https://pro.terroir-local.fr/compte/factures",
@@ -362,7 +377,7 @@ describe("middleware — isolation rôles/sous-domaine (pro.* vs www.*)", () => 
   });
 
   it("non-connecté sur pro.*/compte → 307 vers www.*/compte (l'auth se fera sur www)", async () => {
-    mockGetUser.mockResolvedValue({ data: { user: null } });
+    mockGetClaims.mockResolvedValue(noClaimsResult());
     const res = await middleware(
       buildRequest({
         url: "https://pro.terroir-local.fr/compte",
@@ -374,7 +389,7 @@ describe("middleware — isolation rôles/sous-domaine (pro.* vs www.*)", () => 
   });
 
   it("consumer-only connecté sur pro.*/dashboard (chemin producteur) → 307 vers www.* racine", async () => {
-    mockGetUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
+    mockGetClaims.mockResolvedValue(claimsResult("user-1"));
     const res = await middleware(
       buildRequest({
         url: "https://pro.terroir-local.fr/dashboard",
@@ -387,7 +402,7 @@ describe("middleware — isolation rôles/sous-domaine (pro.* vs www.*)", () => 
   });
 
   it("non-connecté sur pro.*/dashboard → /connexion (flow existant, pas de fuite vers www)", async () => {
-    mockGetUser.mockResolvedValue({ data: { user: null } });
+    mockGetClaims.mockResolvedValue(noClaimsResult());
     const res = await middleware(
       buildRequest({
         url: "https://pro.terroir-local.fr/dashboard",
@@ -399,7 +414,7 @@ describe("middleware — isolation rôles/sous-domaine (pro.* vs www.*)", () => 
   });
 
   it("producteur (statut active) sur pro.*/dashboard → reste sur pro.* (pas de redirect www)", async () => {
-    mockGetUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
+    mockGetClaims.mockResolvedValue(claimsResult("user-1"));
     mockProducersMaybeSingle.mockResolvedValue({ data: { statut: "active" }, error: null });
     const res = await middleware(
       buildRequest({
@@ -414,7 +429,7 @@ describe("middleware — isolation rôles/sous-domaine (pro.* vs www.*)", () => 
   });
 
   it("producteur (statut draft) sur pro.*/ma-page → /onboarding (signup), pas www.*", async () => {
-    mockGetUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
+    mockGetClaims.mockResolvedValue(claimsResult("user-1"));
     mockProducersMaybeSingle.mockResolvedValue({ data: { statut: "draft" }, error: null });
     const res = await middleware(
       buildRequest({
@@ -429,5 +444,45 @@ describe("middleware — isolation rôles/sous-domaine (pro.* vs www.*)", () => 
     const loc = res.headers.get("location") ?? "";
     expect(loc).toContain("/onboarding");
     expect(loc).not.toContain("www.terroir-local.fr");
+  });
+});
+
+// Perf (Lot A) — mécanisme de vérification de session : getClaims (validation
+// LOCALE du JWT) et non plus getUser (round-trip réseau). Le mock @supabase/ssr
+// n'expose QUE getClaims ; ces tests verrouillent que c'est bien la méthode
+// appelée par le chemin chaud et que le fail-closed est préservé.
+describe("middleware — vérification session via getClaims (Lot A)", () => {
+  it("appelle auth.getClaims() (et non getUser) sur une route protégée", async () => {
+    mockGetClaims.mockResolvedValue(claimsResult("user-1", "alice@example.com"));
+    mockUsersRolesMaybeSingle.mockResolvedValue({ data: { roles: ["consumer"] } });
+    mockAdminUsersMaybeSingle.mockResolvedValue({ data: null });
+
+    await middleware(
+      buildRequest({
+        url: "https://www.terroir-local.fr/compte",
+        host: "www.terroir-local.fr",
+      }),
+    );
+
+    expect(mockGetClaims).toHaveBeenCalledTimes(1);
+  });
+
+  it("fail-closed : data=null (JWT invalide/absent) → traité comme non-connecté → /connexion", async () => {
+    // getClaims renvoie data:null sur un JWT invalide ou absent. Le middleware
+    // doit se comporter comme avec user=null : route protégée → /connexion.
+    mockGetClaims.mockResolvedValue(noClaimsResult());
+
+    const res = await middleware(
+      buildRequest({
+        url: "https://www.terroir-local.fr/compte",
+        host: "www.terroir-local.fr",
+      }),
+    );
+
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toContain("/connexion");
+    // Aucun lookup rôle déclenché : on n'a pas d'identité.
+    expect(mockUsersRolesMaybeSingle).not.toHaveBeenCalled();
+    expect(mockAdminUsersMaybeSingle).not.toHaveBeenCalled();
   });
 });

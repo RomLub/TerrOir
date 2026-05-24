@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { User } from "@supabase/supabase-js";
 
-// Mock du client server : dispatch sur from(table) entre admin_users, producers
-// et users. Chaque table a son propre maybeSingle stubable indépendamment
-// → permet de tester le fail-safe PAR lookup (un throw n'affecte pas les autres).
-const authGetUserMock = vi.fn();
+// Perf (Lot A) : getInitialUserPayload() vérifie la session via auth.getClaims()
+// (validation locale du JWT) et non plus getUser(). On mocke getClaims avec sa
+// vraie shape ({ data: { claims }, error } | { data: null, error }). Le user
+// exposé dans le payload est reconstruit depuis les claims (sub→id, email), donc
+// les assertions portent sur user.id / user.email plutôt que sur une égalité
+// stricte avec un objet User complet.
+const authGetClaimsMock = vi.fn();
 const adminMaybeSingleMock = vi.fn();
 const producerMaybeSingleMock = vi.fn();
 const usersMaybeSingleMock = vi.fn();
@@ -12,7 +14,7 @@ const usersMaybeSingleMock = vi.fn();
 vi.mock("@/lib/supabase/server", () => ({
   createSupabaseServerClient: async () => ({
     auth: {
-      getUser: authGetUserMock,
+      getClaims: authGetClaimsMock,
     },
     from: (table: string) => {
       if (table === "admin_users") {
@@ -48,15 +50,28 @@ vi.mock("@/lib/supabase/admin", () => ({
 
 import { getInitialUserPayload } from "@/lib/auth/session";
 
-const fakeUser = {
-  id: "user-1",
-  email: "alice@example.com",
-} as unknown as User;
+// Identité de référence (claims JWT vérifiés). iat requis par le type claims.
+const FAKE_ID = "user-1";
+const FAKE_EMAIL = "alice@example.com";
+function claimsResult() {
+  return {
+    data: {
+      claims: { sub: FAKE_ID, email: FAKE_EMAIL, iat: 1_700_000_000 },
+    },
+    error: null,
+  };
+}
+
+// Le payload reconstruit le user depuis les claims → il porte id + email plus
+// des champs dérivés (app_metadata, created_at...). On vérifie l'identité utile
+// (id/email) via objectContaining pour garder les assertions toEqual globales
+// sans les coupler aux champs de complétude du type User.
+const fakeUser = expect.objectContaining({ id: FAKE_ID, email: FAKE_EMAIL });
 
 let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
-  authGetUserMock.mockReset();
+  authGetClaimsMock.mockReset();
   adminMaybeSingleMock.mockReset();
   producerMaybeSingleMock.mockReset();
   usersMaybeSingleMock.mockReset();
@@ -76,7 +91,7 @@ const fakeProducerLite = {
 
 describe("getInitialUserPayload", () => {
   it("retourne payload anonyme avec producerLite=null et roles=[] pour un visiteur non authentifié", async () => {
-    authGetUserMock.mockResolvedValue({ data: { user: null }, error: null });
+    authGetClaimsMock.mockResolvedValue({ data: null, error: null });
 
     const res = await getInitialUserPayload();
 
@@ -94,10 +109,7 @@ describe("getInitialUserPayload", () => {
   });
 
   it("retourne isAdmin=false isProducer=false producerLite=null roles=['consumer'] pour un consumer pur", async () => {
-    authGetUserMock.mockResolvedValue({
-      data: { user: fakeUser },
-      error: null,
-    });
+    authGetClaimsMock.mockResolvedValue(claimsResult());
     adminMaybeSingleMock.mockResolvedValue({ data: null, error: null });
     producerMaybeSingleMock.mockResolvedValue({ data: null, error: null });
     usersMaybeSingleMock.mockResolvedValue({
@@ -120,10 +132,7 @@ describe("getInitialUserPayload", () => {
     // Triggers users_exclusive_with_admin / admin_users_exclusive_with_users
     // garantissent qu'un admin n'a PAS de ligne dans public.users → users
     // lookup retourne data:null, donc roles=[].
-    authGetUserMock.mockResolvedValue({
-      data: { user: fakeUser },
-      error: null,
-    });
+    authGetClaimsMock.mockResolvedValue(claimsResult());
     adminMaybeSingleMock.mockResolvedValue({
       data: { id: "user-1" },
       error: null,
@@ -143,7 +152,7 @@ describe("getInitialUserPayload", () => {
   });
 
   it("chantier 6 : admin SUSPENDU (suspended_at non null) → isAdmin=false", async () => {
-    authGetUserMock.mockResolvedValue({ data: { user: fakeUser }, error: null });
+    authGetClaimsMock.mockResolvedValue(claimsResult());
     adminMaybeSingleMock.mockResolvedValue({
       data: { id: "user-1", suspended_at: "2026-05-20T10:00:00Z" },
       error: null,
@@ -156,10 +165,7 @@ describe("getInitialUserPayload", () => {
   });
 
   it("retourne producerLite complet et isProducer=true pour un user producer non-admin", async () => {
-    authGetUserMock.mockResolvedValue({
-      data: { user: fakeUser },
-      error: null,
-    });
+    authGetClaimsMock.mockResolvedValue(claimsResult());
     adminMaybeSingleMock.mockResolvedValue({ data: null, error: null });
     producerMaybeSingleMock.mockResolvedValue({
       data: fakeProducerLite,
@@ -184,10 +190,7 @@ describe("getInitialUserPayload", () => {
   it("fail-safe granulaire : si admin lookup throw, producerLite et roles restent corrects", async () => {
     // Validation cruciale du pattern fail-safe PAR lookup (vs global) :
     // un throw côté admin ne doit pas masquer les autres résultats.
-    authGetUserMock.mockResolvedValue({
-      data: { user: fakeUser },
-      error: null,
-    });
+    authGetClaimsMock.mockResolvedValue(claimsResult());
     adminMaybeSingleMock.mockRejectedValue(new Error("admin network fail"));
     producerMaybeSingleMock.mockResolvedValue({
       data: fakeProducerLite,
@@ -216,10 +219,7 @@ describe("getInitialUserPayload", () => {
   it("fail-safe granulaire : si producer lookup throw, isAdmin et roles restent corrects et producerLite=null", async () => {
     // Invariant fusion : un throw producer doit rendre isProducer=false ET
     // producerLite=null cohérents (les deux dérivent du même lookup).
-    authGetUserMock.mockResolvedValue({
-      data: { user: fakeUser },
-      error: null,
-    });
+    authGetClaimsMock.mockResolvedValue(claimsResult());
     adminMaybeSingleMock.mockResolvedValue({
       data: { id: "user-1" },
       error: null,
@@ -245,10 +245,7 @@ describe("getInitialUserPayload", () => {
   });
 
   it("fail-safe : si admin_users renvoie une error Supabase, fallback isAdmin=false", async () => {
-    authGetUserMock.mockResolvedValue({
-      data: { user: fakeUser },
-      error: null,
-    });
+    authGetClaimsMock.mockResolvedValue(claimsResult());
     adminMaybeSingleMock.mockResolvedValue({
       data: null,
       error: { message: "rls denied" },
@@ -272,10 +269,7 @@ describe("getInitialUserPayload", () => {
   });
 
   it("fail-safe : si producers renvoie une error Supabase, fallback isProducer=false producerLite=null", async () => {
-    authGetUserMock.mockResolvedValue({
-      data: { user: fakeUser },
-      error: null,
-    });
+    authGetClaimsMock.mockResolvedValue(claimsResult());
     adminMaybeSingleMock.mockResolvedValue({ data: null, error: null });
     producerMaybeSingleMock.mockResolvedValue({
       data: null,
@@ -305,10 +299,7 @@ describe("getInitialUserPayload", () => {
     // Cas central T-012 : 9 users sur 11 en prod (snapshot 02/05/2026) sont
     // dual-rôle. Le RoleToggle gating dépend de la présence simultanée des
     // deux rôles → critique pour qu'il s'affiche dès le SSR sans "pop".
-    authGetUserMock.mockResolvedValue({
-      data: { user: fakeUser },
-      error: null,
-    });
+    authGetClaimsMock.mockResolvedValue(claimsResult());
     adminMaybeSingleMock.mockResolvedValue({ data: null, error: null });
     producerMaybeSingleMock.mockResolvedValue({
       data: fakeProducerLite,
@@ -327,10 +318,7 @@ describe("getInitialUserPayload", () => {
   it("T-012 fail-safe : roles=[] si lookup users renvoie une error Supabase", async () => {
     // Symétrique des fail-safes admin/producer existants : isolation
     // par lookup, console.error logué, autres branches intactes.
-    authGetUserMock.mockResolvedValue({
-      data: { user: fakeUser },
-      error: null,
-    });
+    authGetClaimsMock.mockResolvedValue(claimsResult());
     adminMaybeSingleMock.mockResolvedValue({ data: null, error: null });
     producerMaybeSingleMock.mockResolvedValue({ data: null, error: null });
     usersMaybeSingleMock.mockResolvedValue({
@@ -354,10 +342,7 @@ describe("getInitialUserPayload", () => {
   });
 
   it("T-012 fail-safe : roles=[] si lookup users throw (réseau/exception)", async () => {
-    authGetUserMock.mockResolvedValue({
-      data: { user: fakeUser },
-      error: null,
-    });
+    authGetClaimsMock.mockResolvedValue(claimsResult());
     adminMaybeSingleMock.mockResolvedValue({
       data: { id: "user-1" },
       error: null,

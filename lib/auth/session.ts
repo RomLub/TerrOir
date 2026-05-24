@@ -1,10 +1,42 @@
 import "server-only";
+import type { User, JwtPayload } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { UserRole } from "./roles";
 import type { InitialUserPayload, ProducerLite } from "./types";
 
 export type { InitialUserPayload, ProducerLite };
+
+// Perf (Lot A) : on vérifie la session via auth.getClaims() au lieu de
+// auth.getUser(). Avec les clés de signature asymétriques (ES256) du projet,
+// getClaims valide le JWT LOCALEMENT (Web Crypto), sans aller-retour réseau
+// vers Supabase Auth à chaque requête — alors que getUser tape l'Auth server
+// à chaque appel. La validation reste cryptographique (remplacement
+// recommandé par Supabase en SSR), donc l'authz n'est pas affaiblie.
+//
+// getClaims renvoie un JwtPayload (claims décodés), pas un objet User complet.
+// Les lookups DB en aval (users/admin_users/producers) ne consomment que
+// `user.id`, et le payload SSR n'expose que id + email. On reconstruit donc un
+// User minimal fidèle aux claims vérifiés (sub→id, email, aud, app/user
+// metadata portés par le JWT), avec des valeurs sûres pour les champs requis
+// du type User non présents dans le token. La forme de retour publique
+// (SessionUser / InitialUserPayload) reste identique.
+function userFromClaims(claims: JwtPayload): User {
+  return {
+    id: claims.sub,
+    email: claims.email,
+    phone: claims.phone,
+    aud: Array.isArray(claims.aud) ? claims.aud[0] : claims.aud,
+    role: claims.role,
+    app_metadata: claims.app_metadata ?? {},
+    user_metadata: claims.user_metadata ?? {},
+    is_anonymous: claims.is_anonymous,
+    // `created_at` est requis par le type User mais absent du JWT. On dérive de
+    // `iat` (issued-at, epoch secondes) faute de mieux — non consommé en aval
+    // (seuls id/email le sont), gardé pour la conformité de type.
+    created_at: new Date(claims.iat * 1000).toISOString(),
+  };
+}
 
 export interface SessionUser {
   id: string;
@@ -19,25 +51,24 @@ export interface SessionUser {
 
 export async function getSessionUser(): Promise<SessionUser | null> {
   const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-    error: getUserError,
-  } = await supabase.auth.getUser();
+  const { data: claimsData, error: getClaimsError } =
+    await supabase.auth.getClaims();
 
   // bugs-P2-1 (T9 2026-05-07) : fail-closed logging. Avant, une erreur de
-  // getUser() (Supabase Auth indispo, JWT corrompu, RPC timeout) était
-  // silencieusement avalée car on ne destructurait que `data.user`. La
-  // route appelante voyait alors un Unauthorized générique sans signal côté
-  // SRE pour distinguer "session expirée" (normal) de "Auth backend down"
-  // (incident). On loggue avec préfixe grep-able + on continue le fail-
-  // closed (return null si !user).
-  if (getUserError) {
+  // vérification de session (Supabase Auth indispo, JWT corrompu, JWKS
+  // injoignable) était silencieusement avalée car on ne destructurait que
+  // `data.user`. La route appelante voyait alors un Unauthorized générique
+  // sans signal côté SRE pour distinguer "session expirée" (normal) de
+  // "Auth backend down" (incident). On loggue avec préfixe grep-able + on
+  // continue le fail-closed (return null si pas de claims).
+  if (getClaimsError) {
     console.error(
-      `[AUTH_GETUSER_ERR] supabase.auth.getUser() failed: ${getUserError.message}`,
+      `[AUTH_GETCLAIMS_ERR] supabase.auth.getClaims() failed: ${getClaimsError.message}`,
     );
   }
 
-  if (!user) return null;
+  if (!claimsData) return null;
+  const user = userFromClaims(claimsData.claims);
 
   // Lookup parallèle : un même auth.users.id ne peut pas être simultanément
   // dans public.users et public.admin_users (cf. trigger d'exclusion mutuelle),
@@ -135,11 +166,12 @@ export async function isSuperAdmin(userId: string): Promise<boolean> {
 // robustesse défensive contre un état corrompu hypothétique.
 export async function getInitialUserPayload(): Promise<InitialUserPayload> {
   const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Perf (Lot A) : getClaims() valide le JWT localement (clés asymétriques),
+  // sans round-trip réseau vers l'Auth server à chaque rendu SSR. Forme de
+  // retour InitialUserPayload inchangée (user reconstruit depuis les claims).
+  const { data: claimsData } = await supabase.auth.getClaims();
 
-  if (!user) {
+  if (!claimsData) {
     return {
       user: null,
       isAdmin: false,
@@ -148,6 +180,8 @@ export async function getInitialUserPayload(): Promise<InitialUserPayload> {
       roles: [],
     };
   }
+
+  const user = userFromClaims(claimsData.claims);
 
   const [isAdmin, producerLite, roles] = await Promise.all([
     (async () => {
