@@ -1,5 +1,10 @@
+import { Suspense } from "react";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { buildCursorUrl, parseCursor } from "@/lib/pagination/cursor";
+import {
+  buildCursorUrl,
+  parseCursor,
+  type ParsedCursor,
+} from "@/lib/pagination/cursor";
 import { AdminPageHeader, TableStatus } from "@/components/ui";
 import { ListingHeader } from "@/components/listings/ListingHeader";
 import { formatDateFr } from "@/lib/format/date";
@@ -11,6 +16,7 @@ import {
 } from "@/lib/admin/invitations/types";
 import { InvitationsListClient } from "./_components/InvitationsListClient";
 import { RevokeInvitationTrigger } from "./_components/RevokeInvitationTrigger";
+import { SectionSkeleton } from "../_components/ContentSkeletons";
 import Link from "next/link";
 
 // Server Component admin /invitations (chantier PR3
@@ -74,6 +80,49 @@ export default async function AdminInvitationsPage(props: {
     },
   });
 
+  // Coquille synchrone : l'en-tête + les filtres (qui ne dépendent que des
+  // searchParams) s'affichent immédiatement, la liste (fetch service_role) est
+  // streamée via <Suspense>.
+  return (
+    <div>
+      <AdminPageHeader
+        eyebrow="Invitations"
+        title="Invitations producteurs"
+        subtitle="Liste des invitations sortantes, statuts computed et action de révocation"
+      />
+
+      <InvitationsListClient
+        currentStatus={status}
+        currentFrom={from ?? ""}
+        currentTo={to ?? ""}
+      />
+
+      <Suspense fallback={<SectionSkeleton rows={8} />}>
+        <InvitationsContent
+          cursor={cursor}
+          status={status}
+          from={from}
+          to={to}
+        />
+      </Suspense>
+    </div>
+  );
+}
+
+// Exporté pour les tests unitaires : c'est ici que vit la logique data (fetch
+// service_role + propagation erreur/listing). La page reste une coquille avec
+// l'en-tête + les filtres synchrones et ce contenu streamé en <Suspense>.
+export async function InvitationsContent({
+  cursor,
+  status,
+  from,
+  to,
+}: {
+  cursor: ParsedCursor;
+  status: InvitationStatusFilter;
+  from: string | null;
+  to: string | null;
+}) {
   const admin = createSupabaseAdminClient();
   const { rows, total, nextCursor, error } = await fetchAdminInvitationsList(
     admin,
@@ -101,13 +150,12 @@ export default async function AdminInvitationsPage(props: {
   })();
 
   return (
-    <div>
-      <AdminPageHeader
-        eyebrow="Invitations"
-        title="Invitations producteurs"
-        subtitle="Liste des invitations sortantes, statuts computed et action de révocation"
-        error={error}
-      />
+    <>
+      {error ? (
+        <p className="mb-4 text-[13px] text-red-600" role="alert">
+          {error}
+        </p>
+      ) : null}
 
       <div className="mb-4">
         <ListingHeader
@@ -117,12 +165,6 @@ export default async function AdminInvitationsPage(props: {
           isPaginated={isPaginated}
         />
       </div>
-
-      <InvitationsListClient
-        currentStatus={status}
-        currentFrom={from ?? ""}
-        currentTo={to ?? ""}
-      />
 
       <div className="overflow-hidden rounded-md border border-gray-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
@@ -203,6 +245,6 @@ export default async function AdminInvitationsPage(props: {
           </Link>
         </div>
       )}
-    </div>
+    </>
   );
 }

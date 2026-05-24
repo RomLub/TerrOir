@@ -1,9 +1,11 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { fetchProducerForUser } from "@/lib/producers/context";
+import { fetchProducerForUser, type ProducerRecord } from "@/lib/producers/context";
 import { PageHeader } from "@/components/ui";
 import { computeHealth, type HealthBand } from "@/lib/producers/health";
+import { SectionSkeleton } from "../_components/ContentSkeletons";
 
 // « Santé de ma boutique » (ADR-0011) — présentation des indicateurs déjà
 // calculés (cron weekly-badges). Pure lecture, pas de recompute.
@@ -26,6 +28,8 @@ const BAND_LABEL: Record<HealthBand, string> = {
   bad: "À améliorer",
 };
 
+// Coquille synchrone : le PageHeader s'affiche immédiatement (post-gardes),
+// les indicateurs (lecture producers) sont streamés via <Suspense>.
 export default async function SantePage() {
   const session = await getSessionUser();
   if (!session) redirect("/connexion");
@@ -33,6 +37,25 @@ export default async function SantePage() {
   const admin = createSupabaseAdminClient();
   const producer = await fetchProducerForUser(admin, session.id);
   if (!producer) redirect("/invitation");
+
+  return (
+    <div className="mx-auto max-w-5xl px-8 py-10">
+      <PageHeader
+        tone="producer"
+        eyebrow="Pilotage"
+        title="Santé de ma boutique"
+        subtitle="Vos indicateurs de qualité, mis à jour chaque semaine. Visez le vert pour rassurer vos clients."
+      />
+
+      <Suspense fallback={<SectionSkeleton rows={3} />}>
+        <SanteContent producer={producer} />
+      </Suspense>
+    </div>
+  );
+}
+
+async function SanteContent({ producer }: { producer: ProducerRecord }) {
+  const admin = createSupabaseAdminClient();
 
   const { data: row } = await admin
     .from("producers")
@@ -51,14 +74,7 @@ export default async function SantePage() {
   });
 
   return (
-    <div className="mx-auto max-w-5xl px-8 py-10">
-      <PageHeader
-        tone="producer"
-        eyebrow="Pilotage"
-        title="Santé de ma boutique"
-        subtitle="Vos indicateurs de qualité, mis à jour chaque semaine. Visez le vert pour rassurer vos clients."
-      />
-
+    <>
       <div
         className={`mb-8 flex items-center justify-between gap-4 rounded-2xl border p-6 ${BAND_CARD[health.overallBand]}`}
       >
@@ -97,6 +113,6 @@ export default async function SantePage() {
           </div>
         ))}
       </div>
-    </div>
+    </>
   );
 }

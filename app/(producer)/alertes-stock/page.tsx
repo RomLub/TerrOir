@@ -1,9 +1,11 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { fetchProducerForUser } from "@/lib/producers/context";
+import { fetchProducerForUser, type ProducerRecord } from "@/lib/producers/context";
 import { fetchProducerAlerts } from "@/lib/stock-alerts/fetch-producer-alerts";
+import { SectionSkeleton } from "../_components/ContentSkeletons";
 
 // Server Component (pattern aligné /dashboard, /revenus). Fetch SSR :
 //   1. session ou redirect /connexion
@@ -16,6 +18,8 @@ import { fetchProducerAlerts } from "@/lib/stock-alerts/fetch-producer-alerts";
 // Pas de composant *Client.tsx : la page est statique post-fetch (juste
 // affichage de cards), pas d'interaction. Refresh = navigation.
 
+// Coquille synchrone : l'en-tête s'affiche immédiatement (post-gardes), la
+// liste des alertes (fetchProducerAlerts) est streamée via <Suspense>.
 export default async function ProducerAlertesStockPage() {
   const session = await getSessionUser();
   if (!session) redirect("/connexion");
@@ -23,8 +27,6 @@ export default async function ProducerAlertesStockPage() {
   const admin = createSupabaseAdminClient();
   const producer = await fetchProducerForUser(admin, session.id);
   if (!producer) redirect("/devenir-producteur");
-
-  const alerts = await fetchProducerAlerts(admin, producer.id);
 
   return (
     <div className="max-w-4xl mx-auto px-8 py-10">
@@ -43,21 +45,36 @@ export default async function ProducerAlertesStockPage() {
         </p>
       </header>
 
-      {alerts.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-dark/[0.06] p-12 text-center">
-          <h3 className="font-serif text-[24px] text-green-900">
-            Aucune alerte stock pour le moment.
-          </h3>
-          <p className="text-[14px] text-dark/60 mt-2 max-w-xl mx-auto leading-relaxed">
-            Les consommateurs pourront s&apos;inscrire à l&apos;alerte sur la
-            fiche produit dès qu&apos;un de vos produits est en rupture (stock
-            à 0). Plus vos produits sont attendus, plus la liste se remplit
-            ici — un bon signal pour orienter votre planification.
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {alerts.map((alert) => (
+      <Suspense fallback={<SectionSkeleton rows={4} />}>
+        <AlertesContent producer={producer} />
+      </Suspense>
+    </div>
+  );
+}
+
+async function AlertesContent({ producer }: { producer: ProducerRecord }) {
+  const admin = createSupabaseAdminClient();
+  const alerts = await fetchProducerAlerts(admin, producer.id);
+
+  if (alerts.length === 0) {
+    return (
+      <div className="bg-white rounded-2xl border border-dark/[0.06] p-12 text-center">
+        <h3 className="font-serif text-[24px] text-green-900">
+          Aucune alerte stock pour le moment.
+        </h3>
+        <p className="text-[14px] text-dark/60 mt-2 max-w-xl mx-auto leading-relaxed">
+          Les consommateurs pourront s&apos;inscrire à l&apos;alerte sur la
+          fiche produit dès qu&apos;un de vos produits est en rupture (stock
+          à 0). Plus vos produits sont attendus, plus la liste se remplit
+          ici — un bon signal pour orienter votre planification.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {alerts.map((alert) => (
             <article
               key={alert.product_id}
               className="bg-white rounded-2xl border border-dark/[0.06] p-5 flex items-center justify-between gap-4"
@@ -88,7 +105,5 @@ export default async function ProducerAlertesStockPage() {
             </article>
           ))}
         </div>
-      )}
-    </div>
   );
 }

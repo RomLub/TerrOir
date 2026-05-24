@@ -9,6 +9,24 @@ Pour les décisions structurantes (ADRs), voir [`decisions/`](./decisions/).
 
 ---
 
+## 2026-05-24 (Perf — latence navigation : streaming Suspense + getClaims)
+
+> PR `perf/latence-navigation`. Supprime le skeleton plein écran qui clignotait de façon furtive entre deux clics + réduit la latence de navigation perçue. Voir [ADR-0013](./decisions/0013-latence-navigation-streaming-suspense.md). Constat audit : la base répond en 20-30 ms ; le coût était dans la vérification de session (appel réseau par requête) et le rendu dynamique sans préfetch, pas dans les données.
+>
+> 🟢 **Lot A — getClaims** : `middleware.ts` + `getSessionUser` / `getInitialUserPayload` passent de `getUser()` (aller-retour réseau vers l'Auth server à chaque requête) à `getClaims()` (validation cryptographique **locale** du JWT, clés asymétriques ES256). Zéro appel réseau de session par clic. Comportement, types de retour et lookups rôles/admin inchangés ; fail-closed conservé.
+>
+> 🟢 **Lot B — streaming Suspense** : les pages retournent leur chrome instantanément et streament les données lourdes derrière des `<Suspense>` (au lieu d'un skeleton plein écran à chaque clic). Les `loading.tsx` de groupe réduits à la zone `<main>` → sidebar/header fixes entre clics. Espaces producteur/consumer/admin + pages publiques. Accueil rendu préfetchable (bannière `compte-supprime` déportée en Client Component sous Suspense).
+>
+> 🟢 **Lot C — cache pages publiques** : `producteurs/[slug]` revalidate=30, `notre-demarche` revalidate=300 (staleness ≤ 5 min acceptée, page éducative). Fiche produit reste dynamique (stock live) mais shell streamé.
+>
+> 🟡 **Lot D (cacheComponents / PPR Next 16) — DIFFÉRÉ** en chantier dédié (cf. ADR-0013). Migration globale ~50 fichiers (toute la couche auth) + risque de **fuite inter-utilisateur** si une donnée privée est marquée `'use cache'` partagée (build vert, fuite runtime). Décision Romain après pushback CC : on livre A+B+C, D fera l'objet d'une revue de portée de cache + test de chaque parcours de connexion. Les frontières Suspense posées par B/C en sont le prérequis.
+>
+> 🟢 **Méthode** : Agent Teams (`terroir-perf`) — 3 équipiers en parallèle à fichiers disjoints (auth / public / espaces privés) + lead pour l'intégration et la validation.
+>
+> 🟢 Tests : lint / type-check / build OK, `npm test` vert (3109).
+
+---
+
 ## 2026-05-24 (Auth — SSO admin : une seule saisie de mot de passe)
 
 > PR `feat/admin-sso-handoff`. Corrige le double-login admin : un admin qui se connecte sur l'écran classique (www/pro) devait re-saisir son mot de passe sur admin.\* (cookie isolé par design).

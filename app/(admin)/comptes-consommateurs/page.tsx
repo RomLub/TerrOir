@@ -1,15 +1,21 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { AdminPageHeader } from "@/components/ui/admin-page-header";
 import { Badge } from "@/components/ui/badge";
 import { TableStatus } from "@/components/ui/table-status";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { parseCursor, buildCursorUrl } from "@/lib/pagination/cursor";
+import {
+  parseCursor,
+  buildCursorUrl,
+  type ParsedCursor,
+} from "@/lib/pagination/cursor";
 import { formatDateFr } from "@/lib/format/date";
 import {
   fetchAdminUsersList,
   ADMIN_USERS_PAGE_SIZE,
 } from "@/lib/admin/users/fetch";
 import type { AdminUserRole } from "@/lib/admin/users/types";
+import { SectionSkeleton } from "../_components/ContentSkeletons";
 
 // Chantier 5 — page admin « Comptes consommateurs » (section Consommateurs).
 // Reprend l'infrastructure /users (fetchAdminUsersList + détail partagé
@@ -38,6 +44,10 @@ const ROLE_BADGE: Record<
   admin: { label: "Admin", variant: "danger" },
 };
 
+// Coquille synchrone : l'en-tête + le formulaire de recherche s'affichent
+// immédiatement (le shell admin reste fixe), la liste (fetch service_role) est
+// streamée via <Suspense>. Le sous-titre « N comptes » dépend du fetch, il vit
+// donc dans le contenu streamé.
 export default async function AdminComptesConsommateursPage(props: {
   searchParams: Promise<SearchParams>;
 }) {
@@ -50,36 +60,11 @@ export default async function AdminComptesConsommateursPage(props: {
     },
   });
 
-  const admin = createSupabaseAdminClient();
-  const { rows, total, nextCursor, error } = await fetchAdminUsersList(admin, {
-    cursor,
-    roleFilter: "consumer_inclusive",
-    q: q || null,
-  });
-
-  const isPaginated = cursor.before !== null;
-  const subtitle = error
-    ? undefined
-    : `${total} compte${total > 1 ? "s" : ""} consommateur${total > 1 ? "s" : ""}`;
-
-  function buildBaseHref(): string {
-    const params = new URLSearchParams();
-    if (q) params.set("q", q);
-    const qs = params.toString();
-    return qs ? `/comptes-consommateurs?${qs}` : "/comptes-consommateurs";
-  }
-
-  const nextHref = nextCursor
-    ? buildCursorUrl(buildBaseHref(), nextCursor)
-    : null;
-
   return (
     <div>
       <AdminPageHeader
         eyebrow="Consommateurs"
         title="Comptes consommateurs"
-        subtitle={subtitle}
-        error={error}
       />
 
       <form
@@ -109,6 +94,56 @@ export default async function AdminComptesConsommateursPage(props: {
           </Link>
         ) : null}
       </form>
+
+      <Suspense fallback={<SectionSkeleton rows={8} />}>
+        <ComptesContent cursor={cursor} q={q} />
+      </Suspense>
+    </div>
+  );
+}
+
+// Exporté pour les tests unitaires : c'est ici que vivent le fetch + le rendu
+// de la liste. La page reste une coquille (en-tête + recherche synchrones +
+// ce contenu streamé en <Suspense>).
+export async function ComptesContent({
+  cursor,
+  q,
+}: {
+  cursor: ParsedCursor;
+  q: string;
+}) {
+  const admin = createSupabaseAdminClient();
+  const { rows, total, nextCursor, error } = await fetchAdminUsersList(admin, {
+    cursor,
+    roleFilter: "consumer_inclusive",
+    q: q || null,
+  });
+
+  const isPaginated = cursor.before !== null;
+  const countLabel = error
+    ? null
+    : `${total} compte${total > 1 ? "s" : ""} consommateur${total > 1 ? "s" : ""}`;
+
+  function buildBaseHref(): string {
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    const qs = params.toString();
+    return qs ? `/comptes-consommateurs?${qs}` : "/comptes-consommateurs";
+  }
+
+  const nextHref = nextCursor
+    ? buildCursorUrl(buildBaseHref(), nextCursor)
+    : null;
+
+  return (
+    <>
+      {error ? (
+        <p className="mb-4 text-[13px] text-red-600" role="alert">
+          {error}
+        </p>
+      ) : countLabel ? (
+        <p className="mb-4 text-[13px] text-gray-500">{countLabel}</p>
+      ) : null}
 
       <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
         <table className="min-w-full divide-y divide-gray-200 text-[13px]">
@@ -192,6 +227,6 @@ export default async function AdminComptesConsommateursPage(props: {
           {ADMIN_USERS_PAGE_SIZE} résultats par page
         </p>
       )}
-    </div>
+    </>
   );
 }

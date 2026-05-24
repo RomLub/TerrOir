@@ -244,9 +244,23 @@ export async function middleware(request: NextRequest) {
     },
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Perf (Lot A) : chemin chaud — exécuté à CHAQUE navigation. On vérifie la
+  // session via getClaims() (validation cryptographique LOCALE du JWT via Web
+  // Crypto, clés asymétriques ES256 du projet) au lieu de getUser() qui tape
+  // l'Auth server à chaque requête. getClaims renvoie { data, error } où data =
+  // { claims, header, signature } ou null. On reconstruit un objet user-like
+  // minimal { id, email } pour que TOUTE la logique en aval (user.id,
+  // user.email, !user, redirections, rôles) reste IDENTIQUE — aucune autre
+  // ligne de ce middleware ne change. Fail-closed conservé : pas de claims →
+  // user = null.
+  //
+  // ⚠️ Règle Supabase SSR : ne rien insérer entre createServerClient(...) et
+  // cet appel, et ne pas toucher à la plomberie cookies/response/CSP au-dessus,
+  // sous peine de déconnexions aléatoires.
+  const { data: claimsData } = await supabase.auth.getClaims();
+  const user = claimsData
+    ? { id: claimsData.claims.sub, email: claimsData.claims.email ?? null }
+    : null;
 
   const { hostname, pathname } = request.nextUrl;
 

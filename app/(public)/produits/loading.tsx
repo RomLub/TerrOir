@@ -1,13 +1,17 @@
-// Skeleton dédié /produits — fidèle à la grille catalogue ProductCard.
-// Streamable pendant fetchPublicProducts (force-dynamic) pour éviter la
-// page blanche qui était le constat de l'audit Vercel C-3.
+// Fallback de transition de route /produits.
+//
+// Perf (latence-navigation 2026-05-24) : avec le shell streamé de page.tsx
+// (h1 statique instantané + grille streamée derrière <Suspense>), on aligne ce
+// loading de route sur le même cadre : le vrai titre s'affiche tout de suite,
+// seul le bloc résultats (compteur + grille) est en skeleton. Évite le double
+// flash titre-pulse → titre-réel et tout layout shift à la transition.
 export default function ProduitsLoading() {
   return (
     <div className="mx-auto max-w-7xl px-8 py-10" aria-busy="true" aria-live="polite">
-      <header className="mb-8 space-y-3">
-        <div className="h-10 w-72 max-w-full animate-pulse rounded-md bg-dark/10" />
-        <div className="h-4 w-48 animate-pulse rounded-md bg-dark/10" />
-      </header>
+      <h1 className="mb-2 font-serif text-[40px] text-green-900 leading-tight">
+        Tous les produits
+      </h1>
+      <div className="mb-8 h-4 w-48 animate-pulse rounded-md bg-dark/10" />
       <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {Array.from({ length: 9 }).map((_, i) => (
           <div

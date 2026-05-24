@@ -1,14 +1,17 @@
+import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
-import { fetchProducerForUser } from '@/lib/producers/context';
+import { fetchProducerForUser, type ProducerRecord } from '@/lib/producers/context';
+import { ListSkeleton } from '../_components/ContentSkeletons';
 import { CatalogueClient, type CatalogueProduct } from './CatalogueClient';
 
 // Server Component — audit Vercel C-4 + H-5 (2026-05-05).
 // Avant : 'use client' + auth.getUser() + producers + products au mount
 // (waterfall). Maintenant : pattern coquille SSR avec admin client + filter
-// explicite par producer_id (cohérence dashboard).
+// explicite par producer_id (cohérence dashboard). Lot B perf : le fetch
+// products est streamé via <Suspense> pour que la sidebar reste fixe.
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -16,10 +19,20 @@ export default async function ProducerCataloguePage() {
   const session = await getSessionUser();
   if (!session) redirect('/connexion');
 
+  // Garde producteur conservée au niveau page (lookup léger) ; le fetch des
+  // produits (potentiellement lourd) est streamé.
   const supabase = await createSupabaseServerClient();
   const producer = await fetchProducerForUser(supabase, session.id);
   if (!producer) redirect('/invitation');
 
+  return (
+    <Suspense fallback={<ListSkeleton rows={6} />}>
+      <CatalogueContent producer={producer} />
+    </Suspense>
+  );
+}
+
+async function CatalogueContent({ producer }: { producer: ProducerRecord }) {
   const admin = createSupabaseAdminClient();
   const { data, error } = await admin
     .from('products')

@@ -1,10 +1,12 @@
+import { Suspense } from 'react';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Badge, PageHeader } from '@/components/ui';
 import { getSessionUser } from '@/lib/auth/session';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
-import { fetchProducerForUser } from '@/lib/producers/context';
+import { fetchProducerForUser, type ProducerRecord } from '@/lib/producers/context';
+import { SectionSkeleton } from '../_components/ContentSkeletons';
 import {
   parseWeekOffset,
   computeRevenueWeekWindow,
@@ -41,6 +43,8 @@ function formatEuro(n: number): string {
   return `${n.toFixed(2).replace('.', ',')} €`;
 }
 
+// Coquille synchrone : le PageHeader s'affiche immédiatement (post-gardes),
+// le contenu (virements + agrégats commandes) est streamé via <Suspense>.
 export default async function RevenusPage(props: {
   searchParams: Promise<SearchParams>;
 }) {
@@ -52,12 +56,34 @@ export default async function RevenusPage(props: {
   const producer = await fetchProducerForUser(supabase, session.id);
   if (!producer) redirect('/invitation');
 
-  const admin = createSupabaseAdminClient();
-
   // Navigation par semaine (chantier 10) : la fenêtre de 8 semaines du graphe
   // se termine sur la semaine ciblée par `?week=`. offset 0 = 8 dernières
   // semaines (semaine courante en dernière barre).
   const weekOffset = parseWeekOffset(searchParams.week);
+
+  return (
+    <div className="max-w-6xl mx-auto px-8 py-10">
+      <PageHeader
+        tone="producer"
+        eyebrow="Revenus"
+        title="Vos revenus"
+      />
+
+      <Suspense fallback={<SectionSkeleton rows={4} />}>
+        <RevenusContent producer={producer} weekOffset={weekOffset} />
+      </Suspense>
+    </div>
+  );
+}
+
+async function RevenusContent({
+  producer,
+  weekOffset,
+}: {
+  producer: ProducerRecord;
+  weekOffset: number;
+}) {
+  const admin = createSupabaseAdminClient();
 
   const { data: payouts } = await admin
     .from('payouts')
@@ -128,13 +154,7 @@ export default async function RevenusPage(props: {
     : 'Prochain lundi';
 
   return (
-    <div className="max-w-6xl mx-auto px-8 py-10">
-      <PageHeader
-        tone="producer"
-        eyebrow="Revenus"
-        title="Vos revenus"
-      />
-
+    <>
       <section className="mb-10 bg-green-900 text-white rounded-3xl p-8 md:p-10 relative overflow-hidden">
         <div className="absolute -right-20 -top-20 w-64 h-64 rounded-full bg-terra-700/30 blur-3xl" />
         <div className="relative">
@@ -217,6 +237,6 @@ export default async function RevenusPage(props: {
           </table>
         </div>
       </section>
-    </div>
+    </>
   );
 }

@@ -1,8 +1,10 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { ACTIVE_ORDER_STATUTS } from "@/lib/orders/stateMachine";
+import { ListSkeleton } from "./_components/ContentSkeletons";
 
 function ChevronIcon() {
   return (
@@ -131,21 +133,32 @@ function SectionCard({ href, icon, title, description, disabled }: CardProps) {
   );
 }
 
+// Coquille synchrone (post-garde) : la page rend le trou <Suspense>
+// immédiatement, le shell /compte (navbar + sidebar) reste fixe pendant le
+// fetch profil + count commandes.
 export default async function ComptePage() {
   const session = await getSessionUser();
   if (!session) redirect("/connexion");
 
+  return (
+    <Suspense fallback={<ListSkeleton rows={4} />}>
+      <CompteContent userId={session.id} />
+    </Suspense>
+  );
+}
+
+async function CompteContent({ userId }: { userId: string }) {
   const supabase = await createSupabaseServerClient();
   const [{ data: profile }, { count: activeOrders }] = await Promise.all([
     supabase
       .from("users")
       .select("prenom")
-      .eq("id", session.id)
+      .eq("id", userId)
       .maybeSingle(),
     supabase
       .from("orders")
       .select("id", { count: "exact", head: true })
-      .eq("consumer_id", session.id)
+      .eq("consumer_id", userId)
       .in("statut", [...ACTIVE_ORDER_STATUTS]),
   ]);
 

@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { AdminPageHeader } from "@/components/ui/admin-page-header";
 import { MetricCard } from "@/components/ui/metric-card";
@@ -8,7 +9,9 @@ import {
   DASHBOARD_PERIODS,
   PERIOD_LABELS,
   parseDashboardPeriod,
+  type DashboardPeriod,
 } from "@/lib/admin/dashboard/period";
+import { DashboardSkeleton } from "../_components/ContentSkeletons";
 import { CockpitCard } from "./_components/CockpitCard";
 import { RecentActivityTable } from "./_components/RecentActivityTable";
 
@@ -24,6 +27,9 @@ import { RecentActivityTable } from "./_components/RecentActivityTable";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+// Coquille synchrone : la page rend le trou <Suspense> immédiatement
+// (le header + la sidebar admin du layout restent fixes), le contenu
+// (RPC get_admin_dashboard) est streamé.
 export default async function AdminDashboardPage({
   searchParams,
 }: {
@@ -31,6 +37,21 @@ export default async function AdminDashboardPage({
 }) {
   const sp = await searchParams;
   const period = parseDashboardPeriod(sp.period);
+
+  return (
+    <Suspense fallback={<DashboardSkeleton />}>
+      <AdminDashboardContent period={period} />
+    </Suspense>
+  );
+}
+
+// Exporté pour les tests unitaires : c'est ici que vit la logique data (RPC
+// dashboard + rendu des zones). La page n'est plus qu'une coquille <Suspense>.
+export async function AdminDashboardContent({
+  period,
+}: {
+  period: DashboardPeriod;
+}) {
   const data = await fetchAdminDashboard(period);
 
   if (!data) {

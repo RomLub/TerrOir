@@ -59,7 +59,22 @@ vi.mock(
   }),
 );
 
-import AdminInvitationsPage from "@/app/(admin)/invitations/page";
+import AdminInvitationsPage, {
+  InvitationsContent,
+} from "@/app/(admin)/invitations/page";
+
+// Lot B perf : la page retourne <div>en-tête + filtres + <Suspense>
+// <InvitationsContent/></Suspense></div>. Le fetch service_role + la
+// propagation d'erreur vivent dans InvitationsContent (async). resolveContent
+// extrait l'enfant <InvitationsContent> du <Suspense> rendu par la page (on
+// teste donc le parsing searchParams réel), puis l'exécute.
+async function resolveContent(pageNode: ReactElement): Promise<ReactElement> {
+  const props = findByName(pageNode, "InvitationsContent");
+  if (!props) throw new Error("InvitationsContent introuvable dans la page");
+  return (await InvitationsContent(
+    props as Parameters<typeof InvitationsContent>[0],
+  )) as ReactElement;
+}
 
 // Helper : trouve récursivement un ReactElement par displayName (functional
 // component) ou data-testid, et renvoie ses props.
@@ -101,9 +116,10 @@ describe("Server Component /invitations", () => {
       nextCursor: null,
       error: null,
     });
-    await AdminInvitationsPage({
+    const page = (await AdminInvitationsPage({
       searchParams: Promise.resolve({}),
-    });
+    })) as ReactElement;
+    await resolveContent(page);
     expect(mockFetch).toHaveBeenCalledOnce();
     const opts = mockFetch.mock.calls[0][1] as {
       status: string;
@@ -124,9 +140,10 @@ describe("Server Component /invitations", () => {
       nextCursor: null,
       error: null,
     });
-    await AdminInvitationsPage({
+    const page = (await AdminInvitationsPage({
       searchParams: Promise.resolve({ status: "expired" }),
-    });
+    })) as ReactElement;
+    await resolveContent(page);
     const opts = mockFetch.mock.calls[0][1] as { status: string };
     expect(opts.status).toBe("expired");
   });
@@ -138,9 +155,10 @@ describe("Server Component /invitations", () => {
       nextCursor: null,
       error: null,
     });
-    await AdminInvitationsPage({
+    const page = (await AdminInvitationsPage({
       searchParams: Promise.resolve({ status: "garbage" }),
-    });
+    })) as ReactElement;
+    await resolveContent(page);
     const opts = mockFetch.mock.calls[0][1] as { status: string };
     expect(opts.status).toBe("all");
   });
@@ -152,12 +170,13 @@ describe("Server Component /invitations", () => {
       nextCursor: null,
       error: null,
     });
-    await AdminInvitationsPage({
+    const page = (await AdminInvitationsPage({
       searchParams: Promise.resolve({
         before: "2026-05-10T00:00:00Z",
         before_id: "abc",
       }),
-    });
+    })) as ReactElement;
+    await resolveContent(page);
     const opts = mockFetch.mock.calls[0][1] as {
       cursor: { before: string | null; beforeId: string | null };
     };
@@ -172,12 +191,13 @@ describe("Server Component /invitations", () => {
       nextCursor: null,
       error: null,
     });
-    await AdminInvitationsPage({
+    const page = (await AdminInvitationsPage({
       searchParams: Promise.resolve({
         from: "2026-05-01",
         to: "2026-05-12",
       }),
-    });
+    })) as ReactElement;
+    await resolveContent(page);
     const opts = mockFetch.mock.calls[0][1] as {
       from: string | null;
       to: string | null;
@@ -208,19 +228,20 @@ describe("Server Component /invitations", () => {
     expect(props?.currentTo).toBe("2026-05-12");
   });
 
-  it("propage l'erreur fetcher → AdminPageHeader.error", async () => {
+  it("propage l'erreur fetcher → message d'erreur dans le contenu", async () => {
     mockFetch.mockResolvedValue({
       rows: [],
       total: 0,
       nextCursor: null,
       error: "db boom",
     });
-    const node = (await AdminInvitationsPage({
+    const page = (await AdminInvitationsPage({
       searchParams: Promise.resolve({}),
     })) as ReactElement;
-    // Le mock AdminPageHeader retourne { type: 'div', props: {... data-error}}.
-    // Le node racine est <div>...</div> ; on cherche le header dans les enfants.
-    const stringNode = JSON.stringify(node);
+    // Lot B perf : l'erreur est désormais rendue par InvitationsContent (le
+    // <p role="alert">), plus par le AdminPageHeader synchrone de la page.
+    const content = await resolveContent(page);
+    const stringNode = JSON.stringify(content);
     expect(stringNode).toContain("db boom");
   });
 });

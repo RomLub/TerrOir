@@ -14,14 +14,19 @@ import {
   type ReviewData,
 } from './ProducerPageClient';
 
-// Audit Vercel C-5 (2026-05-05) : conserve force-dynamic au niveau page
-// (produits + reviews évoluent en temps réel), MAIS partial-cache le bloc
-// producer (header, photos, badges) via unstable_cache
-// avec un tag par slug. Le bloc producer change rarement (édition manuelle
-// depuis ma-page) ; pas la peine de re-fetch à chaque visite. Invalidation
-// explicite via revalidateProducerCard({slug}) côté ma-page après save.
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+// Audit Vercel C-5 (2026-05-05) : chaque bloc est déjà partial-cached via
+// unstable_cache + tag par slug — bloc producer (header, photos, badges, 60s),
+// reviews (30s) et products (30s). Invalidation immédiate sur écriture via
+// revalidateProducerCard / revalidateProducerReviews / revalidateProducerProducts.
+//
+// Perf (latence-navigation 2026-05-24) : on retire force-dynamic + revalidate=0
+// au niveau page. La fiche ne lit ni cookies ni session ; toute sa fraîcheur
+// est portée par les tags des caches internes. En la passant en revalidate=30,
+// le HTML de la route devient cacheable + prefetchable (navigation instantanée
+// depuis l'annuaire / le catalogue) sans perdre la fraîcheur : les tags
+// invalident toujours en immédiat, et 30s borne le pire cas en mode dégradé
+// (aligné sur le TTL le plus court des blocs internes).
+export const revalidate = 30;
 
 const PRODUCER_BLOCK_REVALIDATE_S = 60;
 

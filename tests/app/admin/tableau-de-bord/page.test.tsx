@@ -57,11 +57,22 @@ const SAMPLE_DATA: AdminDashboardData = {
   ],
 };
 
+// Lot B perf : la page retourne désormais <Suspense><AdminDashboardContent/></Suspense>.
+// renderToStaticMarkup ne résout pas les Server Components async sous Suspense
+// (il rendrait le skeleton). On extrait donc l'enfant <AdminDashboardContent>
+// du <Suspense> rendu par la page (on teste toujours le parsing period réel),
+// puis on l'exécute pour obtenir le markup data.
 async function renderPage(period?: string): Promise<string> {
-  const el = (await AdminDashboardPage({
+  const page = (await AdminDashboardPage({
     searchParams: Promise.resolve(period ? { period } : {}),
   })) as ReactElement;
-  return renderToStaticMarkup(el);
+  const content = (page.props as { children?: ReactElement }).children;
+  if (!content) throw new Error("Suspense child (content) introuvable");
+  const Comp = content.type as (
+    props: unknown,
+  ) => Promise<ReactElement> | ReactElement;
+  const resolved = (await Comp(content.props)) as ReactElement;
+  return renderToStaticMarkup(resolved);
 }
 
 describe("AdminDashboardPage (chantier 2)", () => {

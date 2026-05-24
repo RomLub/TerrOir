@@ -44,9 +44,22 @@ vi.mock(
 
 import AdminProducteursPage from "@/app/(admin)/gestion-producteurs/page";
 
+// Lot B perf : la page retourne désormais <Suspense><ProducteursContent/></Suspense>.
+// La logique data (fetch + props client) vit dans ProducteursContent (async).
+// resolveContent extrait l'enfant <ProducteursContent> du <Suspense> rendu par
+// la page (donc on teste toujours le parsing searchParams réel de la page),
+// puis l'exécute pour obtenir le <GestionProducteursClient /> final.
+async function resolveContent(pageNode: ReactElement): Promise<ReactElement> {
+  const content = (pageNode.props as { children?: ReactElement }).children;
+  if (!content) throw new Error("Suspense child (content) introuvable");
+  const Comp = content.type as (
+    props: unknown,
+  ) => Promise<ReactElement> | ReactElement;
+  return (await Comp(content.props)) as ReactElement;
+}
+
 function getClientProps(node: ReactElement): Record<string, unknown> {
-  // Le Server Component retourne directement <GestionProducteursClient />.
-  // Les props sont accessibles via node.props (ReactElement standard).
+  // ProducteursContent retourne directement <GestionProducteursClient />.
   return (node.props ?? {}) as Record<string, unknown>;
 }
 
@@ -62,9 +75,10 @@ describe("Server Component /gestion-producteurs", () => {
       nextCursor: null,
       error: null,
     });
-    await AdminProducteursPage({
+    const page = (await AdminProducteursPage({
       searchParams: Promise.resolve({}),
-    });
+    })) as ReactElement;
+    await resolveContent(page);
     expect(mockFetch).toHaveBeenCalledOnce();
     const opts = mockFetch.mock.calls[0][1];
     expect(opts.includeDraftsAndDeleted).toBe(false);
@@ -78,9 +92,10 @@ describe("Server Component /gestion-producteurs", () => {
       nextCursor: null,
       error: null,
     });
-    const node = (await AdminProducteursPage({
+    const page = (await AdminProducteursPage({
       searchParams: Promise.resolve({ show_all: "1" }),
     })) as ReactElement;
+    const node = await resolveContent(page);
     const opts = mockFetch.mock.calls[0][1];
     expect(opts.includeDraftsAndDeleted).toBe(true);
     expect(getClientProps(node).showAll).toBe(true);
@@ -93,12 +108,13 @@ describe("Server Component /gestion-producteurs", () => {
       nextCursor: null,
       error: null,
     });
-    const node = (await AdminProducteursPage({
+    const page = (await AdminProducteursPage({
       searchParams: Promise.resolve({
         before: "2026-01-01T00:00:00Z",
         before_id: "abc",
       }),
     })) as ReactElement;
+    const node = await resolveContent(page);
     const opts = mockFetch.mock.calls[0][1];
     expect(opts.cursor.before).toBe("2026-01-01T00:00:00Z");
     expect(opts.cursor.beforeId).toBe("abc");
@@ -125,9 +141,10 @@ describe("Server Component /gestion-producteurs", () => {
       nextCursor: { created_at: "2026-01-01T00:00:00Z", id: "abc" },
       error: null,
     });
-    const node = (await AdminProducteursPage({
+    const page = (await AdminProducteursPage({
       searchParams: Promise.resolve({}),
     })) as ReactElement;
+    const node = await resolveContent(page);
     expect(node).toBeDefined();
     const props = getClientProps(node);
     expect(props.initialProducers).toEqual(fakeRows);
@@ -146,9 +163,10 @@ describe("Server Component /gestion-producteurs", () => {
       nextCursor: null,
       error: "db boom",
     });
-    const node = (await AdminProducteursPage({
+    const page = (await AdminProducteursPage({
       searchParams: Promise.resolve({}),
     })) as ReactElement;
+    const node = await resolveContent(page);
     expect(getClientProps(node).initialError).toBe("db boom");
   });
 
@@ -159,9 +177,10 @@ describe("Server Component /gestion-producteurs", () => {
       nextCursor: null,
       error: null,
     });
-    const node = (await AdminProducteursPage({
+    const page = (await AdminProducteursPage({
       searchParams: Promise.resolve({ status: "pending" }),
     })) as ReactElement;
+    const node = await resolveContent(page);
     expect(getClientProps(node).initialStatusFilter).toBe("pending");
   });
 
@@ -172,14 +191,16 @@ describe("Server Component /gestion-producteurs", () => {
       nextCursor: null,
       error: null,
     });
-    const noParam = (await AdminProducteursPage({
+    const noParamPage = (await AdminProducteursPage({
       searchParams: Promise.resolve({}),
     })) as ReactElement;
+    const noParam = await resolveContent(noParamPage);
     expect(getClientProps(noParam).initialStatusFilter).toBe("all");
 
-    const garbage = (await AdminProducteursPage({
+    const garbagePage = (await AdminProducteursPage({
       searchParams: Promise.resolve({ status: "garbage" }),
     })) as ReactElement;
+    const garbage = await resolveContent(garbagePage);
     expect(getClientProps(garbage).initialStatusFilter).toBe("all");
   });
 });

@@ -1,8 +1,10 @@
+import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { applyCursor, parseCursor } from '@/lib/pagination/cursor';
 import type { OrderStatus } from '@/components/ui';
+import { ListSkeleton } from '../_components/ContentSkeletons';
 import { CommandesClient, type OrderRow } from './CommandesClient';
 
 // Server Component — audit Vercel C-4 + H-5 (2026-05-05).
@@ -40,6 +42,8 @@ function searchParamsToUrlSearchParams(sp: SearchParams): URLSearchParams {
   return out;
 }
 
+// Coquille synchrone (post-garde) : le shell /compte reste fixe pendant le
+// fetch orders+count, streamé via <Suspense>.
 export default async function CommandesPage(
   props: {
     searchParams: Promise<SearchParams>;
@@ -49,6 +53,20 @@ export default async function CommandesPage(
   const session = await getSessionUser();
   if (!session) redirect('/connexion');
 
+  return (
+    <Suspense fallback={<ListSkeleton rows={5} />}>
+      <CommandesContent userId={session.id} searchParams={searchParams} />
+    </Suspense>
+  );
+}
+
+async function CommandesContent({
+  userId,
+  searchParams,
+}: {
+  userId: string;
+  searchParams: SearchParams;
+}) {
   const admin = createSupabaseAdminClient();
   const cursor = parseCursor(searchParamsToUrlSearchParams(searchParams));
 
@@ -63,7 +81,7 @@ export default async function CommandesPage(
         producers:producer_id ( nom_exploitation, slug ),
         order_items ( id )
       `)
-      .eq('consumer_id', session.id),
+      .eq('consumer_id', userId),
     cursor,
   )
     .order('created_at', { ascending: false })
@@ -73,7 +91,7 @@ export default async function CommandesPage(
   const countQuery = admin
     .from('orders')
     .select('id', { count: 'exact', head: true })
-    .eq('consumer_id', session.id);
+    .eq('consumer_id', userId);
 
   const [itemsRes, countRes] = await Promise.all([itemsQuery, countQuery]);
 
@@ -112,7 +130,7 @@ export default async function CommandesPage(
 
   return (
     <CommandesClient
-      consumerId={session.id}
+      consumerId={userId}
       initialOrders={rows}
       initialTotal={countRes.count ?? 0}
       initialNextCursor={nextCursor}

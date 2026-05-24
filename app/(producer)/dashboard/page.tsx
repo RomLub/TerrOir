@@ -1,9 +1,10 @@
+import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import { TZDate } from '@date-fns/tz';
 import { getSessionUser } from '@/lib/auth/session';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
-import { fetchProducerForUser } from '@/lib/producers/context';
+import { fetchProducerForUser, type ProducerRecord } from '@/lib/producers/context';
 import { getPublicationStatus } from '@/lib/producers/publication-status';
 import {
   formatSlotRange,
@@ -15,6 +16,7 @@ import {
   formatWeekRangeLabel,
   addDays,
 } from '@/lib/dates/week-navigation';
+import { DashboardSkeleton } from '../_components/ContentSkeletons';
 import { DashboardClient, type DashboardData } from './DashboardClient';
 
 const TZ_PARIS = 'Europe/Paris';
@@ -33,6 +35,10 @@ function slotDateInParis(iso: string): string {
 
 const WEEK_DAYS_LABEL = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 
+// Coquille synchrone (post-gardes) : la page rend immédiatement le trou
+// <Suspense> pendant que DashboardContent fait le gros fetch (RPC consolidée).
+// La sidebar (layout) + le squelette de contenu s'affichent sans attendre la
+// RPC → navigation instantanée vers le dashboard, contenu streamé.
 export default async function ProducerDashboardPage(props: {
   searchParams: Promise<SearchParams>;
 }) {
@@ -40,10 +46,34 @@ export default async function ProducerDashboardPage(props: {
   const session = await getSessionUser();
   if (!session) redirect('/connexion');
 
+  // Garde producteur conservée au niveau page (lookup léger, 1 ligne indexée) :
+  // décide le redirect('/invitation') sans flash. Le fetch lourd est streamé.
   const supabase = await createSupabaseServerClient();
   const producer = await fetchProducerForUser(supabase, session.id);
   if (!producer) redirect('/invitation');
 
+  const weekOffset = parseWeekOffset(searchParams.week);
+
+  return (
+    <Suspense fallback={<DashboardSkeleton />}>
+      <DashboardContent
+        producer={producer}
+        userId={session.id}
+        weekOffset={weekOffset}
+      />
+    </Suspense>
+  );
+}
+
+async function DashboardContent({
+  producer,
+  userId,
+  weekOffset,
+}: {
+  producer: ProducerRecord;
+  userId: string;
+  weekOffset: number;
+}) {
   const admin = createSupabaseAdminClient();
 
   // Navigation par semaine (chantier 10) : `?week=-1` recule d'une semaine,
@@ -52,7 +82,6 @@ export default async function ProducerDashboardPage(props: {
   // (today/yesterday/tomorrow, prochains retraits, alertes stock) restent
   // sur le vrai now (cf. computeDashboardBounds).
   const now = new Date();
-  const weekOffset = parseWeekOffset(searchParams.week);
   const bounds = computeDashboardBounds(now, weekOffset);
   const { weekStart, todayStart } = bounds;
 
@@ -63,7 +92,7 @@ export default async function ProducerDashboardPage(props: {
     'get_producer_dashboard',
     {
       p_producer_id: producer.id,
-      p_user_id: session.id,
+      p_user_id: userId,
       p_today_start: bounds.todayStart.toISOString(),
       p_yesterday_start: bounds.yesterdayStart.toISOString(),
       p_tomorrow_start: bounds.tomorrowStart.toISOString(),
@@ -244,7 +273,7 @@ export default async function ProducerDashboardPage(props: {
   // la fiche est déjà publique.
   let publicationToDo: { doneCount: number } | null = null;
   if (producer.statut !== 'public') {
-    const pub = await getPublicationStatus(session.id);
+    const pub = await getPublicationStatus(userId);
     if (pub.found && !pub.alreadyPublic && !pub.publicationRequested) {
       publicationToDo = {
         doneCount: Object.values(pub.criteria).filter(Boolean).length,

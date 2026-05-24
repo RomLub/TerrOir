@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { AdminPageHeader } from "@/components/ui/admin-page-header";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +10,7 @@ import {
   DISPUTE_STATUS_LABEL,
   type DisputeStatus,
 } from "@/lib/admin/disputes/types";
+import { SectionSkeleton } from "../_components/ContentSkeletons";
 
 // Chantier 8 — page admin Litiges (section Gouvernance). Liste des disputes
 // Stripe (table alimentée par le webhook charge.dispute.*). Lecture + accès
@@ -28,19 +30,37 @@ const STATUS_VARIANT: Record<DisputeStatus, "green" | "terra" | "danger" | "gray
   warning_closed: "gray",
 };
 
+// Coquille synchrone : l'en-tête s'affiche immédiatement (shell admin fixe),
+// la liste des litiges est streamée via <Suspense>.
 export default async function AdminLitigesPage() {
+  return (
+    <div>
+      <AdminPageHeader eyebrow="Gouvernance" title="Litiges" />
+
+      <Suspense fallback={<SectionSkeleton rows={6} />}>
+        <LitigesContent />
+      </Suspense>
+    </div>
+  );
+}
+
+async function LitigesContent() {
   const admin = createSupabaseAdminClient();
   const { rows, error } = await fetchAdminDisputesList(admin);
   const openCount = rows.filter((r) => r.closedAt == null).length;
 
   return (
-    <div>
-      <AdminPageHeader
-        eyebrow="Gouvernance"
-        title="Litiges"
-        subtitle={error ? undefined : `${openCount} litige${openCount > 1 ? "s" : ""} ouvert${openCount > 1 ? "s" : ""} sur ${rows.length}`}
-        error={error}
-      />
+    <>
+      {error ? (
+        <p className="mb-4 text-[13px] text-red-600" role="alert">
+          {error}
+        </p>
+      ) : (
+        <p className="mb-4 text-[13px] text-gray-500">
+          {openCount} litige{openCount > 1 ? "s" : ""} ouvert
+          {openCount > 1 ? "s" : ""} sur {rows.length}
+        </p>
+      )}
 
       <div className="overflow-hidden rounded-md border border-gray-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
@@ -94,6 +114,6 @@ export default async function AdminLitigesPage() {
           </table>
         </div>
       </div>
-    </div>
+    </>
   );
 }
