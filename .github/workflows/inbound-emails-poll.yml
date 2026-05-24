@@ -1,0 +1,51 @@
+name: Poll inbound emails (contact@)
+
+# Chantier 9 — relève des emails entrants contact@ via la route Vercel
+# /api/cron/fetch-inbound (gardée par CRON_SECRET).
+#
+# Pourquoi un scheduler externe (et pas le cron Vercel) : le plan Vercel Hobby
+# limite les crons à 1×/jour. GitHub Actions permet le ~10 min gratuitement
+# (cf. ADR-0010). Le cron Vercel quotidien a été retiré de vercel.json pour
+# éviter un double déclenchement.
+#
+# ⚠️ INERTE tant que INBOUND_EMAIL_CRON_ENABLED !== "true" côté Vercel : la
+# route renvoie alors {skipped:"cron_disabled"} sans toucher l'IMAP. Romain
+# active ce flag (+ identifiants IMAP) après test manuel.
+#
+# Note : les crons GitHub Actions sont best-effort (peuvent être retardés sous
+# charge GitHub) — cadence réelle ~10-20 min, suffisant pour contact@.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {} # déclenchement manuel (test)
+
+concurrency:
+  group: inbound-emails-poll
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /api/cron/fetch-inbound
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::Secret CRON_SECRET manquant (repo Settings > Secrets > Actions)."
+            exit 1
+          fi
+          code=$(curl -sS -o /tmp/out.json -w "%{http_code}" -X POST \
+            "https://www.terroir-local.fr/api/cron/fetch-inbound" \
+            -H "Authorization: Bearer ${CRON_SECRET}")
+          echo "HTTP ${code}"
+          cat /tmp/out.json 2>/dev/null || true
+          echo ""
+          # 200 = ok (ou skipped si désactivé) ; 207 = exécuté avec erreur(s)
+          # par compte (creds IMAP ?) — on ne fait pas échouer le run mais le
+          # log ci-dessus le montre. 401/5xx = échec réel.
+          case "${code}" in
+            200|207) exit 0 ;;
+            *) echo "::error::fetch-inbound a renvoyé HTTP ${code}"; exit 1 ;;
+          esac

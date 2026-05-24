@@ -52,10 +52,6 @@
     {
       "path": "/api/cron/leads-followups",
       "schedule": "0 7 * * *"
-    },
-    {
-      "path": "/api/cron/fetch-inbound",
-      "schedule": "0 7 * * *"
     }
   ],
   "functions": {
