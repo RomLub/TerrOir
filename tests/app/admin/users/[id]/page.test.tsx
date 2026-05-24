@@ -56,6 +56,24 @@ vi.mock(
 
 import AdminUserDetailPage from "@/app/(admin)/users/[id]/page";
 
+// Lot B perf (pattern Gate) : la page est synchrone et retourne
+// <Suspense><UserDetailGate params/></Suspense>. La validation UUID, le notFound()
+// et les 4 fetchs vivent désormais dans le Gate (async). resolveGate construit la
+// page (synchrone), extrait le <UserDetailGate> du <Suspense> et l'exécute. On
+// teste donc le parsing params réel + la chaîne validation/fetch/notFound via le
+// Gate (et plus via la page directement).
+function resolveGate(params: { id: string }): Promise<ReactElement> {
+  const page = AdminUserDetailPage({
+    params: Promise.resolve(params),
+  }) as ReactElement;
+  const gate = (page.props as { children?: ReactElement }).children;
+  if (!gate) throw new Error("UserDetailGate introuvable");
+  const Gate = gate.type as (
+    props: unknown,
+  ) => Promise<ReactElement> | ReactElement;
+  return Promise.resolve(Gate(gate.props)) as Promise<ReactElement>;
+}
+
 const VALID_UUID = "12345678-1234-1234-1234-123456789012";
 
 const FAKE_USER = {
@@ -107,30 +125,24 @@ function findTabsNode(node: unknown): ReactElement | null {
 
 describe("Server Component /users/[id]", () => {
   it("id non UUID -> notFound()", async () => {
-    await expect(
-      AdminUserDetailPage({
-        params: Promise.resolve({ id: "not-a-uuid" }),
-      }),
-    ).rejects.toThrow("NEXT_NOT_FOUND");
+    await expect(resolveGate({ id: "not-a-uuid" })).rejects.toThrow(
+      "NEXT_NOT_FOUND",
+    );
     expect(mockNotFound).toHaveBeenCalled();
     expect(mockFetchDetail).not.toHaveBeenCalled();
   });
 
   it("user introuvable -> notFound()", async () => {
     mockFetchDetail.mockResolvedValue({ user: null, error: null });
-    await expect(
-      AdminUserDetailPage({
-        params: Promise.resolve({ id: VALID_UUID }),
-      }),
-    ).rejects.toThrow("NEXT_NOT_FOUND");
+    await expect(resolveGate({ id: VALID_UUID })).rejects.toThrow(
+      "NEXT_NOT_FOUND",
+    );
     expect(mockFetchDetail).toHaveBeenCalledWith({}, VALID_UUID);
   });
 
   it("error fetcher detail -> rend AdminPageHeader avec error (pas notFound)", async () => {
     mockFetchDetail.mockResolvedValue({ user: null, error: "db boom" });
-    const node = (await AdminUserDetailPage({
-      params: Promise.resolve({ id: VALID_UUID }),
-    })) as ReactElement;
+    const node = await resolveGate({ id: VALID_UUID });
     expect(node).toBeDefined();
     expect(mockNotFound).not.toHaveBeenCalled();
   });
@@ -177,9 +189,7 @@ describe("Server Component /users/[id]", () => {
       error: null,
     });
 
-    const node = (await AdminUserDetailPage({
-      params: Promise.resolve({ id: VALID_UUID }),
-    })) as ReactElement;
+    const node = await resolveGate({ id: VALID_UUID });
 
     expect(mockFetchDetail).toHaveBeenCalledOnce();
     expect(mockFetchOrders).toHaveBeenCalledWith({}, VALID_UUID);
@@ -206,9 +216,7 @@ describe("Server Component /users/[id]", () => {
       notifications: [],
       error: null,
     });
-    const node = (await AdminUserDetailPage({
-      params: Promise.resolve({ id: VALID_UUID }),
-    })) as ReactElement;
+    const node = await resolveGate({ id: VALID_UUID });
     const tabs = findTabsNode(node);
     expect(tabs).not.toBeNull();
     const props = tabs!.props as Record<string, unknown>;

@@ -60,6 +60,26 @@ vi.mock(
 
 import AdminRefundIncidentDetailPage from "@/app/(admin)/refund-incidents/[id]/page";
 
+// Lot B perf (pattern Gate) : la page est synchrone et retourne
+// <Suspense><RefundIncidentDetailGate params/></Suspense>. Le fetch (helpers),
+// le notFound() et le rendu vivent désormais dans le Gate (async). resolveGate
+// construit la page (synchrone), extrait le <RefundIncidentDetailGate> du
+// <Suspense> et l'exécute. On teste donc le parsing params réel + la chaîne
+// fetch/notFound/render via le Gate (et plus via la page directement).
+function resolveGate(
+  params: { id: string },
+): Promise<ReactElement> {
+  const page = AdminRefundIncidentDetailPage({
+    params: Promise.resolve(params),
+  }) as ReactElement;
+  const gate = (page.props as { children?: ReactElement }).children;
+  if (!gate) throw new Error("RefundIncidentDetailGate introuvable");
+  const Gate = gate.type as (
+    props: unknown,
+  ) => Promise<ReactElement> | ReactElement;
+  return Promise.resolve(Gate(gate.props)) as Promise<ReactElement>;
+}
+
 const INCIDENT_ID = "incident-uuid-1";
 
 const BASE_INCIDENT = {
@@ -139,9 +159,7 @@ describe("AdminRefundIncidentDetailPage — fetch + render", () => {
       incident: BASE_INCIDENT,
       error: null,
     });
-    await AdminRefundIncidentDetailPage({
-      params: Promise.resolve({ id: INCIDENT_ID }),
-    });
+    await resolveGate({ id: INCIDENT_ID });
     expect(mockFetchDetail).toHaveBeenCalledWith(
       expect.anything(),
       INCIDENT_ID,
@@ -154,11 +172,9 @@ describe("AdminRefundIncidentDetailPage — fetch + render", () => {
 
   it("notFound() si incident inexistant", async () => {
     mockFetchDetail.mockResolvedValue({ incident: null, error: null });
-    await expect(
-      AdminRefundIncidentDetailPage({
-        params: Promise.resolve({ id: "unknown" }),
-      }),
-    ).rejects.toThrow("__NOT_FOUND__");
+    await expect(resolveGate({ id: "unknown" })).rejects.toThrow(
+      "__NOT_FOUND__",
+    );
   });
 
   it("rend le launcher modal si incident actionnable (status=pending)", async () => {
@@ -166,9 +182,7 @@ describe("AdminRefundIncidentDetailPage — fetch + render", () => {
       incident: BASE_INCIDENT,
       error: null,
     });
-    const tree = (await AdminRefundIncidentDetailPage({
-      params: Promise.resolve({ id: INCIDENT_ID }),
-    })) as ReactElement;
+    const tree = await resolveGate({ id: INCIDENT_ID });
     const launcher = findByDisplayName(tree, "ResolveIncidentModalLauncher");
     expect(launcher).not.toBeNull();
     // Le stub place les props passées dans `data-props` pour pouvoir
@@ -182,9 +196,7 @@ describe("AdminRefundIncidentDetailPage — fetch + render", () => {
       incident: { ...BASE_INCIDENT, status: "retrying" },
       error: null,
     });
-    const tree = (await AdminRefundIncidentDetailPage({
-      params: Promise.resolve({ id: INCIDENT_ID }),
-    })) as ReactElement;
+    const tree = await resolveGate({ id: INCIDENT_ID });
     expect(findByDisplayName(tree, "ResolveIncidentModalLauncher")).not.toBeNull();
   });
 
@@ -193,9 +205,7 @@ describe("AdminRefundIncidentDetailPage — fetch + render", () => {
       incident: { ...BASE_INCIDENT, status: "succeeded" },
       error: null,
     });
-    const tree = (await AdminRefundIncidentDetailPage({
-      params: Promise.resolve({ id: INCIDENT_ID }),
-    })) as ReactElement;
+    const tree = await resolveGate({ id: INCIDENT_ID });
     expect(findByDisplayName(tree, "ResolveIncidentModalLauncher")).toBeNull();
   });
 
@@ -204,9 +214,7 @@ describe("AdminRefundIncidentDetailPage — fetch + render", () => {
       incident: { ...BASE_INCIDENT, status: "manually_resolved" },
       error: null,
     });
-    const tree = (await AdminRefundIncidentDetailPage({
-      params: Promise.resolve({ id: INCIDENT_ID }),
-    })) as ReactElement;
+    const tree = await resolveGate({ id: INCIDENT_ID });
     expect(findByDisplayName(tree, "ResolveIncidentModalLauncher")).toBeNull();
   });
 
@@ -215,9 +223,7 @@ describe("AdminRefundIncidentDetailPage — fetch + render", () => {
       incident: { ...BASE_INCIDENT, status: "exhausted" },
       error: null,
     });
-    const tree = (await AdminRefundIncidentDetailPage({
-      params: Promise.resolve({ id: INCIDENT_ID }),
-    })) as ReactElement;
+    const tree = await resolveGate({ id: INCIDENT_ID });
     expect(findByDisplayName(tree, "ResolveIncidentModalLauncher")).toBeNull();
   });
 
@@ -226,9 +232,7 @@ describe("AdminRefundIncidentDetailPage — fetch + render", () => {
       incident: null,
       error: "permission denied",
     });
-    const tree = (await AdminRefundIncidentDetailPage({
-      params: Promise.resolve({ id: INCIDENT_ID }),
-    })) as ReactElement;
+    const tree = await resolveGate({ id: INCIDENT_ID });
     // Ne devrait pas throw notFound — au lieu une page erreur avec
     // AdminPageHeader error prop.
     expect(findByDisplayName(tree, "ResolveIncidentModalLauncher")).toBeNull();

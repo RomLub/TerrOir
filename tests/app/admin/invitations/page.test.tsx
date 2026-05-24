@@ -63,14 +63,42 @@ import AdminInvitationsPage, {
   InvitationsContent,
 } from "@/app/(admin)/invitations/page";
 
-// Lot B perf : la page retourne <div>en-tête + filtres + <Suspense>
-// <InvitationsContent/></Suspense></div>. Le fetch service_role + la
-// propagation d'erreur vivent dans InvitationsContent (async). resolveContent
-// extrait l'enfant <InvitationsContent> du <Suspense> rendu par la page (on
-// teste donc le parsing searchParams réel), puis l'exécute.
+// Lot B perf (pattern Gate) : la page synchrone retourne
+// <div>en-tête + <Suspense><InvitationsGate/></Suspense></div>. Le Gate (async)
+// await + parse le searchParams (status/from/to + cursor), rend les filtres
+// (<InvitationsListClient/>) puis délègue à <InvitationsContent/> (async) qui
+// fait le fetch service_role + le listing. resolveGate exécute le Gate (on teste
+// donc le parsing searchParams réel) et retourne son output (fragment filtres +
+// <InvitationsContent/>).
+async function resolveGate(pageNode: ReactElement): Promise<ReactElement> {
+  // Le <Suspense> est un enfant du <div> racine ; son enfant est le Gate.
+  const children = (pageNode.props as { children?: unknown }).children;
+  const arr = (Array.isArray(children) ? children : [children]).flat();
+  const suspense = arr.find(
+    (c): c is ReactElement & { props: { children?: ReactElement } } =>
+      !!c &&
+      typeof c === "object" &&
+      "props" in c &&
+      typeof (
+        (c as { props?: { children?: ReactElement } }).props?.children as
+          | { type?: unknown }
+          | undefined
+      )?.type === "function",
+  );
+  const gate = suspense?.props.children;
+  if (!gate) throw new Error("InvitationsGate introuvable dans le <Suspense>");
+  const Gate = gate.type as (
+    props: unknown,
+  ) => Promise<ReactElement> | ReactElement;
+  return (await Gate(gate.props)) as ReactElement;
+}
+
+// resolveContent : exécute le Gate puis y trouve l'élément <InvitationsContent/>
+// et l'exécute pour obtenir le markup data (fetch + listing).
 async function resolveContent(pageNode: ReactElement): Promise<ReactElement> {
-  const props = findByName(pageNode, "InvitationsContent");
-  if (!props) throw new Error("InvitationsContent introuvable dans la page");
+  const gate = await resolveGate(pageNode);
+  const props = findByName(gate, "InvitationsContent");
+  if (!props) throw new Error("InvitationsContent introuvable dans le Gate");
   return (await InvitationsContent(
     props as Parameters<typeof InvitationsContent>[0],
   )) as ReactElement;
@@ -221,7 +249,9 @@ describe("Server Component /invitations", () => {
       }),
     })) as ReactElement;
 
-    const props = findByName(node, "InvitationsListClient");
+    // <InvitationsListClient/> a migré dans le Gate : on l'exécute d'abord.
+    const gate = await resolveGate(node);
+    const props = findByName(gate, "InvitationsListClient");
     expect(props).not.toBeNull();
     expect(props?.currentStatus).toBe("revoked");
     expect(props?.currentFrom).toBe("2026-05-01");

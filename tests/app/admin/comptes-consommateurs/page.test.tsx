@@ -25,29 +25,20 @@ vi.mock("@/lib/supabase/admin", () => ({
   createSupabaseAdminClient: () => ({}),
 }));
 
-import AdminComptesConsommateursPage, {
-  ComptesContent,
-} from "@/app/(admin)/comptes-consommateurs/page";
+import AdminComptesConsommateursPage from "@/app/(admin)/comptes-consommateurs/page";
 
-// renderPage : markup synchrone de la page (en-tête + formulaire de recherche).
-// Lot B perf : la liste est désormais streamée en <Suspense>, donc ce markup
-// ne contient PAS les lignes (le fallback skeleton les remplace). On l'utilise
-// pour les assertions sur le titre / le formulaire.
-async function renderPage(sp: Record<string, string> = {}): Promise<string> {
-  const node = (await AdminComptesConsommateursPage({
-    searchParams: Promise.resolve(sp),
-  })) as ReactElement;
-  return renderToStaticMarkup(node);
-}
-
-// renderContent : extrait le <ComptesContent> du <Suspense> rendu par la page
-// (on teste donc le parsing searchParams réel), puis l'exécute pour obtenir le
-// markup de la liste (fetch + lignes). C'est là que vit la logique data.
-async function renderContent(sp: Record<string, string> = {}): Promise<string> {
+// Lot B perf (pattern Gate) : la page synchrone retourne
+// <div><AdminPageHeader/><Suspense><ComptesGate/></Suspense></div>. Le Gate
+// (async) await + parse le searchParams (q + cursor), rend le <form> de
+// recherche puis délègue à <ComptesContent/> (async) qui fait le fetch + la
+// liste. resolveGate extrait le <ComptesGate/> du <Suspense> (on teste donc le
+// parsing searchParams réel) et l'exécute pour obtenir son output (fragment
+// form + <ComptesContent/>).
+async function resolveGate(sp: Record<string, string>): Promise<ReactElement> {
   const page = (await AdminComptesConsommateursPage({
     searchParams: Promise.resolve(sp),
   })) as ReactElement;
-  // Le <Suspense> est le dernier enfant du <div> racine.
+  // Le <Suspense> est un des enfants du <div> racine (à côté de l'en-tête).
   const children = (page.props as { children?: unknown }).children;
   const arr = (Array.isArray(children) ? children : [children]).flat();
   const suspense = arr.find(
@@ -61,11 +52,62 @@ async function renderContent(sp: Record<string, string> = {}): Promise<string> {
           | undefined
       )?.type === "function",
   );
-  const content = suspense?.props.children;
-  if (!content) throw new Error("ComptesContent introuvable dans le <Suspense>");
-  const resolved = (await ComptesContent(
-    content.props as Parameters<typeof ComptesContent>[0],
-  )) as ReactElement;
+  const gate = suspense?.props.children;
+  if (!gate) throw new Error("ComptesGate introuvable dans le <Suspense>");
+  const Gate = gate.type as (
+    props: unknown,
+  ) => Promise<ReactElement> | ReactElement;
+  return (await Gate(gate.props)) as ReactElement;
+}
+
+// renderPage : markup statique de la page (en-tête + titre) concaténé au markup
+// des éléments synchrones du Gate (le <form> de recherche, qui a migré ici).
+// On NE rend pas le <ComptesContent/> ici (async, non rendable par
+// renderToStaticMarkup) : on isole les enfants synchrones du fragment Gate.
+async function renderPage(sp: Record<string, string> = {}): Promise<string> {
+  const page = (await AdminComptesConsommateursPage({
+    searchParams: Promise.resolve(sp),
+  })) as ReactElement;
+  // En-tête statique (titre) — synchrone dans la coquille page.
+  const headerHtml = renderToStaticMarkup(page);
+  // Enfants synchrones du Gate (formulaire) — on exclut le composant async.
+  const gate = await resolveGate(sp);
+  const gateChildren = (gate.props as { children?: unknown }).children;
+  const arr = (Array.isArray(gateChildren) ? gateChildren : [gateChildren]).flat();
+  const syncChildren = arr.filter(
+    (c) =>
+      !!c &&
+      (typeof c !== "object" ||
+        !("type" in (c as object)) ||
+        typeof (c as { type?: unknown }).type !== "function"),
+  ) as ReactElement[];
+  const gateHtml = syncChildren
+    .map((c) => renderToStaticMarkup(c))
+    .join("");
+  return headerHtml + gateHtml;
+}
+
+// renderContent : résout le Gate, en extrait l'élément <ComptesContent/> puis
+// l'exécute pour obtenir le markup de la liste (fetch + lignes). C'est là que
+// vit la logique data.
+async function renderContent(sp: Record<string, string> = {}): Promise<string> {
+  const gate = await resolveGate(sp);
+  // Le Gate retourne un fragment <>form + <ComptesContent/></> : on cherche
+  // l'enfant dont le type est une fonction (le composant async Content).
+  const gateChildren = (gate.props as { children?: unknown }).children;
+  const arr = (Array.isArray(gateChildren) ? gateChildren : [gateChildren]).flat();
+  const content = arr.find(
+    (c): c is ReactElement =>
+      !!c &&
+      typeof c === "object" &&
+      "type" in c &&
+      typeof (c as { type?: unknown }).type === "function",
+  );
+  if (!content) throw new Error("ComptesContent introuvable dans le Gate");
+  const Content = content.type as (
+    props: unknown,
+  ) => Promise<ReactElement> | ReactElement;
+  const resolved = (await Content(content.props)) as ReactElement;
   return renderToStaticMarkup(resolved);
 }
 
