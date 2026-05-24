@@ -104,6 +104,39 @@ export const producerSignupSchema = z
 
 export type ProducerSignupInput = z.infer<typeof producerSignupSchema>;
 
+// Variante « devenir producteur en étant déjà connecté » : pas d'email ni de
+// mot de passe (le compte existe ; l'email autoritaire vient de la session).
+// On rattache le rôle producteur au compte existant.
+export const becomeProducerSchema = z.object({
+  prenom: z.string().trim().min(1, "Prénom requis").max(120),
+  nom: z.string().trim().min(1, "Nom requis").max(120),
+  telephone: z.string().trim().min(1, "Téléphone requis").max(40),
+  nom_exploitation: z
+    .string()
+    .trim()
+    .min(1, "Nom de l'exploitation requis")
+    .max(200),
+  commune: z.string().trim().min(1, "Commune requise").max(120),
+  code_postal: z.string().trim().regex(/^\d{5}$/, "Code postal : 5 chiffres"),
+  especes: z.array(z.string().trim().min(1)).max(20).optional(),
+  message: z
+    .string()
+    .trim()
+    .max(5000)
+    .optional()
+    .transform((v) => (v === "" ? undefined : v)),
+  cgu_accepted: z
+    .union([z.boolean(), z.string()])
+    .transform((v) => v === true || v === "on" || v === "true")
+    .refine((v) => v === true, {
+      message: "Vous devez accepter les conditions d'utilisation",
+    }),
+  // Honeypot anti-bot.
+  website: z.string().optional(),
+});
+
+export type BecomeProducerInput = z.infer<typeof becomeProducerSchema>;
+
 export const inviteProducerSchema = z.object({
   email: z.string().trim().email("Email invalide"),
 });

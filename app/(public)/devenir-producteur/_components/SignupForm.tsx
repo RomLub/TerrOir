@@ -7,6 +7,7 @@ import {
   signupProducerAction,
   type ProducerSignupState,
 } from "../_actions/signup-producer";
+import { becomeProducerAction } from "../_actions/become-producer";
 
 export type PrefillData = {
   token: string;
@@ -28,11 +29,20 @@ const ESPECES = [
   "Autre",
 ];
 
-export function SignupForm({ prefill }: { prefill: PrefillData | null }) {
+export function SignupForm({
+  prefill,
+  loggedInEmail = null,
+}: {
+  prefill: PrefillData | null;
+  // Variante « connecté » : email du compte, verrouillé, pas de mot de passe ;
+  // la soumission rattache le rôle producteur au compte existant.
+  loggedInEmail?: string | null;
+}) {
+  const loggedIn = Boolean(loggedInEmail);
   const [state, formAction, isPending] = useActionState<
     ProducerSignupState,
     FormData
-  >(signupProducerAction, {});
+  >(loggedIn ? becomeProducerAction : signupProducerAction, {});
 
   // Accès immédiat : à la création réussie, on navigue côté client vers
   // l'espace producteur (le cookie partagé .terroir-local.fr authentifie sur
@@ -90,8 +100,8 @@ export function SignupForm({ prefill }: { prefill: PrefillData | null }) {
           label="Email"
           type="email"
           name="email"
-          defaultValue={prefill?.email ?? ""}
-          readOnly={Boolean(prefill)}
+          defaultValue={loggedInEmail ?? prefill?.email ?? ""}
+          readOnly={loggedIn || Boolean(prefill)}
           autoComplete="email"
           required
         />
@@ -105,26 +115,30 @@ export function SignupForm({ prefill }: { prefill: PrefillData | null }) {
         />
       </div>
 
-      <div className="grid sm:grid-cols-2 gap-4">
-        <Input
-          label="Mot de passe"
-          type="password"
-          name="password"
-          autoComplete="new-password"
-          required
-        />
-        <Input
-          label="Confirmer le mot de passe"
-          type="password"
-          name="passwordConfirm"
-          autoComplete="new-password"
-          required
-        />
-      </div>
-      <p className="text-[12px] text-dark/55 -mt-2">
-        12 caractères minimum, avec au moins une majuscule, une minuscule et un
-        chiffre.
-      </p>
+      {!loggedIn ? (
+        <>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <Input
+              label="Mot de passe"
+              type="password"
+              name="password"
+              autoComplete="new-password"
+              required
+            />
+            <Input
+              label="Confirmer le mot de passe"
+              type="password"
+              name="passwordConfirm"
+              autoComplete="new-password"
+              required
+            />
+          </div>
+          <p className="text-[12px] text-dark/55 -mt-2">
+            12 caractères minimum, avec au moins une majuscule, une minuscule et
+            un chiffre.
+          </p>
+        </>
+      ) : null}
 
       <div className="grid sm:grid-cols-2 gap-4">
         <Input
