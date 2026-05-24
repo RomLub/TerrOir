@@ -9,7 +9,13 @@ Pour les décisions structurantes (ADRs), voir [`decisions/`](./decisions/).
 
 ---
 
-## 2026-05-25 (Perf — barre de progression de navigation)
+## 2026-05-25 (Perf — fonctions Vercel en Europe, près de Supabase) ⚡ cause systémique
+
+> PR `perf/vercel-eu-region`. **Cause racine de la lenteur générale identifiée.** Les requêtes DB sont rapides (5-9 ms mesuré via pg_stat_statements), mais la **base Supabase est en Europe** (IP serveur = plage AWS EU) alors que les **fonctions Vercel tournaient aux USA** (aucune région dans `vercel.json` → défaut `iad1` Washington). Chaque requête DB faisait donc un **aller-retour transatlantique (~80 ms)** ; une page enchaînant N requêtes en série payait N × 80 ms (ex. /creneaux ≈ 4 requêtes → ~320 ms de réseau pur). Toutes les pages lisant des données étaient touchées (≈ le « 2/3 lent » constaté).
+>
+> 🟢 **Fix** : `"regions": ["cdg1"]` (Paris) dans `vercel.json` → fonctions co-localisées avec Supabase (EU) et proches des utilisateurs (Sarthe). Allers-retours DB ~80 ms → ~10-15 ms. Accélération **site-wide**, bien plus efficace que des optimisations page par page.
+>
+> ℹ️ Région à affiner sur la région exacte de Supabase (Irlande `dub1` / Francfort `fra1`) pour gagner les derniers ms si besoin. Hobby Vercel = 1 région (OK).
 
 > PR `perf/nav-progress-bar`. Ajoute une fine barre de progression en haut (style GitHub/YouTube) qui démarre dès le clic sur un lien interne, le temps que la page suivante charge ses données. Complète le chantier « navigation instantanée » : sur les pages dynamiques (qui doivent fetcher des données fraîches à chaque clic — données utilisateur, jamais mises en cache pour la vie privée), elle donne un **retour visuel immédiat** au lieu d'une impression d'attente sans réaction.
 >
