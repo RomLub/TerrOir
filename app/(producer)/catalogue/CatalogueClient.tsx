@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useState } from 'react';
-import { Button, Badge } from '@/components/ui';
+import { Button, Badge, PageHeader } from '@/components/ui';
 import { ProductFallback } from '@/components/ui/product-fallback';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import {
@@ -11,7 +11,6 @@ import {
   revalidatePublicProducts,
   revalidateProducersSearch,
 } from '@/lib/stats/revalidate';
-import { ProducerLayout } from '../_components/ProducerLayout';
 
 export type CatalogueProduct = {
   id: string;
@@ -154,19 +153,16 @@ export function CatalogueClient({
   };
 
   return (
-    <ProducerLayout>
+    <>
       <div className="max-w-6xl mx-auto px-8 py-10">
-        <header className="mb-8 flex items-end justify-between gap-4 flex-wrap">
-          <div>
-            <div className="text-[11px] uppercase tracking-[0.18em] text-terra-700 font-semibold">Catalogue</div>
-            <h1 className="mt-1 font-serif text-[40px] text-green-900 leading-tight">Vos produits</h1>
-            <p className="text-[14px] text-dark/60 mt-1">
-              {`${products.filter((p) => p.active).length} produits actifs · ${products.length} au total`}
-            </p>
-            {error && <p className="mt-2 text-[13px] text-terra-700">{error}</p>}
-          </div>
-          <Link href="/catalogue/nouveau"><Button variant="primary" size="lg">+ Ajouter un produit</Button></Link>
-        </header>
+        <PageHeader
+          tone="producer"
+          eyebrow="Catalogue"
+          title="Vos produits"
+          subtitle={`${products.filter((p) => p.active).length} produits actifs · ${products.length} au total`}
+          error={error}
+          right={<Link href="/catalogue/nouveau"><Button variant="primary" size="lg">+ Ajouter un produit</Button></Link>}
+        />
 
         {products.length === 0 ? (
           <div className="bg-white rounded-2xl border border-dark/[0.06] p-12 text-center">
@@ -319,6 +315,6 @@ export function CatalogueClient({
           </div>
         </div>
       )}
-    </ProducerLayout>
+    </>
   );
 }

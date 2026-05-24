@@ -55,6 +55,11 @@ export {
   type AdminPageHeaderProps,
 } from "./admin-page-header";
 export {
+  PageHeader,
+  type PageHeaderProps,
+  type PageHeaderTone,
+} from "./page-header";
+export {
   FilterTabs,
   type FilterTabsProps,
   type FilterTabOption,

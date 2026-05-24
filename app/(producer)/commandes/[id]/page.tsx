@@ -8,7 +8,6 @@ import {
   formatLegacyTimeHHMM,
 } from '@/lib/slots/format-slot-time';
 import type { OrderStatus } from '@/components/ui';
-import { ProducerLayout } from '../../_components/ProducerLayout';
 import { OrderDetailClient, type OrderDetailData } from './OrderDetailClient';
 
 function formatReceived(iso: string): string {
@@ -97,9 +96,5 @@ export default async function ProducerOrderDetailPage(props: { params: Promise<{
     note: order.notes_client ?? undefined,
   };
 
-  return (
-    <ProducerLayout>
-      <OrderDetailClient data={data} />
-    </ProducerLayout>
-  );
+  return <OrderDetailClient data={data} />;
 }

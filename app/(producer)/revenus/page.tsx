@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Badge } from '@/components/ui';
+import { Badge, PageHeader } from '@/components/ui';
 import { getSessionUser } from '@/lib/auth/session';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
@@ -12,7 +12,6 @@ import {
   startOfWeek,
   addDays,
 } from '@/lib/dates/week-navigation';
-import { ProducerLayout } from '../_components/ProducerLayout';
 import { WeekNavigator } from '../_components/WeekNavigator';
 import { mapStatusToBadge } from './_lib/badge-mapping';
 
@@ -129,96 +128,95 @@ export default async function RevenusPage(props: {
     : 'Prochain lundi';
 
   return (
-    <ProducerLayout>
-      <div className="max-w-6xl mx-auto px-8 py-10">
-        <header className="mb-8">
-          <div className="text-[11px] uppercase tracking-[0.18em] text-terra-700 font-semibold">Revenus</div>
-          <h1 className="mt-1 font-serif text-[40px] text-green-900 leading-tight">Vos revenus</h1>
-        </header>
+    <div className="max-w-6xl mx-auto px-8 py-10">
+      <PageHeader
+        tone="producer"
+        eyebrow="Revenus"
+        title="Vos revenus"
+      />
 
-        <section className="mb-10 bg-green-900 text-white rounded-3xl p-8 md:p-10 relative overflow-hidden">
-          <div className="absolute -right-20 -top-20 w-64 h-64 rounded-full bg-terra-700/30 blur-3xl" />
-          <div className="relative">
-            <div className="text-[11px] uppercase tracking-[0.2em] text-terra-300 font-semibold">Prochain virement</div>
-            <div className="mt-3 flex items-baseline gap-3 flex-wrap">
-              <div className="font-serif text-[72px] md:text-[88px] leading-none tabular-nums">
-                {nextPending ? Number(nextPending.montant_net).toFixed(2).replace('.', ',') : '0,00'}
-                <span className="text-[40px] text-terra-300"> €</span>
-              </div>
+      <section className="mb-10 bg-green-900 text-white rounded-3xl p-8 md:p-10 relative overflow-hidden">
+        <div className="absolute -right-20 -top-20 w-64 h-64 rounded-full bg-terra-700/30 blur-3xl" />
+        <div className="relative">
+          <div className="text-[11px] uppercase tracking-[0.2em] text-terra-300 font-semibold">Prochain virement</div>
+          <div className="mt-3 flex items-baseline gap-3 flex-wrap">
+            <div className="font-serif text-[72px] md:text-[88px] leading-none tabular-nums">
+              {nextPending ? Number(nextPending.montant_net).toFixed(2).replace('.', ',') : '0,00'}
+              <span className="text-[40px] text-terra-300"> €</span>
             </div>
-            <p className="mt-4 text-[16px] text-green-100/85">
-              {nextPending
-                ? <>Sera viré le <span className="font-semibold text-white">{nextDateLabel}</span> · {nextOrderCount} commande{nextOrderCount > 1 ? 's' : ''} finalisée{nextOrderCount > 1 ? 's' : ''}</>
-                : <>Aucun virement en attente — continuez à livrer vos clients !</>}
-            </p>
           </div>
-        </section>
+          <p className="mt-4 text-[16px] text-green-100/85">
+            {nextPending
+              ? <>Sera viré le <span className="font-semibold text-white">{nextDateLabel}</span> · {nextOrderCount} commande{nextOrderCount > 1 ? 's' : ''} finalisée{nextOrderCount > 1 ? 's' : ''}</>
+              : <>Aucun virement en attente — continuez à livrer vos clients !</>}
+          </p>
+        </div>
+      </section>
 
-        <section className="mb-10 bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6 md:p-8">
-          <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
-            <div className="flex items-end gap-3">
-              <h2 className="font-serif text-[24px] text-green-900">Évolution sur 8 semaines</h2>
-              <span className="text-[12px] mono text-dark/50 pb-1">en €</span>
-            </div>
-            <WeekNavigator weekOffset={weekOffset} periodLabel={chartPeriodLabel} />
+      <section className="mb-10 bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6 md:p-8">
+        <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
+          <div className="flex items-end gap-3">
+            <h2 className="font-serif text-[24px] text-green-900">Évolution sur 8 semaines</h2>
+            <span className="text-[12px] mono text-dark/50 pb-1">en €</span>
           </div>
-          <div className="h-56 flex items-end justify-between gap-3">
-            {revenueByWeek.map((w, i) => {
-              const h = max > 0 ? (w.value / max) * 100 : 0;
-              const isLast = i === revenueByWeek.length - 1;
-              return (
-                <div key={`${w.label}-${i}`} className="flex-1 flex flex-col items-center gap-2 group">
-                  <div className="text-[11px] mono text-dark/50 tabular-nums">{Math.round(w.value)}</div>
-                  <div className="w-full flex-1 flex items-end">
-                    <div className={`w-full rounded-t-md transition-all ${isLast ? 'bg-terra-700' : 'bg-green-700'} group-hover:opacity-80`}
-                      style={{ height: `${h}%` }} />
-                  </div>
-                  <div className={`text-[11px] mono font-semibold ${isLast ? 'text-terra-700' : 'text-dark/60'}`}>{w.label}</div>
+          <WeekNavigator weekOffset={weekOffset} periodLabel={chartPeriodLabel} />
+        </div>
+        <div className="h-56 flex items-end justify-between gap-3">
+          {revenueByWeek.map((w, i) => {
+            const h = max > 0 ? (w.value / max) * 100 : 0;
+            const isLast = i === revenueByWeek.length - 1;
+            return (
+              <div key={`${w.label}-${i}`} className="flex-1 flex flex-col items-center gap-2 group">
+                <div className="text-[11px] mono text-dark/50 tabular-nums">{Math.round(w.value)}</div>
+                <div className="w-full flex-1 flex items-end">
+                  <div className={`w-full rounded-t-md transition-all ${isLast ? 'bg-terra-700' : 'bg-green-700'} group-hover:opacity-80`}
+                    style={{ height: `${h}%` }} />
                 </div>
-              );
-            })}
-          </div>
-        </section>
+                <div className={`text-[11px] mono font-semibold ${isLast ? 'text-terra-700' : 'text-dark/60'}`}>{w.label}</div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
 
-        <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft overflow-hidden">
-          <div className="p-6 border-b border-dark/[0.06]">
-            <h2 className="font-serif text-[24px] text-green-900">Historique des virements</h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-[13px]">
-              <thead className="bg-bg text-[11px] uppercase tracking-widest text-dark/55">
+      <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft overflow-hidden">
+        <div className="p-6 border-b border-dark/[0.06]">
+          <h2 className="font-serif text-[24px] text-green-900">Historique des virements</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-[13px]">
+            <thead className="bg-bg text-[11px] uppercase tracking-widest text-dark/55">
+              <tr>
+                <th className="text-left px-6 py-3 font-semibold">Période</th>
+                <th className="text-right px-4 py-3 font-semibold">Brut</th>
+                <th className="text-right px-4 py-3 font-semibold">Commission 6%</th>
+                <th className="text-right px-4 py-3 font-semibold">Net viré</th>
+                <th className="text-left px-4 py-3 font-semibold">Statut</th>
+                <th className="px-4 py-3"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-dark/[0.06]">
+              {historicalPayouts.length === 0 ? (
                 <tr>
-                  <th className="text-left px-6 py-3 font-semibold">Période</th>
-                  <th className="text-right px-4 py-3 font-semibold">Brut</th>
-                  <th className="text-right px-4 py-3 font-semibold">Commission 6%</th>
-                  <th className="text-right px-4 py-3 font-semibold">Net viré</th>
-                  <th className="text-left px-4 py-3 font-semibold">Statut</th>
-                  <th className="px-4 py-3"></th>
+                  <td colSpan={6} className="px-6 py-8 text-center text-dark/55">Aucun virement pour le moment.</td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-dark/[0.06]">
-                {historicalPayouts.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-6 py-8 text-center text-dark/55">Aucun virement pour le moment.</td>
-                  </tr>
-                ) : historicalPayouts.map((p) => {
-                  const badge = mapStatusToBadge(p.statut);
-                  return (
-                  <tr key={p.id} className="hover:bg-green-100/20 transition-colors">
-                    <td className="px-6 py-4 text-dark font-medium">{formatPeriod(p.periode_debut, p.periode_fin)}</td>
-                    <td className="px-4 py-4 text-right tabular-nums text-dark/70">{formatEuro(Number(p.montant_brut ?? 0))}</td>
-                    <td className="px-4 py-4 text-right tabular-nums text-terra-700">−{formatEuro(Number(p.commission ?? 0))}</td>
-                    <td className="px-4 py-4 text-right tabular-nums font-serif text-[16px] text-green-900">{formatEuro(Number(p.montant_net ?? 0))}</td>
-                    <td className="px-4 py-4"><Badge variant={badge.variant}>{badge.label}</Badge></td>
-                    <td className="px-4 py-4"><Link href={`/revenus/${p.id}`} className="text-[12px] text-green-700 hover:text-green-900 font-medium">Détail →</Link></td>
-                  </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </div>
-    </ProducerLayout>
+              ) : historicalPayouts.map((p) => {
+                const badge = mapStatusToBadge(p.statut);
+                return (
+                <tr key={p.id} className="hover:bg-green-100/20 transition-colors">
+                  <td className="px-6 py-4 text-dark font-medium">{formatPeriod(p.periode_debut, p.periode_fin)}</td>
+                  <td className="px-4 py-4 text-right tabular-nums text-dark/70">{formatEuro(Number(p.montant_brut ?? 0))}</td>
+                  <td className="px-4 py-4 text-right tabular-nums text-terra-700">−{formatEuro(Number(p.commission ?? 0))}</td>
+                  <td className="px-4 py-4 text-right tabular-nums font-serif text-[16px] text-green-900">{formatEuro(Number(p.montant_net ?? 0))}</td>
+                  <td className="px-4 py-4"><Badge variant={badge.variant}>{badge.label}</Badge></td>
+                  <td className="px-4 py-4"><Link href={`/revenus/${p.id}`} className="text-[12px] text-green-700 hover:text-green-900 font-medium">Détail →</Link></td>
+                </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
   );
 }

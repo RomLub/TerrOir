@@ -12,7 +12,6 @@ import {
   revalidateProducerProducts,
   revalidateProducersSearch,
 } from '@/lib/stats/revalidate';
-import { ProducerLayout } from '../../_components/ProducerLayout';
 import {
   fetchProductCategories,
   fetchAnimals,
@@ -255,196 +254,194 @@ export default function ProductNewPage() {
   };
 
   return (
-    <ProducerLayout>
-      <div className="max-w-7xl mx-auto px-8 py-10">
-        <header className="mb-8">
-          <Link href="/catalogue" className="text-[13px] text-dark/60 hover:text-green-900">← Retour au catalogue</Link>
-          <h1 className="mt-2 font-serif text-[40px] text-green-900 leading-tight">Nouveau produit</h1>
-          {error && <p className="mt-2 text-[13px] text-terra-700">{error}</p>}
-        </header>
+    <div className="max-w-7xl mx-auto px-8 py-10">
+      <header className="mb-8">
+        <Link href="/catalogue" className="text-[13px] text-dark/60 hover:text-green-900">← Retour au catalogue</Link>
+        <h1 className="mt-2 font-serif text-[40px] text-green-900 leading-tight">Nouveau produit</h1>
+        {error && <p className="mt-2 text-[13px] text-terra-700">{error}</p>}
+      </header>
 
-        <div className="grid lg:grid-cols-[1fr_380px] gap-10 items-start">
-          <form onSubmit={save} className="space-y-8">
-            <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
-              <h2 className="font-serif text-[22px] text-green-900 mb-4">Informations produit</h2>
-              <div className="space-y-4">
-                <Input label="Nom du produit *" value={form.name} onChange={up('name')} required placeholder="Ex : Entrecôte maturée 21 jours" />
-                <Textarea label="Description" rows={4} value={form.description} onChange={up('description')}
-                  placeholder="Détaillez l'origine, la découpe, les conseils de cuisson…" />
-                {/* T-220 PR-B : cascade catégorie → animal → morceau.
-                    - Catégorie : toujours visible.
-                    - Animal : visible si la catégorie sélectionnée est dans
-                      CATEGORIES_WITH_ANIMAL (viande, charcuterie).
-                    - Morceau : visible une fois l'animal sélectionné.
-                    Reset silencieux des niveaux inférieurs à chaque change.
-                    Selects disabled + hint pendant le fetch initial des
-                    référentiels (cf. décision Q4). */}
+      <div className="grid lg:grid-cols-[1fr_380px] gap-10 items-start">
+        <form onSubmit={save} className="space-y-8">
+          <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
+            <h2 className="font-serif text-[22px] text-green-900 mb-4">Informations produit</h2>
+            <div className="space-y-4">
+              <Input label="Nom du produit *" value={form.name} onChange={up('name')} required placeholder="Ex : Entrecôte maturée 21 jours" />
+              <Textarea label="Description" rows={4} value={form.description} onChange={up('description')}
+                placeholder="Détaillez l'origine, la découpe, les conseils de cuisson…" />
+              {/* T-220 PR-B : cascade catégorie → animal → morceau.
+                  - Catégorie : toujours visible.
+                  - Animal : visible si la catégorie sélectionnée est dans
+                    CATEGORIES_WITH_ANIMAL (viande, charcuterie).
+                  - Morceau : visible une fois l'animal sélectionné.
+                  Reset silencieux des niveaux inférieurs à chaque change.
+                  Selects disabled + hint pendant le fetch initial des
+                  référentiels (cf. décision Q4). */}
+              <Select
+                label="Catégorie"
+                value={form.categoryId ?? ''}
+                onChange={onCategoryChange}
+                disabled={referencesLoading}
+                hint={referencesLoading ? 'Chargement…' : undefined}
+                placeholder="Choisir une catégorie…"
+                options={categories.map((c) => ({ value: c.id, label: c.name }))}
+              />
+              {hasAnimalSelect && (
                 <Select
-                  label="Catégorie"
-                  value={form.categoryId ?? ''}
-                  onChange={onCategoryChange}
+                  label="Espèce"
+                  value={form.animalId ?? ''}
+                  onChange={onAnimalChange}
                   disabled={referencesLoading}
                   hint={referencesLoading ? 'Chargement…' : undefined}
-                  placeholder="Choisir une catégorie…"
-                  options={categories.map((c) => ({ value: c.id, label: c.name }))}
+                  placeholder="Choisir une espèce…"
+                  options={animals.map((a) => ({ value: a.id, label: a.name }))}
                 />
-                {hasAnimalSelect && (
-                  <Select
-                    label="Espèce"
-                    value={form.animalId ?? ''}
-                    onChange={onAnimalChange}
-                    disabled={referencesLoading}
-                    hint={referencesLoading ? 'Chargement…' : undefined}
-                    placeholder="Choisir une espèce…"
-                    options={animals.map((a) => ({ value: a.id, label: a.name }))}
-                  />
-                )}
-                {hasCutSelect && (
-                  <Select
-                    label="Morceau"
-                    value={form.cutId ?? ''}
-                    onChange={onCutChange}
-                    disabled={referencesLoading}
-                    hint={referencesLoading ? 'Chargement…' : undefined}
-                    placeholder="Choisir un morceau…"
-                    options={filteredCuts.map((c) => ({ value: c.id, label: c.name }))}
-                  />
-                )}
-              </div>
-            </section>
-
-            <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
-              <label className="flex items-center justify-between gap-3 cursor-pointer">
-                <div>
-                  <div className="font-serif text-[18px] text-green-900">Le conseil de l&apos;éleveur</div>
-                  <div className="text-[12px] text-dark/55 mt-0.5">
-                    Un mot manuscrit visible sur la fiche. Cuisson, conservation, accord…
-                  </div>
-                </div>
-                <span className={`relative w-10 h-6 rounded-full transition-colors ${form.conseilActive ? 'bg-green-700' : 'bg-dark/20'}`}>
-                  <input type="checkbox" className="sr-only" checked={form.conseilActive}
-                    onChange={(e) => setForm({ ...form, conseilActive: e.target.checked })} />
-                  <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${form.conseilActive ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
-                </span>
-              </label>
-              {form.conseilActive && (
-                <div className="mt-4">
-                  <Textarea
-                    rows={4}
-                    maxLength={CONSEIL_MAX}
-                    value={form.conseilTexte}
-                    onChange={up('conseilTexte')}
-                    placeholder="Ex : Sortez la viande 1h avant de la cuire. Saisir 2 min par face à feu vif, puis reposer sous papier alu."
-                  />
-                  <div className="mt-1 text-right text-[11px] text-dark/50 tabular-nums">
-                    {form.conseilTexte.length}/{CONSEIL_MAX}
-                  </div>
-                </div>
               )}
-            </section>
-
-            <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
-              <h2 className="font-serif text-[22px] text-green-900 mb-4">Prix et conditionnement</h2>
-              <div className="grid sm:grid-cols-2 gap-4">
-                <Input label="Prix *" type="number" step="0.01" min="0" value={form.price} onChange={up('price')} required placeholder="0,00" />
-                <Select label="Unité *" value={form.unit} onChange={up('unit')}>
-                  <option value="kg">Au kilo (kg)</option>
-                  <option value="piece">À la pièce</option>
-                  <option value="colis">Au colis</option>
-                </Select>
-              </div>
-              {form.unit === 'kg' && (
-                <div className="mt-4 grid sm:grid-cols-2 gap-4">
-                  <Select label="Pas de commande" value={form.weightStep} onChange={up('weightStep')}>
-                    <option value="0.25">0,25 kg</option>
-                    <option value="0.5">0,5 kg</option>
-                    <option value="1">1 kg</option>
-                  </Select>
-                  <Input label="Poids estimé par pièce (kg, optionnel)" type="number" step="0.1" value={form.estimatedWeight} onChange={up('estimatedWeight')} placeholder="Ex : 1,2" />
-                </div>
+              {hasCutSelect && (
+                <Select
+                  label="Morceau"
+                  value={form.cutId ?? ''}
+                  onChange={onCutChange}
+                  disabled={referencesLoading}
+                  hint={referencesLoading ? 'Chargement…' : undefined}
+                  placeholder="Choisir un morceau…"
+                  options={filteredCuts.map((c) => ({ value: c.id, label: c.name }))}
+                />
               )}
-            </section>
-
-            <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
-              <h2 className="font-serif text-[22px] text-green-900 mb-1">Photos</h2>
-              <p className="text-[12px] text-dark/55 mb-4">Jusqu&apos;à 5 photos. La première servira de photo principale.</p>
-              <div
-                onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-                onDragLeave={() => setDragging(false)}
-                onDrop={(e) => { e.preventDefault(); setDragging(false); handleFiles(e.dataTransfer.files); }}
-                className={`rounded-xl border-2 border-dashed p-8 text-center transition-colors ${
-                  dragging ? 'border-green-700 bg-green-100/50' : 'border-dark/15 bg-bg'
-                }`}>
-                <div className="font-serif text-[18px] text-green-900">Glissez vos photos ici</div>
-                <p className="text-[13px] text-dark/55 mt-1">ou</p>
-                <label className="inline-block mt-3">
-                  <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleFiles(e.target.files)} />
-                  <span className="inline-flex items-center h-10 px-4 rounded-lg bg-green-700 text-white text-[14px] font-semibold cursor-pointer hover:bg-green-900">Choisir des fichiers</span>
-                </label>
-              </div>
-              {previewUrls.length > 0 && (
-                <div className="mt-4 grid grid-cols-5 gap-2">
-                  {previewUrls.map((url, i) => (
-                    <div key={i} className="relative aspect-square rounded-lg overflow-hidden group">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={url} alt="" className="w-full h-full object-cover" />
-                      {i === 0 && <div className="absolute bottom-1 left-1"><Badge variant="terra">Principale</Badge></div>}
-                      <button type="button" onClick={() => removePhoto(i)}
-                        className="absolute top-1 right-1 w-6 h-6 rounded-full bg-dark/70 text-white text-xs hover:bg-terra-700">×</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-
-            <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
-              <h2 className="font-serif text-[22px] text-green-900 mb-4">Stock et disponibilité</h2>
-              <label className="flex items-center gap-3 cursor-pointer mb-4">
-                <span className={`relative w-10 h-6 rounded-full transition-colors ${form.stockUnlimited ? 'bg-green-700' : 'bg-dark/20'}`}>
-                  <input type="checkbox" className="sr-only" checked={form.stockUnlimited}
-                    onChange={(e) => setForm({ ...form, stockUnlimited: e.target.checked })} />
-                  <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${form.stockUnlimited ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
-                </span>
-                <span className="text-[14px] font-medium">Stock illimité</span>
-              </label>
-              {!form.stockUnlimited && (
-                <Input label={`Quantité en stock (${form.unit})`} type="number" min="0" value={form.stock} onChange={up('stock')} placeholder="0" />
-              )}
-              <div className="mt-4">
-                <Input label="Délai de préparation (en jours)" type="number" min="0" value={form.delai} onChange={up('delai')} />
-                <p className="text-[11px] text-dark/50 mt-1">Les clients verront : « Disponible sous {form.delai || 0} jour{parseInt(form.delai) > 1 ? 's' : ''} ».</p>
-              </div>
-            </section>
-
-            <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
-              <label className="flex items-center justify-between gap-3 cursor-pointer">
-                <div>
-                  <div className="font-serif text-[18px] text-green-900">Produit actif</div>
-                  <div className="text-[12px] text-dark/55 mt-0.5">Visible sur votre page publique.</div>
-                </div>
-                <span className={`relative w-10 h-6 rounded-full transition-colors ${form.active ? 'bg-green-700' : 'bg-dark/20'}`}>
-                  <input type="checkbox" className="sr-only" checked={form.active}
-                    onChange={(e) => setForm({ ...form, active: e.target.checked })} />
-                  <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${form.active ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
-                </span>
-              </label>
-            </section>
-
-            <div className="flex gap-3 justify-end pt-2">
-              <Link href="/catalogue"><Button variant="ghost" size="lg" type="button">Annuler</Button></Link>
-              <Button variant="success" size="lg" type="submit" disabled={saving || !producerId}>
-                {saving ? 'Enregistrement…' : 'Enregistrer le produit'}
-              </Button>
             </div>
-          </form>
+          </section>
 
-          <aside className="lg:sticky lg:top-10">
-            <div className="text-[11px] uppercase tracking-[0.14em] text-terra-700 font-semibold mb-3">Prévisualisation</div>
-            <ProductCard product={preview} />
-            <p className="mt-3 text-[11px] text-dark/50 text-center">Voici comment votre produit apparaîtra aux clients.</p>
-          </aside>
-        </div>
+          <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
+            <label className="flex items-center justify-between gap-3 cursor-pointer">
+              <div>
+                <div className="font-serif text-[18px] text-green-900">Le conseil de l&apos;éleveur</div>
+                <div className="text-[12px] text-dark/55 mt-0.5">
+                  Un mot manuscrit visible sur la fiche. Cuisson, conservation, accord…
+                </div>
+              </div>
+              <span className={`relative w-10 h-6 rounded-full transition-colors ${form.conseilActive ? 'bg-green-700' : 'bg-dark/20'}`}>
+                <input type="checkbox" className="sr-only" checked={form.conseilActive}
+                  onChange={(e) => setForm({ ...form, conseilActive: e.target.checked })} />
+                <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${form.conseilActive ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+              </span>
+            </label>
+            {form.conseilActive && (
+              <div className="mt-4">
+                <Textarea
+                  rows={4}
+                  maxLength={CONSEIL_MAX}
+                  value={form.conseilTexte}
+                  onChange={up('conseilTexte')}
+                  placeholder="Ex : Sortez la viande 1h avant de la cuire. Saisir 2 min par face à feu vif, puis reposer sous papier alu."
+                />
+                <div className="mt-1 text-right text-[11px] text-dark/50 tabular-nums">
+                  {form.conseilTexte.length}/{CONSEIL_MAX}
+                </div>
+              </div>
+            )}
+          </section>
+
+          <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
+            <h2 className="font-serif text-[22px] text-green-900 mb-4">Prix et conditionnement</h2>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <Input label="Prix *" type="number" step="0.01" min="0" value={form.price} onChange={up('price')} required placeholder="0,00" />
+              <Select label="Unité *" value={form.unit} onChange={up('unit')}>
+                <option value="kg">Au kilo (kg)</option>
+                <option value="piece">À la pièce</option>
+                <option value="colis">Au colis</option>
+              </Select>
+            </div>
+            {form.unit === 'kg' && (
+              <div className="mt-4 grid sm:grid-cols-2 gap-4">
+                <Select label="Pas de commande" value={form.weightStep} onChange={up('weightStep')}>
+                  <option value="0.25">0,25 kg</option>
+                  <option value="0.5">0,5 kg</option>
+                  <option value="1">1 kg</option>
+                </Select>
+                <Input label="Poids estimé par pièce (kg, optionnel)" type="number" step="0.1" value={form.estimatedWeight} onChange={up('estimatedWeight')} placeholder="Ex : 1,2" />
+              </div>
+            )}
+          </section>
+
+          <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
+            <h2 className="font-serif text-[22px] text-green-900 mb-1">Photos</h2>
+            <p className="text-[12px] text-dark/55 mb-4">Jusqu&apos;à 5 photos. La première servira de photo principale.</p>
+            <div
+              onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(e) => { e.preventDefault(); setDragging(false); handleFiles(e.dataTransfer.files); }}
+              className={`rounded-xl border-2 border-dashed p-8 text-center transition-colors ${
+                dragging ? 'border-green-700 bg-green-100/50' : 'border-dark/15 bg-bg'
+              }`}>
+              <div className="font-serif text-[18px] text-green-900">Glissez vos photos ici</div>
+              <p className="text-[13px] text-dark/55 mt-1">ou</p>
+              <label className="inline-block mt-3">
+                <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleFiles(e.target.files)} />
+                <span className="inline-flex items-center h-10 px-4 rounded-lg bg-green-700 text-white text-[14px] font-semibold cursor-pointer hover:bg-green-900">Choisir des fichiers</span>
+              </label>
+            </div>
+            {previewUrls.length > 0 && (
+              <div className="mt-4 grid grid-cols-5 gap-2">
+                {previewUrls.map((url, i) => (
+                  <div key={i} className="relative aspect-square rounded-lg overflow-hidden group">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={url} alt="" className="w-full h-full object-cover" />
+                    {i === 0 && <div className="absolute bottom-1 left-1"><Badge variant="terra">Principale</Badge></div>}
+                    <button type="button" onClick={() => removePhoto(i)}
+                      className="absolute top-1 right-1 w-6 h-6 rounded-full bg-dark/70 text-white text-xs hover:bg-terra-700">×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
+            <h2 className="font-serif text-[22px] text-green-900 mb-4">Stock et disponibilité</h2>
+            <label className="flex items-center gap-3 cursor-pointer mb-4">
+              <span className={`relative w-10 h-6 rounded-full transition-colors ${form.stockUnlimited ? 'bg-green-700' : 'bg-dark/20'}`}>
+                <input type="checkbox" className="sr-only" checked={form.stockUnlimited}
+                  onChange={(e) => setForm({ ...form, stockUnlimited: e.target.checked })} />
+                <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${form.stockUnlimited ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+              </span>
+              <span className="text-[14px] font-medium">Stock illimité</span>
+            </label>
+            {!form.stockUnlimited && (
+              <Input label={`Quantité en stock (${form.unit})`} type="number" min="0" value={form.stock} onChange={up('stock')} placeholder="0" />
+            )}
+            <div className="mt-4">
+              <Input label="Délai de préparation (en jours)" type="number" min="0" value={form.delai} onChange={up('delai')} />
+              <p className="text-[11px] text-dark/50 mt-1">Les clients verront : « Disponible sous {form.delai || 0} jour{parseInt(form.delai) > 1 ? 's' : ''} ».</p>
+            </div>
+          </section>
+
+          <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
+            <label className="flex items-center justify-between gap-3 cursor-pointer">
+              <div>
+                <div className="font-serif text-[18px] text-green-900">Produit actif</div>
+                <div className="text-[12px] text-dark/55 mt-0.5">Visible sur votre page publique.</div>
+              </div>
+              <span className={`relative w-10 h-6 rounded-full transition-colors ${form.active ? 'bg-green-700' : 'bg-dark/20'}`}>
+                <input type="checkbox" className="sr-only" checked={form.active}
+                  onChange={(e) => setForm({ ...form, active: e.target.checked })} />
+                <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${form.active ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+              </span>
+            </label>
+          </section>
+
+          <div className="flex gap-3 justify-end pt-2">
+            <Link href="/catalogue"><Button variant="ghost" size="lg" type="button">Annuler</Button></Link>
+            <Button variant="success" size="lg" type="submit" disabled={saving || !producerId}>
+              {saving ? 'Enregistrement…' : 'Enregistrer le produit'}
+            </Button>
+          </div>
+        </form>
+
+        <aside className="lg:sticky lg:top-10">
+          <div className="text-[11px] uppercase tracking-[0.14em] text-terra-700 font-semibold mb-3">Prévisualisation</div>
+          <ProductCard product={preview} />
+          <p className="mt-3 text-[11px] text-dark/50 text-center">Voici comment votre produit apparaîtra aux clients.</p>
+        </aside>
       </div>
-    </ProducerLayout>
+    </div>
   );
 }

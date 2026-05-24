@@ -3,7 +3,7 @@ import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { ACTIVE_ORDER_STATUTS } from "@/lib/orders/stateMachine";
 import type { SlotRuleRow } from "@/lib/slots/validators";
-import { ProducerLayout } from "../_components/ProducerLayout";
+import { PageHeader } from "@/components/ui";
 import SlotRulesList from "./_components/SlotRulesList";
 import AdHocSlotsList, {
   type AdHocSlot,
@@ -105,64 +105,56 @@ export default async function CreneauxPage() {
   }
 
   return (
-    <ProducerLayout>
-      <div className="mx-auto max-w-5xl px-8 py-10">
-        <header className="mb-10">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-terra-700">
-            Créneaux
-          </div>
-          <h1 className="mt-1 font-serif text-[40px] leading-tight text-green-900">
-            Vos créneaux de retrait
-          </h1>
-          <p className="mt-1 text-[14px] text-dark/60">
-            Organisez vos ouvertures en 3 niveaux : règles récurrentes,
-            ouvertures ponctuelles, absences.
+    <div className="mx-auto max-w-5xl px-8 py-10">
+      <PageHeader
+        tone="producer"
+        eyebrow="Créneaux"
+        title="Vos créneaux de retrait"
+        subtitle="Organisez vos ouvertures en 3 niveaux : règles récurrentes, ouvertures ponctuelles, absences."
+      />
+
+      <section className="mb-12">
+        <div className="mb-4">
+          <h2 className="font-serif text-[24px] text-green-900">
+            Règles récurrentes
+          </h2>
+          <p className="mt-1 text-[13px] text-dark/55">
+            Ouvertures régulières (ex : mercredi et samedi 9h–12h). Les
+            créneaux sont matérialisés automatiquement sur 3 mois.
           </p>
-        </header>
+        </div>
+        <SlotRulesList rules={rules} />
+      </section>
 
-        <section className="mb-12">
-          <div className="mb-4">
-            <h2 className="font-serif text-[24px] text-green-900">
-              Règles récurrentes
-            </h2>
-            <p className="mt-1 text-[13px] text-dark/55">
-              Ouvertures régulières (ex : mercredi et samedi 9h–12h). Les
-              créneaux sont matérialisés automatiquement sur 3 mois.
-            </p>
-          </div>
-          <SlotRulesList rules={rules} />
-        </section>
+      <section className="mb-12">
+        <div className="mb-4">
+          <h2 className="font-serif text-[24px] text-green-900">
+            Créneaux ponctuels
+          </h2>
+          <p className="mt-1 text-[13px] text-dark/55">
+            Ouvertures exceptionnelles qui ne rentrent pas dans vos règles
+            récurrentes.
+          </p>
+        </div>
+        <AdHocSlotsList slots={adHocSlots} />
+      </section>
 
-        <section className="mb-12">
-          <div className="mb-4">
-            <h2 className="font-serif text-[24px] text-green-900">
-              Créneaux ponctuels
-            </h2>
-            <p className="mt-1 text-[13px] text-dark/55">
-              Ouvertures exceptionnelles qui ne rentrent pas dans vos règles
-              récurrentes.
-            </p>
-          </div>
-          <AdHocSlotsList slots={adHocSlots} />
-        </section>
-
-        <section>
-          <div className="mb-4">
-            <h2 className="font-serif text-[24px] text-green-900">
-              Exceptions et absences
-            </h2>
-            <p className="mt-1 text-[13px] text-dark/55">
-              Annulez un créneau spécifique ou une plage pour vos vacances.
-              Les clients ne pourront plus réserver les créneaux exclus.
-            </p>
-          </div>
-          <ExceptionsList
-            exceptions={exceptions}
-            futureActiveSlots={futureActiveSlots}
-            blockedSlotIds={blockedSlotIds}
-          />
-        </section>
-      </div>
-    </ProducerLayout>
+      <section>
+        <div className="mb-4">
+          <h2 className="font-serif text-[24px] text-green-900">
+            Exceptions et absences
+          </h2>
+          <p className="mt-1 text-[13px] text-dark/55">
+            Annulez un créneau spécifique ou une plage pour vos vacances.
+            Les clients ne pourront plus réserver les créneaux exclus.
+          </p>
+        </div>
+        <ExceptionsList
+          exceptions={exceptions}
+          futureActiveSlots={futureActiveSlots}
+          blockedSlotIds={blockedSlotIds}
+        />
+      </section>
+    </div>
   );
 }

@@ -1,9 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Button, Input, Textarea } from '@/components/ui';
+import { Button, Input, Textarea, PageHeader } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
-import { ProducerLayout } from '../_components/ProducerLayout';
 
 type State = {
   producerId: string | null;
@@ -156,9 +155,7 @@ export default function ProducerSettingsPage() {
 
   if (loading) {
     return (
-      <ProducerLayout>
-        <div className="max-w-3xl mx-auto px-8 py-10 text-dark/60">Chargement…</div>
-      </ProducerLayout>
+      <div className="max-w-3xl mx-auto px-8 py-10 text-dark/60">Chargement…</div>
     );
   }
 
@@ -172,100 +169,99 @@ export default function ProducerSettingsPage() {
   const stripePending = !!s.stripe_account_id && !stripeReady;
 
   return (
-    <ProducerLayout>
-      <div className="max-w-3xl mx-auto px-8 py-10">
-        <header className="mb-8">
-          <div className="text-[11px] uppercase tracking-[0.18em] text-terra-700 font-semibold">Paramètres</div>
-          <h1 className="mt-1 font-serif text-[40px] text-green-900 leading-tight">Votre compte</h1>
-          <p className="text-[14px] text-dark/60 mt-1">Gérez les informations de votre exploitation, vos paiements et vos notifications.</p>
-          {error && <p className="mt-2 text-[13px] text-terra-700">{error}</p>}
-        </header>
+    <div className="max-w-3xl mx-auto px-8 py-10">
+      <PageHeader
+        tone="producer"
+        eyebrow="Paramètres"
+        title="Votre compte"
+        subtitle="Gérez les informations de votre exploitation, vos paiements et vos notifications."
+        error={error}
+      />
 
-        <form onSubmit={submit} className="space-y-6">
-          <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
-            <h2 className="font-serif text-[22px] text-green-900 mb-1">Exploitation</h2>
-            <p className="text-[12px] text-dark/55 mb-5">Ces informations apparaissent sur vos factures et votre page publique.</p>
-            <div className="space-y-4">
-              <Input label="Nom de l'exploitation *" value={s.nom_exploitation} onChange={up('nom_exploitation')} />
-              <Textarea label="Adresse *" rows={2} value={s.adresse} onChange={up('adresse')} placeholder="Rue, voie, lieu-dit" />
-              <div className="grid sm:grid-cols-2 gap-4">
-                <Input label="Code postal" value={s.code_postal} onChange={up('code_postal')} />
-                <Input label="Commune" value={s.commune} onChange={up('commune')} />
+      <form onSubmit={submit} className="space-y-6">
+        <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
+          <h2 className="font-serif text-[22px] text-green-900 mb-1">Exploitation</h2>
+          <p className="text-[12px] text-dark/55 mb-5">Ces informations apparaissent sur vos factures et votre page publique.</p>
+          <div className="space-y-4">
+            <Input label="Nom de l'exploitation *" value={s.nom_exploitation} onChange={up('nom_exploitation')} />
+            <Textarea label="Adresse *" rows={2} value={s.adresse} onChange={up('adresse')} placeholder="Rue, voie, lieu-dit" />
+            <div className="grid sm:grid-cols-2 gap-4">
+              <Input label="Code postal" value={s.code_postal} onChange={up('code_postal')} />
+              <Input label="Commune" value={s.commune} onChange={up('commune')} />
+            </div>
+            <Input label="SIRET" value={s.siret} onChange={up('siret')} placeholder="14 chiffres" hint="Visible uniquement par l'équipe TerrOir." />
+          </div>
+        </section>
+
+        <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
+          <h2 className="font-serif text-[22px] text-green-900 mb-1">Paiements Stripe Connect</h2>
+          <p className="text-[12px] text-dark/55 mb-4">Nécessaire pour recevoir vos virements hebdomadaires.</p>
+          <div className={`flex items-start justify-between gap-4 rounded-xl border p-4 ${
+            stripeReady ? 'bg-green-100/50 border-green-500' : 'bg-amber-50 border-amber-200'
+          }`}>
+            <div>
+              <div className="text-[14px] font-semibold text-dark">
+                {stripeReady
+                  ? '✓ Compte Stripe connecté'
+                  : stripePending
+                    ? '⚠ Onboarding Stripe en cours — complétez la vérification d\'identité'
+                    : 'Compte Stripe non configuré'}
               </div>
-              <Input label="SIRET" value={s.siret} onChange={up('siret')} placeholder="14 chiffres" hint="Visible uniquement par l'équipe TerrOir." />
+              {s.stripe_account_id && (
+                <div className="text-[11px] mono text-dark/55 mt-1">{s.stripe_account_id}</div>
+              )}
+              <p className="text-[12px] text-dark/65 mt-1">
+                {stripeReady
+                  ? 'Vous pouvez recevoir vos paiements. Mettez à jour vos informations si besoin.'
+                  : stripePending
+                    ? 'Reprenez le formulaire Stripe pour soumettre vos informations d\'identité et activer les virements.'
+                    : 'Démarrez l\'onboarding pour pouvoir recevoir vos premiers virements.'}
+              </p>
             </div>
-          </section>
-
-          <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
-            <h2 className="font-serif text-[22px] text-green-900 mb-1">Paiements Stripe Connect</h2>
-            <p className="text-[12px] text-dark/55 mb-4">Nécessaire pour recevoir vos virements hebdomadaires.</p>
-            <div className={`flex items-start justify-between gap-4 rounded-xl border p-4 ${
-              stripeReady ? 'bg-green-100/50 border-green-500' : 'bg-amber-50 border-amber-200'
-            }`}>
-              <div>
-                <div className="text-[14px] font-semibold text-dark">
-                  {stripeReady
-                    ? '✓ Compte Stripe connecté'
-                    : stripePending
-                      ? '⚠ Onboarding Stripe en cours — complétez la vérification d\'identité'
-                      : 'Compte Stripe non configuré'}
-                </div>
-                {s.stripe_account_id && (
-                  <div className="text-[11px] mono text-dark/55 mt-1">{s.stripe_account_id}</div>
-                )}
-                <p className="text-[12px] text-dark/65 mt-1">
-                  {stripeReady
-                    ? 'Vous pouvez recevoir vos paiements. Mettez à jour vos informations si besoin.'
-                    : stripePending
-                      ? 'Reprenez le formulaire Stripe pour soumettre vos informations d\'identité et activer les virements.'
-                      : 'Démarrez l\'onboarding pour pouvoir recevoir vos premiers virements.'}
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="primary"
-                onClick={onboardStripe}
-                disabled={connecting}
-              >
-                {connecting
-                  ? 'Redirection…'
-                  : stripeReady
-                    ? 'Mettre à jour'
-                    : stripePending
-                      ? 'Reprendre l\'onboarding'
-                      : 'Démarrer'}
-              </Button>
-            </div>
-          </section>
-
-          <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
-            <h2 className="font-serif text-[22px] text-green-900 mb-1">Notifications</h2>
-            <p className="text-[12px] text-dark/55 mb-2">Choisissez comment TerrOir vous avertit des nouvelles commandes.</p>
-            <div className="divide-y divide-dark/[0.06]">
-              <Toggle
-                checked={true}
-                onChange={() => {}}
-                label="Notifications par email"
-                hint="Activées par défaut via l'adresse de votre compte."
-                disabled
-              />
-              <Toggle
-                checked={s.sms_optin}
-                onChange={toggleSms}
-                label="Notifications par SMS"
-                hint="Alertes urgentes (nouvelle commande, retrait du jour)."
-              />
-            </div>
-          </section>
-
-          <div className="flex items-center justify-end gap-3 pt-2">
-            {saved && <span className="text-[13px] text-green-700 font-medium">✓ Modifications enregistrées</span>}
-            <Button type="submit" variant="success" size="lg" disabled={saving}>
-              {saving ? 'Enregistrement…' : 'Enregistrer'}
+            <Button
+              type="button"
+              variant="primary"
+              onClick={onboardStripe}
+              disabled={connecting}
+            >
+              {connecting
+                ? 'Redirection…'
+                : stripeReady
+                  ? 'Mettre à jour'
+                  : stripePending
+                    ? 'Reprendre l\'onboarding'
+                    : 'Démarrer'}
             </Button>
           </div>
-        </form>
-      </div>
-    </ProducerLayout>
+        </section>
+
+        <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
+          <h2 className="font-serif text-[22px] text-green-900 mb-1">Notifications</h2>
+          <p className="text-[12px] text-dark/55 mb-2">Choisissez comment TerrOir vous avertit des nouvelles commandes.</p>
+          <div className="divide-y divide-dark/[0.06]">
+            <Toggle
+              checked={true}
+              onChange={() => {}}
+              label="Notifications par email"
+              hint="Activées par défaut via l'adresse de votre compte."
+              disabled
+            />
+            <Toggle
+              checked={s.sms_optin}
+              onChange={toggleSms}
+              label="Notifications par SMS"
+              hint="Alertes urgentes (nouvelle commande, retrait du jour)."
+            />
+          </div>
+        </section>
+
+        <div className="flex items-center justify-end gap-3 pt-2">
+          {saved && <span className="text-[13px] text-green-700 font-medium">✓ Modifications enregistrées</span>}
+          <Button type="submit" variant="success" size="lg" disabled={saving}>
+            {saving ? 'Enregistrement…' : 'Enregistrer'}
+          </Button>
+        </div>
+      </form>
+    </div>
   );
 }

@@ -1,8 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, Input } from '@/components/ui';
-import { ProducerLayout } from '../_components/ProducerLayout';
+import { Button, Input, PageHeader } from '@/components/ui';
 
 // Page comptabilité producer : sélecteur de période + bouton téléchargement
 // CSV. Format CSV : séparateur ',', UTF-8 BOM, header 1ère ligne. Email
@@ -56,67 +55,59 @@ export default function ComptabilitePage() {
   };
 
   return (
-    <ProducerLayout>
-      <div className="max-w-3xl mx-auto px-8 py-10">
-        <header className="mb-6">
-          <div className="text-[11px] uppercase tracking-[0.18em] text-terra-700 font-semibold">
-            Comptabilité
-          </div>
-          <h1 className="mt-1 font-serif text-[40px] text-green-900 leading-tight">
-            Export comptable
-          </h1>
-          <p className="text-[14px] text-dark/60 mt-1">
-            Télécharge l&rsquo;historique de tes commandes validées sur la
-            période choisie au format CSV.
+    <div className="max-w-3xl mx-auto px-8 py-10">
+      <PageHeader
+        tone="producer"
+        eyebrow="Comptabilité"
+        title="Export comptable"
+        subtitle="Télécharge l'historique de tes commandes validées sur la période choisie au format CSV."
+      />
+
+      <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
+        <h2 className="font-serif text-[22px] text-green-900 mb-4">
+          Période d&rsquo;export
+        </h2>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Input
+            id="comptabilite-from"
+            label="Du"
+            type="date"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+            max={to}
+          />
+          <Input
+            id="comptabilite-to"
+            label="Au"
+            type="date"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+            min={from}
+            max={new Date().toISOString().slice(0, 10)}
+          />
+        </div>
+
+        {error && (
+          <p className="mt-3 text-[13px] text-terra-700" role="alert">
+            {error}
           </p>
-        </header>
+        )}
 
-        <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
-          <h2 className="font-serif text-[22px] text-green-900 mb-4">
-            Période d&rsquo;export
-          </h2>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Input
-              id="comptabilite-from"
-              label="Du"
-              type="date"
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-              max={to}
-            />
-            <Input
-              id="comptabilite-to"
-              label="Au"
-              type="date"
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              min={from}
-              max={new Date().toISOString().slice(0, 10)}
-            />
-          </div>
-
-          {error && (
-            <p className="mt-3 text-[13px] text-terra-700" role="alert">
-              {error}
-            </p>
-          )}
-
-          <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-dark/[0.06] pt-4">
-            <p className="text-[12px] text-dark/55 max-w-md">
-              CSV &apos;,&apos; / UTF-8 BOM. Date filtrée = date de validation
-              (completed_at). Email consumer masqué pour la confidentialité.
-            </p>
-            <Button
-              variant="primary"
-              size="md"
-              onClick={handleDownload}
-              disabled={downloading || !from || !to}
-            >
-              {downloading ? 'Téléchargement…' : 'Télécharger CSV'}
-            </Button>
-          </div>
-        </section>
-      </div>
-    </ProducerLayout>
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-dark/[0.06] pt-4">
+          <p className="text-[12px] text-dark/55 max-w-md">
+            CSV &apos;,&apos; / UTF-8 BOM. Date filtrée = date de validation
+            (completed_at). Email consumer masqué pour la confidentialité.
+          </p>
+          <Button
+            variant="primary"
+            size="md"
+            onClick={handleDownload}
+            disabled={downloading || !from || !to}
+          >
+            {downloading ? 'Téléchargement…' : 'Télécharger CSV'}
+          </Button>
+        </div>
+      </section>
+    </div>
   );
 }
