@@ -43,7 +43,6 @@ export default async function ProducerCataloguePage() {
   return (
     <CatalogueClient
       initialProducts={initialProducts}
-      producerId={producer.id}
       producerSlug={producer.slug}
       producerStatut={producer.statut}
     />

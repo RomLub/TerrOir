@@ -5,12 +5,6 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { Button, Badge, PageHeader } from '@/components/ui';
 import { ProductFallback } from '@/components/ui/product-fallback';
-import { createSupabaseBrowserClient } from '@/lib/supabase/client';
-import {
-  revalidatePublicStats,
-  revalidatePublicProducts,
-  revalidateProducersSearch,
-} from '@/lib/stats/revalidate';
 
 export type CatalogueProduct = {
   id: string;
@@ -25,14 +19,12 @@ export type CatalogueProduct = {
 
 export type CatalogueClientProps = {
   initialProducts: CatalogueProduct[];
-  producerId: string;
   producerSlug: string;
   producerStatut: string;
 };
 
 export function CatalogueClient({
   initialProducts,
-  producerId,
   producerSlug,
   producerStatut,
 }: CatalogueClientProps) {
@@ -56,35 +48,23 @@ export function CatalogueClient({
     const current = products.find((p) => p.id === id);
     if (!current) return;
     setToggling(id);
-    const supabase = createSupabaseBrowserClient();
     const next = !current.active;
-    const { error: upError } = await supabase
-      .from('products')
-      .update({ active: next })
-      .eq('id', id);
-    if (!upError) {
-      setProducts((arr) => arr.map((p) => p.id === id ? { ...p, active: next } : p));
-      // Chantier 3 (2026-05-22) : plus d'auto-promotion active → public ici.
-      // La publication passe désormais par demande producteur + validation admin.
-      // Toggle actif change toujours productsCount → on invalide les caches.
-      await revalidatePublicStats({ source: 'producer-catalogue-list' });
-      // Audit Vercel C-5 (2026-05-05) : invalide aussi le cache 'public-products'
-      // (route /produits cachée 60s + tag) — toggle actif modifie la grille
-      // catalogue immédiatement.
-      await revalidatePublicProducts({
-        source: 'producer-catalogue-toggle',
-        productId: id,
-      });
-      // F-021 : toggle active flip impacte `active_product_count` retourné
-      // par la RPC search_producers (sous-requête corrélée) + auto-promote
-      // peut faire apparaître/disparaître le producteur.
-      await revalidateProducersSearch({
-        source: 'producer-catalogue-toggle',
-        producerId,
-        extra: { productId: id, active: String(next) },
-      });
+    // Plomberie chantier 3 : l'écriture + l'invalidation des caches publics
+    // passent par la route serveur (ownership vérifié côté serveur), plus de
+    // write Supabase navigateur.
+    const res = await fetch(`/api/producer/products/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ active: next }),
+    });
+    if (res.ok) {
+      setProducts((arr) =>
+        arr.map((p) => (p.id === id ? { ...p, active: next } : p)),
+      );
     } else {
-      setError(upError.message);
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      setError(data.error ?? 'Impossible de mettre à jour le produit.');
     }
     setToggling(null);
   };
