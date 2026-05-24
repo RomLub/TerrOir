@@ -31,6 +31,10 @@ export type EmailSuppressionsReason = (typeof EMAIL_SUPPRESSIONS_REASON_VALUES)[
 export const GMS_PRICES_FILIERE_VALUES = ["bovin", "porcin", "ovin"] as const;
 export type GmsPricesFiliere = (typeof GMS_PRICES_FILIERE_VALUES)[number];
 
+// inbound_emails.tag (source: in, last migration: 20260524120000_inbound_emails.sql)
+export const INBOUND_EMAILS_TAG_VALUES = ["producteur", "consommateur", "public"] as const;
+export type InboundEmailsTag = (typeof INBOUND_EMAILS_TAG_VALUES)[number];
+
 // notifications.statut (source: in, last migration: 20260505600000_audit_email_h3_m5_email_suppressions.sql)
 export const NOTIFICATIONS_STATUT_VALUES = ["sent", "failed", "skipped"] as const;
 export type NotificationsStatut = (typeof NOTIFICATIONS_STATUT_VALUES)[number];

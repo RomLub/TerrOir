@@ -95,6 +95,8 @@ export function categorizeEventType(eventType: AuditEventType): EventCategory {
   // "review") — c'est la même surface fonctionnelle "avis & modération".
   if (eventType.startsWith("review_followup_")) return "review";
   if (eventType.startsWith("notification_")) return "notification";
+  // Chantier 9 : réponses sortantes de la boîte mails admin → cluster email.
+  if (eventType.startsWith("inbound_email_")) return "email";
   // Email delivery webhooks (Resend) — préfixes spécifiques pour ne PAS
   // capturer 'email_change' qui est un event auth (changement d'adresse
   // email côté user, pas un delivery event externe).

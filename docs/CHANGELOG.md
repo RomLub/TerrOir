@@ -9,6 +9,26 @@ Pour les décisions structurantes (ADRs), voir [`decisions/`](./decisions/).
 
 ---
 
+## 2026-05-24 (Refonte admin — Chantier 9 : boîte Mails admin)
+
+> PR `feature/chantier-9-mails`. Réception + réponse aux emails entrants `contact@`. Voir [ADR-0010](./decisions/0010-emails-entrants-boite-admin.md) (option A : MX OVH + polling IMAP, arbitrée par Romain).
+>
+> 🟢 **Ingestion IMAP** (`lib/admin/inbound/imap-fetch`, imapflow + mailparser) : cron `/api/cron/fetch-inbound`, **désactivé par défaut** (`INBOUND_EMAIL_CRON_ENABLED=false` — Romain l'active après config IMAP + test). Lecture seule, **checkpoint UID** (reprise, pas de réimport ; premier run cale sur `uidNext-1`), **dédup Message-ID**, cap 50/run, gestion UIDVALIDITY. ⚠️ Cadence calée sur **quotidien** (`0 7 * * *`) : Vercel **Hobby** limite les crons à 1×/jour ; le 10 min arbitré nécessite Vercel Pro ou un scheduler externe (décision cadence à trancher).
+>
+> 🟢 **Tables** : `inbound_email_accounts` (config + checkpoint par adresse — **multi-adresses ready**, seed `contact@`) + `inbound_emails` (Message-ID unique, tag, lookups, read/replied). RLS admin-read.
+>
+> 🟢 **Tag automatique** : expéditeur → `producteur` (rôle producer ou lead), `consommateur`, ou `public` (inconnu).
+>
+> 🟢 **UI « Mails »** (top niveau sidebar, usage haute fréquence) : onglets Producteurs / Consommateurs / **Public** (+ badges non-lus), détail (marqué lu à l'ouverture), **réponse depuis contact@** (Resend, threading In-Reply-To/References, préremplissage To + « Re: » + message cité).
+>
+> 🟢 **Envoi `from: contact@`** : vérifié — domaine racine Resend déjà vérifié (DKIM+SPF), aucun DNS à modifier. Audit `inbound_email_replied`.
+>
+> 🟢 Deps : `imapflow` + `mailparser`. Env : `IMAP_HOST/PORT/USER/PASSWORD` + `INBOUND_EMAIL_CRON_ENABLED` (cf. `.env.example`).
+>
+> 🟢 Tests : tag, imap-fetch (clean start + fetch + dédup + UIDVALIDITY), reply (envoi + threading + audit), fetch (mapping + non-lus), routes (cron gate désactivé/auth + reply gate), sidebar. Migration appliquée (tables + seed). lint/type-check/build OK, `npm test` vert (2953).
+
+---
+
 ## 2026-05-24 (Refonte admin — Chantier 8 : Litiges Stripe)
 
 > PR `feature/chantier-8-litiges`. Surface admin de gestion des litiges (chargebacks). Le backend existait déjà (table `disputes`, webhook `charge.dispute.*` + early-fraud, emails d'alerte, cron deadline) — ce chantier ajoute l'UI + la soumission de preuves.

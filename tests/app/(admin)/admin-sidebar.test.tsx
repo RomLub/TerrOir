@@ -167,6 +167,21 @@ describe("AdminSidebar — section Consommateurs / Gouvernance (chantier 5)", ()
     expect(isActive(html, "/invitations")).toBe(true);
   });
 
+  it("chantier 9 : entrée Mails au top niveau (avant le 1er group header)", () => {
+    currentPathname = "/tableau-de-bord";
+    const html = render();
+    expect(html).toContain('href="/mails"');
+    expect(html).toContain("Mails");
+    // Top niveau : avant le premier group header (Producteurs).
+    expect(html.indexOf('href="/mails"')).toBeLessThan(html.indexOf(">Producteurs</li>"));
+  });
+
+  it("active state sur /mails (et détail)", () => {
+    currentPathname = "/mails/abc";
+    const html = render();
+    expect(isActive(html, "/mails")).toBe(true);
+  });
+
   it("chantier 8 : entrée Litiges sous Gouvernance", () => {
     currentPathname = "/tableau-de-bord";
     const html = render();
