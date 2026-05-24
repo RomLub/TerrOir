@@ -34,7 +34,12 @@ tard si le volume/temps-réel le justifie (choix réversible).
    table `inbound_email_accounts` (1 ligne par adresse) → ajouter `support@`
    plus tard = INSERT + creds (pas de hardcode). La résolution des creds par
    adresse est le seul point d'extension (MVP : env `IMAP_*` unique).
-3. **Cadence** : 10 min constant (cron `*/10 * * * *`).
+3. **Cadence** : 10 min visé. ⚠️ **Contrainte découverte au déploiement** :
+   Vercel **Hobby** limite les crons à 1×/jour → le cron est calé sur
+   `0 7 * * *` (quotidien) pour que le déploiement passe. Le 10 min nécessite
+   **Vercel Pro** (puis `*/10 * * * *`) OU un **scheduler externe** (GitHub
+   Actions cron déclenchant la route avec le `CRON_SECRET`). Décision cadence
+   à trancher par Romain à l'activation (cron désactivé par défaut en attendant).
 4. **Emplacement UI** : section **« Mails » au top niveau** de la sidebar
    (usage haute fréquence, accès direct), onglets internes Producteurs /
    Consommateurs / **Public** (3e onglet pour ne pas rater les visiteurs

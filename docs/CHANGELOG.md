@@ -13,7 +13,7 @@ Pour les décisions structurantes (ADRs), voir [`decisions/`](./decisions/).
 
 > PR `feature/chantier-9-mails`. Réception + réponse aux emails entrants `contact@`. Voir [ADR-0010](./decisions/0010-emails-entrants-boite-admin.md) (option A : MX OVH + polling IMAP, arbitrée par Romain).
 >
-> 🟢 **Ingestion IMAP** (`lib/admin/inbound/imap-fetch`, imapflow + mailparser) : cron `/api/cron/fetch-inbound` (toutes les 10 min), **désactivé par défaut** (`INBOUND_EMAIL_CRON_ENABLED=false` — Romain l'active après config IMAP + test). Lecture seule, **checkpoint UID** (reprise, pas de réimport ; premier run cale sur `uidNext-1`), **dédup Message-ID**, cap 50/run, gestion UIDVALIDITY.
+> 🟢 **Ingestion IMAP** (`lib/admin/inbound/imap-fetch`, imapflow + mailparser) : cron `/api/cron/fetch-inbound`, **désactivé par défaut** (`INBOUND_EMAIL_CRON_ENABLED=false` — Romain l'active après config IMAP + test). Lecture seule, **checkpoint UID** (reprise, pas de réimport ; premier run cale sur `uidNext-1`), **dédup Message-ID**, cap 50/run, gestion UIDVALIDITY. ⚠️ Cadence calée sur **quotidien** (`0 7 * * *`) : Vercel **Hobby** limite les crons à 1×/jour ; le 10 min arbitré nécessite Vercel Pro ou un scheduler externe (décision cadence à trancher).
 >
 > 🟢 **Tables** : `inbound_email_accounts` (config + checkpoint par adresse — **multi-adresses ready**, seed `contact@`) + `inbound_emails` (Message-ID unique, tag, lookups, read/replied). RLS admin-read.
 >

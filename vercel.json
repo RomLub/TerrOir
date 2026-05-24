@@ -55,7 +55,7 @@
     },
     {
       "path": "/api/cron/fetch-inbound",
-      "schedule": "*/10 * * * *"
+      "schedule": "0 7 * * *"
     }
   ],
   "functions": {
