@@ -129,4 +129,23 @@ describe("pollAccount", () => {
     // Checkpoint avancé au max UID vu.
     expect(accountUpdates[0]).toMatchObject({ last_seen_uid: 7 });
   });
+
+  it("pré-filtre bruit (stripe.com) : pas d'upsert mais checkpoint avancé", async () => {
+    const { admin, upserts, accountUpdates } = makeAdmin();
+    const res = await pollAccount(
+      admin,
+      ACCOUNT,
+      CONFIG,
+      fakeClientFactory({
+        uidNext: 8,
+        uidValidity: 100,
+        messages: [msg(6, "real@gmail.com"), msg(7, "noreply@stripe.com")],
+      }),
+    );
+    expect(res.fetched).toBe(2); // 2 mails vus
+    expect(upserts).toHaveLength(1); // 1 seul inséré (stripe ignoré)
+    expect(upserts[0].row).toMatchObject({ from_email: "real@gmail.com" });
+    // Checkpoint avancé malgré l'ignoré (on ne le re-traitera pas).
+    expect(accountUpdates[0]).toMatchObject({ last_seen_uid: 7 });
+  });
 });

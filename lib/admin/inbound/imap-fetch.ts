@@ -4,6 +4,7 @@ import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveInboundTag } from "./tag";
+import { isIgnoredSender } from "./ignored-senders";
 
 // Chantier 9 — ingestion IMAP des emails entrants (cf. ADR-0010, option A).
 //
@@ -113,6 +114,9 @@ export async function pollAccount(
         const fromAddr = parsed.from?.value?.[0];
         const fromEmail = (fromAddr?.address ?? "").toLowerCase();
         if (!fromEmail) continue;
+        // Pré-filtre bruit infra/bounces/outbound (checkpoint déjà avancé via
+        // maxUid → on ne re-traitera pas ce mail).
+        if (isIgnoredSender(fromEmail)) continue;
         const messageId =
           parsed.messageId ?? `imap-${account.address}-${uid}`;
         const { tag, lookupUserId, lookupLeadId } = await resolveInboundTag(

@@ -8,7 +8,11 @@ import { logInboundEmailEvent } from "@/lib/audit-logs/log-inbound-email-event";
 // de contact (interlocuteur unique), avec headers In-Reply-To / References
 // pour le threading. Marque replied_at + audit.
 
-const DEFAULT_FROM = "contact@terroir-local.fr";
+// Adresse publique « interlocuteur unique » : les réponses partent TOUJOURS de
+// contact@ (jamais de la boîte réellement pollée, admin@, qui est la boîte
+// perso de l'admin). Resend envoie depuis n'importe quelle adresse
+// @terroir-local.fr (domaine racine vérifié).
+const PUBLIC_REPLY_FROM = "contact@terroir-local.fr";
 
 export type ReplyResult = { ok: true } | { ok: false; error: string };
 
@@ -38,21 +42,9 @@ export async function sendInboundReply(
     account_id: string | null;
   };
 
-  // Adresse d'envoi = celle du compte surveillé (multi-compte-ready), fallback
-  // contact@.
-  let from = DEFAULT_FROM;
-  if (r.account_id) {
-    const { data: acc } = await admin
-      .from("inbound_email_accounts")
-      .select("address")
-      .eq("id", r.account_id)
-      .maybeSingle();
-    if (acc?.address) from = (acc as { address: string }).address;
-  }
-
   try {
     const { error } = await resend.emails.send({
-      from,
+      from: PUBLIC_REPLY_FROM,
       to: r.from_email,
       subject,
       text: body,
