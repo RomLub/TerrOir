@@ -5,6 +5,7 @@ import { simpleParser } from "mailparser";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveInboundTag } from "./tag";
 import { isIgnoredSender } from "./ignored-senders";
+import { htmlToPlainText } from "./html-to-text";
 
 // Chantier 9 — ingestion IMAP des emails entrants (cf. ADR-0010, option A).
 //
@@ -125,6 +126,10 @@ export async function pollAccount(
         );
 
         const toAddr = Array.isArray(parsed.to) ? parsed.to[0] : parsed.to;
+        const htmlBody = typeof parsed.html === "string" ? parsed.html : null;
+        // Fallback : si pas de partie texte (mail HTML-only), dériver un texte
+        // lisible du HTML (sinon la fiche /mails afficherait du vide).
+        const textBody = (parsed.text ?? "").trim() || htmlToPlainText(htmlBody) || null;
         const { error: insErr } = await admin
           .from("inbound_emails")
           .upsert(
@@ -136,8 +141,8 @@ export async function pollAccount(
               from_name: fromAddr?.name || null,
               to_email: toAddr?.text ?? account.address,
               subject: parsed.subject ?? null,
-              body_text: parsed.text ?? null,
-              body_html: typeof parsed.html === "string" ? parsed.html : null,
+              body_text: textBody,
+              body_html: htmlBody,
               received_at: (parsed.date ?? new Date()).toISOString(),
               tag,
               lookup_user_id: lookupUserId,

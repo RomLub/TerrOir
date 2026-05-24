@@ -87,3 +87,33 @@ tard si le volume/temps-réel le justifie (choix réversible).
   test. Tant que désactivé, le cron est un no-op.
 - Choix MX réversible (A→B plus tard) ; B→A après bascule impliquerait de
   re-créer les mailboxes OVH (d'où la prudence pré-launch).
+
+## Limites MVP assumées (décisions, pas dette silencieuse)
+
+Périmètre volontairement borné pour le MVP. Chaque point est un choix
+conscient, pas un oubli ; condition de revisite = **le volume/usage réel le
+justifie** (inbound récurrent avec HTML riche / pièces jointes, ou litiges
+fréquents nécessitant des justificatifs).
+
+- **Mails — rendu** : on affiche le **texte** (dérivé du HTML si besoin via
+  `html-to-text`, sans rendu HTML brut → aucune surface XSS dans l'admin).
+  Suffisant pour lire/répondre ; pas de rendu HTML riche.
+- **Mails — pièces jointes** : non ingérées (texte/HTML seulement). Une PJ
+  reste consultable dans le **webmail OVH**. Ingestion + stockage (Supabase
+  Storage) = V2 si le besoin se confirme.
+- **Mails — fils** : liste à plat (pas de regroupement conversation). Le
+  threading sortant existe (headers In-Reply-To/References) mais l'UI ne
+  groupe pas. Acceptable au volume contact@.
+- **Mails — tag** : lookup par **email exact** de l'expéditeur. Une personne
+  écrivant depuis une autre adresse que celle enregistrée → onglet **Public**
+  (par design : le Public est le filet pour les expéditeurs inconnus, revus
+  manuellement). Pas de matching flou (non fiable).
+- **Litiges — preuves** : champs **texte** uniquement (description, client,
+  date, texte libre). Pas d'upload de justificatifs (suffisant pour une
+  marketplace en retrait : la preuve forte = détails commande + validation du
+  retrait). Upload fichier (Stripe File API) = V2.
+- **Tests E2E des parcours admin** : non couverts en Playwright — le middleware
+  `isAdmin` est **host-gated** (`admin.terroir-local.fr`), non testable en E2E
+  sur localhost (doctrine CLAUDE.md). Compensation : tests vitest unitaires +
+  validation réelle (RPC testées contre la base prod, ingestion mails testée
+  contre la vraie boîte). Constat structurel, pas une dette à rattraper.
