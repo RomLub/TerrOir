@@ -160,6 +160,48 @@ export async function loginAction(
   // sur la nouvelle navigation, avec les cookies auth fraîchement posés
   // par signInWithPassword.
   revalidatePath("/", "layout");
+
+  // SSO admin (une seule saisie de mot de passe). Un admin qui se connecte sur
+  // www/pro (cookie partagé .terroir-local.fr) ne peut PAS transmettre sa
+  // session à admin.* (cookie isolé, par design Chantier 4) → sinon 2e login.
+  // Plutôt que de re-demander le mdp, on génère un jeton magic-link à usage
+  // unique pour SA PROPRE adresse (déjà vérifiée par le mdp ci-dessus) et on
+  // redirige vers le callback admin.* (qui pose le cookie isolé via
+  // cookieConfigForHost). Réutilise le mécanisme Chantier 1, sans email.
+  // Niveau de sécu = identique à un login mdp direct sur admin.* (jeton usage
+  // unique, courte durée, adresse de la session). Gate sur les hosts PROD
+  // www/pro (en dev/preview, pas d'isolation cookie → login unique natif).
+  // Fail-safe : si generateLink échoue → redirect normal (2 logins, OK).
+  let adminHandoffUrl: string | null = null;
+  if (
+    role.isAdmin &&
+    data.user.email &&
+    (host === "www.terroir-local.fr" || host === "pro.terroir-local.fr")
+  ) {
+    try {
+      const adminClient = createSupabaseAdminClient();
+      const { data: link, error: linkErr } =
+        await adminClient.auth.admin.generateLink({
+          type: "magiclink",
+          email: data.user.email,
+        });
+      const tokenHash = link?.properties?.hashed_token;
+      if (!linkErr && tokenHash) {
+        adminHandoffUrl = `${getAuthCallbackUrl(true)}?token_hash=${encodeURIComponent(tokenHash)}&type=magiclink`;
+      } else if (linkErr) {
+        console.warn(
+          `ADMIN_SSO_HANDOFF_WARN user_id=${data.user.id} error=${linkErr.message}`,
+        );
+      }
+    } catch (err) {
+      console.warn(
+        `ADMIN_SSO_HANDOFF_WARN user_id=${data.user.id} error=${(err as Error).message}`,
+      );
+    }
+  }
+  // redirect() throw NEXT_REDIRECT → appelé HORS du try/catch pour ne pas l'avaler.
+  if (adminHandoffUrl) redirect(adminHandoffUrl);
+
   // redirectTo posé par le middleware quand un user anonyme a tapé une route
   // protégée (cf. middleware.ts §2). Fallback canonique si absent/invalide.
   redirect(resolvePostLoginPath(role, host, formData.get("redirectTo")));

@@ -9,6 +9,18 @@ Pour les décisions structurantes (ADRs), voir [`decisions/`](./decisions/).
 
 ---
 
+## 2026-05-24 (Auth — SSO admin : une seule saisie de mot de passe)
+
+> PR `feat/admin-sso-handoff`. Corrige le double-login admin : un admin qui se connecte sur l'écran classique (www/pro) devait re-saisir son mot de passe sur admin.\* (cookie isolé par design).
+>
+> 🟢 **Handoff jeton** : après vérif du mot de passe, si l'utilisateur est admin et se connecte sur un host PROD www/pro, `loginAction` génère un **jeton magic-link à usage unique** pour sa propre adresse (`supabase.auth.admin.generateLink`) et redirige vers le callback admin.\* (qui pose le cookie isolé). **Une seule saisie**, pas d'email. Réutilise le mécanisme chantier 1 sans l'email.
+>
+> 🟢 **Sécu — aucune régression** : niveau identique à un login mot-de-passe direct sur admin.\* (jeton usage unique + courte durée + adresse de la session) ; isolation cookie préservée (admin.\* garde son cookie isolé). **Fail-safe** : si la génération échoue → redirect normal (comportement actuel, 2 logins). Gate sur hosts PROD www/pro uniquement (dev/preview = login unique natif, pas d'isolation).
+>
+> 🟢 Tests : handoff admin www/pro, pas de handoff sur admin.\*/non-admin, fail-safe. lint/type-check/build OK, `npm test` vert (2971).
+
+---
+
 ## 2026-05-24 (Refonte admin — Chantier 9 : boîte Mails admin)
 
 > PR `feature/chantier-9-mails`. Réception + réponse aux emails entrants `contact@`. Voir [ADR-0010](./decisions/0010-emails-entrants-boite-admin.md) (option A : MX OVH + polling IMAP, arbitrée par Romain).
