@@ -17,12 +17,16 @@
  *     On teste plutôt la contrainte CHECK DB (capacity_per_slot >= 1).
  *
  * Couverture (3 tests) :
- *   1. Création slot ad-hoc (rule_id=null) → row visible côté DB + UI
- *      /creneaux affiche la section "Créneaux ponctuels".
- *   2. Création slot_rules → INSERT row visible côté UI /creneaux
- *      section "Règles récurrentes" + materialized slots générables.
+ *   1. Création slot ad-hoc (rule_id=null) → row visible côté DB + l'écran
+ *      calendrier /creneaux se charge (ADR-0012).
+ *   2. Création slot_rules → INSERT row visible côté DB + l'écran calendrier
+ *      /creneaux se charge.
  *   3. CHECK constraint capacity_per_slot >= 1 → INSERT capacity=0 refusé
  *      par Postgres (sécurité DB, pas seulement Zod côté action).
+ *
+ * NB (ADR-0012) : le détail du regroupement / des 2 modes est couvert en
+ * unitaire (group-week-slots, slice-window, validators). Ici on smoke-teste
+ * le chargement de l'écran + l'intégrité DB.
  */
 
 import { test, expect } from '../helpers/test-context';
@@ -68,11 +72,13 @@ test.describe('Producer slots — management', () => {
     await loginAs(page, producer.user);
     await page.goto('/creneaux');
 
-    // La page rend toujours la section "Créneaux ponctuels" — on assert
-    // sa présence + l'absence d'état "vide" si la query SSR a vu le slot.
+    // L'écran calendrier des créneaux se charge (smoke check).
     await expect(
-      page.getByRole('heading', { name: /Créneaux ponctuels/i }),
+      page.getByRole('heading', { name: /Vos créneaux de retrait/i }),
     ).toBeVisible({ timeout: 15_000 });
+    await expect(
+      page.getByRole('button', { name: /Ouverture régulière/i }),
+    ).toBeVisible();
 
     // Vérifie DB : le slot bien tagué rule_id=null + futur
     const { data: row } = await admin
@@ -119,9 +125,10 @@ test.describe('Producer slots — management', () => {
     await loginAs(page, producer.user);
     await page.goto('/creneaux');
 
-    // Vérifie l'affichage de la section + au minimum le rendu page
+    // L'écran calendrier se charge (la règle existe côté DB, vérifiée plus
+    // haut ; matérialisation/affichage couverts en unitaire).
     await expect(
-      page.getByRole('heading', { name: /Règles récurrentes/i }),
+      page.getByRole('heading', { name: /Vos créneaux de retrait/i }),
     ).toBeVisible({ timeout: 15_000 });
   });
 

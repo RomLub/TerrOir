@@ -98,3 +98,40 @@ describe("slotRuleSchema", () => {
     }
   });
 });
+
+describe("slotRuleSchema — modes libre / rdv (ADR-0012)", () => {
+  it("mode par défaut = 'rdv'", () => {
+    const res = slotRuleSchema.safeParse(base());
+    expect(res.success).toBe(true);
+    if (res.success) expect(res.data.mode).toBe("rdv");
+  });
+
+  it("mode 'libre' sans durée → success (durée dérivée serveur)", () => {
+    const res = slotRuleSchema.safeParse({
+      ...base(),
+      slot_duration_minutes: undefined,
+      mode: "libre",
+    });
+    expect(res.success).toBe(true);
+    if (res.success) expect(res.data.mode).toBe("libre");
+  });
+
+  it("mode 'rdv' sans durée → erreur sur slot_duration_minutes", () => {
+    const res = slotRuleSchema.safeParse({
+      ...base(),
+      slot_duration_minutes: undefined,
+      mode: "rdv",
+    });
+    expect(res.success).toBe(false);
+    if (!res.success) {
+      expect(
+        res.error.issues.some((i) => i.path[0] === "slot_duration_minutes"),
+      ).toBe(true);
+    }
+  });
+
+  it("mode inconnu → erreur", () => {
+    const res = slotRuleSchema.safeParse({ ...base(), mode: "autre" });
+    expect(res.success).toBe(false);
+  });
+});

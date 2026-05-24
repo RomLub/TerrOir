@@ -40,7 +40,8 @@ import {
   generateSlotsForProducer,
   invalidateProducer,
 } from "@/lib/slots/generate";
-import { slotRuleSchema } from "@/lib/slots/validators";
+import { slotRuleSchema, timeToMinutes } from "@/lib/slots/validators";
+import { sliceWindow } from "@/lib/slots/slice-window";
 import { ACTIVE_ORDER_STATUTS } from "@/lib/orders/stateMachine";
 
 const TZ_PARIS = "Europe/Paris";
@@ -67,12 +68,27 @@ async function resolveProducerId(
 function parseRuleInput(formData: FormData) {
   return slotRuleSchema.safeParse({
     days_of_week: formData.getAll("days_of_week").map(String),
-    periodicity_weeks: formData.get("periodicity_weeks"),
+    periodicity_weeks: formData.get("periodicity_weeks") ?? 1,
     start_time: formData.get("start_time"),
     end_time: formData.get("end_time"),
-    slot_duration_minutes: formData.get("slot_duration_minutes"),
+    mode: formData.get("mode") ?? "rdv",
+    slot_duration_minutes: formData.get("slot_duration_minutes") ?? undefined,
     capacity_per_slot: formData.get("capacity_per_slot"),
   });
+}
+
+// Durée finale stockée selon le mode : 'libre' ⇒ amplitude horaire (generate.ts
+// produit alors 1 slot/jour) ; 'rdv' ⇒ la durée de tranche validée.
+function resolveDuration(input: {
+  mode: string;
+  start_time: string;
+  end_time: string;
+  slot_duration_minutes?: number;
+}): number {
+  if (input.mode === "libre") {
+    return timeToMinutes(input.end_time) - timeToMinutes(input.start_time);
+  }
+  return input.slot_duration_minutes as number;
 }
 
 export async function createSlotRuleAction(
@@ -94,6 +110,7 @@ export async function createSlotRuleAction(
   const { error: insertError } = await admin.from("slot_rules").insert({
     producer_id: producerRes.id,
     ...parsed.data,
+    slot_duration_minutes: resolveDuration(parsed.data),
     active: true,
   });
 
@@ -145,7 +162,10 @@ export async function updateSlotRuleAction(
 
   const { error: updateError } = await admin
     .from("slot_rules")
-    .update({ ...parsed.data })
+    .update({
+      ...parsed.data,
+      slot_duration_minutes: resolveDuration(parsed.data),
+    })
     .eq("id", ruleId);
 
   if (updateError) {
@@ -320,6 +340,8 @@ const adHocSlotSchema = z
         /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/,
         "Format attendu : YYYY-MM-DDTHH:MM",
       ),
+    mode: z.enum(["libre", "rdv"]).default("libre"),
+    slot_duration_minutes: z.coerce.number().int().optional(),
     capacity_per_slot: z.coerce
       .number()
       .int()
@@ -328,7 +350,16 @@ const adHocSlotSchema = z
   .refine((d) => d.end_at > d.start_at, {
     message: "L'heure de fin doit être après l'heure de début",
     path: ["end_at"],
-  });
+  })
+  .refine(
+    (d) =>
+      d.mode !== "rdv" ||
+      (d.slot_duration_minutes != null && d.slot_duration_minutes >= 5),
+    {
+      message: "En mode rendez-vous, indiquez une durée d'au moins 5 minutes",
+      path: ["slot_duration_minutes"],
+    },
+  );
 
 export async function createAdHocSlotAction(
   _prev: SlotRuleActionState,
@@ -343,6 +374,8 @@ export async function createAdHocSlotAction(
   const parsed = adHocSlotSchema.safeParse({
     start_at: formData.get("start_at"),
     end_at: formData.get("end_at"),
+    mode: formData.get("mode") ?? "libre",
+    slot_duration_minutes: formData.get("slot_duration_minutes") ?? undefined,
     capacity_per_slot: formData.get("capacity_per_slot"),
   });
   if (!parsed.success) {
@@ -352,23 +385,49 @@ export async function createAdHocSlotAction(
   const startsIso = localDateTimeToParisUTC(parsed.data.start_at);
   const endsIso = localDateTimeToParisUTC(parsed.data.end_at);
 
+  // 'libre' ⇒ un seul créneau couvrant la plage. 'rdv' ⇒ découpage serveur en
+  // tranches (helper pur sliceWindow, mêmes règles que generate.ts).
+  const rows =
+    parsed.data.mode === "rdv"
+      ? sliceWindow(
+          new Date(startsIso).getTime(),
+          new Date(endsIso).getTime(),
+          parsed.data.slot_duration_minutes as number,
+          Date.now(),
+        ).map((s) => ({
+          producer_id: producerRes.id,
+          rule_id: null,
+          starts_at: new Date(s.startsAtMs).toISOString(),
+          ends_at: new Date(s.endsAtMs).toISOString(),
+          capacity_per_slot: parsed.data.capacity_per_slot,
+          active: true,
+        }))
+      : [
+          {
+            producer_id: producerRes.id,
+            rule_id: null,
+            starts_at: startsIso,
+            ends_at: endsIso,
+            capacity_per_slot: parsed.data.capacity_per_slot,
+            active: true,
+          },
+        ];
+
+  if (rows.length === 0) {
+    return {
+      error: "Aucun créneau à créer (plage trop courte ou déjà passée).",
+    };
+  }
+
   const admin = createSupabaseAdminClient();
-  const { error: insertError } = await admin.from("slots").insert({
-    producer_id: producerRes.id,
-    rule_id: null,
-    starts_at: startsIso,
-    ends_at: endsIso,
-    capacity_per_slot: parsed.data.capacity_per_slot,
-    active: true,
+  // upsert idempotent (comme generate.ts) : un horaire déjà matérialisé n'est
+  // pas dupliqué (contrainte unique producer_id, starts_at).
+  const { error: insertError } = await admin.from("slots").upsert(rows, {
+    onConflict: "producer_id,starts_at",
+    ignoreDuplicates: true,
   });
 
   if (insertError) {
-    if (insertError.code === "23505") {
-      return {
-        error:
-          "Un créneau existe déjà à cet horaire pour votre exploitation.",
-      };
-    }
     console.error(
       `CREATE_ADHOC_SLOT_ERROR producer_id=${producerRes.id} error=${insertError.message}`,
     );
@@ -433,6 +492,62 @@ export async function deleteAdHocSlotAction(
 
   revalidatePath("/creneaux");
   return { success: true };
+}
+
+// Suppression groupée d'une ouverture ponctuelle (mode rendez-vous → N slots).
+// Le calendrier passe les ids du groupe. Gardes par slot : ad-hoc (rule_id
+// NULL) + ownership + aucune commande liée.
+export async function deleteAdHocOpeningAction(
+  slotIds: string[],
+): Promise<{ success: true; deleted: number } | { error: string }> {
+  const session = await getSessionUser();
+  if (!session) return { error: "Non authentifié" };
+
+  const producerRes = await resolveProducerId(session.id);
+  if ("error" in producerRes) return { error: producerRes.error };
+
+  if (!slotIds || slotIds.length === 0) return { success: true, deleted: 0 };
+
+  const admin = createSupabaseAdminClient();
+
+  const { data: slots } = await admin
+    .from("slots")
+    .select("id, producer_id, rule_id")
+    .in("id", slotIds);
+  const owned = (slots ?? []).filter(
+    (s) => s.producer_id === producerRes.id && s.rule_id === null,
+  );
+  if (owned.length !== slotIds.length) {
+    return {
+      error:
+        "Créneau introuvable ou issu d'une ouverture régulière (gérez-la via la règle).",
+    };
+  }
+
+  const { count: orderCount } = await admin
+    .from("orders")
+    .select("id", { count: "exact", head: true })
+    .in("slot_id", slotIds);
+  if ((orderCount ?? 0) > 0) {
+    return {
+      error:
+        "Un créneau de cette ouverture a été réservé. Annulez la commande avant de supprimer.",
+    };
+  }
+
+  const { error: deleteError } = await admin
+    .from("slots")
+    .delete()
+    .in("id", slotIds);
+  if (deleteError) {
+    console.error(
+      `DELETE_ADHOC_OPENING_ERROR producer_id=${producerRes.id} error=${deleteError.message}`,
+    );
+    return { error: "Impossible de supprimer l'ouverture ponctuelle." };
+  }
+
+  revalidatePath("/creneaux");
+  return { success: true, deleted: slotIds.length };
 }
 
 export async function excludeSlotAction(
@@ -512,6 +627,94 @@ export async function unexcludeSlotAction(
       `UNEXCLUDE_SLOT_ERROR slot_id=${slotId} error=${updateError.message}`,
     );
     return { error: "Impossible de rétablir le créneau." };
+  }
+
+  revalidatePath("/creneaux");
+  return { success: true };
+}
+
+// Exclusion groupée par ids — calendrier « Fermer ce jour » sur une ouverture
+// (libre = 1 slot, rdv = N slots). Refuse si une commande active est liée à
+// l'un des créneaux (cohérent avec excludeSlotAction). Ownership vérifié.
+export async function excludeSlotsByIdsAction(
+  slotIds: string[],
+): Promise<{ success: true } | { error: string }> {
+  const session = await getSessionUser();
+  if (!session) return { error: "Non authentifié" };
+
+  const producerRes = await resolveProducerId(session.id);
+  if ("error" in producerRes) return { error: producerRes.error };
+
+  if (!slotIds || slotIds.length === 0) return { success: true };
+
+  const admin = createSupabaseAdminClient();
+  const { data: slots } = await admin
+    .from("slots")
+    .select("id, producer_id")
+    .in("id", slotIds);
+  const owned = (slots ?? []).filter((s) => s.producer_id === producerRes.id);
+  if (owned.length !== slotIds.length) {
+    return { error: "Créneau introuvable." };
+  }
+
+  const { count: activeOrderCount } = await admin
+    .from("orders")
+    .select("id", { count: "exact", head: true })
+    .in("slot_id", slotIds)
+    .in("statut", ACTIVE_ORDER_STATUTS as unknown as string[]);
+  if ((activeOrderCount ?? 0) > 0) {
+    return {
+      error:
+        "Une commande active est liée à cette ouverture. Annulez-la avant de fermer ce jour.",
+    };
+  }
+
+  const { error: updateError } = await admin
+    .from("slots")
+    .update({ excluded_at: new Date().toISOString() })
+    .in("id", slotIds);
+  if (updateError) {
+    console.error(
+      `EXCLUDE_SLOTS_BY_IDS_ERROR producer_id=${producerRes.id} error=${updateError.message}`,
+    );
+    return { error: "Impossible de fermer ce jour." };
+  }
+
+  revalidatePath("/creneaux");
+  return { success: true };
+}
+
+// Réouverture groupée par ids — calendrier « Rouvrir » sur une ouverture fermée.
+export async function unexcludeSlotsByIdsAction(
+  slotIds: string[],
+): Promise<{ success: true } | { error: string }> {
+  const session = await getSessionUser();
+  if (!session) return { error: "Non authentifié" };
+
+  const producerRes = await resolveProducerId(session.id);
+  if ("error" in producerRes) return { error: producerRes.error };
+
+  if (!slotIds || slotIds.length === 0) return { success: true };
+
+  const admin = createSupabaseAdminClient();
+  const { data: slots } = await admin
+    .from("slots")
+    .select("id, producer_id")
+    .in("id", slotIds);
+  const owned = (slots ?? []).filter((s) => s.producer_id === producerRes.id);
+  if (owned.length !== slotIds.length) {
+    return { error: "Créneau introuvable." };
+  }
+
+  const { error: updateError } = await admin
+    .from("slots")
+    .update({ excluded_at: null })
+    .in("id", slotIds);
+  if (updateError) {
+    console.error(
+      `UNEXCLUDE_SLOTS_BY_IDS_ERROR producer_id=${producerRes.id} error=${updateError.message}`,
+    );
+    return { error: "Impossible de rouvrir ce jour." };
   }
 
   revalidatePath("/creneaux");

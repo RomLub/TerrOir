@@ -115,6 +115,10 @@ export type ReviewsProducerResponseStatus = (typeof REVIEWS_PRODUCER_RESPONSE_ST
 export const REVIEWS_STATUT_VALUES = ["pending", "published", "rejected"] as const;
 export type ReviewsStatut = (typeof REVIEWS_STATUT_VALUES)[number];
 
+// slot_rules.mode (source: in, last migration: 20260524140000_slot_rules_mode_column.sql)
+export const SLOT_RULES_MODE_VALUES = ["libre", "rdv"] as const;
+export type SlotRulesMode = (typeof SLOT_RULES_MODE_VALUES)[number];
+
 // users.roles (source: subset_array, last migration: 20260421100000_cumulative_roles_admin_users.sql)
 export const USERS_ROLES_VALUES = ["consumer", "producer"] as const;
 export type UsersRoles = (typeof USERS_ROLES_VALUES)[number];
