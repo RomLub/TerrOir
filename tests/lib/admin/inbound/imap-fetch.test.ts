@@ -148,4 +148,29 @@ describe("pollAccount", () => {
     // Checkpoint avancé malgré l'ignoré (on ne le re-traitera pas).
     expect(accountUpdates[0]).toMatchObject({ last_seen_uid: 7 });
   });
+
+  it("mail HTML-only → body_text dérivé du HTML (pas de vide)", async () => {
+    const { admin, upserts } = makeAdmin();
+    const htmlMsg = {
+      uid: 6,
+      source: {
+        from: { value: [{ address: "x@gmail.com", name: "X" }] },
+        to: { text: "admin@x.fr" },
+        subject: "HTML",
+        text: "",
+        html: "<p>Salut <b>HTML</b></p>",
+        messageId: "<h6@x>",
+        inReplyTo: null,
+        date: new Date("2026-05-24T10:00:00Z"),
+      },
+    };
+    await pollAccount(
+      admin,
+      ACCOUNT,
+      CONFIG,
+      fakeClientFactory({ uidNext: 8, uidValidity: 100, messages: [htmlMsg] }),
+    );
+    expect(upserts[0].row.body_text).toBe("Salut HTML");
+    expect(upserts[0].row.body_html).toBe("<p>Salut <b>HTML</b></p>");
+  });
 });

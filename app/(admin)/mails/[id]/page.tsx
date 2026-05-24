@@ -54,6 +54,14 @@ export default async function AdminMailDetailPage(props: {
                   {row.receivedAt ? formatDateFr(row.receivedAt) : "—"}
                   {row.toEmail ? ` · à ${row.toEmail}` : ""}
                 </div>
+                {row.lookupUserId ? (
+                  <Link
+                    href={`/users/${row.lookupUserId}`}
+                    className="mt-1 inline-block text-[12px] text-terroir-green-700 underline hover:text-terroir-green-700/80"
+                  >
+                    Voir la fiche client →
+                  </Link>
+                ) : null}
               </div>
               <Badge variant="gray">{INBOUND_TAG_LABEL[row.tag]}</Badge>
             </div>
