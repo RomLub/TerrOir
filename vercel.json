@@ -52,6 +52,10 @@
     {
       "path": "/api/cron/leads-followups",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/fetch-inbound",
+      "schedule": "*/10 * * * *"
     }
   ],
   "functions": {
@@ -68,6 +72,7 @@
     "app/api/cron/refund-expire-pending/route.tsx": { "maxDuration": 60 },
     "app/api/cron/cleanup-test-residuals/route.ts": { "maxDuration": 60 },
     "app/api/cron/leads-followups/route.ts": { "maxDuration": 60 },
+    "app/api/cron/fetch-inbound/route.ts": { "maxDuration": 60 },
     "app/api/orders/[id]/cancel/route.tsx": { "maxDuration": 30 },
     "app/api/orders/[id]/confirm/route.tsx": { "maxDuration": 30 },
     "app/api/orders/[id]/complete/route.tsx": { "maxDuration": 30 }

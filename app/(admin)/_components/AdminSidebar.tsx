@@ -303,6 +303,23 @@ const DisputeIcon = (
   </svg>
 );
 
+// Chantier 9 — icône Mails (boîte de réception, top niveau).
+const MailIcon = (
+  <svg
+    aria-hidden="true"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className="h-4 w-4"
+  >
+    <path d="M22 12h-6l-2 3h-4l-2-3H2" />
+    <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+  </svg>
+);
+
 // Chantier 0 — structure cible de la nav admin par sections métier (group
 // headers plats, mécanisme T-130/chantier-7, sans collapsible JS).
 //
@@ -317,6 +334,8 @@ const DisputeIcon = (
 // le détail partagé /users/[id] subsiste (réutilisé par Comptes consommateurs).
 const NAV: NavEntry[] = [
   { kind: "item", href: "/tableau-de-bord", label: "Tableau de bord", icon: DashboardIcon },
+  // ─── Mails (chantier 9) — top niveau, usage haute fréquence ──────────
+  { kind: "item", href: "/mails", label: "Mails", icon: MailIcon },
 
   // ─── Producteurs ────────────────────────────────────────────────────
   { kind: "group", label: "Producteurs" },

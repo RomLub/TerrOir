@@ -100,6 +100,7 @@ export const AUDIT_EVENT_LABELS: Record<string, string> = {
   // ─── Email delivery ─────────────────────────────────────────────────
   email_complaint_received: "Plainte spam reçue",
   email_hard_bounce_suppressed: "Bounce permanent (suppression)",
+  inbound_email_replied: "Mails : réponse envoyée depuis contact@",
 
   // ─── Avis & réponse producteur ──────────────────────────────────────
   producer_response_published: "Réponse producteur publiée",
