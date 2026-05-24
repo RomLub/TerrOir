@@ -1342,6 +1342,7 @@ export type Database = {
           days_of_week: number[]
           end_time: string
           id: string
+          mode: string
           periodicity_weeks: number
           producer_id: string
           slot_duration_minutes: number
@@ -1355,6 +1356,7 @@ export type Database = {
           days_of_week: number[]
           end_time: string
           id?: string
+          mode?: string
           periodicity_weeks?: number
           producer_id: string
           slot_duration_minutes: number
@@ -1368,6 +1370,7 @@ export type Database = {
           days_of_week?: number[]
           end_time?: string
           id?: string
+          mode?: string
           periodicity_weeks?: number
           producer_id?: string
           slot_duration_minutes?: number
