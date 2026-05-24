@@ -36,10 +36,6 @@ export type LoggedInProfile = {
   telephone: string;
 };
 
-// Style des champs verrouillés (grisés, non éditables) en variante connectée.
-const LOCKED_CLASS =
-  "bg-dark/[0.04] text-dark/55 cursor-not-allowed focus:ring-0 focus:border-terroir-border";
-
 export function SignupForm({
   prefill,
   loggedIn = null,
@@ -96,7 +92,6 @@ export function SignupForm({
           name="prenom"
           defaultValue={loggedIn?.prenom ?? prefill?.prenom ?? ""}
           readOnly={isLoggedIn}
-          className={isLoggedIn ? LOCKED_CLASS : ""}
           autoComplete="given-name"
           required
         />
@@ -105,7 +100,6 @@ export function SignupForm({
           name="nom"
           defaultValue={loggedIn?.nom ?? prefill?.nom ?? ""}
           readOnly={isLoggedIn}
-          className={isLoggedIn ? LOCKED_CLASS : ""}
           autoComplete="family-name"
           required
         />
@@ -118,7 +112,6 @@ export function SignupForm({
           name="email"
           defaultValue={loggedIn?.email ?? prefill?.email ?? ""}
           readOnly={isLoggedIn || Boolean(prefill)}
-          className={isLoggedIn || prefill ? LOCKED_CLASS : ""}
           hint={isLoggedIn ? "Lié à votre compte" : undefined}
           autoComplete="email"
           required
