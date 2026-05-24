@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
+import { CommuneSelect } from "@/components/ui/commune-select";
 import {
   completeOnboardingAction,
   type State,
@@ -192,36 +193,11 @@ export function StepInfos({
         />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-[140px_1fr]">
-        <div>
-          <label className="mb-1 block text-sm font-medium text-gray-800">
-            Code postal
-          </label>
-          <input
-            name="code_postal"
-            type="text"
-            required
-            inputMode="numeric"
-            pattern="\d{5}"
-            autoComplete="postal-code"
-            defaultValue={initialValues.code_postal}
-            className={inputClass}
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-sm font-medium text-gray-800">
-            Commune
-          </label>
-          <input
-            name="commune"
-            type="text"
-            required
-            autoComplete="address-level2"
-            defaultValue={initialValues.commune}
-            className={inputClass}
-          />
-        </div>
-      </div>
+      <CommuneSelect
+        idPrefix="onboarding"
+        defaultCodePostal={initialValues.code_postal}
+        defaultCommune={initialValues.commune}
+      />
 
       <div>
         <label className="mb-1 block text-sm font-medium text-gray-800">

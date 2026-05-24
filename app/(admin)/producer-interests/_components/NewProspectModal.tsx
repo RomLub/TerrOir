@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Input, Textarea } from "@/components/ui";
+import { CommuneSelect } from "@/components/ui/commune-select";
 
 // Chantier 3 Phase 3 — création manuelle d'un lead prospecté (étape 1 « Repéré »)
 // par l'admin. POST /api/admin/leads/prospects (source invitation_directe).
@@ -17,6 +18,7 @@ export function NewProspectModal({ onClose }: { onClose: () => void }) {
     email: "",
     telephone: "",
     nom_exploitation: "",
+    code_postal: "",
     commune: "",
     message: "",
   });
@@ -84,14 +86,18 @@ export function NewProspectModal({ onClose }: { onClose: () => void }) {
             <Input label="Email" type="email" value={form.email} onChange={set("email")} required />
             <Input label="Téléphone" type="tel" value={form.telephone} onChange={set("telephone")} />
           </div>
-          <div className="grid sm:grid-cols-2 gap-3">
-            <Input
-              label="Exploitation"
-              value={form.nom_exploitation}
-              onChange={set("nom_exploitation")}
-            />
-            <Input label="Commune" value={form.commune} onChange={set("commune")} />
-          </div>
+          <Input
+            label="Exploitation"
+            value={form.nom_exploitation}
+            onChange={set("nom_exploitation")}
+          />
+          <CommuneSelect
+            idPrefix="new-prospect"
+            defaultCodePostal={form.code_postal}
+            defaultCommune={form.commune}
+            onCodePostalChange={(v) => setForm((f) => ({ ...f, code_postal: v }))}
+            onCommuneChange={(v) => setForm((f) => ({ ...f, commune: v }))}
+          />
           <Textarea label="Note (optionnel)" rows={3} value={form.message} onChange={set("message")} />
 
           {error ? (

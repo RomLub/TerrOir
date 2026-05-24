@@ -8,7 +8,7 @@ import {
   type ProducerSignupState,
 } from "../_actions/signup-producer";
 import { becomeProducerAction } from "../_actions/become-producer";
-import { CommuneSelect } from "./CommuneSelect";
+import { CommuneSelect } from "@/components/ui/commune-select";
 
 export type PrefillData = {
   token: string;
@@ -159,7 +159,7 @@ export function SignupForm({
         required
       />
 
-      <CommuneSelect defaultCommune={prefill?.commune ?? ""} />
+      <CommuneSelect idPrefix="signup" defaultCommune={prefill?.commune ?? ""} />
 
       <fieldset className="space-y-2">
         <legend className="text-[13px] font-medium text-dark/80">

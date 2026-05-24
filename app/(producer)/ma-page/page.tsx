@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Button, Badge, Input, Textarea, ProducerCard, PageHeader } from '@/components/ui';
+import { CommuneSelect } from '@/components/ui/commune-select';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { uploadProducerPhoto } from '@/lib/producers/upload';
 import { labelEspece, labelLabel } from '@/lib/producers/labels';
@@ -335,12 +336,19 @@ export default function MaPagePage() {
                 <Textarea id="ma-page-description" label="Description courte" rows={2} value={form.description}
                   onChange={(e) => { setForm({ ...form, description: e.target.value }); setSaved(false); }}
                   placeholder="En une phrase, votre ferme." />
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <Input id="ma-page-commune" label="Commune" value={form.commune}
-                    onChange={(e) => { setForm({ ...form, commune: e.target.value }); setSaved(false); }} />
-                  <Input id="ma-page-code-postal" label="Code postal" value={form.code_postal}
-                    onChange={(e) => { setForm({ ...form, code_postal: e.target.value }); setSaved(false); }} />
-                </div>
+                <CommuneSelect
+                  idPrefix="ma-page"
+                  defaultCodePostal={form.code_postal}
+                  defaultCommune={form.commune}
+                  onCodePostalChange={(v) => {
+                    setForm((f) => ({ ...f, code_postal: v }));
+                    setSaved(false);
+                  }}
+                  onCommuneChange={(v) => {
+                    setForm((f) => ({ ...f, commune: v }));
+                    setSaved(false);
+                  }}
+                />
               </div>
             </section>
 
