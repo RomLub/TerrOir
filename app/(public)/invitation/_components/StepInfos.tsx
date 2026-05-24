@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import { CommuneSelect } from "@/components/ui/commune-select";
+import { AddressAutocomplete } from "@/components/ui/address-autocomplete";
 import {
   completeOnboardingAction,
   type State,
@@ -91,6 +92,13 @@ export function StepInfos({
   const [siret, setSiret] = useState(initialValues.siret);
   const [siretCheck, setSiretCheck] = useState<SiretCheck>({ status: "idle" });
 
+  // Code postal courant (depuis CommuneSelect) → scope de l'autocomplétion
+  // d'adresse. Forme juridique : déduite du SIRET (présélection modifiable).
+  const [codePostal, setCodePostal] = useState(initialValues.code_postal);
+  const [formeJuridique, setFormeJuridique] = useState(
+    initialValues.forme_juridique,
+  );
+
   useEffect(() => {
     const cleaned = siret.replace(/\s/g, "");
     if (!/^\d{14}$/.test(cleaned)) {
@@ -109,11 +117,13 @@ export function StepInfos({
           signal: ctrl.signal,
         });
         const data = (await res.json().catch(() => null)) as
-          | { ok?: boolean; found?: boolean; legalName?: string }
+          | { ok?: boolean; found?: boolean; legalName?: string; formeJuridique?: string }
           | null;
         if (!active) return;
         if (res.ok && data?.ok && data.found) {
           setSiretCheck({ status: "found", legalName: data.legalName ?? "" });
+          // Présélection de la forme juridique déduite du SIRET (modifiable).
+          if (data.formeJuridique) setFormeJuridique(data.formeJuridique);
         } else if (res.ok && data?.ok && data.found === false) {
           setSiretCheck({ status: "notfound" });
         } else {
@@ -160,7 +170,8 @@ export function StepInfos({
           <select
             name="forme_juridique"
             required
-            defaultValue={initialValues.forme_juridique}
+            value={formeJuridique}
+            onChange={(e) => setFormeJuridique(e.target.value)}
             className={inputClass}
           >
             <option value="" disabled>
@@ -210,24 +221,18 @@ export function StepInfos({
         </div>
       </div>
 
-      <div>
-        <label className="mb-1 block text-sm font-medium text-gray-800">
-          Adresse
-        </label>
-        <input
-          name="adresse"
-          type="text"
-          required
-          autoComplete="street-address"
-          defaultValue={initialValues.adresse}
-          className={inputClass}
-        />
-      </div>
-
       <CommuneSelect
         idPrefix="onboarding"
         defaultCodePostal={initialValues.code_postal}
         defaultCommune={initialValues.commune}
+        onCodePostalChange={setCodePostal}
+      />
+
+      <AddressAutocomplete
+        idPrefix="onboarding"
+        codePostal={codePostal}
+        defaultValue={initialValues.adresse}
+        required
       />
 
       <div>

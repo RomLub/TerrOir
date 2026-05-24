@@ -32,7 +32,12 @@ export async function POST(request: Request) {
   if (result.ok) {
     return NextResponse.json(
       result.found
-        ? { ok: true, found: true, legalName: result.legalName }
+        ? {
+            ok: true,
+            found: true,
+            legalName: result.legalName,
+            formeJuridique: result.formeJuridique,
+          }
         : { ok: true, found: false },
       { status: 200 },
     );
