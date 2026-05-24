@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Button, Input, Textarea, PageHeader } from '@/components/ui';
+import { CommuneSelect } from '@/components/ui/commune-select';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
 type State = {
@@ -185,10 +186,19 @@ export default function ProducerSettingsPage() {
           <div className="space-y-4">
             <Input label="Nom de l'exploitation *" value={s.nom_exploitation} onChange={up('nom_exploitation')} />
             <Textarea label="Adresse *" rows={2} value={s.adresse} onChange={up('adresse')} placeholder="Rue, voie, lieu-dit" />
-            <div className="grid sm:grid-cols-2 gap-4">
-              <Input label="Code postal" value={s.code_postal} onChange={up('code_postal')} />
-              <Input label="Commune" value={s.commune} onChange={up('commune')} />
-            </div>
+            <CommuneSelect
+              idPrefix="parametres"
+              defaultCodePostal={s.code_postal}
+              defaultCommune={s.commune}
+              onCodePostalChange={(v) => {
+                setS((prev) => ({ ...prev, code_postal: v }));
+                setSaved(false);
+              }}
+              onCommuneChange={(v) => {
+                setS((prev) => ({ ...prev, commune: v }));
+                setSaved(false);
+              }}
+            />
             <Input label="SIRET" value={s.siret} onChange={up('siret')} placeholder="14 chiffres" hint="Visible uniquement par l'équipe TerrOir." />
           </div>
         </section>
