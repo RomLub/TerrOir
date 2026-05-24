@@ -38,17 +38,17 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
 vi.mock("@/lib/supabase/server", () => ({
   createSupabaseServerClient: async () => ({
-    auth: { signInWithPassword: (...a: unknown[]) => h.signIn(...a) },
+    auth: { signInWithPassword: h.signIn },
   }),
 }));
 vi.mock("@/lib/supabase/admin", () => ({
   createSupabaseAdminClient: () => ({
-    auth: { admin: { generateLink: (...a: unknown[]) => h.generateLink(...a) } },
+    auth: { admin: { generateLink: h.generateLink } },
   }),
 }));
 vi.mock("@/lib/auth/post-login-redirect", () => ({
-  loadRoleSnapshot: (...a: unknown[]) => h.loadRole(...a),
-  resolvePostLoginPath: (...a: unknown[]) => h.resolvePath(...a),
+  loadRoleSnapshot: h.loadRole,
+  resolvePostLoginPath: h.resolvePath,
 }));
 vi.mock("@/lib/auth/role-snapshot-cookie", () => ({ setRoleSnapshotOnStore: vi.fn() }));
 vi.mock("@/lib/auth/redirect-cookie", () => ({ setRedirectAfterAuth: vi.fn() }));
