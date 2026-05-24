@@ -638,6 +638,43 @@ la condition de déblocage.
   détectent pas le mismatch). Doctrine complète dans
   `docs/LESSONS.md` § « Admin surfaces / Jointures Supabase ».
 
+### Migrations — moment d'application en prod (règle Romain 2026-05-23)
+
+Quand appliquer une migration en prod via MCP par rapport au merge de la PR :
+
+- **Purement additive** (`ADD COLUMN` nullable, `CREATE INDEX`,
+  `CREATE TABLE`, `CREATE FUNCTION`/RPC pas encore appelée par du code
+  déployé) → **CC peut l'appliquer AVANT le merge**. Elle est dormante :
+  aucun consumer déployé ne la lit, donc zéro risque de casser la prod.
+- **Tout le reste** (modification de colonne, suppression, changement de
+  signature/return-shape d'une RPC, `NOT NULL`, tout changement breaking)
+  → **APRÈS le merge uniquement**, couplé au déploiement du code qui en
+  dépend. Sinon le code déployé (ancien) tape sur un schéma incohérent →
+  500 (cf. incident chantier 2 : `get_admin_dashboard` return-shape
+  changée avant déploiement du code → dashboard cassé ~15 min).
+
+Origine : chantier 6 (migration additive `admin_privilege` + `suspended_at`
+appliquée avant review, OK car dormante) + incident chantier 2.
+
+### Comptes admins (chantier 6)
+
+- **`admin_revoke` réinsère le compte avec `roles=['consumer']` par défaut.**
+  Ne convient PAS si le compte d'origine portait d'autres rôles (ex:
+  `producer`). Pour TerrOir actuellement OK (doctrine **admin = email
+  dédié**, donc un admin n'a pas de profil producteur à restaurer). À
+  revisiter si la doctrine change (il faudrait alors persister les rôles
+  d'origine avant le passage en admin pour les restaurer au retrait).
+- **`promoteAdminByEmail` : résolution email via `.ilike(...).maybeSingle()`.**
+  Supabase Auth impose l'unicité d'email **insensible à la casse**, et
+  `public.users.id = auth.users.id` → deux variantes de casse du même email
+  ne peuvent pas coexister. Si ça arrivait malgré tout, `maybeSingle()`
+  renvoie une erreur → le code **échoue safe** (refus `no_account`, jamais
+  une promotion erronée). Limite documentée, pas un bug.
+- **Atomicité promote/revoke** : les RPC sont des fonctions plpgsql **sans
+  bloc `EXCEPTION`** → toute erreur (ex: INSERT qui échoue) abort la fonction
+  entière et rollback le DELETE précédent. Pas de compte fantôme possible
+  (garantie Postgres, pas probabiliste).
+
 ### ESLint
 
 - L'apostrophe courbe U+2019 est interdite **aussi bien dans les

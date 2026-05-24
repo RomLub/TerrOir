@@ -115,6 +115,13 @@ export const AUDIT_EVENT_LABELS: Record<string, string> = {
   producer_publication_requested: "Producteur : publication demandée",
   admin_producer_bio_validated: "Producteur : certification bio validée/refusée",
 
+  // ─── Cycle de vie des comptes admins (chantier 6) ───────────────────
+  admin_promoted: "Admin : compte promu",
+  admin_suspended: "Admin : accès suspendu",
+  admin_reactivated: "Admin : accès réactivé",
+  admin_revoked: "Admin : statut retiré",
+  admin_privilege_changed: "Admin : niveau d'accès modifié",
+
   // ─── Leads producteurs (producer_interests) ─────────────────────────
   admin_producer_interest_statut_changed: "Lead producteur : statut modifié",
   admin_producer_interest_deleted: "Lead producteur supprimé",

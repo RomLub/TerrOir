@@ -174,10 +174,19 @@ async function resolveRoleSnapshot(
   }
   const [{ data: profile }, { data: adminRow }] = await Promise.all([
     supabase.from("users").select("roles").eq("id", userId).maybeSingle(),
-    supabase.from("admin_users").select("id").eq("id", userId).maybeSingle(),
+    // Chantier 6 : un admin suspendu (suspended_at non null) n'est plus admin.
+    // La suspension révoque aussi le snapshot caché (trigger UPDATE OF
+    // suspended_at) → ce lookup live re-dérive isAdmin=false au hit suivant.
+    supabase
+      .from("admin_users")
+      .select("id, suspended_at")
+      .eq("id", userId)
+      .maybeSingle(),
   ]);
   const roles = (profile?.roles as string[] | undefined) ?? [];
-  const isAdmin = !!adminRow;
+  const isAdmin =
+    !!adminRow &&
+    (adminRow as { suspended_at: string | null }).suspended_at == null;
   return { roles, isAdmin, needsRefresh: true };
 }
 

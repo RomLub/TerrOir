@@ -11,6 +11,10 @@ export interface SessionUser {
   email: string | null;
   roles: UserRole[];
   isAdmin: boolean;
+  // Chantier 6 : un admin suspendu (suspended_at non null) n'est PAS isAdmin.
+  // isSuperAdmin = admin actif avec privilège super_admin (gère les autres
+  // admins). Toujours dérivé en live (jamais caché dans le snapshot).
+  isSuperAdmin: boolean;
 }
 
 export async function getSessionUser(): Promise<SessionUser | null> {
@@ -40,7 +44,11 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   // donc au plus une des deux requêtes renvoie une ligne.
   const [userRes, adminRes] = await Promise.all([
     supabase.from("users").select("roles").eq("id", user.id).maybeSingle(),
-    supabase.from("admin_users").select("id").eq("id", user.id).maybeSingle(),
+    supabase
+      .from("admin_users")
+      .select("id, admin_privilege, suspended_at")
+      .eq("id", user.id)
+      .maybeSingle(),
   ]);
 
   // bugs-P2-1 : log les erreurs de lookup (faux !isAdmin invisible côté SRE).
@@ -58,26 +66,51 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   }
 
   const roles = (userRes.data?.roles as UserRole[] | undefined) ?? [];
-  const isAdmin = !!adminRes.data;
+  // Chantier 6 : un admin suspendu (suspended_at non null) perd l'accès admin.
+  const adminRow = adminRes.data as
+    | { id: string; admin_privilege: string | null; suspended_at: string | null }
+    | null;
+  const isAdmin = !!adminRow && adminRow.suspended_at == null;
+  const isSuperAdmin = isAdmin && adminRow!.admin_privilege === "super_admin";
 
   return {
     id: user.id,
     email: user.email ?? null,
     roles,
     isAdmin,
+    isSuperAdmin,
   };
 }
 
 // Helper serveur pour vérifier l'admin par userId sans session complète.
 // Utilise le client admin (service_role) pour contourner la RLS.
+// Chantier 6 : un admin suspendu n'est plus admin.
 export async function isAdmin(userId: string): Promise<boolean> {
   const admin = createSupabaseAdminClient();
   const { data } = await admin
     .from("admin_users")
     .select("id")
     .eq("id", userId)
+    .is("suspended_at", null)
     .maybeSingle();
   return !!data;
+}
+
+// Chantier 6 : super_admin actif (gère les autres admins). Live DB read via
+// service_role — jamais caché dans le snapshot (un changement de privilège
+// prend effet immédiatement).
+export async function isSuperAdmin(userId: string): Promise<boolean> {
+  const admin = createSupabaseAdminClient();
+  const { data } = await admin
+    .from("admin_users")
+    .select("admin_privilege, suspended_at")
+    .eq("id", userId)
+    .maybeSingle();
+  return (
+    !!data &&
+    (data as { suspended_at: string | null }).suspended_at == null &&
+    (data as { admin_privilege: string | null }).admin_privilege === "super_admin"
+  );
 }
 
 // Pré-fetch SSR pour UserProvider : auth.getUser() + lookups admin_users +
@@ -121,11 +154,14 @@ export async function getInitialUserPayload(): Promise<InitialUserPayload> {
       try {
         const { data, error } = await supabase
           .from("admin_users")
-          .select("id")
+          .select("id, suspended_at")
           .eq("id", user.id)
           .maybeSingle();
         if (error) throw error;
-        return !!data;
+        // Chantier 6 : admin suspendu (suspended_at non null) → pas admin.
+        return (
+          !!data && (data as { suspended_at: string | null }).suspended_at == null
+        );
       } catch (err) {
         console.error(
           "[GET_INITIAL_USER_PAYLOAD_WARN] admin lookup failed",

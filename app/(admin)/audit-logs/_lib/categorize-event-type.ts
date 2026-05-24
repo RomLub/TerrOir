@@ -22,10 +22,23 @@ export type EventCategory =
   | "catalog"
   | "refund"
   | "producers"
-  | "producer_interests";
+  | "producer_interests"
+  | "admin_accounts";
 
 export function categorizeEventType(eventType: AuditEventType): EventCategory {
   if (eventType.startsWith("admin_invite_")) return "admin_invite";
+  // Chantier 6 : cycle de vie des comptes admins (page Admins, Gouvernance).
+  // Set explicite (pas de préfixe commun propre au-delà de `admin_`) — passe
+  // AVANT le fallback `auth` et avant `admin_producer_` (qui ne les capture
+  // pas mais on reste explicite).
+  if (
+    eventType === "admin_promoted" ||
+    eventType === "admin_suspended" ||
+    eventType === "admin_reactivated" ||
+    eventType === "admin_revoked" ||
+    eventType === "admin_privilege_changed"
+  )
+    return "admin_accounts";
   if (
     eventType.startsWith("admin_legal_") ||
     eventType.startsWith("admin_audit_logs_")
@@ -172,5 +185,11 @@ export const CATEGORY_PALETTE: Record<
     bg: "bg-fuchsia-50",
     text: "text-fuchsia-700",
     dot: "bg-fuchsia-500",
+  },
+  admin_accounts: {
+    label: "Admins",
+    bg: "bg-slate-100",
+    text: "text-slate-700",
+    dot: "bg-slate-500",
   },
 };

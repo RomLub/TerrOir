@@ -19,6 +19,7 @@ const ALL_CATEGORIES = [
   "refund",
   "producers",
   "producer_interests",
+  "admin_accounts",
 ] as const;
 
 describe("categorizeEventType", () => {
@@ -95,6 +96,18 @@ describe("categorizeEventType", () => {
     expect(categorizeEventType("admin_producer_interest_deleted")).toBe(
       "producer_interests",
     );
+  });
+
+  it("events cycle de vie admin (chantier 6) → catégorie 'admin_accounts'", () => {
+    for (const t of [
+      "admin_promoted",
+      "admin_suspended",
+      "admin_reactivated",
+      "admin_revoked",
+      "admin_privilege_changed",
+    ] as const) {
+      expect(categorizeEventType(t)).toBe("admin_accounts");
+    }
   });
 
   it("préfixe 'notification_' → catégorie 'notification'", () => {

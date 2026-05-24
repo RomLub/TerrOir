@@ -42,6 +42,10 @@ import {
   PRODUCER_INTERESTS_EVENT_TYPES,
   type ProducerInterestsEventType,
 } from "@/lib/audit-logs/log-producer-interests-event";
+import {
+  ADMIN_LIFECYCLE_EVENT_TYPES,
+  type AdminLifecycleEventType,
+} from "@/lib/audit-logs/log-admin-lifecycle-event";
 
 // Source unique consolidée pour la page admin /audit-logs : concaténation
 // des clusters helpers sans duplication. L'ordre suit l'ordre d'apparition
@@ -59,6 +63,7 @@ export const ALL_EVENT_TYPES = [
   ...REVIEW_MODERATION_EVENT_TYPES,
   ...PRODUCERS_ADMIN_EVENT_TYPES,
   ...PRODUCER_INTERESTS_EVENT_TYPES,
+  ...ADMIN_LIFECYCLE_EVENT_TYPES,
 ] as const;
 
 export type AuditEventType =
@@ -72,4 +77,5 @@ export type AuditEventType =
   | RefundIncidentsEventType
   | ReviewModerationEventType
   | ProducersAdminEventType
-  | ProducerInterestsEventType;
+  | ProducerInterestsEventType
+  | AdminLifecycleEventType;

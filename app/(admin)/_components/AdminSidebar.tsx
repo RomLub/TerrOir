@@ -292,9 +292,11 @@ const InvitationsIcon = (
 // les deux vues (demandes à arbitrer + incidents techniques) en une seule
 // entrée à onglets (cf. RefundsTabNav), badge agrégé. « Comptes
 // consommateurs » remplace l'ancienne entrée « Utilisateurs » ici.
-// « Utilisateurs » (/users, vue toutes-rôles, défaut admin) est déplacée sous
-// Gouvernance — bridge transitoire : le chantier 6 (Page Admins) la remplacera
-// par une page « Administrateurs » dédiée puis supprimera /users.
+//
+// Chantier 6 — Gouvernance : « Administrateurs » (/comptes-admins) gère le
+// cycle de vie des comptes admins (niveaux + suspension). Le /users LIST a été
+// supprimé (consumers → Comptes consommateurs, admins → Administrateurs) ; seul
+// le détail partagé /users/[id] subsiste (réutilisé par Comptes consommateurs).
 const NAV: NavEntry[] = [
   { kind: "item", href: "/tableau-de-bord", label: "Tableau de bord", icon: DashboardIcon },
 
@@ -315,7 +317,7 @@ const NAV: NavEntry[] = [
   { kind: "item", href: "/audit-logs", label: "Journal d'audit", icon: AuditLogsIcon },
   { kind: "item", href: "/avis", label: "Avis", icon: ReviewsIcon },
   { kind: "item", href: "/legal-compliance", label: "Conformité légale", icon: ComplianceIcon },
-  { kind: "item", href: "/users?role=admin", label: "Utilisateurs", icon: UsersIcon },
+  { kind: "item", href: "/comptes-admins", label: "Administrateurs", icon: UsersIcon },
 
   // ─── Référentiels (chantier 7) ──────────────────────────────────────
   { kind: "group", label: "Référentiels" },

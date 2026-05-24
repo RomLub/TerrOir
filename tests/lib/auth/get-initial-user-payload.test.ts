@@ -142,6 +142,19 @@ describe("getInitialUserPayload", () => {
     });
   });
 
+  it("chantier 6 : admin SUSPENDU (suspended_at non null) → isAdmin=false", async () => {
+    authGetUserMock.mockResolvedValue({ data: { user: fakeUser }, error: null });
+    adminMaybeSingleMock.mockResolvedValue({
+      data: { id: "user-1", suspended_at: "2026-05-20T10:00:00Z" },
+      error: null,
+    });
+    producerMaybeSingleMock.mockResolvedValue({ data: null, error: null });
+    usersMaybeSingleMock.mockResolvedValue({ data: null, error: null });
+
+    const res = await getInitialUserPayload();
+    expect(res.isAdmin).toBe(false);
+  });
+
   it("retourne producerLite complet et isProducer=true pour un user producer non-admin", async () => {
     authGetUserMock.mockResolvedValue({
       data: { user: fakeUser },
