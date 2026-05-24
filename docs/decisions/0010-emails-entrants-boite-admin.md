@@ -30,10 +30,16 @@ tard si le volume/temps-réel le justifie (choix réversible).
 ### Paramètres arbitrés
 
 1. **Option A** (IMAP OVH). ✅
-2. **Adresses** : `contact@` seul au MVP. Architecture **multi-adresses** :
-   table `inbound_email_accounts` (1 ligne par adresse) → ajouter `support@`
-   plus tard = INSERT + creds (pas de hardcode). La résolution des creds par
-   adresse est le seul point d'extension (MVP : env `IMAP_*` unique).
+2. **Adresses** : la conf OVH réelle est **une seule boîte `admin@` (Zimbra)** ;
+   `contact@` est une **redirection MX → admin@** (pas une boîte). On **polle
+   donc `admin@`** (IMAP_USER=admin@) et on **répond depuis `contact@`**
+   (interlocuteur unique, côté code). Architecture **multi-adresses** prête
+   (table `inbound_email_accounts`, 1 ligne/adresse) pour ajouter d'autres
+   boîtes plus tard. **Conséquence** : `admin@` étant la boîte principale, elle
+   mélange mails utiles + bruit infra (Stripe/Resend/Vercel/OVH/GitHub…) →
+   **pré-filtre par domaine expéditeur à l'ingestion** (blacklist
+   `lib/admin/inbound/ignored-senders`, on n'insère pas le bruit ; le
+   checkpoint avance quand même).
 3. **Cadence** : 10 min visé. ⚠️ **Contrainte découverte au déploiement** :
    Vercel **Hobby** limite les crons à 1×/jour → le cron est calé sur
    `0 7 * * *` (quotidien) pour que le déploiement passe. Le 10 min nécessite
