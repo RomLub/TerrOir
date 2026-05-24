@@ -55,13 +55,34 @@ function keyToParisIso(key: string, addDays = 0): string {
   return new TZDate(y!, m! - 1, d! + addDays, 0, 0, 0, TZ).toISOString();
 }
 
-// Coquille synchrone : le PageHeader s'affiche immédiatement (post-gardes),
-// le calendrier (slots + règles + commandes actives) est streamé via
-// <Suspense>.
-export default async function CreneauxPage({
+// Coquille SYNCHRONE : le PageHeader s'affiche instantanément ; les gardes
+// (session + producteur) sont déplacées dans le flux (CreneauxGate) → cadre
+// instantané à la navigation, calendrier streamé.
+export default function CreneauxPage({
   searchParams,
 }: {
   searchParams: Promise<{ week?: string }>;
+}) {
+  return (
+    <div className="mx-auto max-w-5xl px-8 py-10">
+      <PageHeader
+        tone="producer"
+        eyebrow="Créneaux"
+        title="Vos créneaux de retrait"
+        subtitle="Votre agenda d'ouvertures. Ajoutez vos créneaux réguliers ou ponctuels, fermez un jour ou posez des vacances."
+      />
+
+      <Suspense fallback={<SectionSkeleton rows={5} />}>
+        <CreneauxGate searchParamsPromise={searchParams} />
+      </Suspense>
+    </div>
+  );
+}
+
+async function CreneauxGate({
+  searchParamsPromise,
+}: {
+  searchParamsPromise: Promise<{ week?: string }>;
 }) {
   const session = await getSessionUser();
   if (!session) redirect("/connexion");
@@ -74,23 +95,10 @@ export default async function CreneauxPage({
     .maybeSingle();
   if (!producer) redirect("/invitation");
 
-  const sp = await searchParams;
+  const sp = await searchParamsPromise;
   const weekOffset = parseWeekOffset(sp.week);
 
-  return (
-    <div className="mx-auto max-w-5xl px-8 py-10">
-      <PageHeader
-        tone="producer"
-        eyebrow="Créneaux"
-        title="Vos créneaux de retrait"
-        subtitle="Votre agenda d'ouvertures. Ajoutez vos créneaux réguliers ou ponctuels, fermez un jour ou posez des vacances."
-      />
-
-      <Suspense fallback={<SectionSkeleton rows={5} />}>
-        <CreneauxContent producerId={producer.id} weekOffset={weekOffset} />
-      </Suspense>
-    </div>
-  );
+  return <CreneauxContent producerId={producer.id} weekOffset={weekOffset} />;
 }
 
 async function CreneauxContent({

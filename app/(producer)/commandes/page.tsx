@@ -40,30 +40,35 @@ function formatDateShort(iso: string | null): string {
   return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
 }
 
-// Coquille synchrone (post-gardes) : la page rend le trou <Suspense>
-// immédiatement, le squelette liste s'affiche pendant le fetch orders+count.
-// La sidebar (layout) reste fixe ; seul le contenu streame.
-export default async function ProducerCommandesPage(
+// Coquille SYNCHRONE : retourne le <Suspense> + skeleton sans await en tête.
+// Gardes (session + producteur) déplacées dans le flux (CommandesGate) → cadre
+// (sidebar du layout + skeleton) instantané à la navigation, fetch streamé.
+export default function ProducerCommandesPage(
   props: {
     searchParams: Promise<SearchParams>;
   }
 ) {
-  const searchParams = await props.searchParams;
+  return (
+    <Suspense fallback={<ListSkeleton rows={6} />}>
+      <CommandesGate searchParamsPromise={props.searchParams} />
+    </Suspense>
+  );
+}
+
+async function CommandesGate({
+  searchParamsPromise,
+}: {
+  searchParamsPromise: Promise<SearchParams>;
+}) {
+  const searchParams = await searchParamsPromise;
   const session = await getSessionUser();
   if (!session) redirect('/connexion');
 
-  // (producer)/layout.tsx vérifie déjà session + host. Le lookup producer
-  // utilise le client serveur (RLS owner read autorise auth.uid() = user_id).
-  // Garde conservée au niveau page (lookup léger) ; le fetch lourd est streamé.
   const supabase = await createSupabaseServerClient();
   const producer = await fetchProducerForUser(supabase, session.id);
   if (!producer) redirect('/invitation');
 
-  return (
-    <Suspense fallback={<ListSkeleton rows={6} />}>
-      <CommandesContent producer={producer} searchParams={searchParams} />
-    </Suspense>
-  );
+  return <CommandesContent producer={producer} searchParams={searchParams} />;
 }
 
 async function CommandesContent({

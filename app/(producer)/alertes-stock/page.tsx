@@ -18,16 +18,10 @@ import { SectionSkeleton } from "../_components/ContentSkeletons";
 // Pas de composant *Client.tsx : la page est statique post-fetch (juste
 // affichage de cards), pas d'interaction. Refresh = navigation.
 
-// Coquille synchrone : l'en-tête s'affiche immédiatement (post-gardes), la
-// liste des alertes (fetchProducerAlerts) est streamée via <Suspense>.
-export default async function ProducerAlertesStockPage() {
-  const session = await getSessionUser();
-  if (!session) redirect("/connexion");
-
-  const admin = createSupabaseAdminClient();
-  const producer = await fetchProducerForUser(admin, session.id);
-  if (!producer) redirect("/devenir-producteur");
-
+// Coquille SYNCHRONE : l'en-tête s'affiche instantanément ; les gardes
+// (session + producteur) sont déplacées dans le flux (AlertesGate) → cadre
+// instantané à la navigation, liste streamée.
+export default function ProducerAlertesStockPage() {
   return (
     <div className="max-w-4xl mx-auto px-8 py-10">
       <header className="mb-8">
@@ -46,10 +40,21 @@ export default async function ProducerAlertesStockPage() {
       </header>
 
       <Suspense fallback={<SectionSkeleton rows={4} />}>
-        <AlertesContent producer={producer} />
+        <AlertesGate />
       </Suspense>
     </div>
   );
+}
+
+async function AlertesGate() {
+  const session = await getSessionUser();
+  if (!session) redirect("/connexion");
+
+  const admin = createSupabaseAdminClient();
+  const producer = await fetchProducerForUser(admin, session.id);
+  if (!producer) redirect("/devenir-producteur");
+
+  return <AlertesContent producer={producer} />;
 }
 
 async function AlertesContent({ producer }: { producer: ProducerRecord }) {

@@ -43,12 +43,33 @@ function formatEuro(n: number): string {
   return `${n.toFixed(2).replace('.', ',')} €`;
 }
 
-// Coquille synchrone : le PageHeader s'affiche immédiatement (post-gardes),
-// le contenu (virements + agrégats commandes) est streamé via <Suspense>.
-export default async function RevenusPage(props: {
+// Coquille SYNCHRONE : le PageHeader s'affiche instantanément ; les gardes
+// (session + producteur) sont déplacées dans le flux (RevenusGate) → cadre
+// instantané à la navigation, contenu streamé.
+export default function RevenusPage(props: {
   searchParams: Promise<SearchParams>;
 }) {
-  const searchParams = await props.searchParams;
+  return (
+    <div className="max-w-6xl mx-auto px-8 py-10">
+      <PageHeader
+        tone="producer"
+        eyebrow="Revenus"
+        title="Vos revenus"
+      />
+
+      <Suspense fallback={<SectionSkeleton rows={4} />}>
+        <RevenusGate searchParamsPromise={props.searchParams} />
+      </Suspense>
+    </div>
+  );
+}
+
+async function RevenusGate({
+  searchParamsPromise,
+}: {
+  searchParamsPromise: Promise<SearchParams>;
+}) {
+  const searchParams = await searchParamsPromise;
   const session = await getSessionUser();
   if (!session) redirect('/connexion');
 
@@ -61,19 +82,7 @@ export default async function RevenusPage(props: {
   // semaines (semaine courante en dernière barre).
   const weekOffset = parseWeekOffset(searchParams.week);
 
-  return (
-    <div className="max-w-6xl mx-auto px-8 py-10">
-      <PageHeader
-        tone="producer"
-        eyebrow="Revenus"
-        title="Vos revenus"
-      />
-
-      <Suspense fallback={<SectionSkeleton rows={4} />}>
-        <RevenusContent producer={producer} weekOffset={weekOffset} />
-      </Suspense>
-    </div>
-  );
+  return <RevenusContent producer={producer} weekOffset={weekOffset} />;
 }
 
 async function RevenusContent({

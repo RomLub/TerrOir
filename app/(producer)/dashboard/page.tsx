@@ -35,19 +35,30 @@ function slotDateInParis(iso: string): string {
 
 const WEEK_DAYS_LABEL = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 
-// Coquille synchrone (post-gardes) : la page rend immédiatement le trou
-// <Suspense> pendant que DashboardContent fait le gros fetch (RPC consolidée).
-// La sidebar (layout) + le squelette de contenu s'affichent sans attendre la
-// RPC → navigation instantanée vers le dashboard, contenu streamé.
-export default async function ProducerDashboardPage(props: {
+// Coquille SYNCHRONE : la page retourne immédiatement le <Suspense> + son
+// skeleton, SANS aucun await en tête. Les gardes (session + producteur, ~3
+// requêtes) sont déplacées DANS le flux (DashboardGate) pour que le cadre
+// (sidebar du layout + skeleton) s'affiche instantanément à chaque navigation
+// — fini le flash. Le gros fetch (RPC consolidée) reste streamé.
+export default function ProducerDashboardPage(props: {
   searchParams: Promise<SearchParams>;
 }) {
-  const searchParams = await props.searchParams;
+  return (
+    <Suspense fallback={<DashboardSkeleton />}>
+      <DashboardGate searchParamsPromise={props.searchParams} />
+    </Suspense>
+  );
+}
+
+async function DashboardGate({
+  searchParamsPromise,
+}: {
+  searchParamsPromise: Promise<SearchParams>;
+}) {
+  const searchParams = await searchParamsPromise;
   const session = await getSessionUser();
   if (!session) redirect('/connexion');
 
-  // Garde producteur conservée au niveau page (lookup léger, 1 ligne indexée) :
-  // décide le redirect('/invitation') sans flash. Le fetch lourd est streamé.
   const supabase = await createSupabaseServerClient();
   const producer = await fetchProducerForUser(supabase, session.id);
   if (!producer) redirect('/invitation');
@@ -55,13 +66,11 @@ export default async function ProducerDashboardPage(props: {
   const weekOffset = parseWeekOffset(searchParams.week);
 
   return (
-    <Suspense fallback={<DashboardSkeleton />}>
-      <DashboardContent
-        producer={producer}
-        userId={session.id}
-        weekOffset={weekOffset}
-      />
-    </Suspense>
+    <DashboardContent
+      producer={producer}
+      userId={session.id}
+      weekOffset={weekOffset}
+    />
   );
 }
 

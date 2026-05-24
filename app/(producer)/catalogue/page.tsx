@@ -15,21 +15,25 @@ import { CatalogueClient, type CatalogueProduct } from './CatalogueClient';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export default async function ProducerCataloguePage() {
+// Coquille SYNCHRONE : <Suspense> + skeleton sans await en tête ; gardes
+// déplacées dans le flux (CatalogueGate) → cadre instantané à la navigation.
+export default function ProducerCataloguePage() {
+  return (
+    <Suspense fallback={<ListSkeleton rows={6} />}>
+      <CatalogueGate />
+    </Suspense>
+  );
+}
+
+async function CatalogueGate() {
   const session = await getSessionUser();
   if (!session) redirect('/connexion');
 
-  // Garde producteur conservée au niveau page (lookup léger) ; le fetch des
-  // produits (potentiellement lourd) est streamé.
   const supabase = await createSupabaseServerClient();
   const producer = await fetchProducerForUser(supabase, session.id);
   if (!producer) redirect('/invitation');
 
-  return (
-    <Suspense fallback={<ListSkeleton rows={6} />}>
-      <CatalogueContent producer={producer} />
-    </Suspense>
-  );
+  return <CatalogueContent producer={producer} />;
 }
 
 async function CatalogueContent({ producer }: { producer: ProducerRecord }) {
