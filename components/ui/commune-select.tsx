@@ -5,7 +5,7 @@ import { Input } from "./input";
 import { Select } from "./select";
 
 // Champ « Code postal + Commune » contrôlé : la commune se choisit dans une
-// liste alimentée par le code postal (POST /api/communes → geo.api.gouv.fr),
+// liste alimentée par le code postal (POST /api/public/communes → geo.api.gouv.fr),
 // au lieu d'une saisie libre. Repli en saisie libre si le service est
 // indisponible ou si le code postal ne renvoie aucune commune (jamais bloquant).
 //
@@ -13,7 +13,7 @@ import { Select } from "./select";
 //   1. La commune est GRISÉE (lecture seule) tant qu'aucun code postal valide
 //      n'est saisi.
 //   2. Dès 2 chiffres tapés, une liste de suggestions de communes (avec leur
-//      CP) s'affiche sous le champ (POST /api/communes/suggest → api-adresse).
+//      CP) s'affiche sous le champ (POST /api/public/communes/suggest → api-adresse).
 //      Cliquer une suggestion remplit CP + commune.
 //   3. Effacer / raccourcir le code postal vide automatiquement la commune.
 //
@@ -77,7 +77,7 @@ export function CommuneSelect({
     setStatus("loading");
     (async () => {
       try {
-        const res = await fetch("/api/communes", {
+        const res = await fetch("/api/public/communes", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ cp }),
@@ -125,7 +125,7 @@ export function CommuneSelect({
     const ctrl = new AbortController();
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch("/api/communes/suggest", {
+        const res = await fetch("/api/public/communes/suggest", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ q: cp }),

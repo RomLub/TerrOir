@@ -5,7 +5,7 @@ import { CommuneSelect } from "@/components/ui/commune-select";
 
 // Couvre les comportements SYNCHRONES de CommuneSelect (points 1 et 3 de la
 // demande). L'autocomplétion CP (point 2, async/debounced) est couverte au
-// niveau lib (fetchCommuneSuggestions) + route (/api/communes/suggest).
+// niveau lib (fetchCommuneSuggestions) + route (/api/public/communes/suggest).
 
 beforeEach(() => {
   // fetch global stubé : les effets (communes / suggestions) peuvent partir

@@ -4,7 +4,7 @@ import { consumeRateLimit, getGeocodeRateLimit } from "@/lib/rate-limit";
 import { extractRequestContext } from "@/lib/audit-logs/log-auth-event";
 import { verifySiret } from "@/lib/sirene/verify-siret";
 
-// POST /api/siret/verify — body { siret }
+// POST /api/public/siret/verify — body { siret }
 // Confirme l'existence d'un SIRET dans l'annuaire public des entreprises
 // (recherche-entreprises.api.gouv.fr) et renvoie le nom légal. NON bloquant
 // côté UX : sert d'aide à la saisie + recoupement admin. Rate-limit IP réutilisé

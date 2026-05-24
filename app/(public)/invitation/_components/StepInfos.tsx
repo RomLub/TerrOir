@@ -102,7 +102,7 @@ export function StepInfos({
     setSiretCheck({ status: "checking" });
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch("/api/siret/verify", {
+        const res = await fetch("/api/public/siret/verify", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ siret: cleaned }),
@@ -187,10 +187,17 @@ export function StepInfos({
           {siretCheck.status === "checking" ? (
             <p className="mt-1 text-xs text-gray-500">Vérification de l&apos;entreprise…</p>
           ) : siretCheck.status === "found" ? (
-            <p className="mt-1 text-xs text-green-700">
-              ✓ Entreprise reconnue
-              {siretCheck.legalName ? ` : ${siretCheck.legalName}` : ""}
-            </p>
+            siretCheck.legalName ? (
+              <p className="mt-1 text-xs text-green-700">
+                ✓ Entreprise reconnue : {siretCheck.legalName}
+              </p>
+            ) : (
+              // Entreprise « non-diffusible » : nom légalement masqué dans le
+              // registre public (fréquent pour les entrepreneurs individuels).
+              <p className="mt-1 text-xs text-green-700">
+                ✓ SIRET reconnu — nom non public dans le registre des entreprises.
+              </p>
+            )
           ) : siretCheck.status === "notfound" ? (
             <p className="mt-1 text-xs text-amber-600">
               Entreprise introuvable dans le registre — un conseiller vérifiera.

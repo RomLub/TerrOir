@@ -4,7 +4,7 @@ import { consumeRateLimit, getGeocodeRateLimit } from "@/lib/rate-limit";
 import { extractRequestContext } from "@/lib/audit-logs/log-auth-event";
 import { fetchCommunesByPostalCode } from "@/lib/geo/communes-by-postal";
 
-// POST /api/communes — body { cp }
+// POST /api/public/communes — body { cp }
 // Liste les communes d'un code postal (geo.api.gouv.fr) pour la sélection au
 // formulaire d'inscription producteur.
 //
