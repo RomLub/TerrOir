@@ -54,7 +54,10 @@ vi.mock("@supabase/ssr", () => ({
   }),
 }));
 
-import { signRoleSnapshot } from "@/lib/auth/role-snapshot-cookie";
+import {
+  signRoleSnapshot,
+  parseAndVerifyRoleSnapshot,
+} from "@/lib/auth/role-snapshot-cookie";
 
 beforeEach(() => {
   process.env.ROLE_SNAPSHOT_SECRET = TEST_SECRET;
@@ -143,6 +146,31 @@ describe("middleware — role snapshot cookie cache (T-321)", () => {
     // Audit M-2 : nom prod = __Secure-terroir_role_snapshot (prefix __Secure-).
     const setCookieHeader = response.headers.get("set-cookie") ?? "";
     expect(setCookieHeader).toContain("__Secure-terroir_role_snapshot=");
+  });
+
+  it("chantier 6 : admin SUSPENDU au DB lookup → snapshot posé avec isAdmin=false", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
+    mockUsersRolesMaybeSingle.mockResolvedValue({ data: null });
+    // Le lookup admin_users remonte une ligne suspendue (suspended_at non null).
+    mockAdminUsersMaybeSingle.mockResolvedValue({
+      data: { id: "user-1", suspended_at: "2026-05-20T10:00:00Z" },
+    });
+
+    const response = await middleware(
+      buildRequest({
+        url: "https://www.terroir-local.fr/compte",
+        host: "www.terroir-local.fr",
+      }),
+    );
+
+    const setCookie = response.headers.get("set-cookie") ?? "";
+    const m = setCookie.match(/__Secure-terroir_role_snapshot=([^;]+)/);
+    expect(m).not.toBeNull();
+    const payload = await parseAndVerifyRoleSnapshot(
+      decodeURIComponent(m![1]),
+    );
+    // Un admin suspendu ne doit JAMAIS être isAdmin=true, même en cache neuf.
+    expect(payload?.isAdmin).toBe(false);
   });
 
   it("cache INVALID (signature corrompue) : fallback DB lookup", async () => {

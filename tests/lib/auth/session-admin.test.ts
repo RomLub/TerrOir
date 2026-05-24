@@ -9,7 +9,7 @@ const { serverState, adminState } = vi.hoisted(() => ({
     usersData: null as unknown,
     adminData: null as unknown,
   },
-  adminState: { data: null as unknown },
+  adminState: { data: null as unknown, isCalls: [] as Array<{ col: string; val: unknown }> },
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -35,19 +35,24 @@ vi.mock("@/lib/supabase/admin", () => ({
       const b: Record<string, unknown> = {};
       b.select = () => b;
       b.eq = () => b;
+      b.is = (col: string, val: unknown) => {
+        adminState.isCalls.push({ col, val });
+        return b;
+      };
       b.maybeSingle = () => Promise.resolve({ data: adminState.data, error: null });
       return b;
     },
   }),
 }));
 
-import { getSessionUser, isSuperAdmin } from "@/lib/auth/session";
+import { getSessionUser, isSuperAdmin, isAdmin } from "@/lib/auth/session";
 
 beforeEach(() => {
   serverState.user = { id: "u1", email: "a@x.fr" };
   serverState.usersData = null;
   serverState.adminData = null;
   adminState.data = null;
+  adminState.isCalls = [];
 });
 
 describe("getSessionUser — admin / super_admin / suspendu (chantier 6)", () => {
@@ -105,5 +110,21 @@ describe("isSuperAdmin(userId)", () => {
   it("non-admin → false", async () => {
     adminState.data = null;
     expect(await isSuperAdmin("u1")).toBe(false);
+  });
+});
+
+describe("isAdmin(userId) helper — filtre suspended_at au niveau requête", () => {
+  it("applique .is('suspended_at', null) (un admin suspendu est exclu côté DB)", async () => {
+    adminState.data = { id: "u1" };
+    const res = await isAdmin("u1");
+    expect(res).toBe(true);
+    // Le filtre suspended_at IS NULL est bien appliqué dans la requête.
+    expect(adminState.isCalls).toContainEqual({ col: "suspended_at", val: null });
+  });
+
+  it("aucune ligne (suspendu filtré ou non-admin) → false", async () => {
+    adminState.data = null;
+    expect(await isAdmin("u1")).toBe(false);
+    expect(adminState.isCalls).toContainEqual({ col: "suspended_at", val: null });
   });
 });

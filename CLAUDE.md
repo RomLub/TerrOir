@@ -656,6 +656,25 @@ Quand appliquer une migration en prod via MCP par rapport au merge de la PR :
 Origine : chantier 6 (migration additive `admin_privilege` + `suspended_at`
 appliquée avant review, OK car dormante) + incident chantier 2.
 
+### Comptes admins (chantier 6)
+
+- **`admin_revoke` réinsère le compte avec `roles=['consumer']` par défaut.**
+  Ne convient PAS si le compte d'origine portait d'autres rôles (ex:
+  `producer`). Pour TerrOir actuellement OK (doctrine **admin = email
+  dédié**, donc un admin n'a pas de profil producteur à restaurer). À
+  revisiter si la doctrine change (il faudrait alors persister les rôles
+  d'origine avant le passage en admin pour les restaurer au retrait).
+- **`promoteAdminByEmail` : résolution email via `.ilike(...).maybeSingle()`.**
+  Supabase Auth impose l'unicité d'email **insensible à la casse**, et
+  `public.users.id = auth.users.id` → deux variantes de casse du même email
+  ne peuvent pas coexister. Si ça arrivait malgré tout, `maybeSingle()`
+  renvoie une erreur → le code **échoue safe** (refus `no_account`, jamais
+  une promotion erronée). Limite documentée, pas un bug.
+- **Atomicité promote/revoke** : les RPC sont des fonctions plpgsql **sans
+  bloc `EXCEPTION`** → toute erreur (ex: INSERT qui échoue) abort la fonction
+  entière et rollback le DELETE précédent. Pas de compte fantôme possible
+  (garantie Postgres, pas probabiliste).
+
 ### ESLint
 
 - L'apostrophe courbe U+2019 est interdite **aussi bien dans les
