@@ -7,12 +7,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Button, Badge, Input, Select, Textarea, ProductCard } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { uploadProducerPhoto } from '@/lib/producers/upload';
-import {
-  revalidatePublicStats,
-  revalidatePublicProducts,
-  revalidateProducerProducts,
-  revalidateProducersSearch,
-} from '@/lib/stats/revalidate';
+import { updateProductAction } from '../../actions';
 import {
   fetchProductCategories,
   fetchAnimals,
@@ -249,62 +244,27 @@ export default function ProductEditPage() {
       );
       const finalPhotos = [...existingPhotos, ...uploads.map((u) => u.url)];
 
-      const { error: updateError } = await supabase
-        .from('products')
-        .update({
-          nom: form.name.trim(),
-          description: form.description.trim() || null,
-          prix: Number(form.price),
-          unite: form.unit,
-          poids_estime_kg: form.estimatedWeight ? Number(form.estimatedWeight) : null,
-          stock_disponible: form.stockUnlimited ? 0 : (parseInt(form.stock) || 0),
-          stock_illimite: form.stockUnlimited,
-          delai_preparation_jours: parseInt(form.delai) || 0,
-          active: form.active,
-          photos: finalPhotos.length ? finalPhotos : null,
-          conseil_active: form.conseilActive,
-          conseil_texte: form.conseilActive ? (form.conseilTexte.trim() || null) : null,
-          // T-220 PR-B : tagging optionnel (FK nullable transitoire pendant
-          // backfill). Toujours inclus dans l'UPDATE — c'est le canal qui
-          // persiste l'auto-cleanup Q5 si le producteur sauvegarde un produit
-          // dont l'état initial avait une catégorie incohérente.
-          category_id: form.categoryId,
-          animal_id: form.animalId,
-          cut_id: form.cutId,
-        })
-        .eq('id', productId);
-
-      if (updateError) throw updateError;
-      // Chantier 3 (2026-05-22) : plus d'auto-promotion active → public.
-      // Inconditionnel : on ne tracke pas l'état initial de form.active, donc
-      // un éventuel true→false (qui retire le produit du count) doit aussi
-      // invalider. Coût négligeable si rien n'a changé.
-      await revalidatePublicStats({
-        source: 'producer-catalogue-update',
-        extra: { productId },
+      // Plomberie chantier 3 : l'écriture passe par une action serveur (liste
+      // blanche + ownership serveur + invalidation cache). Plus d'update
+      // Supabase navigateur.
+      const res = await updateProductAction(productId, {
+        nom: form.name.trim(),
+        description: form.description.trim() || null,
+        prix: Number(form.price),
+        unite: form.unit,
+        poids_estime_kg: form.estimatedWeight ? Number(form.estimatedWeight) : null,
+        stock_disponible: form.stockUnlimited ? 0 : (parseInt(form.stock) || 0),
+        stock_illimite: form.stockUnlimited,
+        delai_preparation_jours: parseInt(form.delai) || 0,
+        active: form.active,
+        photos: finalPhotos,
+        conseil_active: form.conseilActive,
+        conseil_texte: form.conseilActive ? (form.conseilTexte.trim() || null) : null,
+        category_id: form.categoryId,
+        animal_id: form.animalId,
+        cut_id: form.cutId,
       });
-      // Audit Vercel C-5 (2026-05-05) : invalide aussi le cache
-      // 'public-products' pour propager les changements (nom, prix, photos,
-      // active flip) sur /produits immédiatement.
-      await revalidatePublicProducts({
-        source: 'producer-catalogue-update',
-        productId,
-      });
-      // F-047 : invalide le cache `producer-products:<slug>` pour la fiche
-      // /producteurs/[slug]. Slug déjà en state (fetch-init + render gating).
-      if (producerSlug) {
-        await revalidateProducerProducts({
-          slug: producerSlug,
-          source: 'producer-catalogue-update',
-        });
-      }
-      // F-021 : update produit peut changer `active_product_count` (flip
-      // active true↔false) ou ranking carbone si filtres impactés.
-      await revalidateProducersSearch({
-        source: 'producer-catalogue-update',
-        producerId,
-        extra: { productId },
-      });
+      if (res.error) throw new Error(res.error);
       router.push('/catalogue');
     } catch (err) {
       setError((err as Error).message ?? 'Enregistrement impossible');

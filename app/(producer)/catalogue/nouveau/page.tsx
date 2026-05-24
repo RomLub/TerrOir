@@ -6,12 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Button, Badge, Input, Select, Textarea, ProductCard } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { uploadProducerPhoto } from '@/lib/producers/upload';
-import {
-  revalidatePublicStats,
-  revalidatePublicProducts,
-  revalidateProducerProducts,
-  revalidateProducersSearch,
-} from '@/lib/stats/revalidate';
+import { createProductAction } from '../actions';
 import {
   fetchProductCategories,
   fetchAnimals,
@@ -48,9 +43,6 @@ export default function ProductNewPage() {
   const [dragging, setDragging] = useState(false);
   const [producerId, setProducerId] = useState<string | null>(null);
   const [producerName, setProducerName] = useState('');
-  // F-047 : slug en state pour permettre l'invalidation tag-based du cache
-  // `producer-products:<slug>` après création produit.
-  const [producerSlug, setProducerSlug] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -78,7 +70,6 @@ export default function ProductNewPage() {
       if (!prod) { setError('Profil producteur introuvable.'); return; }
       setProducerId(prod.id);
       setProducerName(prod.nom_exploitation);
-      setProducerSlug(prod.slug);
     })();
     return () => { active = false; };
   }, []);
@@ -188,63 +179,27 @@ export default function ProductNewPage() {
       );
       const photoUrls = uploads.map((u) => u.url);
 
-      const { data: inserted, error: insertError } = await supabase
-        .from('products')
-        .insert({
-          producer_id: producerId,
-          nom: form.name.trim(),
-          description: form.description.trim() || null,
-          prix: Number(form.price),
-          unite: form.unit,
-          poids_estime_kg: form.estimatedWeight ? Number(form.estimatedWeight) : null,
-          stock_disponible: form.stockUnlimited ? 0 : (parseInt(form.stock) || 0),
-          stock_illimite: form.stockUnlimited,
-          delai_preparation_jours: parseInt(form.delai) || 0,
-          active: form.active,
-          photos: photoUrls.length ? photoUrls : null,
-          conseil_active: form.conseilActive,
-          conseil_texte: form.conseilActive ? (form.conseilTexte.trim() || null) : null,
-          // T-220 PR-B : tagging optionnel (FK nullable transitoire pendant
-          // backfill). NULL valides — pas de validation bloquante côté UI
-          // tant que la migration NOT NULL follow-up n'est pas livrée.
-          category_id: form.categoryId,
-          animal_id: form.animalId,
-          cut_id: form.cutId,
-        })
-        .select('id')
-        .single();
-
-      if (insertError || !inserted) throw insertError ?? new Error('Insertion impossible');
-      if (form.active === true) {
-        // Chantier 3 (2026-05-22) : plus d'auto-promotion active → public.
-        // Nouveau produit actif → +1 productsCount, on invalide les caches.
-        await revalidatePublicStats({
-          source: 'producer-catalogue-create',
-          extra: { productId: inserted.id },
-        });
-        // Audit Vercel C-5 (2026-05-05) : invalide aussi le cache
-        // 'public-products' pour faire apparaître le nouveau produit sur
-        // /produits sans attendre les 60s de revalidate.
-        await revalidatePublicProducts({
-          source: 'producer-catalogue-create',
-          productId: inserted.id,
-        });
-        // F-047 : invalide le cache `producer-products:<slug>` pour la
-        // fiche /producteurs/[slug] (best-effort, no-op si slug absent).
-        if (producerSlug) {
-          await revalidateProducerProducts({
-            slug: producerSlug,
-            source: 'producer-catalogue-create',
-          });
-        }
-        // F-021 : un nouveau produit actif change l'`active_product_count`
-        // retourné par la RPC search_producers (sous-requête corrélée).
-        await revalidateProducersSearch({
-          source: 'producer-catalogue-create',
-          producerId,
-          extra: { productId: inserted.id },
-        });
-      }
+      // Plomberie chantier 3 : l'écriture passe par une action serveur (liste
+      // blanche + producer_id depuis l'ownership serveur + invalidation cache).
+      // Plus d'insert Supabase navigateur.
+      const res = await createProductAction({
+        nom: form.name.trim(),
+        description: form.description.trim() || null,
+        prix: Number(form.price),
+        unite: form.unit,
+        poids_estime_kg: form.estimatedWeight ? Number(form.estimatedWeight) : null,
+        stock_disponible: form.stockUnlimited ? 0 : (parseInt(form.stock) || 0),
+        stock_illimite: form.stockUnlimited,
+        delai_preparation_jours: parseInt(form.delai) || 0,
+        active: form.active,
+        photos: photoUrls,
+        conseil_active: form.conseilActive,
+        conseil_texte: form.conseilActive ? (form.conseilTexte.trim() || null) : null,
+        category_id: form.categoryId,
+        animal_id: form.animalId,
+        cut_id: form.cutId,
+      });
+      if (res.error) throw new Error(res.error);
       router.push('/catalogue');
     } catch (err) {
       setError((err as Error).message ?? 'Enregistrement impossible');

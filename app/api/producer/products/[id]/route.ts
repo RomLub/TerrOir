@@ -3,7 +3,12 @@ import { z } from "zod";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { notifyBackInStock } from "@/lib/stock-alerts/notify-back-in-stock";
-import { revalidateProducerProducts } from "@/lib/stats/revalidate";
+import {
+  revalidateProducerProducts,
+  revalidatePublicStats,
+  revalidatePublicProducts,
+  revalidateProducersSearch,
+} from "@/lib/stats/revalidate";
 
 // PATCH /api/producer/products/[id]
 //
@@ -168,6 +173,22 @@ export async function PATCH(request: Request, props: RouteContext) {
     slug: producerSlug,
     source: "producer-products-patch",
   });
+
+  // Toggle de l'activation : impacte aussi la grille publique /produits, les
+  // stats publiques et le active_product_count de la recherche. Centralisé
+  // côté serveur (plomberie chantier 3) — plus d'invalidation navigateur.
+  if (parsed.data.active !== undefined) {
+    await revalidatePublicStats({ source: "producer-product-patch-active" });
+    await revalidatePublicProducts({
+      source: "producer-product-patch-active",
+      productId: params.id,
+    });
+    await revalidateProducersSearch({
+      source: "producer-product-patch-active",
+      producerId,
+      extra: { productId: params.id, active: String(parsed.data.active) },
+    });
+  }
 
   return NextResponse.json({ id: params.id,
     stock_disponible: newStockDisponible,
