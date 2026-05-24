@@ -162,63 +162,83 @@ export function StepInfos({
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div>
-          <label className="mb-1 block text-sm font-medium text-gray-800">
-            Forme juridique
-          </label>
-          <select
-            name="forme_juridique"
-            required
-            value={formeJuridique}
-            onChange={(e) => setFormeJuridique(e.target.value)}
-            className={inputClass}
-          >
-            <option value="" disabled>
-              Choisir…
-            </option>
-            {FORMES.map((f) => (
-              <option key={f.value} value={f.value}>
-                {f.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="mb-1 block text-sm font-medium text-gray-800">
-            SIRET
-          </label>
-          <input
-            name="siret"
-            type="text"
-            required
-            inputMode="numeric"
-            pattern="\d{14}"
-            placeholder="14 chiffres"
-            value={siret}
-            onChange={(e) => setSiret(e.target.value)}
-            className={inputClass}
-          />
-          {siretCheck.status === "checking" ? (
-            <p className="mt-1 text-xs text-gray-500">Vérification de l&apos;entreprise…</p>
-          ) : siretCheck.status === "found" ? (
-            siretCheck.legalName ? (
-              <p className="mt-1 text-xs text-green-700">
-                ✓ Entreprise reconnue : {siretCheck.legalName}
-              </p>
-            ) : (
-              // Entreprise « non-diffusible » : nom légalement masqué dans le
-              // registre public (fréquent pour les entrepreneurs individuels).
-              <p className="mt-1 text-xs text-green-700">
-                ✓ SIRET reconnu — nom non public dans le registre des entreprises.
-              </p>
-            )
-          ) : siretCheck.status === "notfound" ? (
-            <p className="mt-1 text-xs text-amber-600">
-              Entreprise introuvable dans le registre — un conseiller vérifiera.
+      <div>
+        <label className="mb-1 block text-sm font-medium text-gray-800">
+          SIRET
+        </label>
+        <input
+          name="siret"
+          type="text"
+          required
+          inputMode="numeric"
+          pattern="\d{14}"
+          placeholder="14 chiffres"
+          value={siret}
+          onChange={(e) => setSiret(e.target.value)}
+          className={inputClass}
+        />
+        {siretCheck.status === "checking" ? (
+          <p className="mt-1 text-xs text-gray-500">Vérification de l&apos;entreprise…</p>
+        ) : siretCheck.status === "found" ? (
+          siretCheck.legalName ? (
+            <p className="mt-1 text-xs text-green-700">
+              ✓ Entreprise reconnue : {siretCheck.legalName}
             </p>
-          ) : null}
-        </div>
+          ) : (
+            // Entreprise « non-diffusible » : nom légalement masqué dans le
+            // registre public (fréquent pour les entrepreneurs individuels).
+            <p className="mt-1 text-xs text-green-700">
+              ✓ SIRET reconnu — nom non public dans le registre des entreprises.
+            </p>
+          )
+        ) : siretCheck.status === "notfound" ? (
+          <p className="mt-1 text-xs text-amber-600">
+            Entreprise introuvable dans le registre — un conseiller vérifiera.
+          </p>
+        ) : null}
+      </div>
+
+      <div>
+        <label className="mb-1 block text-sm font-medium text-gray-800">
+          Forme juridique
+        </label>
+        {formeJuridique ? (
+          // Fait objectif du registre : déduite du SIRET → affichage lecture
+          // seule + valeur soumise via input caché (pas un champ à remplir).
+          <>
+            <input type="hidden" name="forme_juridique" value={formeJuridique} />
+            <div className="rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+              {FORMES.find((f) => f.value === formeJuridique)?.label ?? formeJuridique}
+            </div>
+            <p className="mt-1 text-xs text-gray-500">
+              Déterminée automatiquement à partir de votre SIRET.
+            </p>
+          </>
+        ) : (
+          // Filet : SIRET introuvable / forme non détectée → choix manuel.
+          <>
+            <select
+              name="forme_juridique"
+              required
+              value={formeJuridique}
+              onChange={(e) => setFormeJuridique(e.target.value)}
+              className={inputClass}
+            >
+              <option value="" disabled>
+                Choisir…
+              </option>
+              {FORMES.map((f) => (
+                <option key={f.value} value={f.value}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-gray-500">
+              Renseignez votre SIRET pour la détecter automatiquement, ou
+              choisissez-la.
+            </p>
+          </>
+        )}
       </div>
 
       <CommuneSelect
