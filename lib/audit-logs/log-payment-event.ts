@@ -141,6 +141,13 @@ export const PAYMENT_EVENT_TYPES = [
   //     post-mortem.
   "stripe_dispute_deadline_warning",
   "stripe_dispute_deadline_missed",
+  // Chantier 8 — actions admin sur un litige depuis la page Litiges :
+  //   - stripe_dispute_evidence_saved     : preuves enregistrées (brouillon,
+  //     submit=false), modifiable ensuite. metadata.dispute_id, fields_set.
+  //   - stripe_dispute_evidence_submitted : preuves soumises définitivement à
+  //     Stripe (submit=true) → dispute passe under_review. Irréversible.
+  "stripe_dispute_evidence_saved",
+  "stripe_dispute_evidence_submitted",
   // Bundle 3 webhook events go-Live (T-401) — Stripe signale les échecs
   // de virement Connect plateforme -> producteur.
   //   - stripe_transfer_failed : Transfer plateforme -> Connect account

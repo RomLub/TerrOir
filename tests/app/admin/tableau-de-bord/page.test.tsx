@@ -121,7 +121,7 @@ describe("AdminDashboardPage (chantier 2)", () => {
     expect(html).not.toContain("Refunds");
   });
 
-  it("cockpit : cartes désormais cliquables (incidents + invitations + producers?status=pending)", async () => {
+  it("cockpit : toutes les cartes cliquables (Litiges branché au chantier 8 → plus de carte en attente)", async () => {
     mockFetch.mockResolvedValue(SAMPLE_DATA);
     const html = await renderPage();
     expect(html).toContain('href="/refunds/pending"');
@@ -129,8 +129,10 @@ describe("AdminDashboardPage (chantier 2)", () => {
     expect(html).toContain('href="/gestion-producteurs?status=pending"');
     expect(html).toContain('href="/refund-incidents"');
     expect(html).toContain('href="/invitations"');
-    // Seul "Litiges ouverts" reste en attente (chantier 8) → 1 wrapper pending.
-    expect(html).toContain('title="Page à venir"');
+    // Chantier 8 : « Litiges ouverts » est désormais branché sur /litiges.
+    expect(html).toContain('href="/litiges"');
+    // Plus aucune carte « Page à venir » (toutes branchées).
+    expect(html).not.toContain('title="Page à venir"');
   });
 
   it("opacity-50 sur les cartes cockpit à 0", async () => {

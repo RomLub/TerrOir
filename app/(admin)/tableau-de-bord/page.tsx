@@ -114,8 +114,7 @@ export default async function AdminDashboardPage({
             label="Litiges ouverts"
             count={cockpit.disputes_open_count}
             hint="Chargebacks Stripe à traiter"
-            href="#"
-            pending
+            href="/litiges"
           />
           <CockpitCard
             label="Avis à modérer"

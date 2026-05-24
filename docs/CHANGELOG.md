@@ -9,6 +9,22 @@ Pour les décisions structurantes (ADRs), voir [`decisions/`](./decisions/).
 
 ---
 
+## 2026-05-24 (Refonte admin — Chantier 8 : Litiges Stripe)
+
+> PR `feature/chantier-8-litiges`. Surface admin de gestion des litiges (chargebacks). Le backend existait déjà (table `disputes`, webhook `charge.dispute.*` + early-fraud, emails d'alerte, cron deadline) — ce chantier ajoute l'UI + la soumission de preuves.
+>
+> 🟢 **Page Litiges** (`/litiges`, section Gouvernance) : liste depuis la table `disputes` (commande, statut FR, motif, montant, échéance, ouvert le), ouverts en premier.
+>
+> 🟢 **Détail** (`/litiges/[id]`) : fiche DB + **état live Stripe** (`stripe.disputes.retrieve` — échéance, nb de soumissions, preuves préremplies). Fail-safe si l'API échoue.
+>
+> 🟢 **Soumission de preuves** : formulaire (description produit, nom/email client, date de retrait, texte libre). « Enregistrer le brouillon » (`submit:false`) vs « Soumettre définitivement » (`submit:true`, confirmation, irréversible) via `stripe.disputes.update`. Garde : seuls les litiges `needs_response`/`warning_needs_response` acceptent des preuves ; soumission vide refusée. MAJ optimiste du statut (le webhook confirme). Audit `stripe_dispute_evidence_saved`/`submitted`.
+>
+> 🟢 **Carte dashboard « Litiges ouverts »** branchée sur `/litiges` (plus « Page à venir »).
+>
+> 🟢 Tests : fetch (liste + live Stripe), submit-evidence (gardes + brouillon/soumission + statut optimiste + échec Stripe), route (gate admin + normalisation), sidebar. **Pas de migration** (table + RPC + webhook préexistants ; events texte). lint/type-check/build OK, `npm test` vert (2931).
+
+---
+
 ## 2026-05-23 (Refonte admin — Chantier 6 : page Administrateurs, sécu critique)
 
 > PR `feature/chantier-6-admins`. Gestion du cycle de vie des comptes admins. Voir [ADR-0009](./decisions/0009-modele-comptes-admins.md). **Migration appliquée + smoke-testée en prod.**
