@@ -6,11 +6,8 @@ import { Button, Badge, Input, Textarea, ProducerCard, PageHeader } from '@/comp
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { uploadProducerPhoto } from '@/lib/producers/upload';
 import { labelEspece, labelLabel } from '@/lib/producers/labels';
-import {
-  revalidateProducerCard,
-  revalidateProducersSearch,
-} from '@/lib/stats/revalidate';
 import { RequestPublicationPanel } from './_components/RequestPublicationPanel';
+import { updateProfileAction } from './actions';
 
 function OnboardedBanner() {
   const searchParams = useSearchParams();
@@ -87,9 +84,6 @@ const EMPTY: Form = {
 export default function MaPagePage() {
   const [tab, setTab] = useState<Tab>('preview');
   const [producerId, setProducerId] = useState<string | null>(null);
-  // slug nécessaire pour invalider le cache 'producer:<slug>' (audit Vercel
-  // C-5 — bloc producer cached 60s sur fiche publique).
-  const [producerSlug, setProducerSlug] = useState<string | null>(null);
   const [form, setForm] = useState<Form>(EMPTY);
   // Statut + demande publication + validation bio (lecture seule côté producteur).
   const [statut, setStatut] = useState<string | null>(null);
@@ -128,7 +122,6 @@ export default function MaPagePage() {
       if (!prod) { setError('Profil producteur introuvable.'); setLoading(false); return; }
 
       setProducerId(prod.id);
-      setProducerSlug(prod.slug ?? null);
       setForm({
         nom_exploitation: prod.nom_exploitation ?? '',
         description: prod.description ?? '',
@@ -228,32 +221,29 @@ export default function MaPagePage() {
         galleryUrls = [...gallery, ...uploads.map((u) => u.url)].slice(0, 6);
       }
 
-      const { error: updateError } = await supabase
-        .from('producers')
-        .update({
-          nom_exploitation: form.nom_exploitation.trim(),
-          description: form.description.trim() || null,
-          histoire: form.histoire.trim() || null,
-          generations: form.generations ? Number(form.generations) : null,
-          annee_creation: form.annee_creation ? Number(form.annee_creation) : null,
-          especes: form.especes.length ? form.especes : null,
-          labels: form.labels.length ? form.labels : null,
-          commune: form.commune.trim() || null,
-          code_postal: form.code_postal.trim() || null,
-          photo_principale: heroUrl,
-          photos: galleryUrls.length ? galleryUrls : null,
-          // Déclaration bio producteur. bio_validated_at reste admin-only
-          // (bloqué par le trigger producers_block_owner_admin_columns) :
-          // l'exposition publique (filtre + badge) est conditionnée à la
-          // validation admin. Si le producteur décoche bio, on efface le n°.
-          bio: form.bio,
-          bio_certificate_number: form.bio
-            ? form.bio_certificate_number.trim() || null
-            : null,
-        })
-        .eq('id', producerId);
-
-      if (updateError) throw updateError;
+      // Plomberie chantier 3 : l'écriture du profil passe par une action
+      // serveur (liste blanche stricte des colonnes + ownership + invalidation
+      // cache). Plus de write Supabase navigateur sur `producers` : statut,
+      // badges, bio_validated_at... ne sont jamais acceptés (zod strip + build
+      // explicite côté serveur).
+      const res = await updateProfileAction({
+        nom_exploitation: form.nom_exploitation.trim(),
+        description: form.description.trim() || null,
+        histoire: form.histoire.trim() || null,
+        generations: form.generations ? Number(form.generations) : null,
+        annee_creation: form.annee_creation ? Number(form.annee_creation) : null,
+        especes: form.especes,
+        labels: form.labels,
+        commune: form.commune.trim() || null,
+        code_postal: form.code_postal.trim() || null,
+        photo_principale: heroUrl,
+        photos: galleryUrls,
+        bio: form.bio,
+        bio_certificate_number: form.bio
+          ? form.bio_certificate_number.trim() || null
+          : null,
+      });
+      if (res.error) throw new Error(res.error);
 
       setHeroPhoto(heroUrl);
       setGallery(galleryUrls);
@@ -262,22 +252,6 @@ export default function MaPagePage() {
       setNewGalleryFiles([]);
       setNewGalleryPreviews([]);
       setSaved(true);
-      // Audit Vercel C-5 (2026-05-05) : invalide le bloc producer cached
-      // 60s sur la fiche publique /producteurs/<slug>. Sans ça, l'utilisateur
-      // verrait l'ancienne bio/photo pendant max 60s après save.
-      if (producerSlug) {
-        await revalidateProducerCard({
-          slug: producerSlug,
-          source: 'producer-ma-page-save',
-        });
-      }
-      // F-021 : especes/labels/commune entrent dans la query search_producers
-      // (filtres + ranking distance). On invalide le cache search pour que
-      // le visiteur voie le producteur mis à jour sans attendre 60s.
-      await revalidateProducersSearch({
-        source: 'producer-ma-page-save',
-        producerId,
-      });
       setTimeout(() => setSaved(false), 2500);
     } catch (err) {
       setError((err as Error).message ?? 'Enregistrement impossible');
