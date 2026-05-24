@@ -73,11 +73,25 @@ export default async function DevenirProducteurPage({
     redirect(`${NEXT_PUBLIC_PRODUCER_URL}/ma-page`);
   }
 
-  const loggedInEmail = session?.email ?? null;
   const sp = await searchParams;
 
   // ── Variante CONNECTÉ : juste le formulaire, sans marketing ──────────────
-  if (loggedInEmail) {
+  if (session && session.email) {
+    // Pré-remplissage + verrouillage depuis le compte : email (toujours),
+    // nom/prénom (obligatoires à l'inscription consommateur, donc présents),
+    // téléphone (pré-rempli si présent, modifiable).
+    const admin = createSupabaseAdminClient();
+    const { data: profile } = await admin
+      .from("users")
+      .select("prenom, nom, telephone")
+      .eq("id", session.id)
+      .maybeSingle();
+    const loggedIn = {
+      email: session.email,
+      prenom: (profile?.prenom as string | null) ?? "",
+      nom: (profile?.nom as string | null) ?? "",
+      telephone: (profile?.telephone as string | null) ?? "",
+    };
     return (
       <div className="bg-bg">
         <section className="max-w-3xl mx-auto px-6 py-16 md:py-24">
@@ -94,7 +108,7 @@ export default async function DevenirProducteurPage({
             </p>
           </div>
 
-          <SignupForm prefill={null} loggedInEmail={loggedInEmail} />
+          <SignupForm prefill={null} loggedIn={loggedIn} />
 
           <p className="mt-6 text-center text-[13px] text-dark/60">
             Une question avant de vous lancer ?{" "}
