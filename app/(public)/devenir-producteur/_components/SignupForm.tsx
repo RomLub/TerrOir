@@ -8,6 +8,7 @@ import {
   type ProducerSignupState,
 } from "../_actions/signup-producer";
 import { becomeProducerAction } from "../_actions/become-producer";
+import { CommuneSelect } from "./CommuneSelect";
 
 export type PrefillData = {
   token: string;
@@ -151,31 +152,14 @@ export function SignupForm({
         </>
       ) : null}
 
-      <div className="grid sm:grid-cols-2 gap-4">
-        <Input
-          label="Nom de l'exploitation"
-          name="nom_exploitation"
-          defaultValue={prefill?.nom_exploitation ?? ""}
-          required
-        />
-        <Input
-          label="Commune"
-          name="commune"
-          defaultValue={prefill?.commune ?? ""}
-          autoComplete="address-level2"
-          required
-        />
-      </div>
+      <Input
+        label="Nom de l'exploitation"
+        name="nom_exploitation"
+        defaultValue={prefill?.nom_exploitation ?? ""}
+        required
+      />
 
-      <div className="grid sm:grid-cols-2 gap-4">
-        <Input
-          label="Code postal"
-          name="code_postal"
-          inputMode="numeric"
-          autoComplete="postal-code"
-          required
-        />
-      </div>
+      <CommuneSelect defaultCommune={prefill?.commune ?? ""} />
 
       <fieldset className="space-y-2">
         <legend className="text-[13px] font-medium text-dark/80">
