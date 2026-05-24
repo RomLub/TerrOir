@@ -28,16 +28,10 @@ const BAND_LABEL: Record<HealthBand, string> = {
   bad: "À améliorer",
 };
 
-// Coquille synchrone : le PageHeader s'affiche immédiatement (post-gardes),
-// les indicateurs (lecture producers) sont streamés via <Suspense>.
-export default async function SantePage() {
-  const session = await getSessionUser();
-  if (!session) redirect("/connexion");
-
-  const admin = createSupabaseAdminClient();
-  const producer = await fetchProducerForUser(admin, session.id);
-  if (!producer) redirect("/invitation");
-
+// Coquille SYNCHRONE : le PageHeader s'affiche instantanément ; les gardes
+// (session + producteur) sont déplacées dans le flux (SanteGate) → cadre
+// instantané à la navigation, indicateurs streamés.
+export default function SantePage() {
   return (
     <div className="mx-auto max-w-5xl px-8 py-10">
       <PageHeader
@@ -48,10 +42,21 @@ export default async function SantePage() {
       />
 
       <Suspense fallback={<SectionSkeleton rows={3} />}>
-        <SanteContent producer={producer} />
+        <SanteGate />
       </Suspense>
     </div>
   );
+}
+
+async function SanteGate() {
+  const session = await getSessionUser();
+  if (!session) redirect("/connexion");
+
+  const admin = createSupabaseAdminClient();
+  const producer = await fetchProducerForUser(admin, session.id);
+  if (!producer) redirect("/invitation");
+
+  return <SanteContent producer={producer} />;
 }
 
 async function SanteContent({ producer }: { producer: ProducerRecord }) {

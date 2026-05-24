@@ -15,21 +15,25 @@ import { AvisClient, type AvisRow } from './AvisClient';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export default async function ProducerAvisPage() {
+// Coquille SYNCHRONE : <Suspense> + skeleton sans await en tête ; gardes
+// déplacées dans le flux (AvisGate) → cadre instantané à la navigation.
+export default function ProducerAvisPage() {
+  return (
+    <Suspense fallback={<ListSkeleton rows={5} />}>
+      <AvisGate />
+    </Suspense>
+  );
+}
+
+async function AvisGate() {
   const session = await getSessionUser();
   if (!session) redirect('/connexion');
 
-  // Garde producteur conservée au niveau page (lookup léger) ; le fetch des
-  // avis est streamé.
   const supabase = await createSupabaseServerClient();
   const producer = await fetchProducerForUser(supabase, session.id);
   if (!producer) redirect('/invitation');
 
-  return (
-    <Suspense fallback={<ListSkeleton rows={5} />}>
-      <AvisContent producer={producer} />
-    </Suspense>
-  );
+  return <AvisContent producer={producer} />;
 }
 
 async function AvisContent({ producer }: { producer: ProducerRecord }) {
