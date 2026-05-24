@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { RoleSwitcher } from "@/components/ui";
 
 const NAV: { href: string; label: string }[] = [
   { href: "/compte", label: "Tableau de bord" },
@@ -48,9 +47,6 @@ export function Sidebar() {
           })}
         </ul>
       </nav>
-      <div className="mt-4 hidden border-t border-terroir-border pt-4 md:block">
-        <RoleSwitcher current="consumer" variant="light" />
-      </div>
     </aside>
   );
 }

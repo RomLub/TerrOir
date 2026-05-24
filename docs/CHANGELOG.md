@@ -9,7 +9,15 @@ Pour les décisions structurantes (ADRs), voir [`decisions/`](./decisions/).
 
 ---
 
-## 2026-05-25 (Perf — fonctions Vercel en Europe, près de Supabase) ⚡ cause systémique
+## 2026-05-25 (UX — espace acheteur : barre du haut épurée, parité producteur)
+
+> PR `feat/consumer-header`. La barre du haut de l'espace compte (/compte) reprend le style minimal de l'espace producteur. On **retire les menus publics** (Producteurs, Carte, Notre démarche, Comment ça marche) — on revient à la boutique via le **logo**. La nav du compte reste dans la barre latérale.
+>
+> 🟢 Nouveau `ConsumerHeader` : Logo (→ boutique) · « Mon compte » · switch de profil · **Panier** (conservé, avec compteur — l'acheteur peut être en cours de commande) · Déconnexion.
+>
+> 🟢 Bouton panier **extrait** en composant partagé (`cart-nav-button`) réutilisé par `NavbarPublic` et `ConsumerHeader` (DRY, zéro duplication). Switch de profil retiré du double : il était à la fois dans la navbar et en bas de la sidebar → désormais seulement dans la barre du haut (comme l'espace producteur).
+>
+> 🟢 `NavbarPublic` (pages publiques) **inchangée**. Tests : lint / type-check / build OK, `npm test` vert (3109).
 
 > PR `perf/vercel-eu-region`. **Cause racine de la lenteur générale identifiée.** Les requêtes DB sont rapides (5-9 ms mesuré via pg_stat_statements), mais la **base Supabase est en Europe** (IP serveur = plage AWS EU) alors que les **fonctions Vercel tournaient aux USA** (aucune région dans `vercel.json` → défaut `iad1` Washington). Chaque requête DB faisait donc un **aller-retour transatlantique (~80 ms)** ; une page enchaînant N requêtes en série payait N × 80 ms (ex. /creneaux ≈ 4 requêtes → ~320 ms de réseau pur). Toutes les pages lisant des données étaient touchées (≈ le « 2/3 lent » constaté).
 >
