@@ -3,7 +3,6 @@ import { getSessionUser } from '@/lib/auth/session';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { fetchProducerForUser } from '@/lib/producers/context';
-import { ProducerLayout } from '../_components/ProducerLayout';
 import { AvisClient, type AvisRow } from './AvisClient';
 
 // Page producer "Mes avis" — liste les avis publiés et permet d'y répondre
@@ -59,9 +58,5 @@ export default async function ProducerAvisPage() {
     };
   });
 
-  return (
-    <ProducerLayout>
-      <AvisClient initialRows={rows} />
-    </ProducerLayout>
-  );
+  return <AvisClient initialRows={rows} />;
 }

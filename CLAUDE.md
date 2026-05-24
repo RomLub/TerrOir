@@ -538,13 +538,6 @@ la condition de déblocage.
   supprimer un worktree, supprimer/déréférencer d'abord la jonction
   node_modules** (`rmdir node_modules` sans `/s` pour ne pas suivre la
   jonction), PUIS `git worktree remove`.
-- **Sub-agents Team en worktree sur ce setup** : l'orchestration parallèle
-  via agents en worktrees isolés s'est révélée **non fiable sur Windows**
-  (tangle de worktrees sur mauvaises branches, reset répété du cwd du shell
-  team-lead vers un worktree d'agent, et le danger jonction ci-dessus). Pour
-  les chantiers multi-features : **modèle séquentiel team-lead** (un chantier
-  = une branche = une PR, sur le main working tree, relue + mergée par le
-  lead). Cf. abandon TA/TB/TC/TT § 2.
 
 ### Stripe
 

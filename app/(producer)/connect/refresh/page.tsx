@@ -2,8 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button } from '@/components/ui';
-import { ProducerLayout } from '../../_components/ProducerLayout';
+import { Button, PageHeader } from '@/components/ui';
 
 // Landing de reprise d'onboarding Stripe Connect Express (refresh_url).
 // Cf. app/api/stripe/connect/onboard/route.ts lignes 61-62.
@@ -37,47 +36,42 @@ export default function ConnectRefreshPage() {
   };
 
   return (
-    <ProducerLayout>
-      <div className="max-w-3xl mx-auto px-8 py-10">
-        <header className="mb-8">
-          <div className="text-[11px] uppercase tracking-[0.18em] text-terra-700 font-semibold">
-            Paiements
-          </div>
-          <h1 className="mt-1 font-serif text-[40px] text-green-900 leading-tight">
-            Lien Stripe expiré
-          </h1>
-        </header>
+    <div className="max-w-3xl mx-auto px-8 py-10">
+      <PageHeader
+        tone="producer"
+        eyebrow="Paiements"
+        title="Lien Stripe expiré"
+      />
 
-        <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">
-            <div className="text-[15px] font-semibold text-dark">
-              Onboarding interrompu
-            </div>
-            <p className="text-[13px] text-dark/65 mt-2">
-              Le lien d&apos;onboarding Stripe a expiré, ou le flux a été interrompu
-              avant la fin. Reprenez la configuration pour pouvoir recevoir
-              vos virements.
-            </p>
+      <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">
+          <div className="text-[15px] font-semibold text-dark">
+            Onboarding interrompu
           </div>
+          <p className="text-[13px] text-dark/65 mt-2">
+            Le lien d&apos;onboarding Stripe a expiré, ou le flux a été interrompu
+            avant la fin. Reprenez la configuration pour pouvoir recevoir
+            vos virements.
+          </p>
+        </div>
 
-          {error && (
-            <p className="mt-4 text-[13px] text-terra-700">{error}</p>
-          )}
+        {error && (
+          <p className="mt-4 text-[13px] text-terra-700">{error}</p>
+        )}
 
-          <div className="flex items-center justify-between mt-6">
-            <button
-              type="button"
-              onClick={() => router.push('/parametres')}
-              className="text-[13px] text-dark/65 hover:text-dark underline"
-            >
-              Retour aux paramètres
-            </button>
-            <Button type="button" variant="primary" onClick={resume} disabled={connecting}>
-              {connecting ? 'Redirection…' : "Reprendre l'onboarding"}
-            </Button>
-          </div>
-        </section>
-      </div>
-    </ProducerLayout>
+        <div className="flex items-center justify-between mt-6">
+          <button
+            type="button"
+            onClick={() => router.push('/parametres')}
+            className="text-[13px] text-dark/65 hover:text-dark underline"
+          >
+            Retour aux paramètres
+          </button>
+          <Button type="button" variant="primary" onClick={resume} disabled={connecting}>
+            {connecting ? 'Redirection…' : "Reprendre l'onboarding"}
+          </Button>
+        </div>
+      </section>
+    </div>
   );
 }

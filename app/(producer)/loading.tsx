@@ -1,8 +1,8 @@
 // Skeleton générique segment (producer)/ — utilisé entre la résolution
 // session/host du layout et le rendu des pages dashboard / commandes /
-// catalogue / etc. Volontairement simple : pas de sidebar (rendue par
-// chaque page via <ProducerLayout>) — uniquement le squelette du contenu
-// principal.
+// catalogue / etc. Volontairement simple : pas de sidebar (rendue par le
+// layout (producer) via <ProducerSidebar>) — uniquement le squelette du
+// contenu principal, affiché dans le <main>.
 export default function ProducerLoading() {
   return (
     <div className="min-h-screen bg-bg" aria-busy="true" aria-live="polite">

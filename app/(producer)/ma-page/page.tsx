@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Button, Badge, Input, Textarea, ProducerCard } from '@/components/ui';
+import { Button, Badge, Input, Textarea, ProducerCard, PageHeader } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { uploadProducerPhoto } from '@/lib/producers/upload';
 import { labelEspece, labelLabel } from '@/lib/producers/labels';
@@ -10,7 +10,6 @@ import {
   revalidateProducerCard,
   revalidateProducersSearch,
 } from '@/lib/stats/revalidate';
-import { ProducerLayout } from '../_components/ProducerLayout';
 import { RequestPublicationPanel } from './_components/RequestPublicationPanel';
 
 function OnboardedBanner() {
@@ -289,250 +288,247 @@ export default function MaPagePage() {
 
   if (loading) {
     return (
-      <ProducerLayout>
-        <div className="max-w-6xl mx-auto px-8 py-10 text-dark/60">Chargement…</div>
-      </ProducerLayout>
+      <div className="max-w-6xl mx-auto px-8 py-10 text-dark/60">Chargement…</div>
     );
   }
 
   return (
-    <ProducerLayout>
-      <div className="max-w-6xl mx-auto px-8 py-10">
-        {/* Suspense requis par useSearchParams. Fallback null intentionnel
-            ici (pas un L-1 finding) : OnboardedBanner retourne null tant que
-            ?onboarded=1 n'est pas présent — un skeleton banner-shape
-            flasherait pour 99% des utilisateurs sans onboarded query param. */}
-        <Suspense fallback={null}>
-          <OnboardedBanner />
-        </Suspense>
-        <header className="mb-6">
-          <div className="text-[11px] uppercase tracking-[0.18em] text-terra-700 font-semibold">Ma page</div>
-          <h1 className="mt-1 font-serif text-[40px] text-green-900 leading-tight">Ma page publique</h1>
-          <p className="text-[14px] text-dark/60 mt-1">Cette page représente votre exploitation auprès des consommateurs.</p>
-          {error && <p className="mt-2 text-[13px] text-terra-700">{error}</p>}
-        </header>
+    <div className="max-w-6xl mx-auto px-8 py-10">
+      {/* Suspense requis par useSearchParams. Fallback null intentionnel
+          ici (pas un L-1 finding) : OnboardedBanner retourne null tant que
+          ?onboarded=1 n'est pas présent — un skeleton banner-shape
+          flasherait pour 99% des utilisateurs sans onboarded query param. */}
+      <Suspense fallback={null}>
+        <OnboardedBanner />
+      </Suspense>
+      <PageHeader
+        tone="producer"
+        eyebrow="Ma page"
+        title="Ma page publique"
+        subtitle="Cette page représente votre exploitation auprès des consommateurs."
+        error={error}
+      />
 
-        <div className="flex gap-1.5 border-b border-dark/[0.08] mb-8">
-          {([{ v: 'preview' as const, l: 'Prévisualisation' }, { v: 'edit' as const, l: 'Modifier' }]).map((t) => (
-            <button key={t.v} onClick={() => setTab(t.v)}
-              className={`px-4 py-3 text-[14px] font-medium border-b-2 -mb-px transition-colors ${
-                tab === t.v ? 'border-green-700 text-green-900' : 'border-transparent text-dark/60 hover:text-green-900'
-              }`}>{t.l}</button>
-          ))}
-        </div>
+      <div className="flex gap-1.5 border-b border-dark/[0.08] mb-8">
+        {([{ v: 'preview' as const, l: 'Prévisualisation' }, { v: 'edit' as const, l: 'Modifier' }]).map((t) => (
+          <button key={t.v} onClick={() => setTab(t.v)}
+            className={`px-4 py-3 text-[14px] font-medium border-b-2 -mb-px transition-colors ${
+              tab === t.v ? 'border-green-700 text-green-900' : 'border-transparent text-dark/60 hover:text-green-900'
+            }`}>{t.l}</button>
+        ))}
+      </div>
 
-        {tab === 'preview' ? (
-          <div className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft overflow-hidden">
-            <div className="relative h-64 bg-green-700">
-              {previewHero ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={previewHero} alt="" className="absolute inset-0 w-full h-full object-cover" />
-              ) : (
-                <div className="absolute inset-0 flex items-center justify-center text-white/40 font-mono text-[11px] uppercase"
-                  style={{ backgroundImage: 'repeating-linear-gradient(45deg, rgba(255,255,255,0.08) 0 14px, rgba(255,255,255,0.04) 14px 28px)' }}>
-                  Photo principale
-                </div>
-              )}
-              <div className="absolute inset-0 bg-linear-to-t from-green-900/80 to-transparent" />
-              <div className="absolute bottom-5 left-6 right-6">
-                <h2 className="font-serif text-[40px] text-white leading-tight">{form.nom_exploitation || 'Votre exploitation'}</h2>
-                <p className="text-green-100/90 text-[14px] mt-1">{[form.commune, form.code_postal].filter(Boolean).join(' · ') || '—'}</p>
+      {tab === 'preview' ? (
+        <div className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft overflow-hidden">
+          <div className="relative h-64 bg-green-700">
+            {previewHero ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={previewHero} alt="" className="absolute inset-0 w-full h-full object-cover" />
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center text-white/40 font-mono text-[11px] uppercase"
+                style={{ backgroundImage: 'repeating-linear-gradient(45deg, rgba(255,255,255,0.08) 0 14px, rgba(255,255,255,0.04) 14px 28px)' }}>
+                Photo principale
               </div>
-            </div>
-            <div className="p-6">
-              <p className="text-[16px] text-dark/80 leading-relaxed">{form.description}</p>
-              <div className="mt-4 flex flex-wrap gap-1.5">
-                {form.especes.map((s) => <Badge key={s}>{labelEspece(s)}</Badge>)}
-                {form.labels.map((l) => <Badge key={l} variant="terra">{labelLabel(l)}</Badge>)}
-              </div>
-              <div className="mt-6 text-[14px] text-dark/75 leading-relaxed whitespace-pre-line">{form.histoire}</div>
+            )}
+            <div className="absolute inset-0 bg-linear-to-t from-green-900/80 to-transparent" />
+            <div className="absolute bottom-5 left-6 right-6">
+              <h2 className="font-serif text-[40px] text-white leading-tight">{form.nom_exploitation || 'Votre exploitation'}</h2>
+              <p className="text-green-100/90 text-[14px] mt-1">{[form.commune, form.code_postal].filter(Boolean).join(' · ') || '—'}</p>
             </div>
           </div>
-        ) : (
-          <div className="grid lg:grid-cols-[1fr_340px] gap-8 items-start">
-            <div className="space-y-6">
-              <RequestPublicationPanel
-                statut={statut}
-                publicationRequestedAt={publicationRequestedAt}
-              />
+          <div className="p-6">
+            <p className="text-[16px] text-dark/80 leading-relaxed">{form.description}</p>
+            <div className="mt-4 flex flex-wrap gap-1.5">
+              {form.especes.map((s) => <Badge key={s}>{labelEspece(s)}</Badge>)}
+              {form.labels.map((l) => <Badge key={l} variant="terra">{labelLabel(l)}</Badge>)}
+            </div>
+            <div className="mt-6 text-[14px] text-dark/75 leading-relaxed whitespace-pre-line">{form.histoire}</div>
+          </div>
+        </div>
+      ) : (
+        <div className="grid lg:grid-cols-[1fr_340px] gap-8 items-start">
+          <div className="space-y-6">
+            <RequestPublicationPanel
+              statut={statut}
+              publicationRequestedAt={publicationRequestedAt}
+            />
 
-              <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
-                <h2 className="font-serif text-[22px] text-green-900 mb-4">Informations générales</h2>
-                <div className="space-y-4">
-                  <Input id="ma-page-nom-exploitation" label="Nom de l'exploitation *" value={form.nom_exploitation}
-                    onChange={(e) => { setForm({ ...form, nom_exploitation: e.target.value }); setSaved(false); }} />
-                  <Textarea id="ma-page-description" label="Description courte" rows={2} value={form.description}
-                    onChange={(e) => { setForm({ ...form, description: e.target.value }); setSaved(false); }}
-                    placeholder="En une phrase, votre ferme." />
-                  <div className="grid sm:grid-cols-2 gap-4">
-                    <Input id="ma-page-commune" label="Commune" value={form.commune}
-                      onChange={(e) => { setForm({ ...form, commune: e.target.value }); setSaved(false); }} />
-                    <Input id="ma-page-code-postal" label="Code postal" value={form.code_postal}
-                      onChange={(e) => { setForm({ ...form, code_postal: e.target.value }); setSaved(false); }} />
-                  </div>
+            <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
+              <h2 className="font-serif text-[22px] text-green-900 mb-4">Informations générales</h2>
+              <div className="space-y-4">
+                <Input id="ma-page-nom-exploitation" label="Nom de l'exploitation *" value={form.nom_exploitation}
+                  onChange={(e) => { setForm({ ...form, nom_exploitation: e.target.value }); setSaved(false); }} />
+                <Textarea id="ma-page-description" label="Description courte" rows={2} value={form.description}
+                  onChange={(e) => { setForm({ ...form, description: e.target.value }); setSaved(false); }}
+                  placeholder="En une phrase, votre ferme." />
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <Input id="ma-page-commune" label="Commune" value={form.commune}
+                    onChange={(e) => { setForm({ ...form, commune: e.target.value }); setSaved(false); }} />
+                  <Input id="ma-page-code-postal" label="Code postal" value={form.code_postal}
+                    onChange={(e) => { setForm({ ...form, code_postal: e.target.value }); setSaved(false); }} />
                 </div>
-              </section>
+              </div>
+            </section>
 
-              <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
-                <h2 className="font-serif text-[22px] text-green-900 mb-4">Votre histoire</h2>
-                <Textarea label="Récit long" rows={8} value={form.histoire}
-                  onChange={(e) => { setForm({ ...form, histoire: e.target.value }); setSaved(false); }}
-                  placeholder="Racontez votre ferme, vos générations, vos pratiques…" />
-              </section>
+            <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
+              <h2 className="font-serif text-[22px] text-green-900 mb-4">Votre histoire</h2>
+              <Textarea label="Récit long" rows={8} value={form.histoire}
+                onChange={(e) => { setForm({ ...form, histoire: e.target.value }); setSaved(false); }}
+                placeholder="Racontez votre ferme, vos générations, vos pratiques…" />
+            </section>
 
-              <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
-                <h2 className="font-serif text-[22px] text-green-900 mb-4">Photos</h2>
-                <label className="block">
-                  <div className={`aspect-2/1 rounded-xl border-2 border-dashed bg-bg overflow-hidden flex items-center justify-center cursor-pointer ${
-                    previewHero ? 'border-green-500' : 'border-dark/15'
-                  }`}>
-                    {previewHero ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={previewHero} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="text-center">
-                        <div className="font-serif text-[18px] text-green-900">Photo principale</div>
-                        <p className="text-[12px] text-dark/55 mt-1">Cliquez pour choisir une photo</p>
-                      </div>
-                    )}
-                  </div>
-                  <input type="file" accept="image/*" className="hidden" onChange={(e) => handleHero(e.target.files)} />
-                </label>
-
-                <div className="mt-3 text-[12px] text-dark/60 font-medium">Galerie (jusqu&apos;à 6 photos)</div>
-                <div className="mt-2 grid grid-cols-6 gap-2">
-                  {previewGallery.map((url, i) => (
-                    <div key={i} className="aspect-square rounded-lg overflow-hidden relative group">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={url} alt="" className="w-full h-full object-cover" />
-                      <button type="button"
-                        onClick={() => {
-                          if (i < gallery.length) {
-                            setGallery((g) => g.filter((_, j) => j !== i));
-                          } else {
-                            const idx = i - gallery.length;
-                            setNewGalleryFiles((p) => p.filter((_, j) => j !== idx));
-                            setNewGalleryPreviews((p) => {
-                              const removed = p[idx];
-                              if (removed) URL.revokeObjectURL(removed);
-                              return p.filter((_, j) => j !== idx);
-                            });
-                          }
-                        }}
-                        className="absolute top-1 right-1 w-5 h-5 rounded-full bg-dark/70 text-white text-xs hover:bg-terra-700">×</button>
+            <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
+              <h2 className="font-serif text-[22px] text-green-900 mb-4">Photos</h2>
+              <label className="block">
+                <div className={`aspect-2/1 rounded-xl border-2 border-dashed bg-bg overflow-hidden flex items-center justify-center cursor-pointer ${
+                  previewHero ? 'border-green-500' : 'border-dark/15'
+                }`}>
+                  {previewHero ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={previewHero} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="text-center">
+                      <div className="font-serif text-[18px] text-green-900">Photo principale</div>
+                      <p className="text-[12px] text-dark/55 mt-1">Cliquez pour choisir une photo</p>
                     </div>
-                  ))}
-                  {previewGallery.length < 6 && (
-                    <label className="aspect-square rounded-lg border-2 border-dashed border-dark/15 bg-bg flex items-center justify-center text-dark/30 text-xl cursor-pointer hover:border-green-500">
-                      +
-                      <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => addGallery(e.target.files)} />
-                    </label>
                   )}
                 </div>
-              </section>
+                <input type="file" accept="image/*" className="hidden" onChange={(e) => handleHero(e.target.files)} />
+              </label>
 
-              <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
-                <h2 className="font-serif text-[22px] text-green-900 mb-4">Espèces élevées</h2>
-                <div className="flex flex-wrap gap-2">
-                  {ESPECE_OPTIONS.map((o) => {
-                    const on = form.especes.includes(o.value);
-                    return (
-                      <button key={o.value} type="button" onClick={() => toggleArr('especes', o.value)}
-                        className={`h-10 px-4 rounded-full text-[13px] font-medium border transition-colors ${
-                          on ? 'bg-green-700 text-white border-green-700' : 'bg-white text-dark/70 border-dark/10 hover:border-green-500'
-                        }`}>{o.label}</button>
-                    );
-                  })}
-                </div>
-              </section>
+              <div className="mt-3 text-[12px] text-dark/60 font-medium">Galerie (jusqu&apos;à 6 photos)</div>
+              <div className="mt-2 grid grid-cols-6 gap-2">
+                {previewGallery.map((url, i) => (
+                  <div key={i} className="aspect-square rounded-lg overflow-hidden relative group">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={url} alt="" className="w-full h-full object-cover" />
+                    <button type="button"
+                      onClick={() => {
+                        if (i < gallery.length) {
+                          setGallery((g) => g.filter((_, j) => j !== i));
+                        } else {
+                          const idx = i - gallery.length;
+                          setNewGalleryFiles((p) => p.filter((_, j) => j !== idx));
+                          setNewGalleryPreviews((p) => {
+                            const removed = p[idx];
+                            if (removed) URL.revokeObjectURL(removed);
+                            return p.filter((_, j) => j !== idx);
+                          });
+                        }
+                      }}
+                      className="absolute top-1 right-1 w-5 h-5 rounded-full bg-dark/70 text-white text-xs hover:bg-terra-700">×</button>
+                  </div>
+                ))}
+                {previewGallery.length < 6 && (
+                  <label className="aspect-square rounded-lg border-2 border-dashed border-dark/15 bg-bg flex items-center justify-center text-dark/30 text-xl cursor-pointer hover:border-green-500">
+                    +
+                    <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => addGallery(e.target.files)} />
+                  </label>
+                )}
+              </div>
+            </section>
 
-              <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
-                <h2 className="font-serif text-[22px] text-green-900 mb-4">Labels & certifications</h2>
-                <div className="flex flex-wrap gap-2">
-                  {LABEL_OPTIONS.map((o) => {
-                    const on = form.labels.includes(o.value);
-                    return (
-                      <button key={o.value} type="button" onClick={() => toggleArr('labels', o.value)}
-                        className={`h-10 px-4 rounded-full text-[13px] font-medium border transition-colors ${
-                          on ? 'bg-terra-700 text-white border-terra-700' : 'bg-white text-dark/70 border-dark/10 hover:border-terra-300'
-                        }`}>{o.label}</button>
-                    );
-                  })}
-                </div>
-              </section>
+            <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
+              <h2 className="font-serif text-[22px] text-green-900 mb-4">Espèces élevées</h2>
+              <div className="flex flex-wrap gap-2">
+                {ESPECE_OPTIONS.map((o) => {
+                  const on = form.especes.includes(o.value);
+                  return (
+                    <button key={o.value} type="button" onClick={() => toggleArr('especes', o.value)}
+                      className={`h-10 px-4 rounded-full text-[13px] font-medium border transition-colors ${
+                        on ? 'bg-green-700 text-white border-green-700' : 'bg-white text-dark/70 border-dark/10 hover:border-green-500'
+                      }`}>{o.label}</button>
+                  );
+                })}
+              </div>
+            </section>
 
-              <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
-                <h2 className="font-serif text-[22px] text-green-900 mb-1">Certification bio</h2>
-                <p className="text-[13px] text-dark/60 mb-4">
-                  Si votre exploitation est certifiée Agriculture Biologique, le
-                  badge bio n&rsquo;apparaît publiquement qu&rsquo;après vérification
-                  de votre numéro d&rsquo;opérateur par l&rsquo;équipe TerrOir.
-                </p>
-                <label className="flex items-start gap-3 text-[14px] text-dark/80 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={form.bio}
+            <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
+              <h2 className="font-serif text-[22px] text-green-900 mb-4">Labels & certifications</h2>
+              <div className="flex flex-wrap gap-2">
+                {LABEL_OPTIONS.map((o) => {
+                  const on = form.labels.includes(o.value);
+                  return (
+                    <button key={o.value} type="button" onClick={() => toggleArr('labels', o.value)}
+                      className={`h-10 px-4 rounded-full text-[13px] font-medium border transition-colors ${
+                        on ? 'bg-terra-700 text-white border-terra-700' : 'bg-white text-dark/70 border-dark/10 hover:border-terra-300'
+                      }`}>{o.label}</button>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
+              <h2 className="font-serif text-[22px] text-green-900 mb-1">Certification bio</h2>
+              <p className="text-[13px] text-dark/60 mb-4">
+                Si votre exploitation est certifiée Agriculture Biologique, le
+                badge bio n&rsquo;apparaît publiquement qu&rsquo;après vérification
+                de votre numéro d&rsquo;opérateur par l&rsquo;équipe TerrOir.
+              </p>
+              <label className="flex items-start gap-3 text-[14px] text-dark/80 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.bio}
+                  onChange={(e) => {
+                    setForm({ ...form, bio: e.target.checked });
+                    setSaved(false);
+                  }}
+                  className="mt-1 h-4 w-4 rounded border-dark/20 text-green-700 focus:ring-green-700/40"
+                />
+                <span>Je suis certifié Agriculture Biologique.</span>
+              </label>
+              {form.bio && (
+                <div className="mt-4">
+                  <Input
+                    label="Numéro d'opérateur Agence Bio"
+                    value={form.bio_certificate_number}
                     onChange={(e) => {
-                      setForm({ ...form, bio: e.target.checked });
+                      setForm({ ...form, bio_certificate_number: e.target.value });
                       setSaved(false);
                     }}
-                    className="mt-1 h-4 w-4 rounded border-dark/20 text-green-700 focus:ring-green-700/40"
+                    placeholder="Ex. FRBIO-XX-123456"
                   />
-                  <span>Je suis certifié Agriculture Biologique.</span>
-                </label>
-                {form.bio && (
-                  <div className="mt-4">
-                    <Input
-                      label="Numéro d'opérateur Agence Bio"
-                      value={form.bio_certificate_number}
-                      onChange={(e) => {
-                        setForm({ ...form, bio_certificate_number: e.target.value });
-                        setSaved(false);
-                      }}
-                      placeholder="Ex. FRBIO-XX-123456"
-                    />
-                    <p className="mt-2 text-[12px]">
-                      {bioValidatedAt ? (
-                        <span className="text-green-700">
-                          ✓ Certification validée — le badge bio est visible
-                          publiquement.
-                        </span>
-                      ) : (
-                        <span className="text-terra-700">
-                          En attente de validation par l&rsquo;équipe TerrOir.
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                )}
-              </section>
-
-              <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <Input label="Générations" type="number" min="1" value={form.generations}
-                    onChange={(e) => { setForm({ ...form, generations: e.target.value }); setSaved(false); }} />
-                  <Input label="Année de création" type="number" value={form.annee_creation}
-                    onChange={(e) => { setForm({ ...form, annee_creation: e.target.value }); setSaved(false); }} />
+                  <p className="mt-2 text-[12px]">
+                    {bioValidatedAt ? (
+                      <span className="text-green-700">
+                        ✓ Certification validée — le badge bio est visible
+                        publiquement.
+                      </span>
+                    ) : (
+                      <span className="text-terra-700">
+                        En attente de validation par l&rsquo;équipe TerrOir.
+                      </span>
+                    )}
+                  </p>
                 </div>
-              </section>
+              )}
+            </section>
 
-              <div className="flex items-center justify-between gap-3 pt-2">
-                <p className="text-[12px] text-dark/55 max-w-sm">
-                  {saved ? '✓ Modifications enregistrées.' : 'Vos modifications ne sont pas encore enregistrées.'}
-                </p>
-                <Button variant="accent" size="lg" onClick={save} disabled={saving}>
-                  {saving ? 'Enregistrement…' : 'Enregistrer'}
-                </Button>
+            <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
+              <div className="grid sm:grid-cols-2 gap-4">
+                <Input label="Générations" type="number" min="1" value={form.generations}
+                  onChange={(e) => { setForm({ ...form, generations: e.target.value }); setSaved(false); }} />
+                <Input label="Année de création" type="number" value={form.annee_creation}
+                  onChange={(e) => { setForm({ ...form, annee_creation: e.target.value }); setSaved(false); }} />
               </div>
-            </div>
+            </section>
 
-            <aside className="lg:sticky lg:top-10">
-              <div className="text-[11px] uppercase tracking-[0.14em] text-terra-700 font-semibold mb-3">Aperçu dans la carte</div>
-              <ProducerCard producer={producerPreview} />
-            </aside>
+            <div className="flex items-center justify-between gap-3 pt-2">
+              <p className="text-[12px] text-dark/55 max-w-sm">
+                {saved ? '✓ Modifications enregistrées.' : 'Vos modifications ne sont pas encore enregistrées.'}
+              </p>
+              <Button variant="accent" size="lg" onClick={save} disabled={saving}>
+                {saving ? 'Enregistrement…' : 'Enregistrer'}
+              </Button>
+            </div>
           </div>
-        )}
-      </div>
-    </ProducerLayout>
+
+          <aside className="lg:sticky lg:top-10">
+            <div className="text-[11px] uppercase tracking-[0.14em] text-terra-700 font-semibold mb-3">Aperçu dans la carte</div>
+            <ProducerCard producer={producerPreview} />
+          </aside>
+        </div>
+      )}
+    </div>
   );
 }

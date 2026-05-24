@@ -14,7 +14,6 @@ import {
   formatWeekRangeLabel,
   addDays,
 } from '@/lib/dates/week-navigation';
-import { ProducerLayout } from '../_components/ProducerLayout';
 import { DashboardClient, type DashboardData } from './DashboardClient';
 
 const TZ_PARIS = 'Europe/Paris';
@@ -258,9 +257,5 @@ export default async function ProducerDashboardPage(props: {
     stockAlerts,
   };
 
-  return (
-    <ProducerLayout>
-      <DashboardClient data={data} />
-    </ProducerLayout>
-  );
+  return <DashboardClient data={data} />;
 }
