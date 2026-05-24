@@ -159,7 +159,9 @@ test.describe('Producer onboarding — multistep StepInfos', () => {
       await page.locator('input[name="siret"]').fill('12345678901234');
       await page.locator('input[name="adresse"]').fill('1 rue du Test');
       await page.locator('input[name="code_postal"]').fill('72000');
-      await page.locator('input[name="commune"]').fill('Le Mans');
+      // La commune est désormais un <select> alimenté par le code postal
+      // (CommuneSelect partagé). selectOption auto-attend l'option chargée.
+      await page.locator('select[name="commune"]').selectOption('Le Mans');
       await page.locator('select[name="type_production"]').selectOption('elevage');
 
       await page.getByRole('button', { name: /Finaliser ma demande/i }).click();
