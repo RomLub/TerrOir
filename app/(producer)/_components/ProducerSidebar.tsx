@@ -3,7 +3,6 @@
 import type { ReactElement, ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Logo, RoleSwitcher } from "@/components/ui";
 import { useUserContext } from "@/components/providers/user-provider";
 import type { ProducerNavBadges } from "@/lib/producers/nav-badges";
 
@@ -206,14 +205,7 @@ export function ProducerSidebar({ badges }: ProducerSidebarProps = {}) {
   };
 
   return (
-    <aside className="sticky top-0 flex h-screen w-64 shrink-0 flex-col bg-green-900 text-white">
-      <div className="border-b border-white/10 p-6">
-        <Logo variant="mono" />
-        <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-terra-300">
-          Espace Producteur
-        </div>
-      </div>
-
+    <aside className="sticky top-16 flex h-[calc(100vh-4rem)] w-64 shrink-0 flex-col bg-green-900 text-white">
       <nav
         aria-label="Navigation producteur"
         className="flex-1 overflow-y-auto p-3"
@@ -263,9 +255,6 @@ export function ProducerSidebar({ badges }: ProducerSidebarProps = {}) {
         </ul>
       </nav>
 
-      <div className="border-t border-white/10 p-3">
-        <RoleSwitcher current="producer" variant="dark" />
-      </div>
       <div className="border-t border-white/10 p-4">
         {producer ? (
           <>

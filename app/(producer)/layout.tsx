@@ -8,6 +8,7 @@ import {
   type ProducerNavBadges,
 } from "@/lib/producers/nav-badges";
 import { ProducerSidebar } from "./_components/ProducerSidebar";
+import { ProducerHeader } from "./_components/ProducerHeader";
 
 // Audit Auth 2026-05-05 H-4 : defense-in-depth. Vérifie session + host.
 // Le middleware reste la 1re barrière (redirige non-auth vers /connexion,
@@ -44,9 +45,12 @@ export default async function ProducerLayout({
     : { ordersToConfirm: 0, stockRuptures: 0 };
 
   return (
-    <div className="flex min-h-screen bg-bg">
-      <ProducerSidebar badges={badges} />
-      <main className="min-w-0 flex-1">{children}</main>
+    <div className="flex min-h-screen flex-col bg-bg">
+      <ProducerHeader />
+      <div className="flex flex-1">
+        <ProducerSidebar badges={badges} />
+        <main className="min-w-0 flex-1">{children}</main>
+      </div>
     </div>
   );
 }
