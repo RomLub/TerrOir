@@ -59,6 +59,7 @@ const ALL_HREFS = [
   "/ma-page",
   "/revenus",
   "/comptabilite",
+  "/sante",
   "/parametres",
 ];
 
@@ -73,7 +74,7 @@ describe("ProducerSidebar — structure de navigation", () => {
     }
   });
 
-  it("rend les 10 entrées attendues", () => {
+  it("rend les 11 entrées attendues", () => {
     const html = render();
     for (const href of ALL_HREFS) {
       expect(html).toContain(`href="${href}"`);
@@ -117,6 +118,7 @@ describe("ProducerSidebar — structure de navigation", () => {
       expect(i).toBeGreaterThan(finances);
       expect(i).toBeLessThan(pilotage);
     }
+    expect(html.indexOf('href="/sante"')).toBeGreaterThan(pilotage);
     expect(html.indexOf('href="/parametres"')).toBeGreaterThan(pilotage);
   });
 });

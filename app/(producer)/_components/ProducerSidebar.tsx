@@ -165,6 +165,16 @@ const NAV: NavEntry[] = [
   { kind: "group", label: "Pilotage" },
   {
     kind: "item",
+    href: "/sante",
+    label: "Santé",
+    icon: (
+      <Ic>
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+      </Ic>
+    ),
+  },
+  {
+    kind: "item",
     href: "/parametres",
     label: "Paramètres",
     icon: (
