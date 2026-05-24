@@ -4,6 +4,7 @@ import { getSessionUser } from '@/lib/auth/session';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { fetchProducerForUser } from '@/lib/producers/context';
+import { getPublicationStatus } from '@/lib/producers/publication-status';
 import {
   formatSlotRange,
   formatLegacyTimeHHMM,
@@ -238,6 +239,19 @@ export default async function ProducerDashboardPage(props: {
     stock: p.stock_disponible as number,
   }));
 
+  // Bloc « à traiter » : item publication tant que la fiche n'est pas en ligne
+  // (réutilise la RPC lecture seule get_publication_status). Aucun appel quand
+  // la fiche est déjà publique.
+  let publicationToDo: { doneCount: number } | null = null;
+  if (producer.statut !== 'public') {
+    const pub = await getPublicationStatus(session.id);
+    if (pub.found && !pub.alreadyPublic && !pub.publicationRequested) {
+      publicationToDo = {
+        doneCount: Object.values(pub.criteria).filter(Boolean).length,
+      };
+    }
+  }
+
   const data: DashboardData = {
     producerId: producer.id,
     producerName: producer.nom_exploitation,
@@ -255,6 +269,7 @@ export default async function ProducerDashboardPage(props: {
     weekPlanning,
     badges,
     stockAlerts,
+    publicationToDo,
   };
 
   return <DashboardClient data={data} />;
