@@ -13,12 +13,12 @@ vi.mock("@/lib/sirene/verify-siret", () => ({
   verifySiret: h.verify,
 }));
 
-import { POST } from "@/app/api/siret/verify/route";
+import { POST } from "@/app/api/public/siret/verify/route";
 
 const SIRET = "12345678901234";
 
 function req(body: unknown): Request {
-  return new Request("http://localhost/api/siret/verify", {
+  return new Request("http://localhost/api/public/siret/verify", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -30,7 +30,7 @@ beforeEach(() => {
   h.consume.mockResolvedValue({ success: true });
 });
 
-describe("POST /api/siret/verify", () => {
+describe("POST /api/public/siret/verify", () => {
   it("SIRET mal formé → 400, pas d'appel API", async () => {
     const res = await POST(req({ siret: "123" }));
     expect(res.status).toBe(400);

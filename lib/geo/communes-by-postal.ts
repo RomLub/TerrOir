@@ -2,7 +2,7 @@
 // (service public, sans clé). Utilisé pour proposer une SÉLECTION de communes
 // au formulaire d'inscription producteur (au lieu d'un champ libre non contrôlé).
 //
-// Appelé côté SERVEUR depuis /api/communes (POST). Conforme à la doctrine
+// Appelé côté SERVEUR depuis /api/public/communes (POST). Conforme à la doctrine
 // garde-fou-autocompletion-cp : aucun log du CP saisi ici (Règle 1), le CP est
 // éphémère (Règle 4). Validation stricte du CP avant l'appel réseau, timeout
 // dur, branches d'erreur typées (symétrie avec geocode-postal.ts).

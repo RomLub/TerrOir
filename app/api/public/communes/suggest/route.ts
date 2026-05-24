@@ -4,7 +4,7 @@ import { consumeRateLimit, getGeocodeRateLimit } from "@/lib/rate-limit";
 import { extractRequestContext } from "@/lib/audit-logs/log-auth-event";
 import { fetchCommuneSuggestions } from "@/lib/geo/commune-suggestions";
 
-// POST /api/communes/suggest — body { q }
+// POST /api/public/communes/suggest — body { q }
 // Autocomplétion du code postal : dès 2 caractères, propose des communes
 // (avec leur CP). Conforme à docs/conventions/garde-fou-autocompletion-cp.md :
 // POST (préfixe dans le body, jamais en query GET), aucun log du préfixe saisi,

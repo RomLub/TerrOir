@@ -2,7 +2,7 @@
 // l'API publique api-adresse.data.gouv.fr (autocomplete, sans clé). Dès 2
 // caractères saisis, propose des communes avec leur code postal.
 //
-// Appelé côté SERVEUR depuis POST /api/communes/suggest. Conforme à la doctrine
+// Appelé côté SERVEUR depuis POST /api/public/communes/suggest. Conforme à la doctrine
 // garde-fou-autocompletion-cp : aucun log du CP/préfixe saisi (Règle 1),
 // éphémère (Règle 4). Le cas « autocomplétion CP » y est explicitement prévu
 // comme acceptable sous réserve d'un endpoint POST.

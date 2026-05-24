@@ -13,10 +13,10 @@ vi.mock("@/lib/geo/communes-by-postal", () => ({
   fetchCommunesByPostalCode: h.fetchCommunes,
 }));
 
-import { POST } from "@/app/api/communes/route";
+import { POST } from "@/app/api/public/communes/route";
 
 function req(body: unknown): Request {
-  return new Request("http://localhost/api/communes", {
+  return new Request("http://localhost/api/public/communes", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -28,7 +28,7 @@ beforeEach(() => {
   h.consume.mockResolvedValue({ success: true });
 });
 
-describe("POST /api/communes", () => {
+describe("POST /api/public/communes", () => {
   it("CP invalide → 400, pas d'appel à l'API gouv", async () => {
     const res = await POST(req({ cp: "72" }));
     expect(res.status).toBe(400);

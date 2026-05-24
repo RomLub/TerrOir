@@ -13,10 +13,10 @@ vi.mock("@/lib/geo/commune-suggestions", () => ({
   fetchCommuneSuggestions: h.fetchSuggest,
 }));
 
-import { POST } from "@/app/api/communes/suggest/route";
+import { POST } from "@/app/api/public/communes/suggest/route";
 
 function req(body: unknown): Request {
-  return new Request("http://localhost/api/communes/suggest", {
+  return new Request("http://localhost/api/public/communes/suggest", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -28,7 +28,7 @@ beforeEach(() => {
   h.consume.mockResolvedValue({ success: true });
 });
 
-describe("POST /api/communes/suggest", () => {
+describe("POST /api/public/communes/suggest", () => {
   it("q trop court → 400, pas d'appel API", async () => {
     const res = await POST(req({ q: "7" }));
     expect(res.status).toBe(400);
