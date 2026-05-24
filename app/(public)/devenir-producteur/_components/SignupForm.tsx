@@ -2,13 +2,17 @@
 
 import Link from "next/link";
 import { useActionState, useEffect } from "react";
-import { Button, Input, Textarea } from "@/components/ui";
+import { Button, Input } from "@/components/ui";
 import {
   signupProducerAction,
   type ProducerSignupState,
 } from "../_actions/signup-producer";
 import { becomeProducerAction } from "../_actions/become-producer";
-import { CommuneSelect } from "@/components/ui/commune-select";
+
+// Refonte funnel 2 étapes — ÉTAPE 1 : identité / compte uniquement.
+// Les infos d'exploitation (nom, commune, SIRET, type de production, message…)
+// sont saisies à l'ÉTAPE 2 (/onboarding, StepInfos), où l'on est redirigé
+// aussitôt le compte créé.
 
 export type PrefillData = {
   token: string;
@@ -16,19 +20,7 @@ export type PrefillData = {
   prenom: string;
   nom: string;
   telephone: string;
-  nom_exploitation: string;
-  commune: string;
 };
-
-const ESPECES = [
-  "Bœuf",
-  "Veau",
-  "Porc",
-  "Agneau",
-  "Volaille",
-  "Œufs",
-  "Autre",
-];
 
 export type LoggedInProfile = {
   email: string;
@@ -42,9 +34,9 @@ export function SignupForm({
   loggedIn = null,
 }: {
   prefill: PrefillData | null;
-  // Variante « connecté » : compte existant. Email + nom + prénom pré-remplis
-  // et verrouillés (grisés), pas de mot de passe ; la soumission rattache le
-  // rôle producteur au compte existant.
+  // Variante « connecté » : compte existant. Identité pré-remplie et verrouillée
+  // (grisée) ; pas de mot de passe. La soumission rattache le rôle producteur au
+  // compte existant, puis redirige vers l'étape 2 (exploitation).
   loggedIn?: LoggedInProfile | null;
 }) {
   const isLoggedIn = Boolean(loggedIn);
@@ -53,9 +45,9 @@ export function SignupForm({
     FormData
   >(isLoggedIn ? becomeProducerAction : signupProducerAction, {});
 
-  // Accès immédiat : à la création réussie, on navigue côté client vers
-  // l'espace producteur (le cookie partagé .terroir-local.fr authentifie sur
-  // pro sans re-login).
+  // Accès immédiat : à la réussite, on navigue côté client vers l'espace
+  // producteur (le cookie partagé .terroir-local.fr authentifie sur pro). Le
+  // middleware renvoie ensuite un draft vers /onboarding (étape 2).
   useEffect(() => {
     if (state.success && state.redirectTo) {
       window.location.assign(state.redirectTo);
@@ -78,6 +70,10 @@ export function SignupForm({
     );
   }
 
+  // Téléphone : grisé s'il est déjà connu du compte (connecté), sinon saisissable
+  // (un consommateur peut ne pas avoir renseigné de téléphone).
+  const phoneLocked = isLoggedIn && Boolean(loggedIn?.telephone);
+
   return (
     <form
       action={formAction}
@@ -92,7 +88,7 @@ export function SignupForm({
           label="Prénom"
           name="prenom"
           defaultValue={loggedIn?.prenom ?? prefill?.prenom ?? ""}
-          readOnly={isLoggedIn}
+          readOnly={isLoggedIn && Boolean(loggedIn?.prenom)}
           autoComplete="given-name"
           required
         />
@@ -100,7 +96,7 @@ export function SignupForm({
           label="Nom"
           name="nom"
           defaultValue={loggedIn?.nom ?? prefill?.nom ?? ""}
-          readOnly={isLoggedIn}
+          readOnly={isLoggedIn && Boolean(loggedIn?.nom)}
           autoComplete="family-name"
           required
         />
@@ -122,6 +118,7 @@ export function SignupForm({
           type="tel"
           name="telephone"
           defaultValue={loggedIn?.telephone ?? prefill?.telephone ?? ""}
+          readOnly={phoneLocked}
           autoComplete="tel"
           required
         />
@@ -151,44 +148,6 @@ export function SignupForm({
           </p>
         </>
       ) : null}
-
-      <Input
-        label="Nom de l'exploitation"
-        name="nom_exploitation"
-        defaultValue={prefill?.nom_exploitation ?? ""}
-        required
-      />
-
-      <CommuneSelect idPrefix="signup" defaultCommune={prefill?.commune ?? ""} />
-
-      <fieldset className="space-y-2">
-        <legend className="text-[13px] font-medium text-dark/80">
-          Vos productions (optionnel)
-        </legend>
-        <div className="flex flex-wrap gap-x-5 gap-y-2">
-          {ESPECES.map((e) => (
-            <label
-              key={e}
-              className="flex items-center gap-2 text-[14px] text-dark/75 cursor-pointer"
-            >
-              <input
-                type="checkbox"
-                name="especes"
-                value={e}
-                className="h-4 w-4 rounded border-dark/20 text-terra-700 focus:ring-terra-700/40"
-              />
-              {e}
-            </label>
-          ))}
-        </div>
-      </fieldset>
-
-      <Textarea
-        label="Votre message (optionnel)"
-        name="message"
-        rows={4}
-        placeholder="Parlez-nous de votre activité, vos labels, vos volumes…"
-      />
 
       {/* Honeypot anti-bot : caché en CSS, jamais visible/typable par un humain. */}
       <input
@@ -233,7 +192,7 @@ export function SignupForm({
 
       <div className="pt-2">
         <Button type="submit" size="lg" className="w-full" disabled={isPending}>
-          {isPending ? "Création…" : "Créer mon espace →"}
+          {isPending ? "Création…" : "Continuer →"}
         </Button>
       </div>
     </form>

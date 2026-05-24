@@ -60,10 +60,10 @@ export function StepInfos({
   onBack,
 }: {
   token: string;
+  // Refonte funnel : cette étape ne collecte QUE l'exploitation. Le perso
+  // (prenom/nom/telephone) est saisi à l'étape « compte ». L'objet passé peut
+  // contenir d'autres champs (InitialInfos) — on n'en lit que l'exploitation.
   initialValues: {
-    prenom: string;
-    nom: string;
-    telephone: string;
     nom_exploitation: string;
     forme_juridique: string;
     siret: string;
@@ -83,50 +83,6 @@ export function StepInfos({
   return (
     <form action={action} className="space-y-4">
       <input type="hidden" name="token" value={token} />
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div>
-          <label className="mb-1 block text-sm font-medium text-gray-800">
-            Prénom
-          </label>
-          <input
-            name="prenom"
-            type="text"
-            required
-            autoComplete="given-name"
-            defaultValue={initialValues.prenom}
-            className={inputClass}
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-sm font-medium text-gray-800">
-            Nom
-          </label>
-          <input
-            name="nom"
-            type="text"
-            required
-            autoComplete="family-name"
-            defaultValue={initialValues.nom}
-            className={inputClass}
-          />
-        </div>
-      </div>
-
-      <div>
-        <label className="mb-1 block text-sm font-medium text-gray-800">
-          Téléphone
-        </label>
-        <input
-          name="telephone"
-          type="tel"
-          required
-          autoComplete="tel"
-          defaultValue={initialValues.telephone}
-          placeholder="06 12 34 56 78"
-          className={inputClass}
-        />
-      </div>
 
       <div>
         <label className="mb-1 block text-sm font-medium text-gray-800">
@@ -235,6 +191,19 @@ export function StepInfos({
           />
         </div>
       ) : null}
+
+      <div>
+        <label className="mb-1 block text-sm font-medium text-gray-800">
+          Présentez votre activité{" "}
+          <span className="text-gray-400">(optionnel)</span>
+        </label>
+        <textarea
+          name="message"
+          rows={4}
+          placeholder="Vos productions, vos labels, vos volumes…"
+          className={inputClass}
+        />
+      </div>
 
       {state.error ? (
         <p className="text-sm text-red-700" role="alert">

@@ -57,10 +57,12 @@ export const loginSchema = z.object({
   password: z.string().min(1, "Mot de passe requis"),
 });
 
-// Chantier 3 (2026-05) — signup producteur self-service via /devenir-producteur.
-// Crée le compte (auth + users + producers draft) + le lead. Champs business
-// obligatoires (0.6c). prefillToken optionnel : présent quand un prospect
-// arrive via son lien personnel (formulaire pré-rempli, email verrouillé).
+// Signup producteur self-service via /devenir-producteur — ÉTAPE 1 (identité).
+// Crée le compte (auth + users + producers draft placeholder) + le lead. Les
+// infos d'exploitation sont collectées à l'ÉTAPE 2 (/onboarding, StepInfos) :
+// ne plus les demander ici (cf. refonte funnel 2 étapes : perso / exploitation).
+// prefillToken optionnel : présent quand un prospect arrive via son lien
+// personnel (formulaire pré-rempli, email verrouillé).
 export const producerSignupSchema = z
   .object({
     prenom: z.string().trim().min(1, "Prénom requis").max(120),
@@ -69,20 +71,6 @@ export const producerSignupSchema = z
     password: strongPasswordSchema,
     passwordConfirm: z.string(),
     telephone: z.string().trim().min(1, "Téléphone requis").max(40),
-    nom_exploitation: z
-      .string()
-      .trim()
-      .min(1, "Nom de l'exploitation requis")
-      .max(200),
-    commune: z.string().trim().min(1, "Commune requise").max(120),
-    code_postal: z.string().trim().regex(/^\d{5}$/, "Code postal : 5 chiffres"),
-    especes: z.array(z.string().trim().min(1)).max(20).optional(),
-    message: z
-      .string()
-      .trim()
-      .max(5000)
-      .optional()
-      .transform((v) => (v === "" ? undefined : v)),
     // Lien personnel prospect (HMAC) — optionnel. Validé côté action.
     prefillToken: z
       .string()
@@ -104,27 +92,14 @@ export const producerSignupSchema = z
 
 export type ProducerSignupInput = z.infer<typeof producerSignupSchema>;
 
-// Variante « devenir producteur en étant déjà connecté » : pas d'email ni de
-// mot de passe (le compte existe ; l'email autoritaire vient de la session).
-// On rattache le rôle producteur au compte existant.
+// Variante « devenir producteur en étant déjà connecté » — ÉTAPE 1 (identité) :
+// pas d'email ni de mot de passe (le compte existe ; l'email autoritaire vient
+// de la session). On rattache le rôle producteur au compte existant. Les infos
+// d'exploitation sont collectées à l'étape 2 (/onboarding).
 export const becomeProducerSchema = z.object({
   prenom: z.string().trim().min(1, "Prénom requis").max(120),
   nom: z.string().trim().min(1, "Nom requis").max(120),
   telephone: z.string().trim().min(1, "Téléphone requis").max(40),
-  nom_exploitation: z
-    .string()
-    .trim()
-    .min(1, "Nom de l'exploitation requis")
-    .max(200),
-  commune: z.string().trim().min(1, "Commune requise").max(120),
-  code_postal: z.string().trim().regex(/^\d{5}$/, "Code postal : 5 chiffres"),
-  especes: z.array(z.string().trim().min(1)).max(20).optional(),
-  message: z
-    .string()
-    .trim()
-    .max(5000)
-    .optional()
-    .transform((v) => (v === "" ? undefined : v)),
   cgu_accepted: z
     .union([z.boolean(), z.string()])
     .transform((v) => v === true || v === "on" || v === "true")
@@ -146,6 +121,11 @@ export const inviteProducerSchema = z.object({
 export const invitationCreateAccountSchema = z
   .object({
     token: z.string().min(16, "Token invalide"),
+    // Refonte funnel : l'identité (perso) est collectée à l'étape « compte »
+    // pour un nouveau compte invité, plus à l'étape 2 (exploitation).
+    prenom: z.string().trim().min(1, "Prénom requis").max(120),
+    nom: z.string().trim().min(1, "Nom requis").max(120),
+    telephone: z.string().trim().min(1, "Téléphone requis").max(40),
     password: strongPasswordSchema,
     passwordConfirm: z.string(),
   })
@@ -187,13 +167,9 @@ export const invitationBusinessInfoSchema = z
     // d'une invitation valide. Si un token est fourni, l'action le validera
     // quand même (flux invitation classique).
     token: z.string().optional(),
-    // Phase 2 du chantier "Vision funnel producteur" : fusion StepPersonnel
-    // dans cette étape unique. Les 3 champs perso (prenom/nom/telephone) sont
-    // collectés ici en plus des champs business — pré-remplis depuis le lead
-    // matching email côté page.tsx, écrits dans `users` côté action.
-    prenom: z.string().trim().min(1, "Prénom requis"),
-    nom: z.string().trim().min(1, "Nom requis"),
-    telephone: z.string().trim().min(1, "Téléphone requis"),
+    // Refonte funnel 2 étapes : cette étape ne collecte QUE l'exploitation.
+    // Le perso (prenom/nom/telephone) est collecté à l'étape « compte »
+    // (création/login), donc déjà présent dans `users` à ce stade.
     nom_exploitation: z.string().trim().min(1, "Nom de l'exploitation requis"),
     forme_juridique: formeJuridiqueEnum,
     siret: z.string().trim().regex(/^\d{14}$/, "SIRET : 14 chiffres requis"),
@@ -204,6 +180,14 @@ export const invitationBusinessInfoSchema = z
     type_production_precision: z
       .string()
       .trim()
+      .optional()
+      .transform((v) => (v === "" ? undefined : v)),
+    // Message libre optionnel (présentation activité/labels/volumes) —
+    // déplacé de l'étape 1 vers ici (refonte funnel). Persisté sur le lead.
+    message: z
+      .string()
+      .trim()
+      .max(5000)
       .optional()
       .transform((v) => (v === "" ? undefined : v)),
   })

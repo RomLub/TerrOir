@@ -85,6 +85,9 @@ const VALID_TOKEN = "a".repeat(32);
 function makeFormData(overrides: Record<string, string> = {}): FormData {
   const fd = new FormData();
   fd.set("token", VALID_TOKEN);
+  fd.set("prenom", "Jean");
+  fd.set("nom", "Dupont");
+  fd.set("telephone", "0612345678");
   fd.set("password", "Password1234");
   fd.set("passwordConfirm", "Password1234");
   for (const [k, v] of Object.entries(overrides)) fd.set(k, v);
@@ -144,6 +147,10 @@ describe("createAccountAction", () => {
       id: "user-42",
       email: "new@example.com",
       roles: ["consumer", "producer"],
+      // Refonte funnel : l'identité est enregistrée à l'étape « compte ».
+      prenom: "Jean",
+      nom: "Dupont",
+      telephone: "0612345678",
     });
     expect(captured.inserts.find((i) => i.table === "producers")?.payload).toMatchObject({
       user_id: "user-42",

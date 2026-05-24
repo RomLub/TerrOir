@@ -58,6 +58,11 @@ export function OnboardingWizard(props: WizardProps) {
             <StepCompteNew
               token={props.token}
               email={props.email}
+              defaults={{
+                prenom: props.initialInfos.prenom,
+                nom: props.initialInfos.nom,
+                telephone: props.initialInfos.telephone,
+              }}
               onSuccess={() => setStep(2)}
             />
           )

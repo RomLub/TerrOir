@@ -44,20 +44,10 @@ export async function becomeProducerAction(
   const email = session.email;
   if (!email) return { error: "Email du compte introuvable." };
 
-  const especes = formData
-    .getAll("especes")
-    .map((v) => String(v).trim())
-    .filter(Boolean);
-
   const parsed = becomeProducerSchema.safeParse({
     prenom: formData.get("prenom"),
     nom: formData.get("nom"),
     telephone: formData.get("telephone"),
-    nom_exploitation: formData.get("nom_exploitation"),
-    commune: formData.get("commune"),
-    code_postal: formData.get("code_postal"),
-    especes: especes.length > 0 ? especes : undefined,
-    message: formData.get("message") ?? "",
     cgu_accepted: formData.get("cgu_accepted") ?? false,
     website: formData.get("website") ?? "",
   });
@@ -115,14 +105,13 @@ export async function becomeProducerAction(
     };
   }
 
-  // 2. Fiche producteur en draft.
+  // 2. Fiche producteur en draft. nom_exploitation = placeholder ; les infos
+  //    d'exploitation sont saisies à l'étape 2 (/onboarding).
   const { error: producerError } = await admin.from("producers").insert({
     user_id: session.id,
     slug: slugFromEmail(email),
-    nom_exploitation: d.nom_exploitation,
+    nom_exploitation: "À compléter",
     statut: "draft",
-    commune: d.commune,
-    code_postal: d.code_postal,
   });
   if (producerError) {
     // Compensation : on retire le rôle producteur qu'on vient d'ajouter (le
@@ -147,16 +136,17 @@ export async function becomeProducerAction(
     );
   }
 
-  // 4. Lead (funnel) — best-effort.
+  // 4. Lead (funnel) — best-effort. Perso uniquement ; exploitation + message
+  //    enrichissent le lead à l'étape 2 (completeOnboardingAction).
   try {
     await upsertProducerInterest(admin, {
       prenom: d.prenom,
       nom: d.nom,
       email,
       telephone: d.telephone,
-      nom_exploitation: d.nom_exploitation,
-      commune: d.commune,
-      message: d.message ?? null,
+      nom_exploitation: "",
+      commune: "",
+      message: null,
     });
   } catch (e) {
     console.warn(

@@ -12,7 +12,7 @@ import {
   loginAndUpgradeAction,
   type State as LoginState,
 } from "../_actions/login-and-upgrade";
-import { PasswordInput } from "@/components/ui";
+import { Input, PasswordInput } from "@/components/ui";
 
 const initialCreate: CreateState = {};
 const initialLogin: LoginState = {};
@@ -42,10 +42,14 @@ const readOnlyClass =
 export function StepCompteNew({
   token,
   email,
+  defaults,
   onSuccess,
 }: {
   token: string;
   email: string;
+  // Identité pré-remplie depuis le lead matché (refonte funnel : le perso est
+  // collecté ici, plus à l'étape 2). Champs vides si aucun lead.
+  defaults?: { prenom: string; nom: string; telephone: string };
   onSuccess: () => void;
 }) {
   const [state, action] = useActionState(createAccountAction, initialCreate);
@@ -72,6 +76,33 @@ export function StepCompteNew({
         </label>
         <input type="email" value={email} readOnly disabled className={readOnlyClass} />
       </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Input
+          label="Prénom"
+          name="prenom"
+          required
+          autoComplete="given-name"
+          defaultValue={defaults?.prenom ?? ""}
+        />
+        <Input
+          label="Nom"
+          name="nom"
+          required
+          autoComplete="family-name"
+          defaultValue={defaults?.nom ?? ""}
+        />
+      </div>
+
+      <Input
+        label="Téléphone"
+        name="telephone"
+        type="tel"
+        required
+        autoComplete="tel"
+        placeholder="06 12 34 56 78"
+        defaultValue={defaults?.telephone ?? ""}
+      />
 
       <PasswordInput
         label="Mot de passe"

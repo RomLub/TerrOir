@@ -50,11 +50,6 @@ export async function signupProducerAction(
   _prev: ProducerSignupState,
   formData: FormData,
 ): Promise<ProducerSignupState> {
-  const especes = formData
-    .getAll("especes")
-    .map((v) => String(v).trim())
-    .filter(Boolean);
-
   const parsed = producerSignupSchema.safeParse({
     prenom: formData.get("prenom"),
     nom: formData.get("nom"),
@@ -62,11 +57,6 @@ export async function signupProducerAction(
     password: formData.get("password"),
     passwordConfirm: formData.get("passwordConfirm"),
     telephone: formData.get("telephone"),
-    nom_exploitation: formData.get("nom_exploitation"),
-    commune: formData.get("commune"),
-    code_postal: formData.get("code_postal"),
-    especes: especes.length > 0 ? especes : undefined,
-    message: formData.get("message") ?? "",
     prefillToken: formData.get("prefillToken") ?? "",
     cgu_accepted: formData.get("cgu_accepted") ?? false,
     website: formData.get("website") ?? "",
@@ -169,14 +159,14 @@ export async function signupProducerAction(
     return { error: "Création du compte impossible. Réessayez plus tard." };
   }
 
-  // Producteur en draft.
+  // Producteur en draft. nom_exploitation = placeholder "À compléter" :
+  // les infos d'exploitation (nom, commune, CP, SIRET…) sont saisies à
+  // l'étape 2 (/onboarding). Même convention que createAccountAction.
   const { error: producerError } = await admin.from("producers").insert({
     user_id: userId,
     slug: slugFromEmail(email),
-    nom_exploitation: d.nom_exploitation,
+    nom_exploitation: "À compléter",
     statut: "draft",
-    commune: d.commune,
-    code_postal: d.code_postal,
   });
   if (producerError) {
     const { error: rb } = await admin.auth.admin.deleteUser(userId);
@@ -189,6 +179,8 @@ export async function signupProducerAction(
   }
 
   // Lead : prospect → update du lead existant (étape 4) ; spontané → upsert.
+  // Étape 1 = perso uniquement ; les champs exploitation + message enrichissent
+  // le lead à l'étape 2 (completeOnboardingAction).
   if (leadId) {
     await admin
       .from("producer_interests")
@@ -198,9 +190,6 @@ export async function signupProducerAction(
         prenom: d.prenom,
         nom: d.nom,
         telephone: d.telephone,
-        nom_exploitation: d.nom_exploitation,
-        commune: d.commune,
-        message: d.message ?? null,
       })
       .eq("id", leadId);
   } else {
@@ -209,9 +198,9 @@ export async function signupProducerAction(
       nom: d.nom,
       email,
       telephone: d.telephone,
-      nom_exploitation: d.nom_exploitation,
-      commune: d.commune,
-      message: d.message ?? null,
+      nom_exploitation: "",
+      commune: "",
+      message: null,
     });
   }
 
