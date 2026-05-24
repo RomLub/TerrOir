@@ -29,20 +29,32 @@ const ESPECES = [
   "Autre",
 ];
 
+export type LoggedInProfile = {
+  email: string;
+  prenom: string;
+  nom: string;
+  telephone: string;
+};
+
+// Style des champs verrouillés (grisés, non éditables) en variante connectée.
+const LOCKED_CLASS =
+  "bg-dark/[0.04] text-dark/55 cursor-not-allowed focus:ring-0 focus:border-terroir-border";
+
 export function SignupForm({
   prefill,
-  loggedInEmail = null,
+  loggedIn = null,
 }: {
   prefill: PrefillData | null;
-  // Variante « connecté » : email du compte, verrouillé, pas de mot de passe ;
-  // la soumission rattache le rôle producteur au compte existant.
-  loggedInEmail?: string | null;
+  // Variante « connecté » : compte existant. Email + nom + prénom pré-remplis
+  // et verrouillés (grisés), pas de mot de passe ; la soumission rattache le
+  // rôle producteur au compte existant.
+  loggedIn?: LoggedInProfile | null;
 }) {
-  const loggedIn = Boolean(loggedInEmail);
+  const isLoggedIn = Boolean(loggedIn);
   const [state, formAction, isPending] = useActionState<
     ProducerSignupState,
     FormData
-  >(loggedIn ? becomeProducerAction : signupProducerAction, {});
+  >(isLoggedIn ? becomeProducerAction : signupProducerAction, {});
 
   // Accès immédiat : à la création réussie, on navigue côté client vers
   // l'espace producteur (le cookie partagé .terroir-local.fr authentifie sur
@@ -82,14 +94,18 @@ export function SignupForm({
         <Input
           label="Prénom"
           name="prenom"
-          defaultValue={prefill?.prenom ?? ""}
+          defaultValue={loggedIn?.prenom ?? prefill?.prenom ?? ""}
+          readOnly={isLoggedIn}
+          className={isLoggedIn ? LOCKED_CLASS : ""}
           autoComplete="given-name"
           required
         />
         <Input
           label="Nom"
           name="nom"
-          defaultValue={prefill?.nom ?? ""}
+          defaultValue={loggedIn?.nom ?? prefill?.nom ?? ""}
+          readOnly={isLoggedIn}
+          className={isLoggedIn ? LOCKED_CLASS : ""}
           autoComplete="family-name"
           required
         />
@@ -100,8 +116,10 @@ export function SignupForm({
           label="Email"
           type="email"
           name="email"
-          defaultValue={loggedInEmail ?? prefill?.email ?? ""}
-          readOnly={loggedIn || Boolean(prefill)}
+          defaultValue={loggedIn?.email ?? prefill?.email ?? ""}
+          readOnly={isLoggedIn || Boolean(prefill)}
+          className={isLoggedIn || prefill ? LOCKED_CLASS : ""}
+          hint={isLoggedIn ? "Lié à votre compte" : undefined}
           autoComplete="email"
           required
         />
@@ -109,13 +127,13 @@ export function SignupForm({
           label="Téléphone"
           type="tel"
           name="telephone"
-          defaultValue={prefill?.telephone ?? ""}
+          defaultValue={loggedIn?.telephone ?? prefill?.telephone ?? ""}
           autoComplete="tel"
           required
         />
       </div>
 
-      {!loggedIn ? (
+      {!isLoggedIn ? (
         <>
           <div className="grid sm:grid-cols-2 gap-4">
             <Input
