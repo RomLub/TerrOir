@@ -137,7 +137,7 @@ export function StepInfos({
 
       <div>
         <label className="mb-1 block text-sm font-medium text-gray-800">
-          Nom de l&apos;exploitation
+          Nom de votre exploitation
         </label>
         <input
           name="nom_exploitation"
@@ -146,6 +146,10 @@ export function StepInfos({
           defaultValue={initialValues.nom_exploitation}
           className={inputClass}
         />
+        <p className="mt-1 text-xs text-gray-500">
+          Le nom public de votre ferme, visible par les clients — il peut
+          différer du nom de la société.
+        </p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
