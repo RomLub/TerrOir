@@ -9,6 +9,16 @@ Pour les décisions structurantes (ADRs), voir [`decisions/`](./decisions/).
 
 ---
 
+## 2026-05-25 (Perf — barre de progression de navigation)
+
+> PR `perf/nav-progress-bar`. Ajoute une fine barre de progression en haut (style GitHub/YouTube) qui démarre dès le clic sur un lien interne, le temps que la page suivante charge ses données. Complète le chantier « navigation instantanée » : sur les pages dynamiques (qui doivent fetcher des données fraîches à chaque clic — données utilisateur, jamais mises en cache pour la vie privée), elle donne un **retour visuel immédiat** au lieu d'une impression d'attente sans réaction.
+>
+> 🟢 Lib `nextjs-toploader` (approche History API, native App Router) montée dans le layout racine. Couleur de marque terra-700, hauteur 3px, sans spinner. Aucune vulnérabilité introduite (vérifié `npm audit` : les vulnérabilités du repo préexistent et sont transitives).
+>
+> 🟢 Tests : lint / type-check / build OK, `npm test` vert (3109).
+
+---
+
 ## 2026-05-25 (Perf — navigation instantanée : cadre persistant, fin de l'écran intermédiaire)
 
 > PR `perf/instant-navigation`. Supprime l'écran de chargement plein écran affiché à chaque clic dans les espaces connectés (acheteur/compte, producteur, admin). Approche standard « comme Amazon/Gmail » — voir [ADR-0013](./decisions/0013-latence-navigation-streaming-suspense.md) (mise à jour 2026-05-25).

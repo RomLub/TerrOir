@@ -51,6 +51,7 @@
     "mailparser": "^3.9.8",
     "mapbox-gl": "^3.7.0",
     "next": "^16.2.5",
+    "nextjs-toploader": "^3.9.17",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "resend": "^6.12.3",

@@ -4,6 +4,7 @@ import { Inter, Cormorant_Garamond, Caveat } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
+import NextTopLoader from "nextjs-toploader";
 import { UserProvider } from "@/components/providers/user-provider";
 import { getInitialUserPayload } from "@/lib/auth/session";
 
@@ -93,6 +94,15 @@ export default async function RootLayout({
       data-csp-nonce={nonce}
     >
       <body className="min-h-screen bg-terroir-bg font-sans text-terroir-ink antialiased">
+        {/* Barre de progression de navigation (style GitHub/YouTube) : retour
+            visuel immediat au clic vers une page dynamique, le temps que ses
+            donnees chargent. Couleur de marque terra-700. */}
+        <NextTopLoader
+          color="#a0522d"
+          height={3}
+          showSpinner={false}
+          shadow="0 0 10px #a0522d,0 0 5px #a0522d"
+        />
         <UserProvider initial={initial}>{children}</UserProvider>
         <SpeedInsights />
         <Analytics />
