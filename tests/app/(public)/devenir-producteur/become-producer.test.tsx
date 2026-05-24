@@ -70,14 +70,12 @@ const CONSUMER = {
 
 function fd(overrides: Record<string, string | string[]> = {}): FormData {
   const f = new FormData();
+  // Refonte funnel — étape 1 = identité uniquement (l'exploitation est saisie
+  // à l'étape 2 /onboarding).
   const base: Record<string, string> = {
     prenom: "Jean",
     nom: "Dupont",
     telephone: "0600000000",
-    nom_exploitation: "Ferme du Test",
-    commune: "Le Mans",
-    code_postal: "72000",
-    message: "",
     cgu_accepted: "on",
     website: "",
   };
@@ -160,8 +158,8 @@ describe("becomeProducerAction", () => {
     expect((insPayload as { slug: string }).slug).toBe("slug-jean@ferme.fr");
   });
 
-  it("nom d'exploitation manquant → erreur de validation, aucune écriture", async () => {
-    const res = await becomeProducerAction({}, fd({ nom_exploitation: "" }));
+  it("prénom manquant → erreur de validation, aucune écriture", async () => {
+    const res = await becomeProducerAction({}, fd({ prenom: "" }));
     expect(res.error).toBeTruthy();
     expect(h.update).not.toHaveBeenCalled();
     expect(h.insert).not.toHaveBeenCalled();

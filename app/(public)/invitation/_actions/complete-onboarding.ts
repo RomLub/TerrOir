@@ -23,9 +23,6 @@ export async function completeOnboardingAction(
 
   const parsed = invitationBusinessInfoSchema.safeParse({
     token: formData.get("token"),
-    prenom: formData.get("prenom"),
-    nom: formData.get("nom"),
-    telephone: formData.get("telephone"),
     nom_exploitation: formData.get("nom_exploitation"),
     forme_juridique: formData.get("forme_juridique"),
     siret: formData.get("siret"),
@@ -35,6 +32,7 @@ export async function completeOnboardingAction(
     type_production: formData.get("type_production"),
     type_production_precision:
       formData.get("type_production_precision") ?? undefined,
+    message: formData.get("message") ?? undefined,
   });
   if (!parsed.success) {
     const firstIssue = parsed.error.issues[0];
@@ -104,23 +102,10 @@ export async function completeOnboardingAction(
     }
   }
 
-  // Étape unique post-compte (Phase 2 wizard 2 étapes) : on écrit d'abord les
-  // infos perso dans `users`, puis les infos business dans `producers`. Ordre
-  // important : si l'update users échoue, on n'a pas encore basculé le
-  // producer en 'pending', donc l'utilisateur peut retenter sans incohérence.
-  const { error: userError } = await admin
-    .from("users")
-    .update({
-      prenom: parsed.data.prenom,
-      nom: parsed.data.nom,
-      telephone: parsed.data.telephone,
-    })
-    .eq("id", session.id);
-
-  if (userError) {
-    return { error: `Mise à jour des infos personnelles échouée : ${userError.message}` };
-  }
-
+  // Refonte funnel 2 étapes : l'identité (prenom/nom/telephone) est déjà écrite
+  // dans `users` à l'étape « compte » (création/login/become/signup). Cette
+  // étape ne touche QUE l'exploitation.
+  //
   // UPDATE atomique via RPC update_producer_onboarding : écrit les champs
   // business + bascule statut='draft' → 'pending', en une seule transaction.
   const { error: producerError } = await admin.rpc("update_producer_onboarding", {
@@ -205,7 +190,14 @@ export async function completeOnboardingAction(
   if (session.email) {
     const { data: bumped, error: bumpError } = await admin
       .from("producer_interests")
-      .update({ statut: "onboarded" })
+      .update({
+        statut: "onboarded",
+        // Enrichissement : à l'étape 1 le lead n'a que le perso ; on y ajoute
+        // l'exploitation + le message saisis ici (refonte funnel).
+        nom_exploitation: parsed.data.nom_exploitation,
+        commune: parsed.data.commune,
+        message: parsed.data.message ?? null,
+      })
       .ilike("email", escapeIlikeEmail(session.email))
       .eq("statut", "contacted")
       .select("id");

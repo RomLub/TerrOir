@@ -20,6 +20,9 @@ export async function createAccountAction(
 ): Promise<State> {
   const parsed = invitationCreateAccountSchema.safeParse({
     token: formData.get("token"),
+    prenom: formData.get("prenom"),
+    nom: formData.get("nom"),
+    telephone: formData.get("telephone"),
     password: formData.get("password"),
     passwordConfirm: formData.get("passwordConfirm"),
   });
@@ -93,6 +96,9 @@ export async function createAccountAction(
     id: userId,
     email: invitation.email,
     roles: ["consumer", "producer"],
+    prenom: parsed.data.prenom,
+    nom: parsed.data.nom,
+    telephone: parsed.data.telephone,
   });
   if (profileError) {
     // T-302 : compensation orphelin. createUser() a réussi côté auth.users

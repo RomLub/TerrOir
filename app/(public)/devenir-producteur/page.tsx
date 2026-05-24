@@ -44,7 +44,7 @@ async function loadPrefill(token: string): Promise<PrefillData | null> {
   const admin = createSupabaseAdminClient();
   const { data: lead } = await admin
     .from("producer_interests")
-    .select("id, email, prenom, nom, telephone, nom_exploitation, commune, prefill_token")
+    .select("id, email, prenom, nom, telephone, prefill_token")
     .eq("id", v.leadId)
     .maybeSingle();
   if (!lead || lead.prefill_token !== token) return null;
@@ -54,8 +54,6 @@ async function loadPrefill(token: string): Promise<PrefillData | null> {
     prenom: (lead.prenom as string | null) ?? "",
     nom: (lead.nom as string | null) ?? "",
     telephone: (lead.telephone as string | null) ?? "",
-    nom_exploitation: (lead.nom_exploitation as string | null) ?? "",
-    commune: (lead.commune as string | null) ?? "",
   };
 }
 
@@ -103,8 +101,8 @@ export default async function DevenirProducteurPage({
               Devenez producteur TerrOir.
             </h1>
             <p className="mt-3 text-[15px] text-dark/70">
-              Votre compte est déjà créé. Renseignez votre exploitation pour
-              ouvrir votre espace producteur — vous y accédez aussitôt.
+              Votre compte est déjà créé. Confirmez vos informations — vous
+              renseignez votre exploitation juste après.
             </p>
           </div>
 
@@ -206,11 +204,11 @@ export default async function DevenirProducteurPage({
               Créer mon espace
             </span>
             <h2 className="mt-2 font-serif text-[36px] md:text-[44px] text-green-900 leading-tight">
-              Parlez-nous de votre exploitation.
+              Créons votre compte producteur.
             </h2>
             <p className="mt-3 text-[15px] text-dark/70">
-              Créez votre compte producteur. Vous accédez immédiatement à votre
-              espace pour le compléter à votre rythme.
+              Quelques informations et vous y êtes. Vous renseignez votre
+              exploitation juste après, à votre rythme.
             </p>
           </div>
 

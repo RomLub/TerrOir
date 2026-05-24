@@ -89,6 +89,11 @@ async function setupDraftProducerSession(
   // + signInWithPassword (cookies session). Sur succès elle return
   // { success: true } → useEffect onSuccess() bascule le wizard step→2.
   await page.goto(`/invitation?token=${inv.token}`);
+  // Refonte funnel : l'identité (perso) est saisie à l'étape « compte »
+  // (StepCompteNew), plus à l'étape 2.
+  await page.getByLabel('Prénom', { exact: true }).fill('Test');
+  await page.getByLabel('Nom', { exact: true }).fill('Producer');
+  await page.getByLabel('Téléphone', { exact: true }).fill('0612345678');
   await page.getByLabel('Mot de passe', { exact: true }).fill(STRONG_PASSWORD);
   await page.getByLabel('Confirmer le mot de passe', { exact: true }).fill(STRONG_PASSWORD);
   await page.getByRole('button', { name: 'Créer mon compte', exact: true }).click();
@@ -151,9 +156,7 @@ test.describe('Producer onboarding — multistep StepInfos', () => {
       // Remplir tous les champs business requis. Pattern : on utilise des
       // locators par name= car les <label> de StepInfos sont siblings sans
       // htmlFor association — getByLabel() retourne 0 element.
-      await page.locator('input[name="prenom"]').fill('Test');
-      await page.locator('input[name="nom"]').fill('Producer');
-      await page.locator('input[name="telephone"]').fill('0612345678');
+      // Étape 2 = exploitation uniquement (le perso a été saisi à l'étape 1).
       await page.locator('input[name="nom_exploitation"]').fill('Ferme Playwright');
       await page.locator('select[name="forme_juridique"]').selectOption('ei');
       await page.locator('input[name="siret"]').fill('12345678901234');

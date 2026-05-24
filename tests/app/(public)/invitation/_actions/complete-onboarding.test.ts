@@ -291,7 +291,17 @@ describe("completeOnboardingAction — auto-bump lead 'contacted' → 'onboarded
     expect(captured.fromCalls).toContain("producer_interests");
     const piUpdates = captured.updates.filter((u) => u.table === "producer_interests");
     expect(piUpdates).toEqual([
-      { table: "producer_interests", payload: { statut: "onboarded" } },
+      {
+        table: "producer_interests",
+        // Refonte funnel : le bump enrichit aussi le lead avec l'exploitation
+        // + le message saisis à l'étape 2.
+        payload: {
+          statut: "onboarded",
+          nom_exploitation: "Ferme du Test",
+          commune: "Paris",
+          message: null,
+        },
+      },
     ]);
     expect(captured.ilikeCalls).toContainEqual({
       table: "producer_interests",
