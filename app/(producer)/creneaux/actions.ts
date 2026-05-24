@@ -633,6 +633,94 @@ export async function unexcludeSlotAction(
   return { success: true };
 }
 
+// Exclusion groupée par ids — calendrier « Fermer ce jour » sur une ouverture
+// (libre = 1 slot, rdv = N slots). Refuse si une commande active est liée à
+// l'un des créneaux (cohérent avec excludeSlotAction). Ownership vérifié.
+export async function excludeSlotsByIdsAction(
+  slotIds: string[],
+): Promise<{ success: true } | { error: string }> {
+  const session = await getSessionUser();
+  if (!session) return { error: "Non authentifié" };
+
+  const producerRes = await resolveProducerId(session.id);
+  if ("error" in producerRes) return { error: producerRes.error };
+
+  if (!slotIds || slotIds.length === 0) return { success: true };
+
+  const admin = createSupabaseAdminClient();
+  const { data: slots } = await admin
+    .from("slots")
+    .select("id, producer_id")
+    .in("id", slotIds);
+  const owned = (slots ?? []).filter((s) => s.producer_id === producerRes.id);
+  if (owned.length !== slotIds.length) {
+    return { error: "Créneau introuvable." };
+  }
+
+  const { count: activeOrderCount } = await admin
+    .from("orders")
+    .select("id", { count: "exact", head: true })
+    .in("slot_id", slotIds)
+    .in("statut", ACTIVE_ORDER_STATUTS as unknown as string[]);
+  if ((activeOrderCount ?? 0) > 0) {
+    return {
+      error:
+        "Une commande active est liée à cette ouverture. Annulez-la avant de fermer ce jour.",
+    };
+  }
+
+  const { error: updateError } = await admin
+    .from("slots")
+    .update({ excluded_at: new Date().toISOString() })
+    .in("id", slotIds);
+  if (updateError) {
+    console.error(
+      `EXCLUDE_SLOTS_BY_IDS_ERROR producer_id=${producerRes.id} error=${updateError.message}`,
+    );
+    return { error: "Impossible de fermer ce jour." };
+  }
+
+  revalidatePath("/creneaux");
+  return { success: true };
+}
+
+// Réouverture groupée par ids — calendrier « Rouvrir » sur une ouverture fermée.
+export async function unexcludeSlotsByIdsAction(
+  slotIds: string[],
+): Promise<{ success: true } | { error: string }> {
+  const session = await getSessionUser();
+  if (!session) return { error: "Non authentifié" };
+
+  const producerRes = await resolveProducerId(session.id);
+  if ("error" in producerRes) return { error: producerRes.error };
+
+  if (!slotIds || slotIds.length === 0) return { success: true };
+
+  const admin = createSupabaseAdminClient();
+  const { data: slots } = await admin
+    .from("slots")
+    .select("id, producer_id")
+    .in("id", slotIds);
+  const owned = (slots ?? []).filter((s) => s.producer_id === producerRes.id);
+  if (owned.length !== slotIds.length) {
+    return { error: "Créneau introuvable." };
+  }
+
+  const { error: updateError } = await admin
+    .from("slots")
+    .update({ excluded_at: null })
+    .in("id", slotIds);
+  if (updateError) {
+    console.error(
+      `UNEXCLUDE_SLOTS_BY_IDS_ERROR producer_id=${producerRes.id} error=${updateError.message}`,
+    );
+    return { error: "Impossible de rouvrir ce jour." };
+  }
+
+  revalidatePath("/creneaux");
+  return { success: true };
+}
+
 const bulkExcludeRangeSchema = z
   .object({
     start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Format YYYY-MM-DD"),

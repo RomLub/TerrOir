@@ -1,29 +1,63 @@
 import { redirect } from "next/navigation";
+import { TZDate } from "@date-fns/tz";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { ACTIVE_ORDER_STATUTS } from "@/lib/orders/stateMachine";
+import {
+  parseWeekOffset,
+  formatWeekRangeLabel,
+} from "@/lib/dates/week-navigation";
 import type { SlotRuleRow } from "@/lib/slots/validators";
+import {
+  groupWeekSlots,
+  type CalendarSlot,
+} from "@/lib/slots/group-week-slots";
 import { PageHeader } from "@/components/ui";
-import SlotRulesList from "./_components/SlotRulesList";
-import AdHocSlotsList, {
-  type AdHocSlot,
-} from "./_components/AdHocSlotsList";
-import ExceptionsList, {
-  type ExcludedSlot,
-} from "./_components/ExceptionsList";
-import type { FutureActiveSlot } from "./_components/ExcludeSlotModal";
+import CreneauxCalendarClient from "./_components/CreneauxCalendarClient";
 
-// Rendu dynamique : les datasets évoluent à chaque visite (nouveau slot
-// matérialisé, exclusion ajoutée, etc.). Pas de cache SSR.
+// Rendu dynamique : les créneaux évoluent à chaque visite (nouveau slot
+// matérialisé, exclusion, etc.). Pas de cache SSR.
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-// Limite le volume de slots actifs passés au ExcludeSlotModal. Au-delà, le
-// producer utilisera plutôt le Bulk range. 200 couvre ~2 mois à rythme
-// mercredi+samedi, 6 créneaux/jour.
-const FUTURE_ACTIVE_SLOTS_LIMIT = 200;
+const TZ = "Europe/Paris";
 
-export default async function CreneauxPage() {
+// 7 clés de jour (yyyy-MM-dd, Europe/Paris) du lundi au dimanche pour la
+// semaine ciblée par l'offset. Calculé en Paris pour éviter tout décalage
+// UTC↔Paris au bornage du calendrier.
+function parisWeekDayKeys(now: Date, offset: number): string[] {
+  const p = new TZDate(now.getTime(), TZ);
+  const dow = (p.getDay() + 6) % 7; // 0 = lundi
+  const keys: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new TZDate(
+      p.getFullYear(),
+      p.getMonth(),
+      p.getDate() - dow + offset * 7 + i,
+      0,
+      0,
+      0,
+      TZ,
+    );
+    keys.push(
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+        d.getDate(),
+      ).padStart(2, "0")}`,
+    );
+  }
+  return keys;
+}
+
+function keyToParisIso(key: string, addDays = 0): string {
+  const [y, m, d] = key.split("-").map(Number);
+  return new TZDate(y!, m! - 1, d! + addDays, 0, 0, 0, TZ).toISOString();
+}
+
+export default async function CreneauxPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ week?: string }>;
+}) {
   const session = await getSessionUser();
   if (!session) redirect("/connexion");
 
@@ -33,76 +67,65 @@ export default async function CreneauxPage() {
     .select("id")
     .eq("user_id", session.id)
     .maybeSingle();
-
   if (!producer) redirect("/invitation");
 
-  const nowIso = new Date().toISOString();
+  const sp = await searchParams;
+  const weekOffset = parseWeekOffset(sp.week);
+  const now = new Date();
+  const dayKeys = parisWeekDayKeys(now, weekOffset);
+  const todayKey = parisWeekDayKeys(now, 0)[
+    (new TZDate(now.getTime(), TZ).getDay() + 6) % 7
+  ]!;
 
-  const [
-    { data: rulesRaw },
-    { data: adHocRaw },
-    { data: exceptionsRaw },
-    { data: futureActiveRaw },
-  ] = await Promise.all([
+  const rangeStartIso = keyToParisIso(dayKeys[0]!);
+  const rangeEndIso = keyToParisIso(dayKeys[6]!, 1); // lendemain du dimanche
+
+  const [{ data: slotsRaw }, { data: rulesRaw }] = await Promise.all([
+    admin
+      .from("slots")
+      .select("id, starts_at, ends_at, capacity_per_slot, rule_id, excluded_at")
+      .eq("producer_id", producer.id)
+      .eq("active", true)
+      .gte("starts_at", rangeStartIso)
+      .lt("starts_at", rangeEndIso)
+      .order("starts_at", { ascending: true }),
     admin
       .from("slot_rules")
       .select(
-        "id, producer_id, days_of_week, periodicity_weeks, start_time, end_time, slot_duration_minutes, capacity_per_slot, active, created_at, updated_at",
+        "id, producer_id, days_of_week, periodicity_weeks, start_time, end_time, slot_duration_minutes, capacity_per_slot, mode, active, created_at, updated_at",
       )
-      .eq("producer_id", producer.id)
-      .order("active", { ascending: false })
-      .order("created_at", { ascending: false }),
-    admin
-      .from("slots")
-      .select("id, starts_at, ends_at, capacity_per_slot")
-      .eq("producer_id", producer.id)
-      .is("rule_id", null)
-      .is("excluded_at", null)
-      .gte("starts_at", nowIso)
-      .order("starts_at", { ascending: true }),
-    admin
-      .from("slots")
-      .select("id, starts_at, ends_at, rule_id")
-      .eq("producer_id", producer.id)
-      .not("excluded_at", "is", null)
-      .gte("starts_at", nowIso)
-      .order("starts_at", { ascending: true }),
-    admin
-      .from("slots")
-      .select("id, starts_at, ends_at, rule_id")
-      .eq("producer_id", producer.id)
-      .eq("active", true)
-      .is("excluded_at", null)
-      .gte("starts_at", nowIso)
-      .order("starts_at", { ascending: true })
-      .limit(FUTURE_ACTIVE_SLOTS_LIMIT),
+      .eq("producer_id", producer.id),
   ]);
 
+  const slots = (slotsRaw ?? []) as unknown as CalendarSlot[];
   const rules = (rulesRaw ?? []) as unknown as SlotRuleRow[];
-  const adHocSlots = (adHocRaw ?? []) as unknown as AdHocSlot[];
-  const exceptions = (exceptionsRaw ?? []) as unknown as ExcludedSlot[];
-  const futureActiveSlots =
-    (futureActiveRaw ?? []) as unknown as FutureActiveSlot[];
 
-  // Slots qui ont une commande active en cours — proactivement désactivés
-  // dans le picker ExcludeSlotModal. L'action serveur re-checke de toute
-  // façon, c'est du polish UX pour éviter un clic → erreur.
-  const slotIds = futureActiveSlots.map((s) => s.id);
-  let blockedSlotIds: string[] = [];
+  // Commandes actives sur ces créneaux → bloque « Fermer ce jour ».
+  const slotIds = slots.map((s) => s.id);
+  let blocked = new Set<string>();
   if (slotIds.length > 0) {
     const { data: blockedRaw } = await admin
       .from("orders")
       .select("slot_id")
       .in("slot_id", slotIds)
       .in("statut", [...ACTIVE_ORDER_STATUTS]);
-    blockedSlotIds = Array.from(
-      new Set(
-        (blockedRaw ?? [])
-          .map((o) => o.slot_id as string | null)
-          .filter((id): id is string => id !== null),
-      ),
+    blocked = new Set(
+      (blockedRaw ?? [])
+        .map((o) => o.slot_id as string | null)
+        .filter((id): id is string => id !== null),
     );
   }
+
+  const days = groupWeekSlots({
+    dayKeys,
+    todayKey,
+    slots,
+    rules,
+    blockedSlotIds: blocked,
+  });
+
+  const [ly, lm, ld] = dayKeys[0]!.split("-").map(Number);
+  const periodLabel = formatWeekRangeLabel(new Date(ly!, lm! - 1, ld!));
 
   return (
     <div className="mx-auto max-w-5xl px-8 py-10">
@@ -110,51 +133,15 @@ export default async function CreneauxPage() {
         tone="producer"
         eyebrow="Créneaux"
         title="Vos créneaux de retrait"
-        subtitle="Organisez vos ouvertures en 3 niveaux : règles récurrentes, ouvertures ponctuelles, absences."
+        subtitle="Votre agenda d'ouvertures. Ajoutez vos créneaux réguliers ou ponctuels, fermez un jour ou posez des vacances."
       />
 
-      <section className="mb-12">
-        <div className="mb-4">
-          <h2 className="font-serif text-[24px] text-green-900">
-            Règles récurrentes
-          </h2>
-          <p className="mt-1 text-[13px] text-dark/55">
-            Ouvertures régulières (ex : mercredi et samedi 9h–12h). Les
-            créneaux sont matérialisés automatiquement sur 3 mois.
-          </p>
-        </div>
-        <SlotRulesList rules={rules} />
-      </section>
-
-      <section className="mb-12">
-        <div className="mb-4">
-          <h2 className="font-serif text-[24px] text-green-900">
-            Créneaux ponctuels
-          </h2>
-          <p className="mt-1 text-[13px] text-dark/55">
-            Ouvertures exceptionnelles qui ne rentrent pas dans vos règles
-            récurrentes.
-          </p>
-        </div>
-        <AdHocSlotsList slots={adHocSlots} />
-      </section>
-
-      <section>
-        <div className="mb-4">
-          <h2 className="font-serif text-[24px] text-green-900">
-            Exceptions et absences
-          </h2>
-          <p className="mt-1 text-[13px] text-dark/55">
-            Annulez un créneau spécifique ou une plage pour vos vacances.
-            Les clients ne pourront plus réserver les créneaux exclus.
-          </p>
-        </div>
-        <ExceptionsList
-          exceptions={exceptions}
-          futureActiveSlots={futureActiveSlots}
-          blockedSlotIds={blockedSlotIds}
-        />
-      </section>
+      <CreneauxCalendarClient
+        weekOffset={weekOffset}
+        periodLabel={periodLabel}
+        days={days}
+        rules={rules}
+      />
     </div>
   );
 }
