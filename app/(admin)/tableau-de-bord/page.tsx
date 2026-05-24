@@ -24,25 +24,34 @@ import { RecentActivityTable } from "./_components/RecentActivityTable";
 // Pas de barrel `@/components/ui` (Footer transitif throw sans NEXT_PUBLIC_APP_URL
 // en tests jsdom). Fail-safe : RPC null → état d'erreur lisible, pas de 500.
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
-// Coquille synchrone : la page rend le trou <Suspense> immédiatement
-// (le header + la sidebar admin du layout restent fixes), le contenu
+// Coquille SYNCHRONE (streaming Suspense) : aucun accès dynamique en tête. La page
+// rend le trou <Suspense> immédiatement (le header + la sidebar admin du layout
+// restent fixes), le searchParams (`period`) est lu DANS le Gate, le contenu
 // (RPC get_admin_dashboard) est streamé.
-export default async function AdminDashboardPage({
+export default function AdminDashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ period?: string }>;
+}) {
+  return (
+    <Suspense fallback={<DashboardSkeleton />}>
+      <AdminDashboardGate searchParams={searchParams} />
+    </Suspense>
+  );
+}
+
+// Gate DANS le <Suspense> : lit le searchParams (donnée de requête) puis délègue
+// au contenu data. Séparé de AdminDashboardContent pour garder ce dernier
+// testable unitairement avec un `period` déjà résolu.
+async function AdminDashboardGate({
   searchParams,
 }: {
   searchParams: Promise<{ period?: string }>;
 }) {
   const sp = await searchParams;
   const period = parseDashboardPeriod(sp.period);
-
-  return (
-    <Suspense fallback={<DashboardSkeleton />}>
-      <AdminDashboardContent period={period} />
-    </Suspense>
-  );
+  return <AdminDashboardContent period={period} />;
 }
 
 // Exporté pour les tests unitaires : c'est ici que vit la logique data (RPC

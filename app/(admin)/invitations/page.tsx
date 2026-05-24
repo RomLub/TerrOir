@@ -28,8 +28,6 @@ import Link from "next/link";
 //
 // La table producer_invitations n'a pas de colonne `status` ; les états
 // sont computed côté query par `fetchAdminInvitationsList` (cf. helper).
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
 type SearchParams = {
   before?: string;
@@ -65,10 +63,37 @@ const STATUS_BADGE_CLASS: Record<InvitationStatus, string> = {
   revoked: "bg-red-100 text-red-900 border-red-300",
 };
 
-export default async function AdminInvitationsPage(props: {
+// Coquille SYNCHRONE (streaming Suspense) : aucun accès dynamique en tête. Seul
+// l'en-tête (statique) reste dans le shell ; les filtres (InvitationsListClient)
+// dépendent des searchParams et vivent donc dans le Gate, à l'intérieur du
+// <Suspense>, avec la liste (fetch service_role) streamée.
+export default function AdminInvitationsPage(props: {
   searchParams: Promise<SearchParams>;
 }) {
-  const sp = await props.searchParams;
+  return (
+    <div>
+      <AdminPageHeader
+        eyebrow="Invitations"
+        title="Invitations producteurs"
+        subtitle="Liste des invitations sortantes, statuts computed et action de révocation"
+      />
+
+      <Suspense fallback={<SectionSkeleton rows={8} />}>
+        <InvitationsGate searchParams={props.searchParams} />
+      </Suspense>
+    </div>
+  );
+}
+
+// Gate DANS le <Suspense> : await + parse du searchParams (status/from/to +
+// cursor), rend les filtres (qui dépendent de ces valeurs) puis délègue à la
+// liste data.
+async function InvitationsGate({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
+  const sp = await searchParams;
 
   const status = parseStatus(sp.status);
   const from = sp.from && sp.from.length > 0 ? sp.from : null;
@@ -80,32 +105,21 @@ export default async function AdminInvitationsPage(props: {
     },
   });
 
-  // Coquille synchrone : l'en-tête + les filtres (qui ne dépendent que des
-  // searchParams) s'affichent immédiatement, la liste (fetch service_role) est
-  // streamée via <Suspense>.
   return (
-    <div>
-      <AdminPageHeader
-        eyebrow="Invitations"
-        title="Invitations producteurs"
-        subtitle="Liste des invitations sortantes, statuts computed et action de révocation"
-      />
-
+    <>
       <InvitationsListClient
         currentStatus={status}
         currentFrom={from ?? ""}
         currentTo={to ?? ""}
       />
 
-      <Suspense fallback={<SectionSkeleton rows={8} />}>
-        <InvitationsContent
-          cursor={cursor}
-          status={status}
-          from={from}
-          to={to}
-        />
-      </Suspense>
-    </div>
+      <InvitationsContent
+        cursor={cursor}
+        status={status}
+        from={from}
+        to={to}
+      />
+    </>
   );
 }
 

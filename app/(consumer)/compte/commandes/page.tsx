@@ -15,8 +15,6 @@ import { CommandesClient, type OrderRow } from './CommandesClient';
 // (consumer)/layout.tsx fait déjà le check session ; getSessionUser() est
 // dédupliqué via React cache, donc le double appel ici n'est pas un round-
 // trip supplémentaire.
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
 
 const VOID_ORDER_REASONS: ReadonlySet<string> = new Set([
   'payment_failed',
@@ -42,22 +40,33 @@ function searchParamsToUrlSearchParams(sp: SearchParams): URLSearchParams {
   return out;
 }
 
-// Coquille synchrone (post-garde) : le shell /compte reste fixe pendant le
-// fetch orders+count, streamé via <Suspense>.
-export default async function CommandesPage(
+// Coquille SYNCHRONE (streaming Suspense) : la page retourne immédiatement le
+// <Suspense> + skeleton, SANS aucun await en tête (ni session, ni
+// searchParams — donnée de requête). Les deux sont lus DANS le flux
+// (CommandesGate) pour que le shell /compte reste rendu tout de suite (Suspense) ;
+// le fetch orders+count reste streamé.
+export default function CommandesPage(
   props: {
     searchParams: Promise<SearchParams>;
   }
 ) {
-  const searchParams = await props.searchParams;
+  return (
+    <Suspense fallback={<ListSkeleton rows={5} />}>
+      <CommandesGate searchParamsPromise={props.searchParams} />
+    </Suspense>
+  );
+}
+
+async function CommandesGate({
+  searchParamsPromise,
+}: {
+  searchParamsPromise: Promise<SearchParams>;
+}) {
+  const searchParams = await searchParamsPromise;
   const session = await getSessionUser();
   if (!session) redirect('/connexion');
 
-  return (
-    <Suspense fallback={<ListSkeleton rows={5} />}>
-      <CommandesContent userId={session.id} searchParams={searchParams} />
-    </Suspense>
-  );
+  return <CommandesContent userId={session.id} searchParams={searchParams} />;
 }
 
 async function CommandesContent({

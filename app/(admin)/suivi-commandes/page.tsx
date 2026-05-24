@@ -10,10 +10,11 @@ import { SuiviCommandesClient } from './SuiviCommandesClient';
 // filter pills + search + export CSV (interactions purement locales).
 // Lot B perf : le fetch (200 commandes) est streamé via <Suspense> pour que
 // le shell admin reste fixe.
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
 
-export default async function AdminCommandesPage() {
+// Coquille SYNCHRONE (streaming Suspense) : aucun accès dynamique en tête, la page
+// retourne immédiatement le <Suspense>. Le fetch (200 commandes) vit dans le
+// contenu streamé pour que le shell admin soit rendu tout de suite (Suspense).
+export default function AdminCommandesPage() {
   return (
     <Suspense fallback={<ListSkeleton rows={8} />}>
       <SuiviCommandesContent />

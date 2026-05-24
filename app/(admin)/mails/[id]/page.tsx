@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminPageHeader } from "@/components/ui/admin-page-header";
@@ -6,12 +7,24 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { formatDateFr } from "@/lib/format/date";
 import { fetchInboundEmailDetail } from "@/lib/admin/inbound/fetch";
 import { INBOUND_TAG_LABEL } from "@/lib/admin/inbound/types";
+import { ListSkeleton } from "../../_components/ContentSkeletons";
 import { ReplyForm } from "./_components/ReplyForm";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
-export default async function AdminMailDetailPage(props: {
+// Coquille SYNCHRONE (streaming Suspense) : aucun accès dynamique en tête (params +
+// fetch + side-effect « marquer lu » sont DANS le Gate). Le titre dépend de la
+// donnée fetchée, donc tout le contenu est streamé via <Suspense>.
+export default function AdminMailDetailPage(props: {
+  params: Promise<{ id: string }>;
+}) {
+  return (
+    <Suspense fallback={<ListSkeleton rows={4} />}>
+      <MailDetailGate params={props.params} />
+    </Suspense>
+  );
+}
+
+async function MailDetailGate(props: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await props.params;

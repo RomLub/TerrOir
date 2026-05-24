@@ -1,19 +1,32 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   getProducerInterest,
   fetchLeadFollowups,
 } from "@/lib/admin/producer-interests/fetch";
+import { ListSkeleton } from "../../_components/ContentSkeletons";
 import { LeadDetailClient } from "../_components/LeadDetailClient";
 
 // Détail d'un lead producteur (chantier 3 Phase 3). SSR service_role :
 // lead + historique des interactions + liste des référents (admin_users → join
 // séparé sur public.users car PostgREST ne traverse pas auth.*).
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
-export default async function LeadDetailPage({
+// Coquille SYNCHRONE (streaming Suspense) : aucun accès dynamique en tête (params +
+// fetch sont DANS le Gate). Tout le contenu (qui dépend de la donnée fetchée)
+// est streamé via <Suspense>.
+export default function LeadDetailPage(props: {
+  params: Promise<{ id: string }>;
+}) {
+  return (
+    <Suspense fallback={<ListSkeleton rows={6} />}>
+      <LeadDetailGate params={props.params} />
+    </Suspense>
+  );
+}
+
+async function LeadDetailGate({
   params,
 }: {
   params: Promise<{ id: string }>;

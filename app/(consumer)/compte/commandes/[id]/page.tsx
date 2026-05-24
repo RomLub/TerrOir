@@ -1,4 +1,5 @@
-﻿import { notFound, redirect } from 'next/navigation';
+﻿import { Suspense } from 'react';
+import { notFound, redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getSessionUser } from '@/lib/auth/session';
 import {
@@ -6,6 +7,7 @@ import {
   formatLegacyTimeHHMM,
 } from '@/lib/slots/format-slot-time';
 import type { OrderStatus } from '@/components/ui';
+import { SectionSkeleton } from '../../_components/ContentSkeletons';
 // T-217-bis (Cluster A) : la helper roundCoord reste importee comme filet
 // applicatif, mais la lecture des coords passe desormais par la vue
 // producers_public (verrou DB-level qui floute deja les valeurs a 2 decimales).
@@ -33,8 +35,20 @@ function formatQty(qty: number, unite: string | null): string {
   return `${q} ${unite ?? ''}`.trim();
 }
 
-export default async function OrderDetailPage(props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
+// Coquille SYNCHRONE (streaming Suspense) : la page retourne immédiatement le
+// <Suspense> + skeleton, SANS aucun await en tête (ni session, ni params —
+// donnée de requête). Tout l'accès dynamique vit dans OrderDetailGate, sous
+// le <Suspense>.
+export default function OrderDetailPage(props: { params: Promise<{ id: string }> }) {
+  return (
+    <Suspense fallback={<SectionSkeleton rows={4} />}>
+      <OrderDetailGate paramsPromise={props.params} />
+    </Suspense>
+  );
+}
+
+async function OrderDetailGate(props: { paramsPromise: Promise<{ id: string }> }) {
+  const params = await props.paramsPromise;
   const session = await getSessionUser();
   if (!session) redirect('/connexion');
 

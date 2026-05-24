@@ -14,29 +14,23 @@ import { AdminsClient } from "./_components/AdminsClient";
 // Auth gardée par app/(admin)/layout.tsx (redirect /connexion si !isAdmin).
 // Lot B perf : la liste des comptes (fetch service_role) est streamée via
 // <Suspense> pour que le shell admin reste fixe.
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
-export default async function AdminsPage() {
-  const session = await getSessionUser();
-
+// Coquille SYNCHRONE (streaming Suspense) : aucun accès dynamique en tête. La
+// session (getSessionUser) est lue dans le Gate, à l'intérieur du <Suspense>,
+// pour que le shell admin soit rendu tout de suite (Suspense).
+export default function AdminsPage() {
   return (
     <Suspense fallback={<ListSkeleton rows={6} />}>
-      <AdminsContent
-        currentAdminId={session?.id ?? ""}
-        isSuperAdmin={session?.isSuperAdmin ?? false}
-      />
+      <AdminsContent />
     </Suspense>
   );
 }
 
-async function AdminsContent({
-  currentAdminId,
-  isSuperAdmin,
-}: {
-  currentAdminId: string;
-  isSuperAdmin: boolean;
-}) {
+async function AdminsContent() {
+  const session = await getSessionUser();
+  const currentAdminId = session?.id ?? "";
+  const isSuperAdmin = session?.isSuperAdmin ?? false;
+
   const admin = createSupabaseAdminClient();
   const { rows, error } = await fetchAdminAccounts(admin);
 

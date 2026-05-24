@@ -23,10 +23,9 @@ import { SectionSkeleton } from "../_components/ContentSkeletons";
 // Default filter = "never_accepted" : focus pré-launch sur les 11 users
 // existants pré-2026-05-06 sans cgu_accepted_at peuplé. Cf. parse-search-params.
 
-export const dynamic = "force-dynamic";
 
 type Props = {
-  searchParams: Record<string, string | string[] | undefined>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
 function pct(part: number, total: number): string {
@@ -34,13 +33,11 @@ function pct(part: number, total: number): string {
   return `${Math.round((part / total) * 100)} %`;
 }
 
-// Coquille synchrone : l'en-tête s'affiche immédiatement (le shell admin reste
-// fixe), les stats CGU + la liste (lecture service_role) sont streamées via
-// <Suspense>.
-export default async function LegalCompliancePage(props: Props) {
-  const searchParams = await props.searchParams;
-  const filters = parseSearchParams(searchParams);
-
+// Coquille SYNCHRONE (streaming Suspense) : aucun accès dynamique en tête.
+// L'en-tête (statique) s'affiche immédiatement (le shell admin reste fixe), le
+// searchParams (donnée de requête) est lu DANS le Gate. Les stats CGU + la liste
+// (lecture service_role) sont streamées via <Suspense>.
+export default function LegalCompliancePage(props: Props) {
   return (
     <div>
       <AdminPageHeader
@@ -50,10 +47,22 @@ export default async function LegalCompliancePage(props: Props) {
       />
 
       <Suspense fallback={<SectionSkeleton rows={8} />}>
-        <ComplianceContent filters={filters} />
+        <ComplianceGate searchParams={props.searchParams} />
       </Suspense>
     </div>
   );
+}
+
+// Gate DANS le <Suspense> : await + parse du searchParams, puis délègue au
+// contenu data.
+async function ComplianceGate({
+  searchParams,
+}: {
+  searchParams: Props["searchParams"];
+}) {
+  const sp = await searchParams;
+  const filters = parseSearchParams(sp);
+  return <ComplianceContent filters={filters} />;
 }
 
 async function ComplianceContent({

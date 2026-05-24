@@ -1,10 +1,10 @@
+import { Suspense } from "react";
 import { notFound, redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { SectionSkeleton } from "../../../_components/ContentSkeletons";
 import { AvisForm } from "./AvisForm";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
 type ProducerEmbed =
   | { nom_exploitation: string | null }
@@ -23,13 +23,27 @@ function pickProducer(p: ProducerEmbed) {
   return Array.isArray(p) ? p[0] : p;
 }
 
-export default async function NouvelAvisPage(props: {
+// Coquille SYNCHRONE (streaming Suspense) : la page retourne immédiatement le
+// <Suspense> + skeleton, SANS aucun await en tête (ni session, ni params —
+// donnée de requête). Tout l'accès dynamique vit dans NouvelAvisGate, sous
+// le <Suspense>.
+export default function NouvelAvisPage(props: {
   params: Promise<{ orderId: string }>;
+}) {
+  return (
+    <Suspense fallback={<SectionSkeleton rows={3} />}>
+      <NouvelAvisGate paramsPromise={props.params} />
+    </Suspense>
+  );
+}
+
+async function NouvelAvisGate(props: {
+  paramsPromise: Promise<{ orderId: string }>;
 }) {
   const session = await getSessionUser();
   if (!session) redirect("/connexion");
 
-  const { orderId } = await props.params;
+  const { orderId } = await props.paramsPromise;
 
   const admin = createSupabaseAdminClient();
 

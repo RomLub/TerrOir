@@ -45,30 +45,38 @@ const PAGE_SIZE = 50;
 // Pagination cursor-based sur (created_at DESC, id DESC). On fetch
 // PAGE_SIZE+1 et on coupe : si la +1 existe, on génère un cursor
 // "Plus ancien". Sinon on est en fin de liste.
-export const dynamic = "force-dynamic";
 
 type Props = {
-  searchParams: Record<string, string | string[] | undefined>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
-// Coquille synchrone : l'en-tête s'affiche immédiatement (le shell admin
-// reste fixe), le journal (query audit_logs + stats + lookup email éventuel)
-// est streamé via <Suspense>. Le sous-titre et les stats dépendent du fetch,
-// ils vivent donc dans le contenu streamé.
-export default async function AuditLogsPage(props: Props) {
-  const searchParams = await props.searchParams;
-  const filters = parseSearchParams(searchParams);
-  const cursor = decodeCursor(filters.cursor);
-
+// Coquille SYNCHRONE (streaming Suspense) : aucun accès dynamique en tête.
+// L'en-tête (statique) s'affiche immédiatement (le shell admin reste fixe), le
+// searchParams (donnée de requête) est lu DANS le Gate. Le journal (query
+// audit_logs + stats + lookup email éventuel) est streamé via <Suspense>.
+export default function AuditLogsPage(props: Props) {
   return (
     <div>
       <AdminPageHeader eyebrow="Sécurité" title="Journal d'audit" />
 
       <Suspense fallback={<SectionSkeleton rows={8} />}>
-        <AuditLogsContent filters={filters} cursor={cursor} />
+        <AuditLogsGate searchParams={props.searchParams} />
       </Suspense>
     </div>
   );
+}
+
+// Gate DANS le <Suspense> : await + parse du searchParams (filtres + cursor),
+// puis délègue au contenu data.
+async function AuditLogsGate({
+  searchParams,
+}: {
+  searchParams: Props["searchParams"];
+}) {
+  const sp = await searchParams;
+  const filters = parseSearchParams(sp);
+  const cursor = decodeCursor(filters.cursor);
+  return <AuditLogsContent filters={filters} cursor={cursor} />;
 }
 
 async function AuditLogsContent({

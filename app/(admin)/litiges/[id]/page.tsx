@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminPageHeader } from "@/components/ui/admin-page-header";
@@ -12,10 +13,9 @@ import {
   DISPUTE_STATUS_LABEL,
   type DisputeStatus,
 } from "@/lib/admin/disputes/types";
+import { ListSkeleton } from "../../_components/ContentSkeletons";
 import { DisputeEvidenceForm } from "./_components/DisputeEvidenceForm";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
 const STATUS_VARIANT: Record<DisputeStatus, "green" | "terra" | "danger" | "gray"> = {
   needs_response: "terra",
@@ -27,7 +27,21 @@ const STATUS_VARIANT: Record<DisputeStatus, "green" | "terra" | "danger" | "gray
   warning_closed: "gray",
 };
 
-export default async function AdminLitigeDetailPage(props: {
+// Coquille SYNCHRONE (streaming Suspense) : aucun accès dynamique en tête (params +
+// fetch sont DANS le Gate). Le titre/sous-titre dépendent de la donnée fetchée,
+// donc rien n'est statique ici hormis le <Suspense> ; tout le contenu est
+// streamé.
+export default function AdminLitigeDetailPage(props: {
+  params: Promise<{ id: string }>;
+}) {
+  return (
+    <Suspense fallback={<ListSkeleton rows={4} />}>
+      <LitigeDetailGate params={props.params} />
+    </Suspense>
+  );
+}
+
+async function LitigeDetailGate(props: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await props.params;

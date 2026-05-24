@@ -4,10 +4,10 @@ import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { StarRating } from "@/components/ui/star-rating";
-import { SectionSkeleton } from "../_components/ContentSkeletons";
+import { ListSkeleton, SectionSkeleton } from "../_components/ContentSkeletons";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+type SearchParams = Record<string, string | string[] | undefined>;
+
 
 type ProducerEmbed =
   | { nom_exploitation: string | null; slug: string | null }
@@ -61,16 +61,30 @@ function statutLabel(statut: string): { label: string; className: string } {
   };
 }
 
-// Coquille synchrone : titre + intro + bandeau succès s'affichent
-// immédiatement (post-garde), les deux sections (commandes à noter + avis
-// donnés) sont streamées via <Suspense>.
-export default async function MesAvisPage(props: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
+// Coquille SYNCHRONE (streaming Suspense) : la page retourne immédiatement le
+// <Suspense> + skeleton, SANS aucun await en tête. Le bandeau succès dépend de
+// `searchParams` (donnée de requête) : il NE PEUT PAS être lu dans le chrome
+// statique → tout le <main> (titre + intro + bandeau + sections) est rendu
+// DANS le flux (MesAvisGate, sous <Suspense>).
+export default function MesAvisPage(props: {
+  searchParams: Promise<SearchParams>;
+}) {
+  return (
+    <Suspense fallback={<ListSkeleton rows={4} />}>
+      <MesAvisGate searchParamsPromise={props.searchParams} />
+    </Suspense>
+  );
+}
+
+async function MesAvisGate({
+  searchParamsPromise,
+}: {
+  searchParamsPromise: Promise<SearchParams>;
 }) {
   const session = await getSessionUser();
   if (!session) redirect("/connexion");
 
-  const sp = await props.searchParams;
+  const sp = await searchParamsPromise;
   const success = sp.success === "1";
 
   return (

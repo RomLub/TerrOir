@@ -21,7 +21,6 @@ import { RefundIncidentsListClient } from "./_components/RefundIncidentsListClie
 //
 // Auth déjà gardée par app/(admin)/layout.tsx (redirect /connexion si
 // !isAdmin + check host admin.* prod-only).
-export const dynamic = "force-dynamic";
 
 type Props = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -41,25 +40,36 @@ function parseStatusFilter(
   return "pending";
 }
 
-export default async function AdminRefundIncidentsPage(props: Props) {
-  const searchParams = await props.searchParams;
-  const cursor = parseCursor({
-    get: (k: string) => {
-      const v = searchParams[k];
-      return Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
-    },
-  });
-  const statusFilter = parseStatusFilter(searchParams.status);
-
-  // Coquille synchrone : le RefundsTabNav reste fixe, la liste est streamée.
+// Coquille SYNCHRONE (streaming Suspense) : aucun accès dynamique en tête. Le
+// RefundsTabNav (statique) reste fixe, le searchParams (donnée de requête) est
+// lu DANS le Gate, la liste est streamée via <Suspense>.
+export default function AdminRefundIncidentsPage(props: Props) {
   return (
     <>
       <RefundsTabNav active="incidents" />
       <Suspense fallback={<SectionSkeleton rows={6} />}>
-        <RefundIncidentsContent cursor={cursor} statusFilter={statusFilter} />
+        <RefundIncidentsGate searchParams={props.searchParams} />
       </Suspense>
     </>
   );
+}
+
+// Gate DANS le <Suspense> : await + parse du searchParams (cursor + statut),
+// puis délègue au contenu data.
+async function RefundIncidentsGate({
+  searchParams,
+}: {
+  searchParams: Props["searchParams"];
+}) {
+  const sp = await searchParams;
+  const cursor = parseCursor({
+    get: (k: string) => {
+      const v = sp[k];
+      return Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
+    },
+  });
+  const statusFilter = parseStatusFilter(sp.status);
+  return <RefundIncidentsContent cursor={cursor} statusFilter={statusFilter} />;
 }
 
 // Exporté pour les tests unitaires : c'est ici que vit la logique data (fetch

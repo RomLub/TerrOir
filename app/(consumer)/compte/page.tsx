@@ -133,18 +133,23 @@ function SectionCard({ href, icon, title, description, disabled }: CardProps) {
   );
 }
 
-// Coquille synchrone (post-garde) : la page rend le trou <Suspense>
-// immédiatement, le shell /compte (navbar + sidebar) reste fixe pendant le
-// fetch profil + count commandes.
-export default async function ComptePage() {
+// Coquille SYNCHRONE (streaming Suspense) : la page retourne immédiatement le
+// <Suspense> + skeleton, SANS aucun await en tête. La garde session est
+// déplacée DANS le flux (CompteGate) pour que le shell /compte (navbar +
+// sidebar) reste rendu tout de suite (Suspense) — fini le flash à la navigation.
+export default function ComptePage() {
+  return (
+    <Suspense fallback={<ListSkeleton rows={4} />}>
+      <CompteGate />
+    </Suspense>
+  );
+}
+
+async function CompteGate() {
   const session = await getSessionUser();
   if (!session) redirect("/connexion");
 
-  return (
-    <Suspense fallback={<ListSkeleton rows={4} />}>
-      <CompteContent userId={session.id} />
-    </Suspense>
-  );
+  return <CompteContent userId={session.id} />;
 }
 
 async function CompteContent({ userId }: { userId: string }) {

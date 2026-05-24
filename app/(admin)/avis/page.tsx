@@ -22,13 +22,13 @@ import { AvisModerationClient } from "./_components/AvisModerationClient";
 // [id]/moderate et /api/admin/reviews/[id]/response font les WRITE via
 // service_role + audit log.
 
-export const dynamic = "force-dynamic";
 
-// Coquille synchrone : le titre admin s'affiche immédiatement, la modération
-// (fetch avis pending + réponses publiées) est streamée via <Suspense>. Le
-// compteur « En attente » et l'erreur éventuelle dépendent du fetch, donc le
-// AdminPageHeader complet vit dans le contenu streamé.
-export default async function AdminAvisPage() {
+// Coquille SYNCHRONE (streaming Suspense) : aucun accès dynamique en tête, le titre
+// admin s'affiche immédiatement, la modération (fetch avis pending + réponses
+// publiées) est streamée via <Suspense>. Le compteur « En attente » et l'erreur
+// éventuelle dépendent du fetch, donc le AdminPageHeader complet vit dans le
+// contenu streamé.
+export default function AdminAvisPage() {
   return (
     <Suspense fallback={<AvisFallback />}>
       <AvisContent />

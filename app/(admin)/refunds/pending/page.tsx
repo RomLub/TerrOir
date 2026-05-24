@@ -13,9 +13,10 @@ import { PendingRefundsClient } from "./_components/PendingRefundsClient";
 // Auth déjà gardée par app/(admin)/layout.tsx (redirect si !isAdmin).
 // Lot B perf : le RefundsTabNav reste fixe (sync), la liste est streamée.
 
-export const dynamic = "force-dynamic";
 
-export default async function AdminPendingRefundsPage() {
+// Coquille SYNCHRONE (streaming Suspense) : aucun accès dynamique en tête. Le
+// RefundsTabNav reste fixe (statique), la liste est streamée via <Suspense>.
+export default function AdminPendingRefundsPage() {
   return (
     <>
       <RefundsTabNav active="demandes" />

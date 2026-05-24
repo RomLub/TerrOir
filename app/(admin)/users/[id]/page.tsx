@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminPageHeader } from "@/components/ui/admin-page-header";
@@ -10,13 +11,12 @@ import {
   fetchAdminUserReviews,
 } from "@/lib/admin/users/fetch";
 import type { AdminUserRole } from "@/lib/admin/users/types";
+import { ListSkeleton } from "../../_components/ContentSkeletons";
 import { UserDetailTabs } from "./_components/UserDetailTabs";
 
 // Server Component admin /users/[id] (PR3). Fetch parallele 4 onglets via
 // Promise.all + passage en props au Client Component pour le switch d'onglet
 // visible. Pas de fetch dynamique cote client.
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
 const ROLE_BADGE: Record<
   AdminUserRole,
@@ -30,7 +30,20 @@ const ROLE_BADGE: Record<
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export default async function AdminUserDetailPage(props: {
+// Coquille SYNCHRONE (streaming Suspense) : aucun accès dynamique en tête (params +
+// validation UUID + fetch sont DANS le Gate). Le titre dépend de la donnée
+// fetchée, donc tout le contenu est streamé via <Suspense>.
+export default function AdminUserDetailPage(props: {
+  params: Promise<{ id: string }>;
+}) {
+  return (
+    <Suspense fallback={<ListSkeleton rows={6} />}>
+      <UserDetailGate params={props.params} />
+    </Suspense>
+  );
+}
+
+async function UserDetailGate(props: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await props.params;
