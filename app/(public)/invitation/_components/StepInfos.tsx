@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import { CommuneSelect } from "@/components/ui/commune-select";
@@ -31,6 +31,11 @@ const TYPES = [
 ];
 
 const initial: State = {};
+
+type SiretCheck =
+  | { status: "idle" | "checking" }
+  | { status: "found"; legalName: string }
+  | { status: "notfound" };
 
 const inputClass =
   "w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-terroir-green-700 focus:outline-none focus:ring-2 focus:ring-terroir-green-700";
@@ -79,6 +84,52 @@ export function StepInfos({
     initialValues.type_production,
   );
   const [state, action] = useActionState(completeOnboardingAction, initial);
+
+  // Vérification SIRET (non bloquante) : confirme l'existence de l'entreprise
+  // dans l'annuaire public + affiche son nom légal. N'empêche jamais la
+  // soumission (service amont best-effort ; l'admin garde le dernier mot).
+  const [siret, setSiret] = useState(initialValues.siret);
+  const [siretCheck, setSiretCheck] = useState<SiretCheck>({ status: "idle" });
+
+  useEffect(() => {
+    const cleaned = siret.replace(/\s/g, "");
+    if (!/^\d{14}$/.test(cleaned)) {
+      setSiretCheck({ status: "idle" });
+      return;
+    }
+    let active = true;
+    const ctrl = new AbortController();
+    setSiretCheck({ status: "checking" });
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch("/api/siret/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ siret: cleaned }),
+          signal: ctrl.signal,
+        });
+        const data = (await res.json().catch(() => null)) as
+          | { ok?: boolean; found?: boolean; legalName?: string }
+          | null;
+        if (!active) return;
+        if (res.ok && data?.ok && data.found) {
+          setSiretCheck({ status: "found", legalName: data.legalName ?? "" });
+        } else if (res.ok && data?.ok && data.found === false) {
+          setSiretCheck({ status: "notfound" });
+        } else {
+          // Service indisponible → silencieux (non bloquant).
+          setSiretCheck({ status: "idle" });
+        }
+      } catch {
+        /* non bloquant */
+      }
+    }, 400);
+    return () => {
+      active = false;
+      ctrl.abort();
+      clearTimeout(timer);
+    };
+  }, [siret]);
 
   return (
     <form action={action} className="space-y-4">
@@ -129,9 +180,22 @@ export function StepInfos({
             inputMode="numeric"
             pattern="\d{14}"
             placeholder="14 chiffres"
-            defaultValue={initialValues.siret}
+            value={siret}
+            onChange={(e) => setSiret(e.target.value)}
             className={inputClass}
           />
+          {siretCheck.status === "checking" ? (
+            <p className="mt-1 text-xs text-gray-500">Vérification de l&apos;entreprise…</p>
+          ) : siretCheck.status === "found" ? (
+            <p className="mt-1 text-xs text-green-700">
+              ✓ Entreprise reconnue
+              {siretCheck.legalName ? ` : ${siretCheck.legalName}` : ""}
+            </p>
+          ) : siretCheck.status === "notfound" ? (
+            <p className="mt-1 text-xs text-amber-600">
+              Entreprise introuvable dans le registre — un conseiller vérifiera.
+            </p>
+          ) : null}
         </div>
       </div>
 
