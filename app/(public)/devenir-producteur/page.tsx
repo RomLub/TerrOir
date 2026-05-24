@@ -1,14 +1,22 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Button } from "@/components/ui";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getSessionUser } from "@/lib/auth/session";
 import { verifyPrefillToken } from "@/lib/leads/prefill-token";
+import { NEXT_PUBLIC_PRODUCER_URL } from "@/lib/env/urls";
 import { SignupForm, type PrefillData } from "./_components/SignupForm";
 
 // Chantier 3 Phase 2bis — /devenir-producteur en self-service. Server Component :
 // lit ?prefill (lien personnel prospect), vérifie le token + la correspondance
 // avec la colonne stockée (révocation), charge le lead pour pré-remplir le
-// formulaire et verrouiller l'email. Le reste de la page (marketing + form) est
-// statique ; seul le formulaire est interactif (Client Component).
+// formulaire et verrouiller l'email.
+//
+// Post-launch : variante CONNECTÉ. Un consommateur déjà connecté ne crée pas un
+// nouveau compte (impossible : l'email existe déjà) — on lui montre uniquement
+// le formulaire (email verrouillé, sans mot de passe) et la soumission rattache
+// l'activité producteur à son compte existant (becomeProducerAction). Pas de
+// bloc marketing dans ce cas.
 
 export const dynamic = "force-dynamic";
 
@@ -56,7 +64,51 @@ export default async function DevenirProducteurPage({
 }: {
   searchParams: Promise<{ prefill?: string }>;
 }) {
+  const session = await getSessionUser();
+
+  // Admin : non concerné par le parcours producteur.
+  if (session?.isAdmin) redirect("/");
+  // Déjà producteur : direction l'espace pro.
+  if (session && session.roles.includes("producer")) {
+    redirect(`${NEXT_PUBLIC_PRODUCER_URL}/ma-page`);
+  }
+
+  const loggedInEmail = session?.email ?? null;
   const sp = await searchParams;
+
+  // ── Variante CONNECTÉ : juste le formulaire, sans marketing ──────────────
+  if (loggedInEmail) {
+    return (
+      <div className="bg-bg">
+        <section className="max-w-3xl mx-auto px-6 py-16 md:py-24">
+          <div className="text-center mb-10">
+            <span className="text-[11px] uppercase tracking-[0.18em] text-terra-700 font-semibold">
+              Créer mon espace
+            </span>
+            <h1 className="mt-2 font-serif text-[36px] md:text-[48px] text-green-900 leading-tight">
+              Devenez producteur TerrOir.
+            </h1>
+            <p className="mt-3 text-[15px] text-dark/70">
+              Votre compte est déjà créé. Renseignez votre exploitation pour
+              ouvrir votre espace producteur — vous y accédez aussitôt.
+            </p>
+          </div>
+
+          <SignupForm prefill={null} loggedInEmail={loggedInEmail} />
+
+          <p className="mt-6 text-center text-[13px] text-dark/60">
+            Une question avant de vous lancer ?{" "}
+            <Link href="/contact" className="text-terra-700 underline">
+              Contactez l&rsquo;équipe
+            </Link>{" "}
+            — nous vous répondons sous 24 heures ouvrées.
+          </p>
+        </section>
+      </div>
+    );
+  }
+
+  // ── Variante NON connecté : page complète (marketing + création de compte) ─
   const prefill =
     typeof sp.prefill === "string" && sp.prefill.length > 0
       ? await loadPrefill(sp.prefill)
