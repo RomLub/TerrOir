@@ -33,8 +33,8 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
           if [ -z "$CRON_SECRET" ]; then
-            echo "::error::Secret CRON_SECRET manquant (repo Settings > Secrets > Actions)."
-            exit 1
+            echo "::warning::Secret CRON_SECRET non configuré — skip (repo Settings > Secrets and variables > Actions). Le polling démarrera une fois le secret ajouté."
+            exit 0
           fi
           code=$(curl -sS -o /tmp/out.json -w "%{http_code}" -X POST \
             "https://www.terroir-local.fr/api/cron/fetch-inbound" \
