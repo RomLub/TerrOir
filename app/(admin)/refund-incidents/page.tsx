@@ -1,11 +1,13 @@
+import { Suspense } from "react";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { parseCursor } from "@/lib/pagination/cursor";
+import { parseCursor, type ParsedCursor } from "@/lib/pagination/cursor";
 import { fetchAdminRefundIncidentsList } from "@/lib/admin/refund-incidents/fetch";
 import {
   REFUND_INCIDENT_STATUS_FILTERS,
   type RefundIncidentStatusFilter,
 } from "@/lib/admin/refund-incidents/types";
 import { RefundsTabNav } from "../_components/RefundsTabNav";
+import { SectionSkeleton } from "../_components/ContentSkeletons";
 import { RefundIncidentsListClient } from "./_components/RefundIncidentsListClient";
 
 // Page admin /refund-incidents (PR3 feature/admin-new-surfaces — gap
@@ -49,6 +51,27 @@ export default async function AdminRefundIncidentsPage(props: Props) {
   });
   const statusFilter = parseStatusFilter(searchParams.status);
 
+  // Coquille synchrone : le RefundsTabNav reste fixe, la liste est streamée.
+  return (
+    <>
+      <RefundsTabNav active="incidents" />
+      <Suspense fallback={<SectionSkeleton rows={6} />}>
+        <RefundIncidentsContent cursor={cursor} statusFilter={statusFilter} />
+      </Suspense>
+    </>
+  );
+}
+
+// Exporté pour les tests unitaires : c'est ici que vit la logique data (fetch
+// service_role + propagation au client). La page reste une coquille avec le
+// RefundsTabNav synchrone + ce contenu streamé en <Suspense>.
+export async function RefundIncidentsContent({
+  cursor,
+  statusFilter,
+}: {
+  cursor: ParsedCursor;
+  statusFilter: RefundIncidentStatusFilter;
+}) {
   const admin = createSupabaseAdminClient();
   const result = await fetchAdminRefundIncidentsList(admin, {
     cursor,
@@ -56,16 +79,13 @@ export default async function AdminRefundIncidentsPage(props: Props) {
   });
 
   return (
-    <>
-      <RefundsTabNav active="incidents" />
-      <RefundIncidentsListClient
-        initialRows={result.rows}
-        initialTotal={result.total}
-        initialNextCursor={result.nextCursor}
-        initialError={result.error}
-        initialStatusFilter={statusFilter}
-        isPaginated={Boolean(cursor.before && cursor.beforeId)}
-      />
-    </>
+    <RefundIncidentsListClient
+      initialRows={result.rows}
+      initialTotal={result.total}
+      initialNextCursor={result.nextCursor}
+      initialError={result.error}
+      initialStatusFilter={statusFilter}
+      isPaginated={Boolean(cursor.before && cursor.beforeId)}
+    />
   );
 }

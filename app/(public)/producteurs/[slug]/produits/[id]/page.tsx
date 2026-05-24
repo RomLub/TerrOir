@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { notFound } from 'next/navigation';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { generateSlotsForProducer } from '@/lib/slots/generate';
@@ -5,6 +6,7 @@ import { fetchPublicProducerBySlug } from '@/lib/producers/fetch-public';
 import { getProducerDisplayName } from '@/lib/producers/get-display-name';
 import { ACTIVE_ORDER_STATUTS } from '@/lib/orders/stateMachine';
 import { STOCK_UNLIMITED_SENTINEL } from '@/lib/products/constants';
+import { ProductPageSkeleton } from './_components/ProductPageSkeleton';
 import {
   ProductPageClient,
   type ProducerSummary,
@@ -18,6 +20,16 @@ import {
 // producteur). Sans ça, Next.js peut cacher silencieusement le résultat
 // SSR entre deux deploys et les nouveaux slots/produits n'apparaissent
 // qu'après redeploy.
+//
+// Perf (latence-navigation 2026-05-24) : la page reste dynamique (le stock et
+// les créneaux pilotent une décision d'achat, aucune mise en cache tolérée),
+// mais on applique le pattern "shell streamé". Le composant page ne bloque
+// plus sur le fetch : tout le travail bloquant est déporté dans
+// <ProductPageContent> (async), enveloppé d'un <Suspense> dont le fallback est
+// un skeleton à la forme de la fiche. Résultat : navigation perçue instantanée
+// (le squelette s'affiche tout de suite) au lieu d'une page blanche pendant le
+// fetch + la génération de créneaux. La clé du Suspense est l'id produit pour
+// re-déclencher le fallback quand on passe d'une fiche à une autre.
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
@@ -30,6 +42,15 @@ function weightStepFor(unit: string | null): number {
 
 export default async function ProductPage(props: { params: Promise<{ slug: string; id: string }> }) {
   const params = await props.params;
+  return (
+    <Suspense key={params.id} fallback={<ProductPageSkeleton />}>
+      <ProductPageContent slug={params.slug} id={params.id} />
+    </Suspense>
+  );
+}
+
+async function ProductPageContent({ slug, id }: { slug: string; id: string }) {
+  const params = { slug, id };
   const admin = createSupabaseAdminClient();
 
   const { data: productRow } = await admin

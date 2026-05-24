@@ -1,5 +1,7 @@
+import { Suspense } from "react";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { fetchProducerInterestsList } from "@/lib/admin/producer-interests/fetch";
+import { ListSkeleton } from "../_components/ContentSkeletons";
 import { ProducerInterestsClient } from "./_components/ProducerInterestsClient";
 import type { Lead } from "./_components/types";
 
@@ -20,7 +22,19 @@ import type { Lead } from "./_components/types";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+// Coquille synchrone : la liste des leads (fetch service_role) est streamée
+// via <Suspense> pour que le shell admin reste fixe.
 export default async function AdminProducerInterestsPage() {
+  return (
+    <Suspense fallback={<ListSkeleton rows={8} />}>
+      <ProducerInterestsContent />
+    </Suspense>
+  );
+}
+
+// Exporté pour les tests unitaires : c'est ici que vit la logique data (fetch
+// service_role + propagation au client). La page reste une coquille <Suspense>.
+export async function ProducerInterestsContent() {
   const admin = createSupabaseAdminClient();
 
   let initialLeads: Lead[] = [];

@@ -1,7 +1,12 @@
+import { Suspense } from 'react';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
-import { parseCursor } from '@/lib/pagination/cursor';
+import { parseCursor, type ParsedCursor } from '@/lib/pagination/cursor';
 import { fetchAdminProducersList } from '@/lib/admin/producers/fetch';
-import { parseProducerStatusFilter } from '@/lib/admin/producers/types';
+import {
+  parseProducerStatusFilter,
+  type ProducerStatusFilter,
+} from '@/lib/admin/producers/types';
+import { ListSkeleton } from '../_components/ContentSkeletons';
 import { GestionProducteursClient } from './_components/GestionProducteursClient';
 
 // Server Component admin /gestion-producteurs (PR refactor/admin-pattern-uniform).
@@ -47,6 +52,31 @@ export default async function AdminProducteursPage(
     },
   });
 
+  // Coquille synchrone : la liste producteurs (fetch service_role) est streamée
+  // via <Suspense> pour que le shell admin (header + sidebar) reste fixe.
+  return (
+    <Suspense fallback={<ListSkeleton rows={8} />}>
+      <ProducteursContent
+        cursor={cursor}
+        showAll={showAll}
+        initialStatusFilter={initialStatusFilter}
+      />
+    </Suspense>
+  );
+}
+
+// Exporté pour les tests unitaires : c'est ici que vit la logique data
+// (fetch service_role + propagation des props au client). La page n'est plus
+// qu'une coquille <Suspense> (plumbing de rendu, non testée unitairement).
+export async function ProducteursContent({
+  cursor,
+  showAll,
+  initialStatusFilter,
+}: {
+  cursor: ParsedCursor;
+  showAll: boolean;
+  initialStatusFilter: ProducerStatusFilter;
+}) {
   const admin = createSupabaseAdminClient();
   const { rows, total, nextCursor, error } = await fetchAdminProducersList(admin, {
     cursor,

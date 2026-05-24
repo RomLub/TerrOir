@@ -40,7 +40,23 @@ vi.mock(
   }),
 );
 
-import AdminProducerInterestsPage from "@/app/(admin)/producer-interests/page";
+import AdminProducerInterestsPage, {
+  ProducerInterestsContent,
+} from "@/app/(admin)/producer-interests/page";
+
+// Lot B perf : la page retourne <Suspense><ProducerInterestsContent/></Suspense>.
+// La logique data (fetch + props client) vit dans ProducerInterestsContent
+// (async). resolveContent extrait l'enfant du <Suspense> rendu par la page puis
+// l'exécute pour obtenir le <ProducerInterestsClient /> final.
+async function resolveContent(): Promise<
+  ReactElement<{ initialLeads: unknown; initialError: unknown }>
+> {
+  // Le contenu ne prend aucun argument : on l'exécute directement.
+  return (await ProducerInterestsContent()) as ReactElement<{
+    initialLeads: unknown;
+    initialError: unknown;
+  }>;
+}
 
 beforeEach(() => {
   mockFetch.mockReset();
@@ -51,6 +67,17 @@ afterEach(() => {
 });
 
 describe("AdminProducerInterestsPage (Server Component)", () => {
+  it("la page enveloppe le contenu dans un <Suspense>", async () => {
+    mockFetch.mockResolvedValue([]);
+    const page = (await AdminProducerInterestsPage()) as ReactElement<{
+      children?: ReactElement;
+    }>;
+    // Coquille de streaming : enfant = <ProducerInterestsContent/>. Le fetch
+    // ne part pas tant que le contenu n'est pas rendu (Suspense).
+    expect(page.props.children).toBeDefined();
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
   it("transmet la liste fetchée au Client Component", async () => {
     const leads = [
       {
@@ -70,10 +97,7 @@ describe("AdminProducerInterestsPage (Server Component)", () => {
     ];
     mockFetch.mockResolvedValue(leads);
 
-    const element = (await AdminProducerInterestsPage()) as ReactElement<{
-      initialLeads: unknown;
-      initialError: unknown;
-    }>;
+    const element = await resolveContent();
 
     expect(mockFetch).toHaveBeenCalledOnce();
     expect(element.props.initialLeads).toEqual(leads);
@@ -83,10 +107,7 @@ describe("AdminProducerInterestsPage (Server Component)", () => {
   it("liste vide → initialLeads=[] + initialError=null", async () => {
     mockFetch.mockResolvedValue([]);
 
-    const element = (await AdminProducerInterestsPage()) as ReactElement<{
-      initialLeads: unknown;
-      initialError: unknown;
-    }>;
+    const element = await resolveContent();
 
     expect(element.props.initialLeads).toEqual([]);
     expect(element.props.initialError).toBeNull();
@@ -95,10 +116,7 @@ describe("AdminProducerInterestsPage (Server Component)", () => {
   it("erreur fetch → initialError non null + initialLeads=[]", async () => {
     mockFetch.mockRejectedValue(new Error("db down"));
 
-    const element = (await AdminProducerInterestsPage()) as ReactElement<{
-      initialLeads: unknown;
-      initialError: unknown;
-    }>;
+    const element = await resolveContent();
 
     expect(element.props.initialLeads).toEqual([]);
     expect(element.props.initialError).toBe("db down");

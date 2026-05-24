@@ -39,25 +39,50 @@ vi.mock(
   }),
 );
 
-import AdminRefundIncidentsPage from "@/app/(admin)/refund-incidents/page";
+import AdminRefundIncidentsPage, {
+  RefundIncidentsContent,
+} from "@/app/(admin)/refund-incidents/page";
 
-// Chantier 5 — la page enveloppe désormais le client dans un Fragment avec
-// <RefundsTabNav> (onglets Remboursements). On extrait l'élément client
-// (celui qui porte initialRows) parmi les enfants du Fragment.
-function getClientProps(
+// Chantier 5 — la page enveloppe le client dans un Fragment avec
+// <RefundsTabNav> (onglets Remboursements).
+// Lot B perf — le client est désormais streamé : le Fragment contient
+// <RefundsTabNav> + <Suspense><RefundIncidentsContent cursor statusFilter/></Suspense>.
+// resolveContent extrait les props de <RefundIncidentsContent> du tree (donc on
+// teste le parsing searchParams réel de la page), puis exécute le contenu pour
+// obtenir le <RefundIncidentsListClient /> final.
+function findContentProps(
   result: ReactElement & { props: Record<string, unknown> },
 ): Record<string, unknown> {
   const children = (result.props as { children?: unknown }).children;
   const arr = (Array.isArray(children) ? children : [children]).flat();
-  const client = arr.find(
-    (c): c is ReactElement & { props: Record<string, unknown> } =>
-      !!c &&
-      typeof c === "object" &&
-      "props" in c &&
-      !!(c as { props?: Record<string, unknown> }).props &&
-      "initialRows" in (c as { props: Record<string, unknown> }).props,
-  );
-  if (!client) throw new Error("Client element introuvable dans le Fragment");
+  // L'enfant <Suspense> porte le <RefundIncidentsContent> dans ses children.
+  for (const c of arr) {
+    if (!c || typeof c !== "object") continue;
+    const el = c as ReactElement & { props?: { children?: unknown } };
+    const inner = el.props?.children as
+      | (ReactElement & {
+          type?: { name?: string };
+          props?: Record<string, unknown>;
+        })
+      | undefined;
+    if (
+      inner &&
+      typeof inner.type === "function" &&
+      (inner.type as { name?: string }).name === "RefundIncidentsContent"
+    ) {
+      return inner.props as Record<string, unknown>;
+    }
+  }
+  throw new Error("RefundIncidentsContent introuvable dans le Fragment");
+}
+
+async function getClientProps(
+  result: ReactElement & { props: Record<string, unknown> },
+): Promise<Record<string, unknown>> {
+  const contentProps = findContentProps(result);
+  const client = (await RefundIncidentsContent(
+    contentProps as Parameters<typeof RefundIncidentsContent>[0],
+  )) as ReactElement & { props: Record<string, unknown> };
   return client.props;
 }
 
@@ -77,9 +102,10 @@ describe("AdminRefundIncidentsPage — Server Component", () => {
       nextCursor: null,
       error: null,
     });
-    await AdminRefundIncidentsPage({
+    const page = (await AdminRefundIncidentsPage({
       searchParams: Promise.resolve({}),
-    });
+    })) as unknown as ReactElement & { props: Record<string, unknown> };
+    await getClientProps(page);
     expect(mockFetch).toHaveBeenCalledOnce();
     const opts = mockFetch.mock.calls[0]?.[1] as {
       statusFilter: string;
@@ -96,9 +122,10 @@ describe("AdminRefundIncidentsPage — Server Component", () => {
       nextCursor: null,
       error: null,
     });
-    await AdminRefundIncidentsPage({
+    const page = (await AdminRefundIncidentsPage({
       searchParams: Promise.resolve({ status: "failed" }),
-    });
+    })) as unknown as ReactElement & { props: Record<string, unknown> };
+    await getClientProps(page);
     const opts = mockFetch.mock.calls[0]?.[1] as { statusFilter: string };
     expect(opts.statusFilter).toBe("failed");
   });
@@ -110,9 +137,10 @@ describe("AdminRefundIncidentsPage — Server Component", () => {
       nextCursor: null,
       error: null,
     });
-    await AdminRefundIncidentsPage({
+    const page = (await AdminRefundIncidentsPage({
       searchParams: Promise.resolve({ status: "garbage" }),
-    });
+    })) as unknown as ReactElement & { props: Record<string, unknown> };
+    await getClientProps(page);
     const opts = mockFetch.mock.calls[0]?.[1] as { statusFilter: string };
     expect(opts.statusFilter).toBe("pending");
   });
@@ -124,12 +152,13 @@ describe("AdminRefundIncidentsPage — Server Component", () => {
       nextCursor: null,
       error: null,
     });
-    await AdminRefundIncidentsPage({
+    const page = (await AdminRefundIncidentsPage({
       searchParams: Promise.resolve({
         before: "2026-05-10T10:00:00Z",
         before_id: "inc-uuid-1",
       }),
-    });
+    })) as unknown as ReactElement & { props: Record<string, unknown> };
+    await getClientProps(page);
     const opts = mockFetch.mock.calls[0]?.[1] as {
       cursor: { before: string | null; beforeId: string | null };
     };
@@ -168,7 +197,7 @@ describe("AdminRefundIncidentsPage — Server Component", () => {
       searchParams: Promise.resolve({}),
     })) as unknown as ReactElement & { props: Record<string, unknown> };
 
-    const props = getClientProps(result);
+    const props = await getClientProps(result);
     expect(props.initialRows).toEqual(rows);
     expect(props.initialTotal).toBe(1);
     expect(props.initialNextCursor).toBeNull();
@@ -190,6 +219,6 @@ describe("AdminRefundIncidentsPage — Server Component", () => {
         before_id: "inc-1",
       }),
     })) as unknown as ReactElement & { props: Record<string, unknown> };
-    expect(getClientProps(result).isPaginated).toBe(true);
+    expect((await getClientProps(result)).isPaginated).toBe(true);
   });
 });

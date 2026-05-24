@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { headers } from "next/headers";
 import Link from "next/link";
 import { AdminPageHeader, MetricCard } from "@/components/ui";
@@ -26,6 +27,7 @@ import {
   AuditLogsTable,
   type AuditLogRow,
 } from "./_components/AuditLogsTable";
+import { SectionSkeleton } from "../_components/ContentSkeletons";
 
 const BASE_PATH = "/audit-logs";
 const PAGE_SIZE = 50;
@@ -49,10 +51,33 @@ type Props = {
   searchParams: Record<string, string | string[] | undefined>;
 };
 
+// Coquille synchrone : l'en-tête s'affiche immédiatement (le shell admin
+// reste fixe), le journal (query audit_logs + stats + lookup email éventuel)
+// est streamé via <Suspense>. Le sous-titre et les stats dépendent du fetch,
+// ils vivent donc dans le contenu streamé.
 export default async function AuditLogsPage(props: Props) {
   const searchParams = await props.searchParams;
   const filters = parseSearchParams(searchParams);
   const cursor = decodeCursor(filters.cursor);
+
+  return (
+    <div>
+      <AdminPageHeader eyebrow="Sécurité" title="Journal d'audit" />
+
+      <Suspense fallback={<SectionSkeleton rows={8} />}>
+        <AuditLogsContent filters={filters} cursor={cursor} />
+      </Suspense>
+    </div>
+  );
+}
+
+async function AuditLogsContent({
+  filters,
+  cursor,
+}: {
+  filters: ReturnType<typeof parseSearchParams>;
+  cursor: ReturnType<typeof decodeCursor>;
+}) {
   const supabase = await createSupabaseServerClient();
 
   // ─── T-083 lookup email → user_id avec rate-limit + audit log meta ──
@@ -197,19 +222,20 @@ export default async function AuditLogsPage(props: Props) {
   }
 
   const subtitle = errorMsg
-    ? undefined
+    ? null
     : rows.length === 0
       ? "Aucun event sur cette page"
       : `${rows.length} event${rows.length > 1 ? "s" : ""} sur cette page`;
 
   return (
-    <div>
-      <AdminPageHeader
-        eyebrow="Sécurité"
-        title="Journal d'audit"
-        subtitle={subtitle}
-        error={errorMsg}
-      />
+    <>
+      {errorMsg ? (
+        <p className="mb-4 text-[13px] text-red-600" role="alert">
+          {errorMsg}
+        </p>
+      ) : subtitle ? (
+        <p className="mb-4 text-[13px] text-gray-500">{subtitle}</p>
+      ) : null}
 
       {statsRes && (
         <section className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -273,6 +299,6 @@ export default async function AuditLogsPage(props: Props) {
           <span />
         )}
       </nav>
-    </div>
+    </>
   );
 }

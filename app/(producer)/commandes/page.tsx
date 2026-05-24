@@ -1,14 +1,16 @@
+import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
-import { fetchProducerForUser } from '@/lib/producers/context';
+import { fetchProducerForUser, type ProducerRecord } from '@/lib/producers/context';
 import { applyCursor, parseCursor } from '@/lib/pagination/cursor';
 import {
   formatSlotRange,
   formatLegacyTimeHHMM,
 } from '@/lib/slots/format-slot-time';
 import type { OrderStatus } from '@/components/ui';
+import { ListSkeleton } from '../_components/ContentSkeletons';
 import {
   ProducerCommandesClient,
   type ProducerOrderRow,
@@ -38,6 +40,9 @@ function formatDateShort(iso: string | null): string {
   return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
 }
 
+// Coquille synchrone (post-gardes) : la page rend le trou <Suspense>
+// immédiatement, le squelette liste s'affiche pendant le fetch orders+count.
+// La sidebar (layout) reste fixe ; seul le contenu streame.
 export default async function ProducerCommandesPage(
   props: {
     searchParams: Promise<SearchParams>;
@@ -49,10 +54,25 @@ export default async function ProducerCommandesPage(
 
   // (producer)/layout.tsx vérifie déjà session + host. Le lookup producer
   // utilise le client serveur (RLS owner read autorise auth.uid() = user_id).
+  // Garde conservée au niveau page (lookup léger) ; le fetch lourd est streamé.
   const supabase = await createSupabaseServerClient();
   const producer = await fetchProducerForUser(supabase, session.id);
   if (!producer) redirect('/invitation');
 
+  return (
+    <Suspense fallback={<ListSkeleton rows={6} />}>
+      <CommandesContent producer={producer} searchParams={searchParams} />
+    </Suspense>
+  );
+}
+
+async function CommandesContent({
+  producer,
+  searchParams,
+}: {
+  producer: ProducerRecord;
+  searchParams: SearchParams;
+}) {
   const admin = createSupabaseAdminClient();
   const cursor = parseCursor(searchParamsToUrlSearchParams(searchParams));
 

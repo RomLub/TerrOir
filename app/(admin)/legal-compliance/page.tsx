@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { AdminPageHeader, MetricCard } from "@/components/ui";
 import {
   getCGUComplianceStats,
@@ -9,6 +10,7 @@ import { parseSearchParams } from "./_lib/parse-search-params";
 import { ComplianceFilters } from "./_components/Filters";
 import { ComplianceUsersTable } from "./_components/UsersTable";
 import { CompliancePagination } from "./_components/Pagination";
+import { SectionSkeleton } from "../_components/ContentSkeletons";
 
 // Page admin /admin/legal-compliance — vue de pilotage opposabilité CGU.
 //
@@ -32,9 +34,33 @@ function pct(part: number, total: number): string {
   return `${Math.round((part / total) * 100)} %`;
 }
 
+// Coquille synchrone : l'en-tête s'affiche immédiatement (le shell admin reste
+// fixe), les stats CGU + la liste (lecture service_role) sont streamées via
+// <Suspense>.
 export default async function LegalCompliancePage(props: Props) {
   const searchParams = await props.searchParams;
   const filters = parseSearchParams(searchParams);
+
+  return (
+    <div>
+      <AdminPageHeader
+        eyebrow="Conformité"
+        title="Conformité CGU"
+        subtitle={`Suivi de l'acceptation des CGU (version courante v${LEGAL_VERSIONS.CGU})`}
+      />
+
+      <Suspense fallback={<SectionSkeleton rows={8} />}>
+        <ComplianceContent filters={filters} />
+      </Suspense>
+    </div>
+  );
+}
+
+async function ComplianceContent({
+  filters,
+}: {
+  filters: ReturnType<typeof parseSearchParams>;
+}) {
   const limit = DEFAULT_PAGE_SIZE;
   const offset = (filters.page - 1) * limit;
 
@@ -71,13 +97,12 @@ export default async function LegalCompliancePage(props: Props) {
   }
 
   return (
-    <div>
-      <AdminPageHeader
-        eyebrow="Conformité"
-        title="Conformité CGU"
-        subtitle={`Suivi de l'acceptation des CGU (version courante v${LEGAL_VERSIONS.CGU})`}
-        error={errorMsg}
-      />
+    <>
+      {errorMsg ? (
+        <p className="mb-4 text-[13px] text-red-600" role="alert">
+          {errorMsg}
+        </p>
+      ) : null}
 
       <section className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard
@@ -113,6 +138,6 @@ export default async function LegalCompliancePage(props: Props) {
         totalPages={users.totalPages}
         total={users.total}
       />
-    </div>
+    </>
   );
 }

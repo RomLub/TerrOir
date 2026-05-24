@@ -1,13 +1,16 @@
+import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
-import { fetchProducerForUser } from '@/lib/producers/context';
+import { fetchProducerForUser, type ProducerRecord } from '@/lib/producers/context';
+import { ListSkeleton } from '../_components/ContentSkeletons';
 import { AvisClient, type AvisRow } from './AvisClient';
 
 // Page producer "Mes avis" — liste les avis publiés et permet d'y répondre
 // (CGU 6.4). Les avis pending/rejected ne sont pas affichés ici car ils
 // ne sont pas visibles publiquement, donc une réponse n'aurait pas de sens.
+// Lot B perf : le fetch reviews est streamé via <Suspense> (sidebar fixe).
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -16,10 +19,20 @@ export default async function ProducerAvisPage() {
   const session = await getSessionUser();
   if (!session) redirect('/connexion');
 
+  // Garde producteur conservée au niveau page (lookup léger) ; le fetch des
+  // avis est streamé.
   const supabase = await createSupabaseServerClient();
   const producer = await fetchProducerForUser(supabase, session.id);
   if (!producer) redirect('/invitation');
 
+  return (
+    <Suspense fallback={<ListSkeleton rows={5} />}>
+      <AvisContent producer={producer} />
+    </Suspense>
+  );
+}
+
+async function AvisContent({ producer }: { producer: ProducerRecord }) {
   const admin = createSupabaseAdminClient();
   const { data, error } = await admin
     .from('reviews')

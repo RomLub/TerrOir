@@ -24,8 +24,12 @@ vi.mock("@/lib/admin/reviews", () => ({
   fetchPublishedResponses: mockFetchPublished,
 }));
 
-import AdminAvisPage from "@/app/(admin)/avis/page";
+import { AvisContent } from "@/app/(admin)/avis/page";
 
+// Lot B perf : la page retourne <Suspense fallback={header+skeleton}>
+// <AvisContent/></Suspense>. Le fetch + le rendu data vivent dans AvisContent
+// (async). On rend donc AvisContent directement (le titre « Avis à modérer »
+// est inclus dans son AdminPageHeader).
 beforeEach(() => {
   mockFetchPending.mockReset();
   mockFetchPublished.mockReset();
@@ -36,7 +40,7 @@ describe("AdminAvisPage (Server Component)", () => {
     mockFetchPending.mockResolvedValue({ rows: [], error: null });
     mockFetchPublished.mockResolvedValue({ rows: [], error: null });
 
-    const ui = await AdminAvisPage();
+    const ui = await AvisContent();
     render(ui);
 
     expect(screen.getByRole("heading", { name: /Avis à modérer/i })).toBeDefined();
@@ -78,7 +82,7 @@ describe("AdminAvisPage (Server Component)", () => {
       error: null,
     });
 
-    const ui = await AdminAvisPage();
+    const ui = await AvisContent();
     render(ui);
 
     expect(screen.getByText("Jean D.")).toBeDefined();
@@ -91,7 +95,7 @@ describe("AdminAvisPage (Server Component)", () => {
     mockFetchPending.mockResolvedValue({ rows: [], error: "DB down" });
     mockFetchPublished.mockResolvedValue({ rows: [], error: null });
 
-    const ui = await AdminAvisPage();
+    const ui = await AvisContent();
     render(ui);
 
     expect(screen.getByText(/DB down/)).toBeDefined();

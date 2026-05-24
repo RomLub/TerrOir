@@ -1,8 +1,10 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { StarRating } from "@/components/ui/star-rating";
+import { SectionSkeleton } from "../_components/ContentSkeletons";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -59,6 +61,9 @@ function statutLabel(statut: string): { label: string; className: string } {
   };
 }
 
+// Coquille synchrone : titre + intro + bandeau succès s'affichent
+// immédiatement (post-garde), les deux sections (commandes à noter + avis
+// donnés) sont streamées via <Suspense>.
 export default async function MesAvisPage(props: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
@@ -67,32 +72,6 @@ export default async function MesAvisPage(props: {
 
   const sp = await props.searchParams;
   const success = sp.success === "1";
-
-  const admin = createSupabaseAdminClient();
-
-  const [{ data: ordersData }, { data: reviewsData }] = await Promise.all([
-    admin
-      .from("orders")
-      .select(
-        "id, code_commande, completed_at, montant_total, producers:producer_id ( nom_exploitation, slug )",
-      )
-      .eq("consumer_id", session.id)
-      .eq("statut", "completed")
-      .order("completed_at", { ascending: false }),
-    admin
-      .from("reviews")
-      .select(
-        "id, note, commentaire, statut, created_at, order_id, producers:producer_id ( nom_exploitation, slug )",
-      )
-      .eq("consumer_id", session.id)
-      .order("created_at", { ascending: false }),
-  ]);
-
-  const orders = (ordersData ?? []) as OrderRow[];
-  const reviews = (reviewsData ?? []) as ReviewRow[];
-
-  const reviewedOrderIds = new Set(reviews.map((r) => r.order_id));
-  const ordersToReview = orders.filter((o) => !reviewedOrderIds.has(o.id));
 
   return (
     <main className="mx-auto w-full max-w-3xl px-4 py-8 sm:py-10">
@@ -114,6 +93,42 @@ export default async function MesAvisPage(props: {
         </div>
       ) : null}
 
+      <Suspense fallback={<SectionSkeleton rows={4} />}>
+        <MesAvisContent userId={session.id} />
+      </Suspense>
+    </main>
+  );
+}
+
+async function MesAvisContent({ userId }: { userId: string }) {
+  const admin = createSupabaseAdminClient();
+
+  const [{ data: ordersData }, { data: reviewsData }] = await Promise.all([
+    admin
+      .from("orders")
+      .select(
+        "id, code_commande, completed_at, montant_total, producers:producer_id ( nom_exploitation, slug )",
+      )
+      .eq("consumer_id", userId)
+      .eq("statut", "completed")
+      .order("completed_at", { ascending: false }),
+    admin
+      .from("reviews")
+      .select(
+        "id, note, commentaire, statut, created_at, order_id, producers:producer_id ( nom_exploitation, slug )",
+      )
+      .eq("consumer_id", userId)
+      .order("created_at", { ascending: false }),
+  ]);
+
+  const orders = (ordersData ?? []) as OrderRow[];
+  const reviews = (reviewsData ?? []) as ReviewRow[];
+
+  const reviewedOrderIds = new Set(reviews.map((r) => r.order_id));
+  const ordersToReview = orders.filter((o) => !reviewedOrderIds.has(o.id));
+
+  return (
+    <>
       <section className="mt-8" aria-labelledby="a-donner-heading">
         <h2
           id="a-donner-heading"
@@ -208,6 +223,6 @@ export default async function MesAvisPage(props: {
           </ul>
         )}
       </section>
-    </main>
+    </>
   );
 }

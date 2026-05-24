@@ -1,6 +1,8 @@
+import { Suspense } from "react";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { fetchAdminAccounts } from "@/lib/admin/admins/fetch";
+import { ListSkeleton } from "../_components/ContentSkeletons";
 import { AdminsClient } from "./_components/AdminsClient";
 
 // Chantier 6 — page « Administrateurs » (section Gouvernance). Gestion du
@@ -10,11 +12,31 @@ import { AdminsClient } from "./_components/AdminsClient";
 // et le /users LIST supprimé.
 //
 // Auth gardée par app/(admin)/layout.tsx (redirect /connexion si !isAdmin).
+// Lot B perf : la liste des comptes (fetch service_role) est streamée via
+// <Suspense> pour que le shell admin reste fixe.
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function AdminsPage() {
   const session = await getSessionUser();
+
+  return (
+    <Suspense fallback={<ListSkeleton rows={6} />}>
+      <AdminsContent
+        currentAdminId={session?.id ?? ""}
+        isSuperAdmin={session?.isSuperAdmin ?? false}
+      />
+    </Suspense>
+  );
+}
+
+async function AdminsContent({
+  currentAdminId,
+  isSuperAdmin,
+}: {
+  currentAdminId: string;
+  isSuperAdmin: boolean;
+}) {
   const admin = createSupabaseAdminClient();
   const { rows, error } = await fetchAdminAccounts(admin);
 
@@ -22,8 +44,8 @@ export default async function AdminsPage() {
     <AdminsClient
       admins={rows}
       initialError={error}
-      currentAdminId={session?.id ?? ""}
-      isSuperAdmin={session?.isSuperAdmin ?? false}
+      currentAdminId={currentAdminId}
+      isSuperAdmin={isSuperAdmin}
     />
   );
 }

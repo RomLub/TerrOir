@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { Suspense } from 'react';
 import Link from 'next/link';
 import { ProductCard } from '@/components/ui';
 import {
@@ -81,23 +82,42 @@ function badgeFor(p: PublicProductRow): string | undefined {
   return p.cuts?.name ?? p.animals?.name ?? p.product_categories?.name ?? undefined;
 }
 
+// Perf (latence-navigation 2026-05-24) : shell streamé. Le composant page rend
+// le cadre (titre h1) instantanément et déporte le fetch dans <ProduitsResults>
+// (async), enveloppé d'un <Suspense>. Le compteur + les pills + la grille
+// dépendent tous de la même requête : ils sont donc streamés ensemble derrière
+// un skeleton de grille. Avant, le fetch bloquait tout le rendu de la page et
+// remontait au loading.tsx pleine page. La clé du Suspense est dérivée des
+// searchParams pour re-déclencher le fallback quand on change de filtre.
 export default async function ProduitsPage(
   props: {
     searchParams: Promise<SearchParams>;
   }
 ) {
   const searchParams = await props.searchParams;
+  const suspenseKey = JSON.stringify(searchParams);
+
+  return (
+    <div className="max-w-7xl mx-auto px-8 py-10">
+      <h1 className="mb-2 font-serif text-[40px] text-green-900 leading-tight">
+        Tous les produits
+      </h1>
+      <Suspense key={suspenseKey} fallback={<ProduitsResultsSkeleton />}>
+        <ProduitsResults searchParams={searchParams} />
+      </Suspense>
+    </div>
+  );
+}
+
+async function ProduitsResults({ searchParams }: { searchParams: SearchParams }) {
   const filters = parseProductsSearchParams(searchParams);
   const { products, resolved } = await getPublicProducts(filters);
   const pills = buildPills(resolved, searchParams);
 
   return (
-    <div className="max-w-7xl mx-auto px-8 py-10">
+    <>
       <header className="mb-8">
-        <h1 className="font-serif text-[40px] text-green-900 leading-tight">
-          Tous les produits
-        </h1>
-        <p className="text-[14px] text-dark/60 mt-2">
+        <p className="text-[14px] text-dark/60">
           {products.length} produit{products.length !== 1 ? 's' : ''} disponible
           {products.length !== 1 ? 's' : ''}.
         </p>
@@ -168,6 +188,31 @@ export default async function ProduitsPage(
           })}
         </div>
       )}
+    </>
+  );
+}
+
+// Skeleton du bloc résultats (compteur + grille), affiché pendant le fetch.
+// Réutilise le markup de carte de produits/loading.tsx pour rester cohérent.
+function ProduitsResultsSkeleton() {
+  return (
+    <div aria-busy="true" aria-live="polite">
+      <div className="mb-8 h-4 w-48 animate-pulse rounded-md bg-dark/10" />
+      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 9 }).map((_, i) => (
+          <div
+            key={i}
+            className="overflow-hidden rounded-2xl border border-terroir-border bg-white shadow-sm"
+          >
+            <div className="relative aspect-4/3 w-full animate-pulse bg-terroir-green-100" />
+            <div className="space-y-3 p-4">
+              <div className="h-5 w-3/4 animate-pulse rounded bg-dark/10" />
+              <div className="h-3 w-1/2 animate-pulse rounded bg-dark/10" />
+              <div className="h-5 w-1/3 animate-pulse rounded bg-dark/10" />
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

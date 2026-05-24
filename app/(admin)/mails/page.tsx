@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { AdminPageHeader } from "@/components/ui/admin-page-header";
 import { TableStatus } from "@/components/ui/table-status";
@@ -12,6 +13,7 @@ import {
   INBOUND_TAG_LABEL,
   type InboundTag,
 } from "@/lib/admin/inbound/types";
+import { SectionSkeleton } from "../_components/ContentSkeletons";
 
 // Chantier 9 — boîte mails admin (top niveau). Onglets Producteurs /
 // Consommateurs / Public (tag automatique de l'expéditeur). Lecture seule de
@@ -25,12 +27,30 @@ function parseTag(raw: string | undefined): InboundTag {
     : "producteur";
 }
 
+// Coquille synchrone : l'en-tête s'affiche immédiatement (shell admin fixe),
+// les onglets (avec compteurs non-lus) + la liste sont streamés via <Suspense>.
 export default async function AdminMailsPage(props: {
   searchParams: Promise<{ tag?: string }>;
 }) {
   const sp = await props.searchParams;
   const tag = parseTag(sp.tag);
 
+  return (
+    <div>
+      <AdminPageHeader
+        eyebrow="Boîte de réception"
+        title="Mails"
+        subtitle="Reçus sur contact@terroir-local.fr"
+      />
+
+      <Suspense fallback={<SectionSkeleton rows={8} />}>
+        <MailsContent tag={tag} />
+      </Suspense>
+    </div>
+  );
+}
+
+async function MailsContent({ tag }: { tag: InboundTag }) {
   const admin = createSupabaseAdminClient();
   const [{ rows, error }, unread] = await Promise.all([
     fetchInboundEmails(admin, tag),
@@ -38,13 +58,12 @@ export default async function AdminMailsPage(props: {
   ]);
 
   return (
-    <div>
-      <AdminPageHeader
-        eyebrow="Boîte de réception"
-        title="Mails"
-        subtitle={error ? undefined : `Reçus sur contact@terroir-local.fr`}
-        error={error}
-      />
+    <>
+      {error ? (
+        <p className="mb-4 text-[13px] text-red-600" role="alert">
+          {error}
+        </p>
+      ) : null}
 
       <nav className="mb-4 flex gap-1 border-b border-gray-200">
         {INBOUND_TAGS.map((t) => {
@@ -119,6 +138,6 @@ export default async function AdminMailsPage(props: {
           </tbody>
         </table>
       </div>
-    </div>
+    </>
   );
 }

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { PublicStats } from "@/components/ui/public-stats";
 import { Hero } from "./_components/home/Hero";
 import { Steps } from "./_components/home/Steps";
@@ -7,11 +8,19 @@ import { FeaturedProducts } from "./_components/home/FeaturedProducts";
 import { SarthemapSection } from "./_components/home/SarthemapSection";
 import { Reassurance } from "./_components/home/Reassurance";
 import { CtaBand } from "./_components/home/CtaBand";
-import { AccountDeletedBanner } from "./_components/home/AccountDeletedBanner";
+import { AccountDeletedBannerGate } from "./_components/home/AccountDeletedBannerGate";
 
-// Homepage consumer (route /). Server Component pur — agrégateur des 7
-// sections de la home + composant <PublicStats /> Server existant
-// (branché Supabase via getPublicStats cached 5 min).
+// Homepage consumer (route /). Server Component — agrégateur des 7 sections
+// de la home + composant <PublicStats /> Server existant (branché Supabase
+// via getPublicStats cached 5 min).
+//
+// Perf (latence-navigation 2026-05-24) : la page ne lit plus searchParams au
+// top. Avant, `await searchParams` (pour la bannière rare ?compte-supprime=1)
+// forçait un rendu dynamique à chaque hit et empêchait le prefetch du shell.
+// Désormais le flag est lu dans <AccountDeletedBannerGate /> (Client Component,
+// useSearchParams) → la home est prerendable et la navigation vers / est
+// instantanée. Le gate est enveloppé dans <Suspense> (requis par Next pour
+// isoler useSearchParams sans dé-optimiser toute la route).
 //
 // Navbar + Footer sont fournis par app/(public)/layout.tsx, ne PAS
 // les importer ici.
@@ -22,20 +31,12 @@ export const metadata: Metadata = {
     "Marketplace circuit court en Sarthe : commande en ligne auprès des producteurs locaux (volaille, légumes, fromages, fruits) et récupère ta commande sur le créneau de ton choix.",
 };
 
-// searchParams typing : Next 16 le passe en Promise<Record<string, string |
-// string[]>>. On le destructure de façon défensive (le param peut être
-// absent dans 99% des hits home).
-export default async function HomePage({
-  searchParams,
-}: {
-  searchParams?: Promise<{ "compte-supprime"?: string | string[] }>;
-}) {
-  const resolved = (await searchParams) ?? {};
-  const showAccountDeleted = resolved["compte-supprime"] === "1";
-
+export default function HomePage() {
   return (
     <>
-      {showAccountDeleted ? <AccountDeletedBanner /> : null}
+      <Suspense fallback={null}>
+        <AccountDeletedBannerGate />
+      </Suspense>
       <Hero />
       <PublicStats />
       <Steps />
