@@ -36,6 +36,8 @@ export type DashboardData = {
   weekPlanning: { day: string; isToday: boolean; slots: { time: string; orders: number }[] }[];
   badges: { kind: 'stock' | 'response' | 'reliability'; score: number; tip: string }[];
   stockAlerts: { id: string; nom: string; stock: number }[];
+  /** Présent si la fiche n'est pas encore en ligne (item « à traiter »). */
+  publicationToDo: { doneCount: number } | null;
 };
 
 function euros(n: number): string {
@@ -111,31 +113,50 @@ export function DashboardClient({ data: initial }: { data: DashboardData }) {
         <p className="text-[14px] text-dark/60 mt-1">Voici ce qu&apos;il se passe à {data.producerName} aujourd&apos;hui.</p>
       </header>
 
-      {(data.pendingOrders.length > 0 || data.stockAlerts.length > 0) && (
-        <div className="mb-8 space-y-2">
-          {data.pendingOrders.length > 0 && (
-            <Link href="/commandes"
-              className="flex items-center justify-between gap-4 p-4 rounded-xl border bg-terra-100/60 border-terra-300/60 hover:bg-terra-100 transition-colors">
-              <div className="flex items-center gap-3">
-                <span className="w-2 h-2 rounded-full bg-terra-700 animate-pulse" />
-                <span className="text-[14px] text-dark font-medium">
-                  {data.pendingOrders.length} commande{data.pendingOrders.length > 1 ? 's' : ''} en attente de confirmation
-                </span>
-              </div>
-              <span className="text-[13px] text-dark/60">Voir →</span>
-            </Link>
-          )}
-          {data.stockAlerts.map((a) => (
-            <Link key={a.id} href="/catalogue"
-              className="flex items-center justify-between gap-4 p-4 rounded-xl border bg-amber-50 border-amber-200 hover:bg-amber-100/60 transition-colors">
-              <div className="flex items-center gap-3">
-                <span className="w-2 h-2 rounded-full bg-amber-500" />
-                <span className="text-[14px] text-dark font-medium">Stock faible : {a.nom} ({a.stock} restants)</span>
-              </div>
-              <span className="text-[13px] text-dark/60">Voir →</span>
-            </Link>
-          ))}
-        </div>
+      {(data.pendingOrders.length > 0 ||
+        data.stockAlerts.length > 0 ||
+        data.publicationToDo) && (
+        <section className="mb-8">
+          <h2 className="mb-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-dark/55">
+            À traiter aujourd&apos;hui
+          </h2>
+          <div className="space-y-2">
+            {data.publicationToDo && (
+              <Link href="/ma-page"
+                className="flex items-center justify-between gap-4 p-4 rounded-xl border bg-green-100/60 border-green-300/60 hover:bg-green-100 transition-colors">
+                <div className="flex items-center gap-3">
+                  <span className="w-2 h-2 rounded-full bg-green-700" />
+                  <span className="text-[14px] text-dark font-medium">
+                    Finalisez votre mise en ligne ({data.publicationToDo.doneCount}/6 étapes)
+                  </span>
+                </div>
+                <span className="text-[13px] text-dark/60">Voir →</span>
+              </Link>
+            )}
+            {data.pendingOrders.length > 0 && (
+              <Link href="/commandes"
+                className="flex items-center justify-between gap-4 p-4 rounded-xl border bg-terra-100/60 border-terra-300/60 hover:bg-terra-100 transition-colors">
+                <div className="flex items-center gap-3">
+                  <span className="w-2 h-2 rounded-full bg-terra-700 animate-pulse" />
+                  <span className="text-[14px] text-dark font-medium">
+                    {data.pendingOrders.length} commande{data.pendingOrders.length > 1 ? 's' : ''} en attente de confirmation
+                  </span>
+                </div>
+                <span className="text-[13px] text-dark/60">Voir →</span>
+              </Link>
+            )}
+            {data.stockAlerts.map((a) => (
+              <Link key={a.id} href="/catalogue"
+                className="flex items-center justify-between gap-4 p-4 rounded-xl border bg-amber-50 border-amber-200 hover:bg-amber-100/60 transition-colors">
+                <div className="flex items-center gap-3">
+                  <span className="w-2 h-2 rounded-full bg-amber-500" />
+                  <span className="text-[14px] text-dark font-medium">Stock faible : {a.nom} ({a.stock} restants)</span>
+                </div>
+                <span className="text-[13px] text-dark/60">Voir →</span>
+              </Link>
+            ))}
+          </div>
+        </section>
       )}
 
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-10">

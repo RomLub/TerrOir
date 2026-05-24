@@ -1,20 +1,40 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui";
 
-// Chantier 3 Phase 4 — panneau « Demander la publication » côté producteur.
-// POST /api/producer/request-publication ; en cas de critères manquants (422),
-// la route renvoie la liste qu'on mappe en libellés FR.
+// Panneau « Mettre ma fiche en ligne » (ADR-0011). Affiche une CHECKLIST des 6
+// critères (✓/✗) récupérée via GET /api/producer/publication-status, avec des
+// liens « Compléter » vers la bonne page, puis le bouton de demande (actif
+// seulement quand tout est prêt). La validation finale reste côté serveur
+// (POST /api/producer/request-publication).
 
-const CRITERIA_LABELS: Record<string, string> = {
-  description: "Une description d'au moins 150 caractères",
-  photo_principale: "Une photo de couverture",
-  localisation: "Commune et code postal renseignés",
-  stripe: "Paiements activés (compte de paiement vérifié)",
-  product_with_photo: "Au moins un produit publié avec une photo",
-  open_slot: "Au moins un créneau de retrait ouvert",
+type Criteria = {
+  description: boolean;
+  photo_principale: boolean;
+  localisation: boolean;
+  stripe: boolean;
+  product_with_photo: boolean;
+  open_slot: boolean;
 };
+
+const CRITERIA: { key: keyof Criteria; label: string; href?: string }[] = [
+  { key: "description", label: "Une description d'au moins 150 caractères" },
+  { key: "photo_principale", label: "Une photo de couverture" },
+  { key: "localisation", label: "Commune et code postal renseignés" },
+  {
+    key: "product_with_photo",
+    label: "Au moins un produit publié avec une photo",
+    href: "/catalogue",
+  },
+  {
+    key: "open_slot",
+    label: "Au moins un créneau de retrait ouvert",
+    href: "/creneaux",
+  },
+  { key: "stripe", label: "Paiements activés (compte vérifié)", href: "/parametres" },
+];
 
 export function RequestPublicationPanel({
   statut,
@@ -24,9 +44,33 @@ export function RequestPublicationPanel({
   publicationRequestedAt: string | null;
 }) {
   const [busy, setBusy] = useState(false);
-  const [missing, setMissing] = useState<string[] | null>(null);
   const [requested, setRequested] = useState(Boolean(publicationRequestedAt));
   const [error, setError] = useState<string | null>(null);
+  const [criteria, setCriteria] = useState<Criteria | null>(null);
+  const [allOk, setAllOk] = useState(false);
+
+  const hidden = statut === "public" || requested;
+
+  useEffect(() => {
+    if (hidden) return;
+    let active = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/producer/publication-status");
+        const data = (await res.json().catch(() => null)) as
+          | { criteria?: Criteria; allOk?: boolean }
+          | null;
+        if (!active || !data) return;
+        if (data.criteria) setCriteria(data.criteria);
+        setAllOk(Boolean(data.allOk));
+      } catch {
+        // Best-effort : la checklist ne bloque pas l'affichage de la page.
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [hidden]);
 
   if (statut === "public") {
     return (
@@ -48,26 +92,20 @@ export function RequestPublicationPanel({
   async function request() {
     setBusy(true);
     setError(null);
-    setMissing(null);
     try {
       const res = await fetch("/api/producer/request-publication", {
         method: "POST",
       });
       const data = (await res.json().catch(() => null)) as {
         ok?: boolean;
-        missing?: string[];
         blocked?: string | null;
       } | null;
       if (res.ok) {
         setRequested(true);
         return;
       }
-      if (res.status === 422 && data) {
-        if (data.blocked) {
-          setError("Votre fiche ne peut pas être publiée dans son état actuel.");
-        } else {
-          setMissing(data.missing ?? []);
-        }
+      if (res.status === 422 && data?.blocked) {
+        setError("Votre fiche ne peut pas être publiée dans son état actuel.");
         return;
       }
       setError("Demande impossible pour le moment. Réessayez plus tard.");
@@ -78,21 +116,47 @@ export function RequestPublicationPanel({
     }
   }
 
+  const doneCount = criteria
+    ? CRITERIA.filter((c) => criteria[c.key]).length
+    : 0;
+
   return (
     <section className="rounded-2xl border border-dark/[0.08] bg-white p-5">
-      <h2 className="font-serif text-[20px] text-green-900">Mettre ma fiche en ligne</h2>
+      <h2 className="font-serif text-[20px] text-green-900">
+        Mettre ma fiche en ligne
+      </h2>
       <p className="mt-1 text-sm text-dark/65">
-        Quand votre fiche est prête, demandez sa publication. Notre équipe la
-        valide avant sa mise en ligne.
+        Complétez ces étapes, puis demandez la publication. Notre équipe la valide
+        avant la mise en ligne.
       </p>
 
-      {missing && missing.length > 0 ? (
-        <div className="mt-3 rounded-lg bg-terra-50 border border-terra-200 px-4 py-3 text-sm text-terra-800">
-          <p className="font-semibold">Il manque encore :</p>
-          <ul className="mt-1 list-disc pl-5 space-y-0.5">
-            {missing.map((m) => (
-              <li key={m}>{CRITERIA_LABELS[m] ?? m}</li>
-            ))}
+      {criteria ? (
+        <div className="mt-4">
+          <div className="mb-2 text-[12px] font-semibold uppercase tracking-[0.14em] text-dark/55">
+            {doneCount}/6 étapes
+          </div>
+          <ul className="space-y-1.5">
+            {CRITERIA.map((c) => {
+              const ok = criteria[c.key];
+              return (
+                <li key={c.key} className="flex items-center gap-2 text-sm">
+                  <span className={ok ? "text-green-700" : "text-dark/30"}>
+                    {ok ? "✓" : "○"}
+                  </span>
+                  <span className={ok ? "text-dark/55" : "text-dark/80"}>
+                    {c.label}
+                  </span>
+                  {!ok && c.href ? (
+                    <Link
+                      href={c.href}
+                      className="text-[12px] text-terra-700 underline hover:text-terra-700/70"
+                    >
+                      Compléter
+                    </Link>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         </div>
       ) : null}
@@ -100,9 +164,14 @@ export function RequestPublicationPanel({
       {error ? <p className="mt-3 text-sm text-terra-700">{error}</p> : null}
 
       <div className="mt-4">
-        <Button variant="accent" onClick={request} disabled={busy}>
+        <Button variant="accent" onClick={request} disabled={busy || !allOk}>
           {busy ? "Envoi…" : "Demander la publication"}
         </Button>
+        {criteria && !allOk ? (
+          <p className="mt-2 text-[12px] text-dark/50">
+            Terminez les étapes ci-dessus pour pouvoir demander la publication.
+          </p>
+        ) : null}
       </div>
     </section>
   );
