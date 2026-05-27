@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { Button, ProducerBadge } from '@/components/ui';
+import { StatCard } from '@/components/producer/StatCard';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import {
   PUBLICATION_CRITERIA,
@@ -270,11 +271,7 @@ export function DashboardClient({ data: initial }: { data: DashboardData }) {
 
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
         {metrics.map((m) => (
-          <div key={m.label} className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-5">
-            <div className="text-[11px] uppercase tracking-[0.12em] text-dark/55 font-semibold">{m.label}</div>
-            <div className={`mt-2 font-serif text-[36px] leading-none tabular-nums ${m.tone === 'terra' ? 'text-terra-700' : 'text-green-900'}`}>{m.value}</div>
-            <div className="mt-1.5 text-[12px] text-dark/55 mono">{m.sub}</div>
-          </div>
+          <StatCard key={m.label} label={m.label} value={m.value} sub={m.sub} tone={m.tone} />
         ))}
       </section>
 
