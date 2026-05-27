@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { Button, ProducerBadge } from '@/components/ui';
 import { StatCard } from '@/components/producer/StatCard';
@@ -159,25 +160,38 @@ export function PublicationWaitCard() {
   );
 }
 
-export function DashboardClient({ data: initial }: { data: DashboardData }) {
-  const [data, setData] = useState(initial);
+export function DashboardClient({ data }: { data: DashboardData }) {
+  // Seul état réellement local : compteur « Commandes aujourd'hui » muté en
+  // temps réel par le channel Supabase. Le baseline vient toujours de la
+  // prop serveur ; on resync à chaque changement de prop pour ne pas figer
+  // un compteur stale après une navigation soft (ex. changement de semaine).
+  // Toutes les autres données viennent directement de la prop — pas de
+  // useState(initial) qui figerait le snapshot et bloquerait la propagation
+  // des nouveaux searchParams (cf. bug planning semaine 2026-05-27).
+  const [liveOrdersToday, setLiveOrdersToday] = useState(data.ordersToday);
+  const router = useRouter();
+  const [isWeekNavPending, startWeekNavTransition] = useTransition();
+
+  useEffect(() => {
+    setLiveOrdersToday(data.ordersToday);
+  }, [data.ordersToday]);
 
   useEffect(() => {
     const supabase = createSupabaseBrowserClient();
     let channel: RealtimeChannel | null = null;
 
     channel = supabase
-      .channel(`producer-dashboard-${initial.producerId}`)
+      .channel(`producer-dashboard-${data.producerId}`)
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
           table: 'orders',
-          filter: `producer_id=eq.${initial.producerId}`,
+          filter: `producer_id=eq.${data.producerId}`,
         },
         () => {
-          setData((d) => ({ ...d, ordersToday: d.ordersToday + 1 }));
+          setLiveOrdersToday((n) => n + 1);
         },
       )
       .subscribe();
@@ -185,7 +199,13 @@ export function DashboardClient({ data: initial }: { data: DashboardData }) {
     return () => {
       if (channel) supabase.removeChannel(channel);
     };
-  }, [initial.producerId]);
+  }, [data.producerId]);
+
+  function handleWeekNavigate(href: string) {
+    startWeekNavTransition(() => {
+      router.push(href);
+    });
+  }
 
   const revenueDelta = data.revenueLastWeek > 0
     ? Math.round(((data.revenueWeek - data.revenueLastWeek) / data.revenueLastWeek) * 100)
@@ -196,8 +216,8 @@ export function DashboardClient({ data: initial }: { data: DashboardData }) {
   const metrics = [
     {
       label: "Commandes aujourd'hui",
-      value: String(data.ordersToday),
-      sub: `${data.ordersToday >= data.ordersYesterday ? '+' : ''}${data.ordersToday - data.ordersYesterday} depuis hier`,
+      value: String(liveOrdersToday),
+      sub: `${liveOrdersToday >= data.ordersYesterday ? '+' : ''}${liveOrdersToday - data.ordersYesterday} depuis hier`,
       tone: 'green' as const,
     },
     {
@@ -314,13 +334,22 @@ export function DashboardClient({ data: initial }: { data: DashboardData }) {
         </div>
       </section>
 
-      <section className="mb-10">
+      <section className="mb-10" aria-busy={isWeekNavPending}>
         <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
           <h2 className="font-serif text-[28px] text-green-900 leading-tight">Planning de la semaine</h2>
-          <WeekNavigator weekOffset={data.weekOffset} periodLabel={data.weekPeriodLabel} />
+          <WeekNavigator
+            weekOffset={data.weekOffset}
+            periodLabel={data.weekPeriodLabel}
+            isPending={isWeekNavPending}
+            onNavigate={handleWeekNavigate}
+          />
         </div>
         <div className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-5">
-          <div className="grid grid-cols-7 gap-2">
+          <div
+            className={`grid grid-cols-7 gap-2 transition-opacity ${
+              isWeekNavPending ? 'opacity-60' : ''
+            }`}
+          >
             {data.weekPlanning.map((d) => (
               <div key={d.day} className={`rounded-xl p-3 min-h-[120px] border ${d.isToday ? 'bg-green-100/60 border-green-500' : 'bg-bg border-dark/[0.06]'}`}>
                 <div className={`text-[12px] font-semibold uppercase tracking-wider mb-2 ${d.isToday ? 'text-green-900' : 'text-dark/60'}`}>{d.day}</div>
