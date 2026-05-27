@@ -402,10 +402,10 @@ describe("G. Badge confirmation_score (gating sur historique)", () => {
   });
 
   it("G2 historique mixte → UPDATE producers.badge_confirmation_score = ratio fast/total × 100", async () => {
-    // 4 commandes : 2 confirmées en ≤ 2h, 2 confirmées en > 2h.
+    // 4 commandes : 2 confirmées en ≤ 24h, 2 confirmées en > 24h.
     // fast=2, total=4 → score = 2/4*100 = 50 (arrondi 2 décimales).
-    const fastDelta = 60 * 60 * 1000; // 1h en ms
-    const slowDelta = 3 * 60 * 60 * 1000; // 3h en ms
+    const fastDelta = 60 * 60 * 1000; // 1h en ms (≤ 24h → fast)
+    const slowDelta = 25 * 60 * 60 * 1000; // 25h en ms (> 24h → slow)
     const t0 = Date.parse("2026-04-01T00:00:00Z");
     pushOrderSelects(
       { data: DEFAULT_ORDER, error: null },
