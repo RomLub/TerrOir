@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useUserContext } from "@/components/providers/user-provider";
 import type { ProducerNavBadges } from "@/lib/producers/nav-badges";
+import { buildPublicProducerUrl } from "@/lib/producers/public-url";
 
 // Sidebar de l'espace producteur (ADR-0011). Même squelette que la sidebar
 // admin (nav déclarative groupée + isActive + badges serveur), peau chaude
@@ -262,15 +263,17 @@ export function ProducerSidebar({ badges }: ProducerSidebarProps = {}) {
               {producer.nom_exploitation}
             </div>
             {producer.statut === "public" && producer.slug ? (
-              <Link
-                href={`/producteurs/${producer.slug}`}
+              <a
+                href={buildPublicProducerUrl(producer.slug)}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="mt-1 inline-block text-[12px] text-terra-300 hover:text-white"
               >
-                ↗ Voir ma page publique
-              </Link>
+                ↗ Voir ma fiche publique
+              </a>
             ) : (
               <div className="mt-1 text-[12px] text-terra-300/60">
-                Page publique après 1er produit
+                Fiche publique après 1er produit
               </div>
             )}
           </>

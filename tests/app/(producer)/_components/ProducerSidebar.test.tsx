@@ -7,6 +7,18 @@ import type { ProducerNavBadges } from "@/lib/producers/nav-badges";
 // sidebar admin. Pas de jsdom : rendu serveur read-only. usePathname mocké,
 // useUserContext mocké (footer identité), Logo/RoleSwitcher stubés.
 
+// lib/env/urls.ts fail-fast au load si NEXT_PUBLIC_APP_URL n'est pas défini.
+// Le footer identité consomme désormais buildPublicProducerUrl qui dépend
+// de cette env var — pattern hoisted obligatoire (cf. role-switcher-urls).
+vi.hoisted(() => {
+  process.env.NEXT_PUBLIC_APP_URL =
+    process.env.NEXT_PUBLIC_APP_URL ?? "https://www.terroir-local.fr";
+  process.env.NEXT_PUBLIC_PRODUCER_URL =
+    process.env.NEXT_PUBLIC_PRODUCER_URL ?? "https://pro.terroir-local.fr";
+  process.env.NEXT_PUBLIC_ADMIN_URL =
+    process.env.NEXT_PUBLIC_ADMIN_URL ?? "https://admin.terroir-local.fr";
+});
+
 let currentPathname: string | null = "/dashboard";
 vi.mock("next/navigation", () => ({
   usePathname: () => currentPathname,
@@ -160,6 +172,9 @@ describe("ProducerSidebar — pied de page identité", () => {
   it("rend le nom d'exploitation et le lien fiche publique (statut public)", () => {
     const html = render();
     expect(html).toContain("Ferme des Tilleuls");
-    expect(html).toContain('href="/producteurs/ferme-des-tilleuls"');
+    expect(html).toContain(
+      'href="https://www.terroir-local.fr/producteurs/ferme-des-tilleuls"',
+    );
+    expect(html).toContain("Voir ma fiche publique");
   });
 });
