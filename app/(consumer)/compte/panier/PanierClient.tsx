@@ -236,7 +236,7 @@ function PanierClientInner() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <h3 className="font-serif text-[18px] text-green-900 leading-tight">{it.nom}</h3>
-                        <div className="text-[12px] text-dark/60 mt-0.5 mono">Retrait · {formatDateFr(it.dateRetrait)}</div>
+                        <div className="text-[12px] text-dark/60 mt-0.5">Retrait · {formatDateFr(it.dateRetrait)}</div>
                         <div className="mt-3 flex items-center gap-3 flex-wrap">
                           <div className="inline-flex items-stretch rounded-lg border border-dark/10 bg-white">
                             <button type="button"
@@ -256,7 +256,7 @@ function PanierClientInner() {
                       </div>
                       <div className="text-right shrink-0">
                         <div className="font-serif text-[20px] text-green-900 tabular-nums">{(it.prix * it.quantite).toFixed(2).replace('.', ',')} €</div>
-                        <div className="text-[12px] text-dark/50 mono">{it.prix.toFixed(2).replace('.', ',')} € / {it.unite}</div>
+                        <div className="text-[12px] text-dark/50">{it.prix.toFixed(2).replace('.', ',')} € / {it.unite}</div>
                       </div>
                     </li>
                   );
@@ -270,8 +270,8 @@ function PanierClientInner() {
           <h2 className="font-serif text-[24px] text-green-900">Récapitulatif</h2>
           <dl className="mt-5 space-y-3 text-[14px]">
             <div className="flex justify-between"><dt className="text-dark/70">Sous-total</dt><dd className="tabular-nums">{subtotal.toFixed(2).replace('.', ',')} €</dd></div>
-            <div className="flex justify-between text-dark/55"><dt>Commission TerrOir (6%)</dt><dd className="mono">incluse</dd></div>
-            <div className="flex justify-between text-dark/55"><dt>Retrait à la ferme</dt><dd className="mono">gratuit</dd></div>
+            <div className="flex justify-between text-dark/55"><dt>Commission TerrOir (6%)</dt><dd>incluse</dd></div>
+            <div className="flex justify-between text-dark/55"><dt>Retrait à la ferme</dt><dd>gratuit</dd></div>
           </dl>
           <div className="border-t border-dark/[0.08] mt-5 pt-5 flex items-baseline justify-between">
             <span className="font-serif text-[20px] text-green-900">Total</span>

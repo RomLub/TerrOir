@@ -180,7 +180,7 @@ export function CatalogueClient({
                       <span className="font-serif text-[22px] text-green-900 tabular-nums">{p.prix.toFixed(2).replace('.', ',')} €</span>
                       <span className="text-[12px] text-dark/55">/ {p.unite}</span>
                     </div>
-                    <div className="mt-1 text-[12px] text-dark/60 mono">{p.unlimited ? '∞ illimité' : `${p.stock} ${p.unite} en stock`}</div>
+                    <div className="mt-1 text-[12px] text-dark/60">{p.unlimited ? '∞ illimité' : `${p.stock} ${p.unite} en stock`}</div>
                     <div className="mt-4 pt-4 border-t border-dark/[0.06] flex items-center justify-between gap-2">
                       <label className="flex items-center gap-2 cursor-pointer select-none">
                         <span className="text-[12px] text-dark/60 font-medium">{p.active ? 'Actif' : 'Inactif'}</span>

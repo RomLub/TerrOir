@@ -39,7 +39,7 @@ export function UnsubscribeForm({ email, token }: { email: string; token: string
         <div className="text-[11px] uppercase tracking-[0.14em] text-terra-700 font-semibold mb-1">
           Email concerné
         </div>
-        <div className="mono text-[15px] text-green-900">{email}</div>
+        <div className="text-[15px] text-green-900">{email}</div>
       </div>
 
       <p className="text-[14px] text-dark/70 leading-relaxed">

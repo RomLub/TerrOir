@@ -31,7 +31,7 @@ export default function ProducerError({
             si l&apos;erreur persiste, contactez le support TerrOir.
           </p>
           {error.digest ? (
-            <p className="mono mt-3 text-[11px] uppercase tracking-[0.14em] text-dark/40">
+            <p className="mt-3 text-[11px] uppercase tracking-[0.14em] text-dark/40">
               Réf : {error.digest}
             </p>
           ) : null}

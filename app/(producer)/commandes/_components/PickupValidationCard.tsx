@@ -414,7 +414,7 @@ export function PickupValidationCard({
                   >
                     <div className="flex-1 min-w-0">
                       <div className="text-green-900 font-medium">{it.name}</div>
-                      <div className="text-[12px] mono text-dark/55 mt-0.5">
+                      <div className="text-[12px] text-dark/55 mt-0.5">
                         {it.qty} · {it.unit_price.toFixed(2).replace('.', ',')} €/u
                       </div>
                     </div>

@@ -29,7 +29,7 @@ export default function ConsumerError({
         compte. Réessaie — on a peut-être juste eu un hoquet réseau.
       </p>
       {error.digest ? (
-        <p className="mono mt-3 text-[11px] uppercase tracking-[0.14em] text-dark/40">
+        <p className="mt-3 text-[11px] uppercase tracking-[0.14em] text-dark/40">
           Réf : {error.digest}
         </p>
       ) : null}

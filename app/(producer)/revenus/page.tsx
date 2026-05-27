@@ -186,7 +186,7 @@ async function RevenusContent({
         <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
           <div className="flex items-end gap-3">
             <h2 className="font-serif text-[24px] text-green-900">Évolution sur 8 semaines</h2>
-            <span className="text-[12px] mono text-dark/50 pb-1">en €</span>
+            <span className="text-[12px] text-dark/50 pb-1">en €</span>
           </div>
           <WeekNavigator weekOffset={weekOffset} periodLabel={chartPeriodLabel} />
         </div>
@@ -196,12 +196,12 @@ async function RevenusContent({
             const isLast = i === revenueByWeek.length - 1;
             return (
               <div key={`${w.label}-${i}`} className="flex-1 flex flex-col items-center gap-2 group">
-                <div className="text-[11px] mono text-dark/50 tabular-nums">{Math.round(w.value)}</div>
+                <div className="text-[11px] text-dark/50 tabular-nums">{Math.round(w.value)}</div>
                 <div className="w-full flex-1 flex items-end">
                   <div className={`w-full rounded-t-md transition-all ${isLast ? 'bg-terra-700' : 'bg-green-700'} group-hover:opacity-80`}
                     style={{ height: `${h}%` }} />
                 </div>
-                <div className={`text-[11px] mono font-semibold ${isLast ? 'text-terra-700' : 'text-dark/60'}`}>{w.label}</div>
+                <div className={`text-[11px] font-semibold ${isLast ? 'text-terra-700' : 'text-dark/60'}`}>{w.label}</div>
               </div>
             );
           })}

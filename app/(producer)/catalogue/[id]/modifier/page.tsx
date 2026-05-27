@@ -306,7 +306,7 @@ export default function ProductEditPage() {
           )}
         </div>
         <h1 className="mt-2 font-serif text-[40px] text-green-900 leading-tight">Modifier le produit</h1>
-        <p className="text-[13px] text-dark/55 mt-1 mono">ID : {productId}</p>
+        <p className="text-[13px] text-dark/55 mt-1">ID : {productId}</p>
         {error && <p className="mt-2 text-[13px] text-terra-700">{error}</p>}
       </header>
 

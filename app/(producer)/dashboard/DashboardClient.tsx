@@ -292,7 +292,7 @@ export function DashboardClient({ data: initial }: { data: DashboardData }) {
             <article key={p.id} className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-5">
               <div className="flex items-center justify-between gap-4 flex-wrap">
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 text-[12px] mono text-dark/50">
+                  <div className="flex items-center gap-2 text-[12px] text-dark/50">
                     {p.codeCommande && <><span>{p.codeCommande}</span><span>·</span></>}
                     <span>{p.slotLabel}</span>
                   </div>
@@ -302,7 +302,7 @@ export function DashboardClient({ data: initial }: { data: DashboardData }) {
                 <div className="flex items-center gap-4">
                   <div className="text-right">
                     <div className="font-serif text-[20px] text-green-900 tabular-nums">{euros(p.total)}</div>
-                    <div className={`text-[11px] mono mt-0.5 ${p.hoursLeft < 6 ? 'text-terra-700 font-semibold' : 'text-dark/50'}`}>
+                    <div className={`text-[11px] mt-0.5 ${p.hoursLeft < 6 ? 'text-terra-700 font-semibold' : 'text-dark/50'}`}>
                       ⏱ {p.hoursLeft}h restantes
                     </div>
                   </div>
@@ -329,7 +329,7 @@ export function DashboardClient({ data: initial }: { data: DashboardData }) {
                     <div className="text-[11px] text-dark/30 italic">—</div>
                   ) : d.slots.map((s, i) => (
                     <div key={i} className="rounded-md bg-terra-700/10 border border-terra-700/20 p-1.5">
-                      <div className="text-[11px] mono text-terra-700 font-semibold">{s.time}</div>
+                      <div className="text-[11px] text-terra-700 font-semibold">{s.time}</div>
                       <div className="text-[11px] text-dark/70 mt-0.5">{s.orders} cmd.</div>
                     </div>
                   ))}

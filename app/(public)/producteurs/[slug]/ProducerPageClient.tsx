@@ -211,7 +211,7 @@ export function ProducerPageClient({
               <span className="text-[11px] uppercase tracking-[0.18em] text-terra-700 font-semibold">Au catalogue</span>
               <h2 className="mt-2 font-serif text-[38px] md:text-[48px] text-green-900 leading-tight">Nos produits disponibles</h2>
             </div>
-            <span className="text-[13px] text-dark/60 mono">{products.length} produit{products.length > 1 ? 's' : ''} actif{products.length > 1 ? 's' : ''}</span>
+            <span className="text-[13px] text-dark/60">{products.length} produit{products.length > 1 ? 's' : ''} actif{products.length > 1 ? 's' : ''}</span>
           </div>
 
           {products.length === 0 ? (

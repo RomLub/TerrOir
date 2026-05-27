@@ -72,7 +72,7 @@ export function OrderDetailClient({ data }: { data: OrderDetailData }) {
       <Link href="/compte/commandes" className="text-[13px] text-dark/60 hover:text-green-900">← Mes commandes</Link>
         <div className="mt-3 flex items-start justify-between gap-4 flex-wrap">
           <div>
-            {o.codeCommande && <div className="text-[12px] mono text-dark/50">{o.codeCommande}</div>}
+            {o.codeCommande && <div className="text-[12px] text-dark/50">{o.codeCommande}</div>}
             <h1 className="font-serif text-[40px] md:text-[48px] text-green-900 leading-tight">{o.producer.name}</h1>
             <div className="text-[14px] text-dark/60 mt-1">Commandé le {o.createdAt}</div>
           </div>
@@ -122,7 +122,7 @@ export function OrderDetailClient({ data }: { data: OrderDetailData }) {
                 <li key={i} className="py-3 flex items-center justify-between gap-4">
                   <div>
                     <div className="text-[15px] text-dark font-medium">{it.name}</div>
-                    <div className="text-[12px] text-dark/50 mono">{it.qty}</div>
+                    <div className="text-[12px] text-dark/50">{it.qty}</div>
                   </div>
                   <div className="font-serif text-[18px] text-green-900 tabular-nums">{it.price.toFixed(2).replace('.', ',')} €</div>
                 </li>

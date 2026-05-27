@@ -61,7 +61,7 @@ function RevivalBlockedView({
           Détails de la tentative
         </div>
         {codeCommande && (
-          <div className="mt-2 text-[12px] mono text-dark/55">Code : {codeCommande}</div>
+          <div className="mt-2 text-[12px] text-dark/55">Code : {codeCommande}</div>
         )}
         <div className="mt-1 font-serif text-[18px] text-green-900">{producer.name}</div>
 
@@ -70,7 +70,7 @@ function RevivalBlockedView({
             <li key={i} className="py-3 flex items-center justify-between gap-4">
               <div>
                 <div className="text-[15px] text-dark font-medium">{it.name}</div>
-                <div className="text-[12px] text-dark/50 mono">{it.qty}</div>
+                <div className="text-[12px] text-dark/50">{it.qty}</div>
               </div>
               <div className="font-serif text-[18px] text-green-900 tabular-nums">{it.price.toFixed(2).replace('.', ',')} €</div>
             </li>
@@ -161,7 +161,7 @@ export function ConfirmationClient({ orderId, codeCommande, statut, closureReaso
               <li key={i} className="py-3 flex items-center justify-between gap-4">
                 <div>
                   <div className="text-[15px] text-dark font-medium">{it.name}</div>
-                  <div className="text-[12px] text-dark/50 mono">{it.qty}</div>
+                  <div className="text-[12px] text-dark/50">{it.qty}</div>
                 </div>
                 <div className="font-serif text-[18px] text-green-900 tabular-nums">{it.price.toFixed(2).replace('.', ',')} €</div>
               </li>
