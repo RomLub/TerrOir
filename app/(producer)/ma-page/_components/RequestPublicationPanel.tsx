@@ -3,38 +3,20 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui";
+import { PUBLICATION_CRITERIA } from "@/lib/producers/publication-criteria";
+import type { PublicationCriteria } from "@/lib/producers/publication-status";
 
-// Panneau « Mettre ma fiche en ligne » (ADR-0011). Affiche une CHECKLIST des 6
+// Panneau « Mettre ma fiche en ligne » (ADR-0011). Affiche une CHECKLIST des
 // critères (✓/✗) récupérée via GET /api/producer/publication-status, avec des
 // liens « Compléter » vers la bonne page, puis le bouton de demande (actif
 // seulement quand tout est prêt). La validation finale reste côté serveur
 // (POST /api/producer/request-publication).
+//
+// La liste et les libellés sont la source unique PUBLICATION_CRITERIA — même
+// référence que la carte du dashboard. Le compteur « /N étapes » est dérivé
+// de PUBLICATION_CRITERIA.length pour éviter tout hardcoding du nombre.
 
-type Criteria = {
-  description: boolean;
-  photo_principale: boolean;
-  localisation: boolean;
-  stripe: boolean;
-  product_with_photo: boolean;
-  open_slot: boolean;
-};
-
-const CRITERIA: { key: keyof Criteria; label: string; href?: string }[] = [
-  { key: "description", label: "Une description d'au moins 150 caractères" },
-  { key: "photo_principale", label: "Une photo de couverture" },
-  { key: "localisation", label: "Commune et code postal renseignés" },
-  {
-    key: "product_with_photo",
-    label: "Au moins un produit publié avec une photo",
-    href: "/catalogue",
-  },
-  {
-    key: "open_slot",
-    label: "Au moins un créneau de retrait ouvert",
-    href: "/creneaux",
-  },
-  { key: "stripe", label: "Paiements activés (compte vérifié)", href: "/parametres" },
-];
+type Criteria = PublicationCriteria;
 
 export function RequestPublicationPanel({
   statut,
@@ -117,7 +99,7 @@ export function RequestPublicationPanel({
   }
 
   const doneCount = criteria
-    ? CRITERIA.filter((c) => criteria[c.key]).length
+    ? PUBLICATION_CRITERIA.filter((c) => criteria[c.key]).length
     : 0;
 
   return (
@@ -133,10 +115,10 @@ export function RequestPublicationPanel({
       {criteria ? (
         <div className="mt-4">
           <div className="mb-2 text-[12px] font-semibold uppercase tracking-[0.14em] text-dark/55">
-            {doneCount}/6 étapes
+            {doneCount}/{PUBLICATION_CRITERIA.length} étapes
           </div>
           <ul className="space-y-1.5">
-            {CRITERIA.map((c) => {
+            {PUBLICATION_CRITERIA.map((c) => {
               const ok = criteria[c.key];
               return (
                 <li key={c.key} className="flex items-center gap-2 text-sm">

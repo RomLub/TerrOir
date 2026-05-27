@@ -6,6 +6,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { fetchProducerForUser, type ProducerRecord } from '@/lib/producers/context';
 import { getPublicationStatus } from '@/lib/producers/publication-status';
+import type { CriterionKey } from '@/lib/producers/publication-criteria';
 import {
   formatSlotRange,
   formatLegacyTimeHHMM,
@@ -279,14 +280,26 @@ async function DashboardContent({
 
   // Bloc « à traiter » : item publication tant que la fiche n'est pas en ligne
   // (réutilise la RPC lecture seule get_publication_status). Aucun appel quand
-  // la fiche est déjà publique.
-  let publicationToDo: { doneCount: number } | null = null;
+  // la fiche est déjà publique. Trois états possibles côté dashboard :
+  //   - todo : la fiche n'est pas demandée, on liste les critères restants
+  //   - wait : la demande a été envoyée, on attend la validation admin
+  //   - null : déjà public, ou ligne producer introuvable (cas pathologique)
+  let publicationToDo: DashboardData['publicationToDo'] = null;
   if (producer.statut !== 'public') {
     const pub = await getPublicationStatus(userId);
-    if (pub.found && !pub.alreadyPublic && !pub.publicationRequested) {
-      publicationToDo = {
-        doneCount: Object.values(pub.criteria).filter(Boolean).length,
-      };
+    if (pub.found && !pub.alreadyPublic) {
+      if (pub.publicationRequested) {
+        publicationToDo = { kind: 'wait' };
+      } else {
+        const doneCount = Object.values(pub.criteria).filter(Boolean).length;
+        // `pub.missing` est un string[] côté RPC ; on cast vers CriterionKey[]
+        // — les valeurs viennent du SQL et matchent strictement les 6 clés.
+        publicationToDo = {
+          kind: 'todo',
+          doneCount,
+          missingKeys: pub.missing as CriterionKey[],
+        };
+      }
     }
   }
 
