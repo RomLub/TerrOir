@@ -88,7 +88,7 @@ export function computeHealth(input: HealthInput): ProducerHealth {
       tip:
         responseBand === "good"
           ? "Très réactif, vos clients apprécient."
-          : "Confirmez vos commandes en moins de 2h pour atteindre 85 % et plus.",
+          : "Confirmez vos commandes en moins de 24 h pour atteindre 85 % et plus.",
     },
     {
       key: "reliability",

@@ -114,21 +114,21 @@ describe("recomputeBadgesForProducer", () => {
         id: "o1",
         statut: "completed",
         created_at: "2026-04-01T10:00:00Z",
-        confirmed_at: "2026-04-01T10:30:00Z", // 30min < 2h → fast
+        confirmed_at: "2026-04-01T10:30:00Z", // 30min < 24h → fast
         closure_reason: null,
       },
       {
         id: "o2",
         statut: "completed",
         created_at: "2026-04-02T10:00:00Z",
-        confirmed_at: "2026-04-02T11:00:00Z", // 1h < 2h → fast
+        confirmed_at: "2026-04-02T11:00:00Z", // 1h < 24h → fast
         closure_reason: null,
       },
       {
         id: "o3",
         statut: "completed",
         created_at: "2026-04-03T10:00:00Z",
-        confirmed_at: "2026-04-03T13:00:00Z", // 3h > 2h → slow
+        confirmed_at: "2026-04-04T11:00:00Z", // 25h > 24h → slow
         closure_reason: null,
       },
       {
@@ -153,7 +153,7 @@ describe("recomputeBadgesForProducer", () => {
     const res = await recomputeBadgesForProducer(client, "prod-A");
 
     // 5 total, 1 stock_cancel → (5-1)/5 = 80
-    // 3 confirmed dont 2 fast → 2/3 = 66.67
+    // 3 confirmed dont 2 fast (≤ 24h) → 2/3 = 66.67
     // 5 total, 2 cancelled (stock + consumer) → (5-2)/5 = 60
     expect(res).toEqual({
       producer_id: "prod-A",
@@ -210,6 +210,38 @@ describe("recomputeBadgesForProducer", () => {
     });
     // L'UPDATE a bien été tenté (effet de bord noté).
     expect(captured.updates).toHaveLength(1);
+  });
+
+  it("seuil 24h : confirmation ≤ 24h00m00 = fast, > 24h = slow (limite inclusive)", async () => {
+    const orders = [
+      {
+        id: "edge-23h59",
+        statut: "completed",
+        created_at: "2026-04-01T10:00:00Z",
+        confirmed_at: "2026-04-02T09:59:00Z", // +23h59 → fast
+        closure_reason: null,
+      },
+      {
+        id: "edge-24h-exact",
+        statut: "completed",
+        created_at: "2026-04-01T10:00:00Z",
+        confirmed_at: "2026-04-02T10:00:00Z", // +24h pile → fast (≤ inclusif)
+        closure_reason: null,
+      },
+      {
+        id: "edge-24h01",
+        statut: "completed",
+        created_at: "2026-04-01T10:00:00Z",
+        confirmed_at: "2026-04-02T10:01:00Z", // +24h01 → slow
+        closure_reason: null,
+      },
+    ];
+    const { client } = buildClient({
+      selectOrders: { data: orders, error: null },
+    });
+    const res = await recomputeBadgesForProducer(client, "prod-edge-24h");
+    // 3 confirmed, 2 fast → 2/3 = 66.67
+    expect(res.badge_confirmation_score).toBe(66.67);
   });
 
   it("edge case : 0 confirmation → fast_confirmed=0/max(0,1)=0/1=0 (pas de div by 0)", async () => {

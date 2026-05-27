@@ -1,15 +1,18 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  BADGE_WINDOW_MONTHS,
+  CONFIRMATION_THRESHOLD_MS,
+} from "@/lib/producers/scoring-constants";
 
 // Recompute des 3 scores badges pour UN producteur sur une fenêtre glissante
-// 12 mois. Logique extraite de l'ancienne route PATCH
-// /api/producers/[id]/badges supprimée par T-417 (le seul caller était le
-// cron weekly-badges, qui faisait un fetch HTTP interne avec Bearer manuel
-// — anti-pattern : latence + réinjection auth + complexité).
+// (cf. BADGE_WINDOW_MONTHS). Logique extraite de l'ancienne route PATCH
+// /api/producers/[id]/badges supprimée par T-417.
 //
 // 3 scores calculés (en pourcentage 0-100, arrondi 2 décimales) :
 //   - badge_stock_score        : (total - cancellations stock) / total
-//   - badge_confirmation_score : confirmations < 2h / total confirmations
+//   - badge_confirmation_score : confirmations ≤ CONFIRMATION_THRESHOLD /
+//                                total confirmations
 //   - badge_annulation_score   : (total - cancellations toutes raisons) / total
 //
 // Pas d'appel notification ni email : pure DB recompute.
@@ -29,7 +32,7 @@ export async function recomputeBadgesForProducer(
   producerId: string,
 ): Promise<RecomputeBadgesResult> {
   const cutoff = new Date();
-  cutoff.setUTCMonth(cutoff.getUTCMonth() - 12);
+  cutoff.setUTCMonth(cutoff.getUTCMonth() - BADGE_WINDOW_MONTHS);
 
   const { data: orders, error: selectError } = await admin
     .from("orders")
@@ -57,7 +60,7 @@ export async function recomputeBadgesForProducer(
     if (!o.created_at || !o.confirmed_at) return false;
     return (
       new Date(o.confirmed_at).getTime() - new Date(o.created_at).getTime() <=
-      2 * 60 * 60 * 1000
+      CONFIRMATION_THRESHOLD_MS
     );
   }).length;
 
