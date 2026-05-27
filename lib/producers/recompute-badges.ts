@@ -1,14 +1,16 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { BADGE_WINDOW_MONTHS } from "@/lib/producers/scoring-constants";
 import {
-  BADGE_WINDOW_MONTHS,
-  BLAMING_CLOSURE_REASONS,
-  CONFIRMATION_THRESHOLD_MS,
-} from "@/lib/producers/scoring-constants";
+  computeBadgeDetails,
+  type ScoringOrder,
+} from "@/lib/producers/compute-badge-details";
 
 // Recompute des 3 scores badges pour UN producteur sur une fenêtre glissante
-// (cf. BADGE_WINDOW_MONTHS). Logique extraite de l'ancienne route PATCH
-// /api/producers/[id]/badges supprimée par T-417.
+// (cf. BADGE_WINDOW_MONTHS). Logique de calcul extraite dans le helper pur
+// `computeBadgeDetails` (réutilisé par /sante et /dashboard pour exposer
+// aussi les détails chiffrés). Ce fichier ne fait plus que l'I/O :
+// fetch orders → délègue le calcul → persiste les scores.
 //
 // 3 scores calculés (en pourcentage 0-100, arrondi 2 décimales) :
 //   - badge_stock_score        : (total - cancellations stock) / total
@@ -16,10 +18,7 @@ import {
 //                                total confirmations
 //   - badge_annulation_score   : (total - cancellations imputables) / total
 //                                où "imputables" = closure_reason ∈
-//                                BLAMING_CLOSURE_REASONS. Les annulations
-//                                externes au producteur (consumer_cancel,
-//                                timeout, payment_failed, revival_blocked_*)
-//                                ne pénalisent plus son score.
+//                                BLAMING_CLOSURE_REASONS.
 //
 // Pas d'appel notification ni email : pure DB recompute.
 
@@ -54,38 +53,9 @@ export async function recomputeBadgesForProducer(
     return { producer_id: producerId, reason: "no_orders" };
   }
 
-  const total = orders.length;
-  const cancelledStock = orders.filter(
-    (o) => o.closure_reason === "stock",
-  ).length;
-  // Annulations "imputables" : seules celles dont closure_reason est dans
-  // BLAMING_CLOSURE_REASONS (producer_cancel, stock). Le statut seul ne
-  // suffit pas — un consumer_cancel ou un timeout cron a aussi statut
-  // 'cancelled'/'refunded' mais ne doit pas pénaliser le producteur.
-  const cancelled = orders.filter(
-    (o) =>
-      (o.statut === "cancelled" || o.statut === "refunded") &&
-      (BLAMING_CLOSURE_REASONS as readonly string[]).includes(
-        o.closure_reason ?? "",
-      ),
-  ).length;
-  const confirmed = orders.filter((o) => o.confirmed_at !== null);
-  const fastConfirmed = confirmed.filter((o) => {
-    if (!o.created_at || !o.confirmed_at) return false;
-    return (
-      new Date(o.confirmed_at).getTime() - new Date(o.created_at).getTime() <=
-      CONFIRMATION_THRESHOLD_MS
-    );
-  }).length;
-
-  const pct = (x: number, y: number) =>
-    y === 0 ? 100 : Math.round(((x / y) * 100) * 100) / 100;
-
-  const scores = {
-    badge_stock_score: pct(total - cancelledStock, total),
-    badge_confirmation_score: pct(fastConfirmed, Math.max(confirmed.length, 1)),
-    badge_annulation_score: pct(total - cancelled, total),
-  };
+  const { scores, details } = computeBadgeDetails(
+    orders as ScoringOrder[],
+  );
 
   const { error: updateError } = await admin
     .from("producers")
@@ -98,7 +68,7 @@ export async function recomputeBadgesForProducer(
 
   return {
     producer_id: producerId,
-    total_orders: total,
+    total_orders: details.totalOrders,
     ...scores,
   };
 }

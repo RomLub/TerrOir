@@ -6,6 +6,11 @@
 // Seuils alignés sur l'affichage existant du tableau de bord :
 //   stock ≥ 90, réactivité ≥ 85, fiabilité ≥ 95 = « bon ».
 
+import {
+  formatBadgeDetailLine,
+  type BadgeDetails,
+} from "@/lib/producers/compute-badge-details";
+
 export type HealthBand = "good" | "warn" | "bad";
 
 export type HealthMetric = {
@@ -14,6 +19,9 @@ export type HealthMetric = {
   display: string;
   band: HealthBand;
   tip: string;
+  /** Sous-titre chiffré qui détaille le calcul. `null` pour les metrics
+   *  qui n'en ont pas (rating). */
+  detail: string | null;
 };
 
 export type ProducerHealth = {
@@ -28,6 +36,11 @@ export type HealthInput = {
   reliability: number; // 0-100
   rating: number; // 0-5
   reviewCount: number;
+  /** Détails chiffrés calculés en amont (via computeBadgeDetails). Quand
+   *  fourni, alimente le sous-titre de chaque badge technique. Quand
+   *  absent (callers historiques pas encore migrés), les sous-titres
+   *  retombent à null. */
+  badgeDetails?: BadgeDetails;
 };
 
 function band(score: number, good: number, warn: number): HealthBand {
@@ -69,6 +82,7 @@ export function computeHealth(input: HealthInput): ProducerHealth {
           : "Soignez l'accueil et la qualité pour faire remonter la note.";
   }
 
+  const details = input.badgeDetails;
   const metrics: HealthMetric[] = [
     {
       key: "stock",
@@ -79,6 +93,7 @@ export function computeHealth(input: HealthInput): ProducerHealth {
         stockBand === "good"
           ? "Excellent. Continuez à actualiser vos stocks après chaque vente."
           : "Actualisez vos stocks régulièrement pour éviter les ruptures.",
+      detail: details ? formatBadgeDetailLine("stock", details) : null,
     },
     {
       key: "response",
@@ -89,6 +104,7 @@ export function computeHealth(input: HealthInput): ProducerHealth {
         responseBand === "good"
           ? "Très réactif, vos clients apprécient."
           : "Confirmez vos commandes en moins de 24 h pour atteindre 85 % et plus.",
+      detail: details ? formatBadgeDetailLine("response", details) : null,
     },
     {
       key: "reliability",
@@ -99,6 +115,7 @@ export function computeHealth(input: HealthInput): ProducerHealth {
         reliabilityBand === "good"
           ? "Vous menez vos commandes à terme. Les annulations clients ou expirations ne comptent pas contre vous."
           : "Évitez les annulations de votre côté pour améliorer ce score. Les annulations clients ne sont pas comptées.",
+      detail: details ? formatBadgeDetailLine("reliability", details) : null,
     },
     {
       key: "rating",
@@ -106,6 +123,7 @@ export function computeHealth(input: HealthInput): ProducerHealth {
       display: ratingDisplay,
       band: ratingBand,
       tip: ratingTip,
+      detail: null,
     },
   ];
 

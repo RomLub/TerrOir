@@ -48,6 +48,38 @@ describe("computeHealth", () => {
     expect(rating.display).toBe("4,6 / 5");
   });
 
+  it("badgeDetails fourni → chaque metric technique porte son `detail`", () => {
+    const h = computeHealth({
+      ...base(),
+      badgeDetails: {
+        totalOrders: 10,
+        totalConfirmed: 9,
+        fastConfirmed: 8,
+        blamingCancellations: 1,
+        stockCancellations: 1,
+      },
+    });
+    expect(m(h, "stock").detail).toBe(
+      "1 rupture de stock sur 10 commandes (12 derniers mois)",
+    );
+    expect(m(h, "response").detail).toBe(
+      "8/9 confirmées en ≤ 24 h (12 derniers mois)",
+    );
+    expect(m(h, "reliability").detail).toBe(
+      "1 annulation de votre côté sur 10 commandes (12 derniers mois)",
+    );
+    // rating n'a jamais de detail (champ neutre).
+    expect(m(h, "rating").detail).toBeNull();
+  });
+
+  it("badgeDetails absent → `detail` à null sur tous les metrics (rétrocompat)", () => {
+    const h = computeHealth(base());
+    expect(m(h, "stock").detail).toBeNull();
+    expect(m(h, "response").detail).toBeNull();
+    expect(m(h, "reliability").detail).toBeNull();
+    expect(m(h, "rating").detail).toBeNull();
+  });
+
   it("tout au rouge → overall bad, chaque métrique a un conseil", () => {
     const h = computeHealth({
       stock: 50,

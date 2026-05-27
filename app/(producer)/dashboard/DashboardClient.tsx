@@ -52,7 +52,14 @@ export type DashboardData = {
   weekPlanning: WeekPlanningDay[];
   /** Échelle horaire commune (Europe/Paris) pour aligner les 7 colonnes. */
   weekHourRange: { startHour: number; endHour: number };
-  badges: { kind: 'stock' | 'response' | 'reliability'; score: number; tip: string }[];
+  badges: {
+    kind: 'stock' | 'response' | 'reliability';
+    score: number;
+    tip: string;
+    /** Sous-titre chiffré détaillant le calcul du score
+     *  (ex: "12/14 confirmées en ≤ 24 h (12 derniers mois)"). */
+    detail: string;
+  }[];
   stockAlerts: { id: string; nom: string; stock: number }[];
   /**
    * État du bloc « mise en ligne » (item « à traiter »).
@@ -374,6 +381,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                 b.score >= 90 ? 'text-green-700' : 'text-terra-700'
               }`}>{b.score}<span className="text-[20px] text-dark/40"> / 100</span></div>
               <p className="mt-3 text-[13px] text-dark/70 leading-relaxed">{b.tip}</p>
+              <p className="mt-2 text-[11px] text-dark/45 tabular-nums">{b.detail}</p>
             </div>
           ))}
         </div>
