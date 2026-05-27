@@ -20,10 +20,15 @@ export async function POST(request: Request) {
   if (authError) return authError;
 
   const admin = createSupabaseAdminClient();
+  // Filtre aligné sur la doctrine statuts producteur actuelle :
+  // `draft` (créé, pas encore complété) / `pending` (publication demandée,
+  // attente admin) / `public` (en ligne). L'ancien filtre `statut='active'`
+  // datait d'une version pré-doctrine et matchait 0 producteur → cron mort
+  // silencieusement depuis. Cf. audit scoring 2026-05-28.
   const { data: producers, error } = await admin
     .from("producers")
     .select("id")
-    .eq("statut", "active");
+    .in("statut", ["draft", "pending", "public"]);
 
   if (error) {
     return dbErrorResponse(error, "CRON_WEEKLY_BADGES_SELECT");
