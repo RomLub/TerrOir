@@ -18,7 +18,7 @@ export const CarteClientLazy = dynamic(
       <div className="flex h-[calc(100dvh-4rem)] min-h-[600px] items-center justify-center bg-bg">
         <div className="text-center text-dark/60">
           <div className="font-serif text-[20px] text-green-900">Chargement de la carte…</div>
-          <p className="mono mt-2 text-[12px]">Récupération des producteurs autour de toi</p>
+          <p className="mt-2 text-[12px]">Récupération des producteurs autour de toi</p>
         </div>
       </div>
     ),

@@ -222,7 +222,7 @@ export default function OpeningModal({
                 type="time"
                 value={startTime}
                 onChange={(e) => setStartTime(e.target.value)}
-                className={`mono ${inputClass}`}
+                className={inputClass}
               />
             </label>
             <label className="block">
@@ -231,7 +231,7 @@ export default function OpeningModal({
                 type="time"
                 value={endTime}
                 onChange={(e) => setEndTime(e.target.value)}
-                className={`mono ${inputClass}`}
+                className={inputClass}
               />
             </label>
           </div>
@@ -310,7 +310,7 @@ export default function OpeningModal({
                 min={1}
                 value={capacity}
                 onChange={(e) => setCapacity(parseInt(e.target.value, 10) || 0)}
-                className={`mono ${inputClass}`}
+                className={inputClass}
               />
             </label>
           </div>

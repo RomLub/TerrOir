@@ -114,7 +114,7 @@ export function ProducerCommandesClient({
                 active ? 'border-green-700 text-green-900' : 'border-transparent text-dark/60 hover:text-green-900'
               }`}>
               {t.label}
-              <span className={`text-[11px] mono px-1.5 rounded ${active ? 'bg-green-100 text-green-900' : 'bg-dark/5 text-dark/55'}`}>{counts[t.value]}</span>
+              <span className={`text-[11px] px-1.5 rounded ${active ? 'bg-green-100 text-green-900' : 'bg-dark/5 text-dark/55'}`}>{counts[t.value]}</span>
             </button>
           );
         })}
@@ -129,7 +129,7 @@ export function ProducerCommandesClient({
           <article key={o.id} className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-5">
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 text-[12px] mono text-dark/50">
+                <div className="flex items-center gap-2 text-[12px] text-dark/50">
                   {o.code_commande && <><span>{o.code_commande}</span><span>·</span></>}
                   <span>Reçu {formatReceived(o.created_at)}</span>
                 </div>
@@ -138,7 +138,7 @@ export function ProducerCommandesClient({
                   <span className="text-[13px] text-dark/70">Retrait le {o.slotDate} · {o.slotTime}</span>
                 </div>
                 <ul className="mt-2 text-[13px] text-dark/70 space-y-0.5">
-                  {o.items.map((it, i) => <li key={i}>• {it.name} — <span className="mono">{it.qty}</span></li>)}
+                  {o.items.map((it, i) => <li key={i}>• {it.name} — <span>{it.qty}</span></li>)}
                 </ul>
               </div>
               <div className="flex items-center gap-4">

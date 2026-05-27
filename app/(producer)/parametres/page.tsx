@@ -218,7 +218,7 @@ export default function ProducerSettingsPage() {
                     : 'Compte Stripe non configuré'}
               </div>
               {s.stripe_account_id && (
-                <div className="text-[11px] mono text-dark/55 mt-1">{s.stripe_account_id}</div>
+                <div className="text-[11px] text-dark/55 mt-1">{s.stripe_account_id}</div>
               )}
               <p className="text-[12px] text-dark/65 mt-1">
                 {stripeReady

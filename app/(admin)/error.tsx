@@ -29,7 +29,7 @@ export default function AdminError({
         URL est invalide. Réessayez ou retournez au tableau de bord.
       </p>
       {error.digest ? (
-        <p className="mono mt-3 text-[11px] uppercase tracking-[0.14em] text-gray-400">
+        <p className="mt-3 text-[11px] uppercase tracking-[0.14em] text-gray-400">
           Réf : {error.digest}
         </p>
       ) : null}

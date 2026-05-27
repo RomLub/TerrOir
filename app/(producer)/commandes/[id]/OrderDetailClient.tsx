@@ -86,7 +86,7 @@ export function OrderDetailClient({ data }: { data: OrderDetailData }) {
         <div className="mt-3 flex items-start justify-between gap-4 flex-wrap">
           <div>
             {order.codeCommande && (
-              <div className="text-[11px] uppercase tracking-[0.18em] text-terra-700 font-semibold mono">{order.codeCommande}</div>
+              <div className="text-[11px] uppercase tracking-[0.18em] text-terra-700 font-semibold">{order.codeCommande}</div>
             )}
             <h1 className="mt-1 font-serif text-[40px] text-green-900 leading-tight">Commande de {order.client.name.split(' ')[0]}</h1>
             <p className="text-[13px] text-dark/60 mt-1">Reçue le {order.createdAtLabel}</p>
@@ -128,7 +128,7 @@ export function OrderDetailClient({ data }: { data: OrderDetailData }) {
                   <li key={i} className="py-3 flex items-baseline justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="text-[15px] text-green-900 font-medium">{it.name}</div>
-                      <div className="text-[12px] mono text-dark/55 mt-0.5">{it.qty} · {it.unitPrice.toFixed(2).replace('.', ',')} € / unité</div>
+                      <div className="text-[12px] text-dark/55 mt-0.5">{it.qty} · {it.unitPrice.toFixed(2).replace('.', ',')} € / unité</div>
                     </div>
                     <div className="font-serif text-[18px] text-green-900 tabular-nums">{it.total.toFixed(2).replace('.', ',')} €</div>
                   </li>

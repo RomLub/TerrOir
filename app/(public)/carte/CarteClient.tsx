@@ -567,7 +567,7 @@ function CarteClientContent() {
                       : `${results.length} producteur${results.length > 1 ? 's' : ''} dans un rayon de ${radius} km`}
                 </p>
               </div>
-              {locating && <span className="text-[11px] mono text-dark/50">Localisation…</span>}
+              {locating && <span className="text-[11px] text-dark/50">Localisation…</span>}
             </div>
             {locError && <p className="mt-2 text-[12px] text-terra-700">{locError}</p>}
             {fetchError && <p className="mt-2 text-[12px] text-terra-700">{fetchError}</p>}
@@ -768,7 +768,7 @@ function MapFallback() {
     <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center">
       <div className="font-serif text-[24px] text-green-900">Carte indisponible</div>
       <p className="text-[13px] text-dark/60 mt-2 max-w-sm">
-        Définissez <code className="mono text-[12px] bg-dark/5 px-1 rounded">NEXT_PUBLIC_MAPBOX_TOKEN</code> dans <code className="mono text-[12px] bg-dark/5 px-1 rounded">.env.local</code> pour afficher la carte.
+        Définissez <code className="text-[12px] bg-dark/5 px-1 rounded">NEXT_PUBLIC_MAPBOX_TOKEN</code> dans <code className="text-[12px] bg-dark/5 px-1 rounded">.env.local</code> pour afficher la carte.
       </p>
     </div>
   );

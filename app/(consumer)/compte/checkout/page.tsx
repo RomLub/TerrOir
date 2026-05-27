@@ -287,7 +287,7 @@ export default function CheckoutPage() {
                   <li key={`${it.productId}-${it.creneauId}-${it.dateRetrait}`} className="py-3 flex items-center justify-between gap-4">
                     <div>
                       <div className="text-[15px] text-dark font-medium">{it.nom}</div>
-                      <div className="text-[12px] text-dark/50 mono">{it.quantite.toFixed(2).replace('.', ',')} {it.unite}</div>
+                      <div className="text-[12px] text-dark/50">{it.quantite.toFixed(2).replace('.', ',')} {it.unite}</div>
                     </div>
                     <div className="font-serif text-[18px] text-green-900 tabular-nums">
                       {(it.prix * it.quantite).toFixed(2).replace('.', ',')} €
@@ -308,7 +308,7 @@ export default function CheckoutPage() {
             <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
               <div className="flex items-center justify-between mb-4">
                 <div className="text-[11px] uppercase tracking-[0.14em] text-terra-700 font-semibold">Paiement</div>
-                <span className="text-[11px] mono text-dark/50">🔒 Stripe · SSL</span>
+                <span className="text-[11px] text-dark/50">🔒 Stripe · SSL</span>
               </div>
 
               {/* CGV obligatoire — checkbox gate l'init order/PI. Désactivée
@@ -352,7 +352,7 @@ export default function CheckoutPage() {
                     Erreur technique
                   </div>
                   <p className="text-[13px] text-terra-900">{technicalError.message}</p>
-                  <p className="text-[11px] mono text-dark/60 mt-2">
+                  <p className="text-[11px] text-dark/60 mt-2">
                     Code : {technicalError.code}
                     {technicalError.details ? ` — ${technicalError.details}` : ''}
                   </p>

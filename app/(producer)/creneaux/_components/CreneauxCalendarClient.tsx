@@ -378,7 +378,7 @@ function VacationModal({
               type="date"
               value={from}
               onChange={(e) => setFrom(e.target.value)}
-              className="mono mt-1 h-11 w-full rounded-xl border border-dark/10 bg-white px-3 text-[15px] outline-none focus:border-green-700"
+              className="mt-1 h-11 w-full rounded-xl border border-dark/10 bg-white px-3 text-[15px] outline-none focus:border-green-700"
             />
           </label>
           <label className="block">
@@ -388,7 +388,7 @@ function VacationModal({
               value={to}
               min={from}
               onChange={(e) => setTo(e.target.value)}
-              className="mono mt-1 h-11 w-full rounded-xl border border-dark/10 bg-white px-3 text-[15px] outline-none focus:border-green-700"
+              className="mt-1 h-11 w-full rounded-xl border border-dark/10 bg-white px-3 text-[15px] outline-none focus:border-green-700"
             />
           </label>
         </div>

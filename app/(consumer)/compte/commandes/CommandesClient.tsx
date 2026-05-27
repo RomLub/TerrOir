@@ -160,7 +160,7 @@ export function CommandesClient({
           >
             <div className="flex items-center justify-between gap-4 flex-wrap">
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 text-[12px] mono text-dark/50">
+                <div className="flex items-center gap-2 text-[12px] text-dark/50">
                   {o.code_commande && <><span>{o.code_commande}</span><span>·</span></>}
                   <span>{formatDateFr(o.created_at)}</span>
                 </div>
