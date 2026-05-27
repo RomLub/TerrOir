@@ -8,7 +8,21 @@ import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { uploadProducerPhoto } from '@/lib/producers/upload';
 import { labelEspece, labelLabel } from '@/lib/producers/labels';
 import { RequestPublicationPanel } from './_components/RequestPublicationPanel';
+import { useTabFocusFromQuery } from './_lib/use-tab-focus';
 import { updateProfileAction } from './actions';
+
+// Sous-composant Suspense-wrappé pour useSearchParams (requis Next 14+). Active
+// l'onglet « Modifier » et scrolle vers la section ciblée selon
+// ?tab=edit&focus=<id>. Voir use-tab-focus.ts pour la sémantique défensive.
+function TabFocusFromQuery({
+  setTab,
+}: {
+  setTab: (tab: 'preview' | 'edit') => void;
+}) {
+  const searchParams = useSearchParams();
+  useTabFocusFromQuery(searchParams, setTab);
+  return null;
+}
 
 function OnboardedBanner() {
   const searchParams = useSearchParams();
@@ -275,6 +289,7 @@ export default function MaPagePage() {
           flasherait pour 99% des utilisateurs sans onboarded query param. */}
       <Suspense fallback={null}>
         <OnboardedBanner />
+        <TabFocusFromQuery setTab={setTab} />
       </Suspense>
       <PageHeader
         tone="producer"
@@ -323,10 +338,12 @@ export default function MaPagePage() {
       ) : (
         <div className="grid lg:grid-cols-[1fr_340px] gap-8 items-start">
           <div className="space-y-6">
-            <RequestPublicationPanel
-              statut={statut}
-              publicationRequestedAt={publicationRequestedAt}
-            />
+            <div id="publication">
+              <RequestPublicationPanel
+                statut={statut}
+                publicationRequestedAt={publicationRequestedAt}
+              />
+            </div>
 
             <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
               <h2 className="font-serif text-[22px] text-green-900 mb-4">Informations générales</h2>
@@ -336,19 +353,21 @@ export default function MaPagePage() {
                 <Textarea id="ma-page-description" label="Description courte" rows={2} value={form.description}
                   onChange={(e) => { setForm({ ...form, description: e.target.value }); setSaved(false); }}
                   placeholder="En une phrase, votre ferme." />
-                <CommuneSelect
-                  idPrefix="ma-page"
-                  defaultCodePostal={form.code_postal}
-                  defaultCommune={form.commune}
-                  onCodePostalChange={(v) => {
-                    setForm((f) => ({ ...f, code_postal: v }));
-                    setSaved(false);
-                  }}
-                  onCommuneChange={(v) => {
-                    setForm((f) => ({ ...f, commune: v }));
-                    setSaved(false);
-                  }}
-                />
+                <div id="ma-page-localisation">
+                  <CommuneSelect
+                    idPrefix="ma-page"
+                    defaultCodePostal={form.code_postal}
+                    defaultCommune={form.commune}
+                    onCodePostalChange={(v) => {
+                      setForm((f) => ({ ...f, code_postal: v }));
+                      setSaved(false);
+                    }}
+                    onCommuneChange={(v) => {
+                      setForm((f) => ({ ...f, commune: v }));
+                      setSaved(false);
+                    }}
+                  />
+                </div>
               </div>
             </section>
 
@@ -359,7 +378,7 @@ export default function MaPagePage() {
                 placeholder="Racontez votre ferme, vos générations, vos pratiques…" />
             </section>
 
-            <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
+            <section id="ma-page-photo-section" className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
               <h2 className="font-serif text-[22px] text-green-900 mb-4">Photos</h2>
               <label className="block">
                 <div className={`aspect-2/1 rounded-xl border-2 border-dashed bg-bg overflow-hidden flex items-center justify-center cursor-pointer ${

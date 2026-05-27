@@ -38,4 +38,24 @@ describe("PUBLICATION_CRITERIA", () => {
       expect(c.label.length).toBeGreaterThan(0);
     }
   });
+
+  it("chaque critère a un href défini (rendant l'étape actionnable)", () => {
+    for (const c of PUBLICATION_CRITERIA) {
+      expect(c.href.length).toBeGreaterThan(0);
+      expect(c.href.startsWith("/")).toBe(true);
+    }
+  });
+
+  it("les 3 critères sans page dédiée pointent vers /ma-page?tab=edit&focus=…", () => {
+    const inMaPage: ReadonlyArray<keyof PublicationCriteria> = [
+      "description",
+      "photo_principale",
+      "localisation",
+    ];
+    for (const key of inMaPage) {
+      const c = PUBLICATION_CRITERIA.find((entry) => entry.key === key);
+      expect(c, `critère ${key} introuvable`).toBeDefined();
+      expect(c!.href).toMatch(/^\/ma-page\?tab=edit&focus=ma-page-/);
+    }
+  });
 });

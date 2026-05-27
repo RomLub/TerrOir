@@ -15,8 +15,13 @@ export type CriterionMeta = {
   label: string;
   /** Libellé court affiché inline dans la carte du dashboard. */
   shortLabel: string;
-  /** Page de complétion ; absent si réglable directement sur /ma-page. */
-  href?: string;
+  /**
+   * Page de complétion du critère. Pour les critères réglables sur /ma-page
+   * directement (description, photo, localisation), l'href utilise
+   * `?tab=edit&focus=<id>` : /ma-page lit ces query params pour activer
+   * l'onglet « Modifier » et scroller vers la section ciblée.
+   */
+  href: string;
 };
 
 export const PUBLICATION_CRITERIA: readonly CriterionMeta[] = [
@@ -24,16 +29,19 @@ export const PUBLICATION_CRITERIA: readonly CriterionMeta[] = [
     key: "description",
     label: "Une description d'au moins 150 caractères",
     shortLabel: "Description",
+    href: "/ma-page?tab=edit&focus=ma-page-description",
   },
   {
     key: "photo_principale",
     label: "Une photo de couverture",
     shortLabel: "Photo de couverture",
+    href: "/ma-page?tab=edit&focus=ma-page-photo-section",
   },
   {
     key: "localisation",
     label: "Commune et code postal renseignés",
     shortLabel: "Localisation",
+    href: "/ma-page?tab=edit&focus=ma-page-localisation",
   },
   {
     key: "product_with_photo",

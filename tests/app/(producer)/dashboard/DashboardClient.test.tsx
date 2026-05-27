@@ -53,7 +53,7 @@ function render(el: ReactElement): string {
 }
 
 describe("PublicationTodoCard — états progression", () => {
-  it("0/6 : liste les 4 premières étapes restantes et signale qu'il en reste 2 autres", () => {
+  it("0/6 : liste les 4 premières étapes restantes chacune avec son href, et signale qu'il en reste 2 autres", () => {
     const missing: CriterionKey[] = [
       "description",
       "photo_principale",
@@ -66,19 +66,33 @@ describe("PublicationTodoCard — états progression", () => {
       <PublicationTodoCard doneCount={0} missingKeys={missing} />,
     );
     expect(html).toContain("Finalisez votre mise en ligne (0/6 étapes)");
+    // Chaque étape inline pointe vers son href propre.
+    expect(html).toContain(
+      'href="/ma-page?tab=edit&amp;focus=ma-page-description"',
+    );
+    expect(html).toContain(
+      'href="/ma-page?tab=edit&amp;focus=ma-page-photo-section"',
+    );
+    expect(html).toContain(
+      'href="/ma-page?tab=edit&amp;focus=ma-page-localisation"',
+    );
+    expect(html).toContain('href="/catalogue"');
+    // Au-delà de PUBLICATION_INLINE_MAX (4) : les 2 dernières en overflow.
     expect(html).toContain("Description");
     expect(html).toContain("Photo de couverture");
     expect(html).toContain("Localisation");
     expect(html).toContain("1 produit avec photo");
-    // Au-delà de PUBLICATION_INLINE_MAX (4) : les 2 dernières en overflow.
     expect(html).toContain("et 2 autres…");
     expect(html).not.toContain("1 créneau ouvert");
     expect(html).not.toContain("Paiements activés");
-    expect(html).toContain("Voir →");
-    expect(html).toContain('href="/ma-page"');
+    // Plus de "Voir →" en mode 0-5/6 (chaque étape cliquable individuellement).
+    expect(html).not.toContain("Voir →");
+    // Pas de wrapper Link autour du contenu : aucun href "/ma-page" brut (sans
+    // query param) ne doit apparaître, et l'élément racine n'est pas un <a>.
+    expect(html).not.toContain('href="/ma-page"');
   });
 
-  it("3/6 : liste les 3 étapes restantes sans overflow", () => {
+  it("3/6 : liste les 3 étapes restantes avec leurs hrefs, sans overflow ni Voir →", () => {
     const missing: CriterionKey[] = [
       "product_with_photo",
       "open_slot",
@@ -88,12 +102,17 @@ describe("PublicationTodoCard — états progression", () => {
       <PublicationTodoCard doneCount={3} missingKeys={missing} />,
     );
     expect(html).toContain("Finalisez votre mise en ligne (3/6 étapes)");
-    expect(html).toContain("Il reste : 1 produit avec photo · 1 créneau ouvert · Paiements activés");
+    expect(html).toContain('href="/catalogue"');
+    expect(html).toContain('href="/creneaux"');
+    expect(html).toContain('href="/parametres"');
+    expect(html).toContain("1 produit avec photo");
+    expect(html).toContain("1 créneau ouvert");
+    expect(html).toContain("Paiements activés");
     expect(html).not.toContain("autre");
-    expect(html).toContain("Voir →");
+    expect(html).not.toContain("Voir →");
   });
 
-  it("6/6 non encore demandée : libellé Tout est prêt, pas de liste d'étapes", () => {
+  it("6/6 non encore demandée : libellé Tout est prêt, Voir → conservé, cible /ma-page?tab=edit&focus=publication", () => {
     const html = render(
       <PublicationTodoCard doneCount={6} missingKeys={[]} />,
     );
@@ -101,7 +120,38 @@ describe("PublicationTodoCard — états progression", () => {
     expect(html).not.toContain("Finalisez votre mise en ligne");
     expect(html).not.toContain("Il reste");
     expect(html).toContain("Voir →");
-    expect(html).toContain('href="/ma-page"');
+    expect(html).toContain(
+      'href="/ma-page?tab=edit&amp;focus=publication"',
+    );
+  });
+
+  it("0-5/6 : aucune balise <a> imbriquée (HTML valide)", () => {
+    const missing: CriterionKey[] = ["description", "photo_principale"];
+    const html = render(
+      <PublicationTodoCard doneCount={4} missingKeys={missing} />,
+    );
+    // Compte les <a> ouvrants. Si l'un était imbriqué dans l'autre, on aurait
+    // un <a> ... <a> ... </a> ... </a> — pattern HTML invalide. Notre
+    // implémentation produit des <a> en frères, jamais imbriqués.
+    const openAnchorRegex = /<a\b[^>]*>/g;
+    const closeAnchorRegex = /<\/a>/g;
+    const opens = html.match(openAnchorRegex) ?? [];
+    const closes = html.match(closeAnchorRegex) ?? [];
+    expect(opens.length).toBe(closes.length);
+    // Vérifie qu'entre chaque <a ouvrant et son </a> suivant il n'y a pas un
+    // autre <a ouvrant (= imbrication).
+    let cursor = 0;
+    for (let i = 0; i < opens.length; i++) {
+      const openIdx = html.indexOf("<a", cursor);
+      const closeIdx = html.indexOf("</a>", openIdx);
+      const nextOpenIdx = html.indexOf("<a", openIdx + 1);
+      if (nextOpenIdx !== -1 && nextOpenIdx < closeIdx) {
+        throw new Error(
+          `<a> imbriqué détecté à l'index ${nextOpenIdx} (inside ${openIdx}-${closeIdx})`,
+        );
+      }
+      cursor = closeIdx + 4;
+    }
   });
 });
 
