@@ -12,6 +12,10 @@ import {
   type CriterionKey,
 } from '@/lib/producers/publication-criteria';
 import { WeekNavigator } from '../_components/WeekNavigator';
+import {
+  WeekPlanningHeatmap,
+  type WeekPlanningDay,
+} from './_components/WeekPlanningHeatmap';
 
 // Nombre max d'étapes restantes affichées inline dans la carte « mise en
 // ligne » : au-delà on tronque à 3 + « et X autre(s)… » pour rester sur une
@@ -44,7 +48,10 @@ export type DashboardData = {
   reviewCount: number;
   nextPickup: { label: string; sub: string } | null;
   pendingOrders: PendingOrder[];
-  weekPlanning: { day: string; isToday: boolean; slots: { time: string; orders: number }[] }[];
+  /** 7 jours (Lun→Dim) pour le composant WeekPlanningHeatmap. */
+  weekPlanning: WeekPlanningDay[];
+  /** Échelle horaire commune (Europe/Paris) pour aligner les 7 colonnes. */
+  weekHourRange: { startHour: number; endHour: number };
   badges: { kind: 'stock' | 'response' | 'reliability'; score: number; tip: string }[];
   stockAlerts: { id: string; nom: string; stock: number }[];
   /**
@@ -344,28 +351,15 @@ export function DashboardClient({ data }: { data: DashboardData }) {
             onNavigate={handleWeekNavigate}
           />
         </div>
-        <div className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-5">
-          <div
-            className={`grid grid-cols-7 gap-2 transition-opacity ${
-              isWeekNavPending ? 'opacity-60' : ''
-            }`}
-          >
-            {data.weekPlanning.map((d) => (
-              <div key={d.day} className={`rounded-xl p-3 min-h-[120px] border ${d.isToday ? 'bg-green-100/60 border-green-500' : 'bg-bg border-dark/[0.06]'}`}>
-                <div className={`text-[12px] font-semibold uppercase tracking-wider mb-2 ${d.isToday ? 'text-green-900' : 'text-dark/60'}`}>{d.day}</div>
-                <div className="space-y-1.5">
-                  {d.slots.length === 0 ? (
-                    <div className="text-[11px] text-dark/30 italic">—</div>
-                  ) : d.slots.map((s, i) => (
-                    <div key={i} className="rounded-md bg-terra-700/10 border border-terra-700/20 p-1.5">
-                      <div className="text-[11px] text-terra-700 font-semibold">{s.time}</div>
-                      <div className="text-[11px] text-dark/70 mt-0.5">{s.orders} cmd.</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
+        <div
+          className={`bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-5 transition-opacity ${
+            isWeekNavPending ? 'opacity-60' : ''
+          }`}
+        >
+          <WeekPlanningHeatmap
+            days={data.weekPlanning}
+            hourRange={data.weekHourRange}
+          />
         </div>
       </section>
 
