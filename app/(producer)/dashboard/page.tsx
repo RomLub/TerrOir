@@ -17,6 +17,10 @@ import {
   formatWeekRangeLabel,
   addDays,
 } from '@/lib/dates/week-navigation';
+import {
+  computeWeekHourRange,
+  PLANNING_FALLBACK_RANGE,
+} from '@/lib/slots/week-hour-range';
 import { DashboardSkeleton } from '../_components/ContentSkeletons';
 import { DashboardClient, type DashboardData } from './DashboardClient';
 
@@ -34,7 +38,20 @@ function slotDateInParis(iso: string): string {
   return `${y}-${m}-${day}`;
 }
 
+// Heure décimale Paris d'un timestamptz ISO (ex: 9.5 = 9h30). Utilisée pour
+// positionner les segments du WeekPlanningHeatmap sur l'échelle horaire.
+function hourFracInParis(iso: string): number {
+  const d = new TZDate(iso, TZ_PARIS);
+  return d.getHours() + d.getMinutes() / 60;
+}
+
 const WEEK_DAYS_LABEL = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+
+// Fallback robustesse pre-migration : tant que la RPC SQL n'expose pas
+// week_open_days, on assume "ouvert tous les jours" plutôt que "fermé tous
+// les jours" pour ne pas dégrader le rendu. Cf. doctrine déploiement
+// CLAUDE.md (return-shape change = APRÈS merge).
+const ALL_DAYS_OPEN: boolean[] = [true, true, true, true, true, true, true];
 
 // Coquille SYNCHRONE : la page retourne immédiatement le <Suspense> + son
 // skeleton, SANS aucun await en tête. Les gardes (session + producteur, ~3
@@ -153,7 +170,17 @@ async function DashboardContent({
       date_retrait: string | null;
       consumer: { prenom: string | null } | null;
     }>;
-    slots?: Array<{ id: string; starts_at: string; ends_at: string }>;
+    slots?: Array<{
+      id: string;
+      starts_at: string;
+      ends_at: string;
+      // Nouveaux champs (post-migration get_producer_dashboard chantier
+      // heatmap). Optionnels le temps que la migration soit appliquée en prod
+      // — fallback géré ci-dessous.
+      capacity_per_slot?: number;
+      orders_count?: number;
+    }>;
+    week_open_days?: boolean[];
     week_pickups?: Array<{ date_retrait: string | null; slot_id: string | null; statut: string }>;
     low_stock_products?: Array<{
       id: string;
@@ -172,7 +199,16 @@ async function DashboardContent({
   const pendingRaw = dash.pending_orders ?? [];
   const upcomingRaw = dash.upcoming_orders ?? [];
   const slots = dash.slots ?? [];
-  const weekPickups = dash.week_pickups ?? [];
+  const weekOpenDays =
+    dash.week_open_days && dash.week_open_days.length === 7
+      ? dash.week_open_days
+      : ALL_DAYS_OPEN;
+  // Note : `week_pickups` (compteur d'orders par (date_retrait, slot_id))
+  // n'est plus consommé. Le compteur de réservations est désormais agrégé
+  // côté SQL et exposé par slot dans `slots[].orders_count` (filtre statut
+  // pending/confirmed/ready). La RPC continue à retourner week_pickups
+  // pour minimiser le diff return-shape ; un nettoyage SQL pourra le
+  // dropper dans un chantier suivant.
   const lowStockProducts = dash.low_stock_products ?? [];
 
   const firstName = user?.prenom?.trim() || user?.nom?.trim() || 'Pierre';
@@ -224,29 +260,42 @@ async function DashboardContent({
     };
   }
 
-  const pickupsBySlotAndDay: Record<string, number> = {};
-  (weekPickups ?? []).forEach((p) => {
-    if (p.statut === 'cancelled' || p.statut === 'refunded') return;
-    if (!p.date_retrait || !p.slot_id) return;
-    const k = `${p.date_retrait}|${p.slot_id}`;
-    pickupsBySlotAndDay[k] = (pickupsBySlotAndDay[k] ?? 0) + 1;
-  });
+  // Échelle horaire commune aux 7 colonnes du WeekPlanningHeatmap. Calculée
+  // ici (serveur Next) pour arriver figée au client — cf. ADR/audit chantier
+  // heatmap 2026-05-28. Fallback [8h, 20h] si aucun slot dans la semaine.
+  const weekHourRange = computeWeekHourRange(slots ?? []);
+
+  // dateIso utilisé comme clé de jour côté heatmap + drill-down. Construit en
+  // heure locale (pas toISOString qui retourne UTC) pour matcher l'horizon
+  // de la semaine côté producteur Paris.
+  function dayIsoLocal(d: Date): string {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
 
   const weekPlanning = WEEK_DAYS_LABEL.map((label, i) => {
     const dayDate = addDays(weekStart, i);
-    const dayIso = dayDate.toISOString().slice(0, 10);
+    const dateIso = dayIsoLocal(dayDate);
     const daySlots = (slots ?? [])
-      .filter((s) => s.starts_at && slotDateInParis(s.starts_at as string) === dayIso)
+      .filter((s) => s.starts_at && slotDateInParis(s.starts_at as string) === dateIso)
       .map((s) => ({
-        time: formatSlotRange(s.starts_at as string, s.ends_at as string),
-        orders: pickupsBySlotAndDay[`${dayIso}|${s.id as string}`] ?? 0,
+        id: s.id as string,
+        startHourFrac: hourFracInParis(s.starts_at as string),
+        endHourFrac: hourFracInParis(s.ends_at as string),
+        capacity: s.capacity_per_slot ?? 1,
+        ordersCount: s.orders_count ?? 0,
       }));
     return {
-      day: `${label} ${dayDate.getDate()}`,
+      dateIso,
+      dayLabel: `${label} ${dayDate.getDate()}`,
       isToday: dayDate.toDateString() === todayStart.toDateString(),
+      isOpen: weekOpenDays[i] === true,
       slots: daySlots,
     };
   });
+
 
   const badges: DashboardData['badges'] = [
     {
@@ -318,6 +367,7 @@ async function DashboardContent({
     nextPickup,
     pendingOrders,
     weekPlanning,
+    weekHourRange,
     badges,
     stockAlerts,
     publicationToDo,

@@ -33,13 +33,15 @@ vi.mock('next/link', () => ({
     children,
     onClick,
     className,
+    ...rest
   }: {
     href: string;
     children: React.ReactNode;
     onClick?: (e: React.MouseEvent<HTMLAnchorElement>) => void;
     className?: string;
+    [k: string]: unknown;
   }) => (
-    <a href={href} onClick={onClick} className={className}>
+    <a href={href} onClick={onClick} className={className} {...rest}>
       {children}
     </a>
   ),
@@ -129,6 +131,20 @@ function render(node: ReactElement) {
   act(() => root.render(node));
 }
 
+function makeDay(
+  dateIso: string,
+  dayLabel: string,
+  over: { isToday?: boolean; isOpen?: boolean; slots?: DashboardData['weekPlanning'][number]['slots'] } = {},
+): DashboardData['weekPlanning'][number] {
+  return {
+    dateIso,
+    dayLabel,
+    isToday: over.isToday ?? false,
+    isOpen: over.isOpen ?? true,
+    slots: over.slots ?? [],
+  };
+}
+
 function makeData(over: Partial<DashboardData> = {}): DashboardData {
   return {
     producerId: 'p1',
@@ -145,14 +161,15 @@ function makeData(over: Partial<DashboardData> = {}): DashboardData {
     nextPickup: null,
     pendingOrders: [],
     weekPlanning: [
-      { day: 'Lun 25', isToday: true, slots: [] },
-      { day: 'Mar 26', isToday: false, slots: [] },
-      { day: 'Mer 27', isToday: false, slots: [] },
-      { day: 'Jeu 28', isToday: false, slots: [] },
-      { day: 'Ven 29', isToday: false, slots: [] },
-      { day: 'Sam 30', isToday: false, slots: [] },
-      { day: 'Dim 31', isToday: false, slots: [] },
+      makeDay('2026-05-25', 'Lun 25', { isToday: true }),
+      makeDay('2026-05-26', 'Mar 26'),
+      makeDay('2026-05-27', 'Mer 27'),
+      makeDay('2026-05-28', 'Jeu 28'),
+      makeDay('2026-05-29', 'Ven 29'),
+      makeDay('2026-05-30', 'Sam 30'),
+      makeDay('2026-05-31', 'Dim 31'),
     ],
+    weekHourRange: { startHour: 8, endHour: 20 },
     badges: [],
     stockAlerts: [],
     publicationToDo: null,
@@ -178,13 +195,12 @@ function weekNavigatorAttrs(): { offset: string; label: string } {
 }
 
 function planningDays(): string[] {
-  // Le `weekPlanning` est rendu dans la section "Planning de la semaine"
-  // sous forme de `<div>` enfants de la grille. On extrait le label (`day`)
-  // depuis le premier enfant texte de chaque cellule.
-  const cells = container.querySelectorAll('.grid.grid-cols-7 > div');
-  return Array.from(cells)
-    .map((c) => c.firstElementChild?.textContent?.trim() ?? '')
-    .filter(Boolean);
+  // Le `weekPlanning` est rendu via WeekPlanningHeatmap, qui produit une
+  // ligne `<a data-testid="planning-day-row" data-date-iso="…">` par jour.
+  // On lit le data-date-iso (clé stable) pour vérifier la propagation
+  // de prop, indépendamment du formatage du label.
+  const rows = container.querySelectorAll('[data-testid="planning-day-row"]');
+  return Array.from(rows).map((r) => (r as HTMLElement).dataset.dateIso ?? '');
 }
 
 describe('DashboardClient — propagation prop sur re-render (anti-stale)', () => {
@@ -196,13 +212,13 @@ describe('DashboardClient — propagation prop sur re-render (anti-stale)', () =
     render(<DashboardClient data={initial} />);
     expect(weekNavigatorAttrs()).toEqual({ offset: '0', label: '25 – 31 mai' });
     expect(planningDays()).toEqual([
-      'Lun 25',
-      'Mar 26',
-      'Mer 27',
-      'Jeu 28',
-      'Ven 29',
-      'Sam 30',
-      'Dim 31',
+      '2026-05-25',
+      '2026-05-26',
+      '2026-05-27',
+      '2026-05-28',
+      '2026-05-29',
+      '2026-05-30',
+      '2026-05-31',
     ]);
 
     // Simule la navigation soft : nouveau payload serveur.
@@ -210,26 +226,26 @@ describe('DashboardClient — propagation prop sur re-render (anti-stale)', () =
       weekOffset: -1,
       weekPeriodLabel: '18 – 24 mai',
       weekPlanning: [
-        { day: 'Lun 18', isToday: false, slots: [] },
-        { day: 'Mar 19', isToday: false, slots: [] },
-        { day: 'Mer 20', isToday: false, slots: [] },
-        { day: 'Jeu 21', isToday: false, slots: [] },
-        { day: 'Ven 22', isToday: false, slots: [] },
-        { day: 'Sam 23', isToday: false, slots: [] },
-        { day: 'Dim 24', isToday: false, slots: [] },
+        makeDay('2026-05-18', 'Lun 18'),
+        makeDay('2026-05-19', 'Mar 19'),
+        makeDay('2026-05-20', 'Mer 20'),
+        makeDay('2026-05-21', 'Jeu 21'),
+        makeDay('2026-05-22', 'Ven 22'),
+        makeDay('2026-05-23', 'Sam 23'),
+        makeDay('2026-05-24', 'Dim 24'),
       ],
     });
     render(<DashboardClient data={next} />);
 
     expect(weekNavigatorAttrs()).toEqual({ offset: '-1', label: '18 – 24 mai' });
     expect(planningDays()).toEqual([
-      'Lun 18',
-      'Mar 19',
-      'Mer 20',
-      'Jeu 21',
-      'Ven 22',
-      'Sam 23',
-      'Dim 24',
+      '2026-05-18',
+      '2026-05-19',
+      '2026-05-20',
+      '2026-05-21',
+      '2026-05-22',
+      '2026-05-23',
+      '2026-05-24',
     ]);
   });
 });
