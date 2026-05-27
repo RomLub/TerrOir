@@ -61,7 +61,12 @@ function keyToParisIso(key: string, addDays = 0): string {
 export default function CreneauxPage({
   searchParams,
 }: {
-  searchParams: Promise<{ week?: string }>;
+  // `day` (YYYY-MM-DD) est accepté pour le drill-down depuis le bandeau
+  // Planning du dashboard. Pas encore consommé ici — la mise en focus de la
+  // journée dans le calendrier viendra avec la refonte UX /creneaux
+  // (ADR-0012). Typage déclaré dès maintenant pour ne pas perdre l'info en
+  // navigation.
+  searchParams: Promise<{ week?: string; day?: string }>;
 }) {
   return (
     <div className="mx-auto max-w-5xl px-8 py-10">
