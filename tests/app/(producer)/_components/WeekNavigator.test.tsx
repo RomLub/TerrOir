@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { ReactElement } from 'react';
+import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MAX_WEEK_OFFSET, MIN_WEEK_OFFSET } from '@/lib/dates/week-navigation';
 
@@ -13,13 +13,18 @@ let currentParams = new URLSearchParams();
 vi.mock('next/navigation', () => ({
   usePathname: () => currentPathname,
   useSearchParams: () => currentParams,
+  // `useRouter` est consommé par le composant pour la navigation
+  // interceptée (clic intercepté + startTransition). Inutile en SSR pur
+  // mais l'export doit exister à l'import du module.
+  useRouter: () => ({ push: () => {}, replace: () => {}, refresh: () => {} }),
 }));
 
 import { WeekNavigator } from '@/app/(producer)/_components/WeekNavigator';
 
+// Rend via React (et non via un appel direct de la fonction composant) pour
+// que les hooks React (dont `useTransition`) disposent du dispatcher SSR.
 function render(props: { weekOffset: number; periodLabel: string }): string {
-  const el = WeekNavigator(props) as ReactElement;
-  return renderToStaticMarkup(el);
+  return renderToStaticMarkup(createElement(WeekNavigator, props));
 }
 
 // Extrait l'attribut href du <a> dont le aria-label matche.
