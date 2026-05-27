@@ -5,7 +5,16 @@ import { useEffect, useState } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { Button, ProducerBadge } from '@/components/ui';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import {
+  PUBLICATION_CRITERIA,
+  type CriterionKey,
+} from '@/lib/producers/publication-criteria';
 import { WeekNavigator } from '../_components/WeekNavigator';
+
+// Nombre max d'étapes restantes affichées inline dans la carte « mise en
+// ligne » : au-delà on tronque à 3 + « et X autre(s)… » pour rester sur une
+// ligne lisible mobile.
+const PUBLICATION_INLINE_MAX = 4;
 
 type PendingOrder = {
   id: string;
@@ -36,12 +45,94 @@ export type DashboardData = {
   weekPlanning: { day: string; isToday: boolean; slots: { time: string; orders: number }[] }[];
   badges: { kind: 'stock' | 'response' | 'reliability'; score: number; tip: string }[];
   stockAlerts: { id: string; nom: string; stock: number }[];
-  /** Présent si la fiche n'est pas encore en ligne (item « à traiter »). */
-  publicationToDo: { doneCount: number } | null;
+  /**
+   * État du bloc « mise en ligne » (item « à traiter »).
+   * - `todo` : il reste des critères à compléter (0-5/6) OU tout est prêt
+   *   (6/6) mais la demande n'a pas encore été envoyée.
+   * - `wait` : la demande a été envoyée, on attend la validation admin.
+   * - `null` : fiche déjà publique (pas de carte) ou cas pathologique.
+   */
+  publicationToDo:
+    | { kind: 'todo'; doneCount: number; missingKeys: CriterionKey[] }
+    | { kind: 'wait' }
+    | null;
 };
 
 function euros(n: number): string {
   return `${n.toFixed(2).replace('.', ',')} €`;
+}
+
+// Carte « mise en ligne » — état todo. Trois sous-cas :
+//   - 6/6 (rien dans missingKeys) : tout est prêt, on incite à demander la
+//     publication. Pas de liste d'étapes (il n'en reste pas).
+//   - 0-5/6 : on liste les étapes restantes par leur shortLabel, tronqué à
+//     PUBLICATION_INLINE_MAX pour rester sur une ligne lisible mobile.
+// Exporté pour permettre des tests de rendu isolés sans avoir à instancier
+// DashboardClient et toute sa machinerie realtime Supabase.
+export function PublicationTodoCard({
+  doneCount,
+  missingKeys,
+}: {
+  doneCount: number;
+  missingKeys: CriterionKey[];
+}) {
+  const total = PUBLICATION_CRITERIA.length;
+  const allDone = missingKeys.length === 0;
+  const missingShortLabels = missingKeys
+    .map(
+      (key) => PUBLICATION_CRITERIA.find((c) => c.key === key)?.shortLabel,
+    )
+    .filter((s): s is string => Boolean(s));
+  const inlineLabels = missingShortLabels.slice(0, PUBLICATION_INLINE_MAX);
+  const overflow = missingShortLabels.length - inlineLabels.length;
+
+  return (
+    <Link
+      href="/ma-page"
+      className="flex items-start justify-between gap-4 p-4 rounded-xl border bg-green-100/60 border-green-300/60 hover:bg-green-100 transition-colors"
+    >
+      <div className="flex items-start gap-3 min-w-0">
+        <span className="mt-1.5 w-2 h-2 rounded-full bg-green-700 shrink-0" />
+        <div className="min-w-0">
+          <div className="text-[14px] text-dark font-medium">
+            {allDone
+              ? 'Tout est prêt — demandez la publication'
+              : `Finalisez votre mise en ligne (${doneCount}/${total} étapes)`}
+          </div>
+          {!allDone && inlineLabels.length > 0 ? (
+            <div className="mt-1 text-[12px] text-dark/60">
+              Il reste : {inlineLabels.join(' · ')}
+              {overflow > 0
+                ? ` et ${overflow} autre${overflow > 1 ? 's' : ''}…`
+                : ''}
+            </div>
+          ) : null}
+        </div>
+      </div>
+      <span className="text-[13px] text-dark/60 shrink-0 mt-0.5">Voir →</span>
+    </Link>
+  );
+}
+
+// Carte « mise en ligne » — état wait. La demande a été envoyée, on attend la
+// validation admin. Non-cliquable (pas de CTA), pastille terra (état passif,
+// distinct du vert d'action), pas d'engagement temporel.
+// Exporté pour les tests de rendu isolés (cf. PublicationTodoCard).
+export function PublicationWaitCard() {
+  return (
+    <div className="flex items-start gap-3 p-4 rounded-xl border bg-terra-100/60 border-terra-200">
+      <span className="mt-1.5 w-2 h-2 rounded-full bg-terra-700 shrink-0" />
+      <div className="min-w-0">
+        <div className="text-[14px] text-dark font-medium">
+          Demande de publication envoyée
+        </div>
+        <div className="mt-1 text-[12px] text-dark/60">
+          L&apos;équipe TerrOir valide votre fiche, vous serez prévenu par
+          email.
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function DashboardClient({ data: initial }: { data: DashboardData }) {
@@ -121,18 +212,13 @@ export function DashboardClient({ data: initial }: { data: DashboardData }) {
             À traiter aujourd&apos;hui
           </h2>
           <div className="space-y-2">
-            {data.publicationToDo && (
-              <Link href="/ma-page"
-                className="flex items-center justify-between gap-4 p-4 rounded-xl border bg-green-100/60 border-green-300/60 hover:bg-green-100 transition-colors">
-                <div className="flex items-center gap-3">
-                  <span className="w-2 h-2 rounded-full bg-green-700" />
-                  <span className="text-[14px] text-dark font-medium">
-                    Finalisez votre mise en ligne ({data.publicationToDo.doneCount}/6 étapes)
-                  </span>
-                </div>
-                <span className="text-[13px] text-dark/60">Voir →</span>
-              </Link>
+            {data.publicationToDo?.kind === 'todo' && (
+              <PublicationTodoCard
+                doneCount={data.publicationToDo.doneCount}
+                missingKeys={data.publicationToDo.missingKeys}
+              />
             )}
+            {data.publicationToDo?.kind === 'wait' && <PublicationWaitCard />}
             {data.pendingOrders.length > 0 && (
               <Link href="/commandes"
                 className="flex items-center justify-between gap-4 p-4 rounded-xl border bg-terra-100/60 border-terra-300/60 hover:bg-terra-100 transition-colors">
