@@ -62,11 +62,17 @@ function euros(n: number): string {
   return `${n.toFixed(2).replace('.', ',')} €`;
 }
 
-// Carte « mise en ligne » — état todo. Trois sous-cas :
+// Carte « mise en ligne » — état todo. Deux layouts distincts :
+//
 //   - 6/6 (rien dans missingKeys) : tout est prêt, on incite à demander la
-//     publication. Pas de liste d'étapes (il n'en reste pas).
+//     publication. Card globalement cliquable (<Link>) vers le panneau de
+//     publication (/ma-page?tab=edit&focus=publication). "Voir →" conservé.
+//
 //   - 0-5/6 : on liste les étapes restantes par leur shortLabel, tronqué à
-//     PUBLICATION_INLINE_MAX pour rester sur une ligne lisible mobile.
+//     PUBLICATION_INLINE_MAX. Chaque étape est un <Link> propre vers sa page
+//     de complétion (cf. PUBLICATION_CRITERIA[i].href). Plus de wrapper Link
+//     global (HTML invalide <a><a></a></a>), plus de "Voir →" (redondant).
+//
 // Exporté pour permettre des tests de rendu isolés sans avoir à instancier
 // DashboardClient et toute sa machinerie realtime Supabase.
 export function PublicationTodoCard({
@@ -78,39 +84,56 @@ export function PublicationTodoCard({
 }) {
   const total = PUBLICATION_CRITERIA.length;
   const allDone = missingKeys.length === 0;
-  const missingShortLabels = missingKeys
-    .map(
-      (key) => PUBLICATION_CRITERIA.find((c) => c.key === key)?.shortLabel,
-    )
-    .filter((s): s is string => Boolean(s));
-  const inlineLabels = missingShortLabels.slice(0, PUBLICATION_INLINE_MAX);
-  const overflow = missingShortLabels.length - inlineLabels.length;
+
+  if (allDone) {
+    return (
+      <Link
+        href="/ma-page?tab=edit&focus=publication"
+        className="flex items-start justify-between gap-4 p-4 rounded-xl border bg-green-100/60 border-green-300/60 hover:bg-green-100 transition-colors"
+      >
+        <div className="flex items-start gap-3 min-w-0">
+          <span className="mt-1.5 w-2 h-2 rounded-full bg-green-700 shrink-0" />
+          <div className="text-[14px] text-dark font-medium">
+            Tout est prêt — demandez la publication
+          </div>
+        </div>
+        <span className="text-[13px] text-dark/60 shrink-0 mt-0.5">Voir →</span>
+      </Link>
+    );
+  }
+
+  const missingMetas = missingKeys
+    .map((key) => PUBLICATION_CRITERIA.find((c) => c.key === key))
+    .filter((m): m is (typeof PUBLICATION_CRITERIA)[number] => Boolean(m));
+  const inlineMetas = missingMetas.slice(0, PUBLICATION_INLINE_MAX);
+  const overflow = missingMetas.length - inlineMetas.length;
 
   return (
-    <Link
-      href="/ma-page"
-      className="flex items-start justify-between gap-4 p-4 rounded-xl border bg-green-100/60 border-green-300/60 hover:bg-green-100 transition-colors"
-    >
-      <div className="flex items-start gap-3 min-w-0">
-        <span className="mt-1.5 w-2 h-2 rounded-full bg-green-700 shrink-0" />
-        <div className="min-w-0">
-          <div className="text-[14px] text-dark font-medium">
-            {allDone
-              ? 'Tout est prêt — demandez la publication'
-              : `Finalisez votre mise en ligne (${doneCount}/${total} étapes)`}
-          </div>
-          {!allDone && inlineLabels.length > 0 ? (
-            <div className="mt-1 text-[12px] text-dark/60">
-              Il reste : {inlineLabels.join(' · ')}
-              {overflow > 0
-                ? ` et ${overflow} autre${overflow > 1 ? 's' : ''}…`
-                : ''}
-            </div>
-          ) : null}
+    <div className="flex items-start gap-3 p-4 rounded-xl border bg-green-100/60 border-green-300/60">
+      <span className="mt-1.5 w-2 h-2 rounded-full bg-green-700 shrink-0" />
+      <div className="min-w-0">
+        <div className="text-[14px] text-dark font-medium">
+          Finalisez votre mise en ligne ({doneCount}/{total} étapes)
+        </div>
+        <div className="mt-1 text-[12px] text-dark/70">
+          Il reste :{' '}
+          {inlineMetas.map((m, i) => (
+            <span key={m.key}>
+              <Link
+                href={m.href}
+                className="underline decoration-dark/30 underline-offset-2 hover:text-terra-700 hover:decoration-terra-700 transition-colors"
+              >
+                {m.shortLabel}
+              </Link>
+              {i < inlineMetas.length - 1 ? ' · ' : ''}
+            </span>
+          ))}
+          {overflow > 0
+            ? ` et ${overflow} autre${overflow > 1 ? 's' : ''}…`
+            : ''}
         </div>
       </div>
-      <span className="text-[13px] text-dark/60 shrink-0 mt-0.5">Voir →</span>
-    </Link>
+    </div>
   );
 }
 
