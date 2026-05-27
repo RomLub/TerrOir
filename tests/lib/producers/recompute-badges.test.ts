@@ -108,7 +108,7 @@ describe("recomputeBadgesForProducer", () => {
     });
   });
 
-  it("path nominal : 5 orders dont 1 stock_cancel + 1 cancelled + 2 fast_confirmed → 3 scores corrects", async () => {
+  it("path nominal : 5 orders dont 1 stock + 1 consumer_cancel → seul stock pénalise les badges", async () => {
     const orders = [
       {
         id: "o1",
@@ -154,13 +154,14 @@ describe("recomputeBadgesForProducer", () => {
 
     // 5 total, 1 stock_cancel → (5-1)/5 = 80
     // 3 confirmed dont 2 fast (≤ 24h) → 2/3 = 66.67
-    // 5 total, 2 cancelled (stock + consumer) → (5-2)/5 = 60
+    // 5 total, 1 annulation imputable (stock seul, consumer_cancel exclu)
+    //   → (5-1)/5 = 80
     expect(res).toEqual({
       producer_id: "prod-A",
       total_orders: 5,
       badge_stock_score: 80,
       badge_confirmation_score: 66.67,
-      badge_annulation_score: 60,
+      badge_annulation_score: 80,
     });
 
     // UPDATE producers avec les 3 scores
@@ -170,10 +171,51 @@ describe("recomputeBadgesForProducer", () => {
         payload: {
           badge_stock_score: 80,
           badge_confirmation_score: 66.67,
-          badge_annulation_score: 60,
+          badge_annulation_score: 80,
         },
       },
     ]);
+  });
+
+  it("filtre BLAMING_CLOSURE_REASONS : 5 closures exotiques, seuls producer_cancel et stock pénalisent", async () => {
+    const baseOrder = (
+      id: string,
+      closure_reason: string | null,
+      statut: string = "cancelled",
+    ) => ({
+      id,
+      statut,
+      created_at: "2026-04-01T10:00:00Z",
+      confirmed_at: null,
+      closure_reason,
+    });
+    const orders = [
+      // 5 cas couvrant les closure_reason fréquents (cf. enum stateMachine).
+      baseOrder("o-producer", "producer_cancel"), // blaming
+      baseOrder("o-stock", "stock"), // blaming
+      baseOrder("o-consumer", "consumer_cancel"), // externe
+      baseOrder("o-timeout", "timeout"), // externe
+      baseOrder("o-payment", "payment_failed"), // externe
+      // + 1 commande livrée pour avoir un dénominateur > nb annulations.
+      {
+        id: "o-completed",
+        statut: "completed",
+        created_at: "2026-04-01T10:00:00Z",
+        confirmed_at: "2026-04-01T10:30:00Z",
+        closure_reason: null,
+      },
+    ];
+    const { client } = buildClient({
+      selectOrders: { data: orders, error: null },
+    });
+
+    const res = await recomputeBadgesForProducer(client, "prod-blaming");
+
+    // 6 orders total. Annulations imputables : producer_cancel + stock = 2.
+    // (6 - 2) / 6 = 66.67
+    expect(res.badge_annulation_score).toBe(66.67);
+    // Stock cancellation seul : 1/6 → badge_stock_score = (6-1)/6 = 83.33
+    expect(res.badge_stock_score).toBe(83.33);
   });
 
   it("path SELECT error : remonte error sans UPDATE", async () => {

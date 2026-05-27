@@ -97,8 +97,8 @@ export function computeHealth(input: HealthInput): ProducerHealth {
       band: reliabilityBand,
       tip:
         reliabilityBand === "good"
-          ? "Parfait, presque aucune annulation de votre côté."
-          : "Évitez les annulations de votre côté pour améliorer ce score.",
+          ? "Vous menez vos commandes à terme. Les annulations clients ou expirations ne comptent pas contre vous."
+          : "Évitez les annulations de votre côté pour améliorer ce score. Les annulations clients ne sont pas comptées.",
     },
     {
       key: "rating",

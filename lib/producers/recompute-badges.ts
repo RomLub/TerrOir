@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   BADGE_WINDOW_MONTHS,
+  BLAMING_CLOSURE_REASONS,
   CONFIRMATION_THRESHOLD_MS,
 } from "@/lib/producers/scoring-constants";
 
@@ -13,7 +14,12 @@ import {
 //   - badge_stock_score        : (total - cancellations stock) / total
 //   - badge_confirmation_score : confirmations ≤ CONFIRMATION_THRESHOLD /
 //                                total confirmations
-//   - badge_annulation_score   : (total - cancellations toutes raisons) / total
+//   - badge_annulation_score   : (total - cancellations imputables) / total
+//                                où "imputables" = closure_reason ∈
+//                                BLAMING_CLOSURE_REASONS. Les annulations
+//                                externes au producteur (consumer_cancel,
+//                                timeout, payment_failed, revival_blocked_*)
+//                                ne pénalisent plus son score.
 //
 // Pas d'appel notification ni email : pure DB recompute.
 
@@ -52,8 +58,16 @@ export async function recomputeBadgesForProducer(
   const cancelledStock = orders.filter(
     (o) => o.closure_reason === "stock",
   ).length;
+  // Annulations "imputables" : seules celles dont closure_reason est dans
+  // BLAMING_CLOSURE_REASONS (producer_cancel, stock). Le statut seul ne
+  // suffit pas — un consumer_cancel ou un timeout cron a aussi statut
+  // 'cancelled'/'refunded' mais ne doit pas pénaliser le producteur.
   const cancelled = orders.filter(
-    (o) => o.statut === "cancelled" || o.statut === "refunded",
+    (o) =>
+      (o.statut === "cancelled" || o.statut === "refunded") &&
+      (BLAMING_CLOSURE_REASONS as readonly string[]).includes(
+        o.closure_reason ?? "",
+      ),
   ).length;
   const confirmed = orders.filter((o) => o.confirmed_at !== null);
   const fastConfirmed = confirmed.filter((o) => {
