@@ -34,7 +34,10 @@ type Captured = {
   upsertOpts?: { onConflict?: string; ignoreDuplicates?: boolean };
 };
 
-function makeSupabase(rules: SlotRuleMock[]): {
+function makeSupabase(
+  rules: SlotRuleMock[],
+  unavailableDates: string[] = [],
+): {
   client: SupabaseClient;
   captured: Captured;
 } {
@@ -52,6 +55,21 @@ function makeSupabase(rules: SlotRuleMock[]): {
         const builder: any = {};
         builder.select = () => builder;
         builder.eq = () => builder;
+        builder.then = (onFulfilled: any) => onFulfilled(resp);
+        return builder;
+      }
+      if (table === "unavailabilities") {
+        // Garde unavailabilities (chantier 2026-05-28). Le builder retourne
+        // les dates fournies, peu importe les filtres .gte()/.lte().
+        const resp = {
+          data: unavailableDates.map((d) => ({ date: d })),
+          error: null,
+        };
+        const builder: any = {};
+        builder.select = () => builder;
+        builder.eq = () => builder;
+        builder.gte = () => builder;
+        builder.lte = () => builder;
         builder.then = (onFulfilled: any) => onFulfilled(resp);
         return builder;
       }

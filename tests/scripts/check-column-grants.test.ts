@@ -33,6 +33,25 @@ describe("checkColumnGrants — garde anti-régression PR #206", () => {
     expect(result.drift).toHaveLength(0);
     expect(result.dedupAdded.size).toBe(0);
   });
+
+  // Chantier indisponibilités (2026-05-28) : `unavailabilities` rejoint la
+  // liste blanche. Mêmes invariants que producers : ADD COLUMN sans GRANT
+  // ni whitelist → drift.
+  it("détecte le drift sur une migration qui ajoute une colonne unavailabilities sans GRANT ni whitelist", () => {
+    const result = checkColumnGrants(fixtureDir("unavail-violation"));
+    expect(result.drift).toHaveLength(1);
+    expect(result.drift[0]).toMatchObject({
+      table: "unavailabilities",
+      column: "fixture_unavail_violation_col",
+    });
+  });
+
+  it("ne signale pas de drift quand la colonne unavailabilities est ajoutée AVEC GRANT SELECT explicite", () => {
+    const result = checkColumnGrants(fixtureDir("ok-unavail-with-grant"));
+    expect(result.drift).toHaveLength(0);
+    expect(result.dedupAdded.has("unavailabilities.fixture_public_col")).toBe(true);
+    expect(result.grantedSet.has("unavailabilities.fixture_public_col")).toBe(true);
+  });
 });
 
 // Vérifie que la garde mord vraiment en mode CLI (exit code 1). Le CI

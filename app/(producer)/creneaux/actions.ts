@@ -48,6 +48,12 @@ import {
 import { sliceWindow } from "@/lib/slots/slice-window";
 import { ACTIVE_ORDER_STATUTS } from "@/lib/orders/stateMachine";
 import { formatOrderNumber } from "@/lib/orders/order-number";
+import { createUnavailabilities } from "@/lib/unavailabilities/create";
+import { deleteUnavailability } from "@/lib/unavailabilities/delete";
+import type {
+  CreateUnavailabilitiesResult,
+  DeleteUnavailabilityResult,
+} from "@/lib/unavailabilities/types";
 
 const TZ_PARIS = "Europe/Paris";
 
@@ -860,4 +866,70 @@ export async function bulkExcludeRangeAction(
     count_excluded: toExclude.length,
     count_skipped_orders: blockedSet.size,
   };
+}
+
+// =============================================================================
+// Indisponibilités producteur (option B — chantier 2026-05-28)
+// =============================================================================
+// Source de vérité = table `unavailabilities` (cf. lib/unavailabilities/*).
+// Ces actions remplaceront `bulkExcludeRangeAction` quand la PR #2 (UI
+// calendaire) sera mergée. La consommation par l'UI vient en PR #2 — les
+// tests vitest les importent dès PR #1 pour valider la chaîne backend.
+//
+// L'ADR docs/decisions/0009-unavailabilities-option-b.md documente la
+// décision produit et les invariants (raison owner-only, garde RPC en
+// défense en profondeur, régénération ciblée au delete, etc.).
+// =============================================================================
+
+export async function createUnavailabilitiesAction(
+  _prev: CreateUnavailabilitiesResult | null,
+  formData: FormData,
+): Promise<CreateUnavailabilitiesResult> {
+  const session = await getSessionUser();
+  if (!session)
+    return { error: "Non authentifié", code: "INVALID_INPUT" };
+
+  const producerRes = await resolveProducerId(session.id);
+  if ("error" in producerRes)
+    return { error: producerRes.error, code: "INVALID_INPUT" };
+
+  // FormData : dates[] = ["YYYY-MM-DD", ...], raison (optionnelle).
+  const dates = formData.getAll("dates").map(String);
+  const rawRaison = formData.get("raison");
+  const raison =
+    typeof rawRaison === "string" && rawRaison.length > 0 ? rawRaison : null;
+
+  const result = await createUnavailabilities({
+    producerId: producerRes.id,
+    dates,
+    raison,
+    createdBy: session.id,
+  });
+
+  if ("success" in result && result.success) {
+    revalidatePath("/creneaux");
+  }
+  return result;
+}
+
+export async function deleteUnavailabilityAction(
+  unavailabilityId: string,
+): Promise<DeleteUnavailabilityResult> {
+  const session = await getSessionUser();
+  if (!session)
+    return { error: "Non authentifié", code: "INVALID_INPUT" };
+
+  const producerRes = await resolveProducerId(session.id);
+  if ("error" in producerRes)
+    return { error: producerRes.error, code: "INVALID_INPUT" };
+
+  const result = await deleteUnavailability({
+    producerId: producerRes.id,
+    unavailabilityId,
+  });
+
+  if ("success" in result && result.success) {
+    revalidatePath("/creneaux");
+  }
+  return result;
 }

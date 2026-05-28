@@ -285,7 +285,12 @@ rôles client (`anon`, `authenticated`) → toute requête qui la sélectionne
 (Supabase JS renvoie `{data: null, error: ...}` que les helpers ignorent).
 
 **Tables concernées** (audit 2026-05-28) :
-- `public.producers` — la seule table client-facing avec ce pattern.
+- `public.producers` — table client-facing principale avec ce pattern.
+- `public.unavailabilities` — chantier 2026-05-28 (cf. ADR-0016). Public :
+  `(id, producer_id, date)` (le calendrier consumer doit savoir qu'une
+  date est fermée). Owner-only strict : `raison` (peut contenir du perso
+  type « rdv médical »), `created_at`, `created_by`, `updated_at`. Lecture
+  des colonnes muettes via RLS owner ou `createSupabaseAdminClient()`.
 
 **Toute migration `ADD COLUMN` sur `producers` (ou toute autre table que
 l'audit révélera) DOIT décider EXPLICITEMENT du scope de lecture** :
