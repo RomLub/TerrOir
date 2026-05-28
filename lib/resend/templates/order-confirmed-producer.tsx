@@ -2,7 +2,7 @@ import { EmailLayout, emailTheme } from "./layout";
 import type { OrderItemLine } from "./order-confirmed-consumer";
 
 export interface Props {
-  codeCommande: string;
+  numeroCommande: string;
   customerPrenom: string;
   customerNom: string;
   customerEmail: string;
@@ -16,7 +16,7 @@ export interface Props {
 }
 
 export const subject = (p: Props) =>
-  `Nouvelle commande ${p.codeCommande} — à confirmer sous 24h`;
+  `Nouvelle commande ${p.numeroCommande} — à confirmer sous 24h`;
 
 export default function OrderConfirmedProducer(props: Props) {
   return (
@@ -32,7 +32,7 @@ export default function OrderConfirmedProducer(props: Props) {
       </p>
 
       <p style={{ margin: "8px 0" }}>
-        <strong>Code :</strong> {props.codeCommande}
+        <strong>Numéro :</strong> {props.numeroCommande}
       </p>
       <p style={{ margin: "8px 0" }}>
         <strong>Créneau :</strong> {props.dateRetrait} à {props.heureRetrait}

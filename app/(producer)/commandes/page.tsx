@@ -10,6 +10,7 @@ import {
   formatLegacyTimeHHMM,
 } from '@/lib/slots/format-slot-time';
 import type { OrderStatus } from '@/components/ui';
+import { formatOrderNumber } from '@/lib/orders/order-number';
 import { ListSkeleton } from '../_components/ContentSkeletons';
 import {
   ProducerCommandesClient,
@@ -88,7 +89,7 @@ async function CommandesContent({
     admin
       .from('orders')
       .select(`
-        id, code_commande, created_at, statut, montant_total,
+        id, producer_order_seq, created_at, statut, montant_total,
         date_retrait, heure_retrait,
         consumer:consumer_id ( prenom, nom ),
         slots:slot_id ( starts_at, ends_at ),
@@ -115,7 +116,7 @@ async function CommandesContent({
 
   const rows: ProducerOrderRow[] = (data as unknown as Array<{
     id: string;
-    code_commande: string | null;
+    producer_order_seq: number;
     created_at: string;
     statut: OrderStatus;
     montant_total: number | null;
@@ -138,7 +139,7 @@ async function CommandesContent({
     });
     return {
       id: o.id,
-      code_commande: o.code_commande,
+      numero_commande: formatOrderNumber(producer.producer_number, o.producer_order_seq),
       created_at: o.created_at,
       status: o.statut,
       client_name: clientName,

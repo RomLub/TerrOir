@@ -2,6 +2,7 @@ import "server-only";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { type OrderStatus } from "@/lib/orders/stateMachine";
+import { formatOrderNumber } from "@/lib/orders/order-number";
 
 // =============================================================================
 // Helper code-based pour la validation pickup producer (saisie code en haut
@@ -61,6 +62,7 @@ export interface PickupOrderItem {
 export interface PickupOrderPreview {
   id: string;
   code_commande: string;
+  numero_commande: string;
   consumer_id: string;
   consumer_name: string;
   items: PickupOrderItem[];
@@ -86,6 +88,7 @@ export type PickupResult<T> =
 interface RawOrderRow {
   id: string;
   code_commande: string;
+  producer_order_seq: number;
   producer_id: string;
   consumer_id: string;
   statut: OrderStatus;
@@ -95,6 +98,10 @@ interface RawOrderRow {
   consumer:
     | { prenom: string | null; nom: string | null }
     | Array<{ prenom: string | null; nom: string | null }>
+    | null;
+  producer:
+    | { producer_number: number }
+    | Array<{ producer_number: number }>
     | null;
   order_items:
     | Array<{
@@ -110,9 +117,10 @@ interface RawOrderRow {
 }
 
 const ORDER_SELECT = `
-  id, code_commande, producer_id, consumer_id, statut, montant_total,
+  id, code_commande, producer_order_seq, producer_id, consumer_id, statut, montant_total,
   completed_at, created_at,
   consumer:consumer_id ( prenom, nom ),
+  producer:producers!orders_producer_id_fkey ( producer_number ),
   order_items ( quantite, prix_unitaire, sous_total, products:product_id ( nom, unite ) )
 `;
 
@@ -144,9 +152,11 @@ function nonConfirmedStatusToError(
 
 function buildPreview(row: RawOrderRow): PickupOrderPreview {
   const consumer = Array.isArray(row.consumer) ? row.consumer[0] : row.consumer;
+  const producer = Array.isArray(row.producer) ? row.producer[0] : row.producer;
   const consumerName =
     [consumer?.prenom, consumer?.nom].filter(Boolean).join(" ").trim() ||
     "Client";
+  const producerNumber = producer?.producer_number ?? 0;
 
   const items: PickupOrderItem[] = (row.order_items ?? []).map((oi) => {
     const product = Array.isArray(oi.products) ? oi.products[0] : oi.products;
@@ -162,6 +172,7 @@ function buildPreview(row: RawOrderRow): PickupOrderPreview {
   return {
     id: row.id,
     code_commande: row.code_commande,
+    numero_commande: formatOrderNumber(producerNumber, row.producer_order_seq),
     consumer_id: row.consumer_id,
     consumer_name: consumerName,
     items,

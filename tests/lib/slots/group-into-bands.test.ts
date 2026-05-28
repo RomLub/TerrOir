@@ -15,10 +15,10 @@ const RULE_B = "22222222-2222-2222-2222-222222222222";
 
 function order(
   id: string,
-  code: string,
+  numero: string,
   starts_at: string,
 ): DashboardOrderEntry {
-  return { order_id: id, code_commande: code, starts_at };
+  return { order_id: id, numero_commande: numero, starts_at };
 }
 
 function slot(params: {
@@ -202,7 +202,7 @@ describe("groupIntoBands — mix + agrégation orders", () => {
     expect(bands[1]!.source).toBe("adhoc");
   });
 
-  it("totalOrders = somme cohérente + orders triés par code_commande", () => {
+  it("totalOrders = somme cohérente + orders triés par numero_commande", () => {
     const slots = [
       slot({
         id: "s1",
@@ -210,8 +210,8 @@ describe("groupIntoBands — mix + agrégation orders", () => {
         ends_at: "2026-06-03T07:30:00.000Z",
         rule_id: RULE_A,
         orders: [
-          order("o1", "TRR-ZZZ01", "2026-06-03T07:00:00.000Z"),
-          order("o2", "TRR-AAA01", "2026-06-03T07:00:00.000Z"),
+          order("o1", "0001-00009", "2026-06-03T07:00:00.000Z"),
+          order("o2", "0001-00001", "2026-06-03T07:00:00.000Z"),
         ],
       }),
       slot({
@@ -219,17 +219,17 @@ describe("groupIntoBands — mix + agrégation orders", () => {
         starts_at: "2026-06-03T07:30:00.000Z",
         ends_at: "2026-06-03T08:00:00.000Z",
         rule_id: RULE_A,
-        orders: [order("o3", "TRR-MMM01", "2026-06-03T07:30:00.000Z")],
+        orders: [order("o3", "0001-00005", "2026-06-03T07:30:00.000Z")],
       }),
     ];
     const bands = groupIntoBands(slots);
     expect(bands).toHaveLength(1);
     const b = bands[0]!;
     expect(b.totalOrders).toBe(3);
-    expect(b.orders.map((o) => o.code_commande)).toEqual([
-      "TRR-AAA01",
-      "TRR-MMM01",
-      "TRR-ZZZ01",
+    expect(b.orders.map((o) => o.numero_commande)).toEqual([
+      "0001-00001",
+      "0001-00005",
+      "0001-00009",
     ]);
   });
 

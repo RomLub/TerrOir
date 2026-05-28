@@ -8,6 +8,7 @@ import {
   formatLegacyTimeHHMM,
 } from '@/lib/slots/format-slot-time';
 import type { OrderStatus } from '@/components/ui';
+import { formatOrderNumber } from '@/lib/orders/order-number';
 import { OrderDetailClient, type OrderDetailData } from './OrderDetailClient';
 
 function formatReceived(iso: string): string {
@@ -39,7 +40,7 @@ export default async function ProducerOrderDetailPage(props: { params: Promise<{
   const { data: order } = await admin
     .from('orders')
     .select(`
-      id, code_commande, producer_id, created_at, statut, notes_client,
+      id, producer_order_seq, producer_id, created_at, statut, notes_client,
       date_retrait, heure_retrait, montant_total, commission_terroir,
       consumer:consumer_id ( prenom, nom, email, telephone ),
       slots:slot_id ( starts_at, ends_at ),
@@ -77,7 +78,7 @@ export default async function ProducerOrderDetailPage(props: { params: Promise<{
 
   const data: OrderDetailData = {
     id: order.id,
-    codeCommande: order.code_commande ?? null,
+    numeroCommande: formatOrderNumber(producer.producer_number, order.producer_order_seq),
     client: {
       name: clientName,
       email: consumer?.email ?? 'â€”',

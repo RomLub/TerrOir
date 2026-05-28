@@ -32,7 +32,7 @@ import type { OrderStatus } from "@/components/ui";
 function makeData(status: OrderStatus): OrderDetailData {
   return {
     id: "order-test",
-    codeCommande: "TRR-ABCDE",
+    numeroCommande: "0042-00001",
     client: { name: "Marie Dupont", email: "marie@test.fr", phone: "0600000000" },
     createdAtLabel: "3 mai 2026",
     slotDate: "Demain",

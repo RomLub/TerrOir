@@ -19,6 +19,7 @@ import {
   type MonitoringRule,
   type MonitoringSlot,
 } from "@/lib/slots/group-creneaux-monitoring";
+import { formatOrderNumber } from "@/lib/orders/order-number";
 import { PageHeader } from "@/components/ui";
 import { SectionSkeleton } from "../_components/ContentSkeletons";
 import CreneauxCalendarClient from "./_components/CreneauxCalendarClient";
@@ -102,7 +103,7 @@ async function CreneauxGate({
   const admin = createSupabaseAdminClient();
   const { data: producer } = await admin
     .from("producers")
-    .select("id")
+    .select("id, producer_number")
     .eq("user_id", session.id)
     .maybeSingle();
   if (!producer) redirect("/invitation");
@@ -110,14 +111,22 @@ async function CreneauxGate({
   const sp = await searchParamsPromise;
   const weekOffset = parseWeekOffset(sp.week);
 
-  return <CreneauxContent producerId={producer.id} weekOffset={weekOffset} />;
+  return (
+    <CreneauxContent
+      producerId={producer.id}
+      producerNumber={producer.producer_number}
+      weekOffset={weekOffset}
+    />
+  );
 }
 
 async function CreneauxContent({
   producerId,
+  producerNumber,
   weekOffset,
 }: {
   producerId: string;
+  producerNumber: number;
   weekOffset: number;
 }) {
   const admin = createSupabaseAdminClient();
@@ -152,7 +161,9 @@ async function CreneauxContent({
 
   // Commandes actives sur ces créneaux : alimente à la fois la garde
   // « Fermer ce jour » (Set<slot_id>) et le monitoring du remplissage
-  // (Map<slot_id, MonitoringOrder[]> avec id, code, prénom, createdAt).
+  // (Map<slot_id, MonitoringOrder[]> avec id, numero, prénom, createdAt).
+  // ADR-0015 : le code_commande ne fuite plus côté producteur, on expose
+  // le numero composé via producer_number + producer_order_seq.
   const slotIds = slots.map((s) => s.id);
   const blocked = new Set<string>();
   const ordersBySlot = new Map<string, MonitoringOrder[]>();
@@ -160,13 +171,13 @@ async function CreneauxContent({
     const { data: ordersRaw } = await admin
       .from("orders")
       .select(
-        "id, code_commande, slot_id, created_at, consumer:users!orders_consumer_id_fkey(prenom)",
+        "id, producer_order_seq, slot_id, created_at, consumer:users!orders_consumer_id_fkey(prenom)",
       )
       .in("slot_id", slotIds)
       .in("statut", [...ACTIVE_ORDER_STATUTS]);
     type OrderRow = {
       id: string;
-      code_commande: string;
+      producer_order_seq: number;
       slot_id: string | null;
       created_at: string;
       consumer: { prenom: string | null } | { prenom: string | null }[] | null;
@@ -179,7 +190,7 @@ async function CreneauxContent({
         : row.consumer;
       const order: MonitoringOrder = {
         id: row.id,
-        code: row.code_commande,
+        numero: formatOrderNumber(producerNumber, row.producer_order_seq),
         consumerFirstName: consumer?.prenom ?? null,
         createdAt: row.created_at,
       };

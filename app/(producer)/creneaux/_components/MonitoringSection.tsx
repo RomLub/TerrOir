@@ -151,9 +151,9 @@ function formatCellTooltip(cell: MonitoringCell, mode: "libre" | "rdv"): string 
   if (cell.kind === "reserved") {
     const consumer = cell.consumerFirstName ?? "Client";
     if (mode === "rdv") {
-      return `${formatSlotTime(cell.subSlotStartIso)} · ${cell.orderCode} · ${consumer}`;
+      return `${formatSlotTime(cell.subSlotStartIso)} · ${cell.orderNumber} · ${consumer}`;
     }
-    return `${cell.orderCode} · ${consumer}`;
+    return `${cell.orderNumber} · ${consumer}`;
   }
   // free
   if (mode === "rdv") {

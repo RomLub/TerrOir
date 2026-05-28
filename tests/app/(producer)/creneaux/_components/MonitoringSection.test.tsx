@@ -21,14 +21,14 @@ vi.mock("next/link", () => ({
 
 function cellReserved(opts: {
   orderId?: string;
-  orderCode?: string;
+  orderNumber?: string;
   consumerFirstName?: string | null;
   subSlotStartIso?: string;
 }): MonitoringCell {
   return {
     kind: "reserved",
     orderId: opts.orderId ?? "order-1",
-    orderCode: opts.orderCode ?? "TRR-001",
+    orderNumber: opts.orderNumber ?? "0001-00001",
     consumerFirstName:
       opts.consumerFirstName === undefined ? "Jean" : opts.consumerFirstName,
     subSlotStartIso: opts.subSlotStartIso ?? "2026-05-28T09:00:00+02:00",
@@ -87,7 +87,7 @@ describe("<MonitoringSection>", () => {
           mode: "libre",
           durationLabel: "plage",
           cells: [
-            cellReserved({ orderId: "abc-123", orderCode: "TRR-001" }),
+            cellReserved({ orderId: "abc-123", orderNumber: "0001-00001" }),
             cellFree(),
             cellFree(),
             cellFree(),
@@ -105,8 +105,8 @@ describe("<MonitoringSection>", () => {
     const reserved = screen.getAllByTestId("monitoring-cell-reserved");
     expect(reserved).toHaveLength(1);
     expect(reserved[0]!.getAttribute("href")).toBe("/commandes/abc-123");
-    expect(reserved[0]!.getAttribute("aria-label")).toBe("TRR-001 · Jean");
-    expect(reserved[0]!.getAttribute("title")).toBe("TRR-001 · Jean");
+    expect(reserved[0]!.getAttribute("aria-label")).toBe("0001-00001 · Jean");
+    expect(reserved[0]!.getAttribute("title")).toBe("0001-00001 · Jean");
 
     expect(screen.getAllByTestId("monitoring-cell-free")).toHaveLength(3);
   });
@@ -120,7 +120,7 @@ describe("<MonitoringSection>", () => {
           cells: [
             cellReserved({
               orderId: "o1",
-              orderCode: "TRR-42",
+              orderNumber: "0001-00042",
               consumerFirstName: "Léa",
               subSlotStartIso: "2026-05-28T10:30:00+02:00",
             }),
@@ -131,7 +131,7 @@ describe("<MonitoringSection>", () => {
     });
     render(<MonitoringSection days={[d]} />);
     const reserved = screen.getByTestId("monitoring-cell-reserved");
-    expect(reserved.getAttribute("aria-label")).toBe("10h30 · TRR-42 · Léa");
+    expect(reserved.getAttribute("aria-label")).toBe("10h30 · 0001-00042 · Léa");
     const free = screen.getByTestId("monitoring-cell-free");
     expect(free.getAttribute("aria-label")).toBe("11h · libre");
   });
@@ -143,7 +143,7 @@ describe("<MonitoringSection>", () => {
           mode: "libre",
           cells: [
             cellReserved({
-              orderCode: "TRR-99",
+              orderNumber: "0001-00099",
               consumerFirstName: null,
             }),
           ],
@@ -152,7 +152,7 @@ describe("<MonitoringSection>", () => {
     });
     render(<MonitoringSection days={[d]} />);
     const reserved = screen.getByTestId("monitoring-cell-reserved");
-    expect(reserved.getAttribute("aria-label")).toBe("TRR-99 · Client");
+    expect(reserved.getAttribute("aria-label")).toBe("0001-00099 · Client");
   });
 
   it("pluriels : 1 créneau / 2 créneaux, 1 réservée / 3 réservées", () => {

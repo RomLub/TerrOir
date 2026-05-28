@@ -32,7 +32,7 @@ export type DashboardSlotPayload = {
 
 export type DashboardOrderEntry = {
   order_id: string;
-  code_commande: string;
+  numero_commande: string;
   starts_at: string;
 };
 
@@ -142,7 +142,7 @@ function buildBand(params: {
     for (const o of slot.orders) orders.push(o);
   }
 
-  orders.sort((a, b) => a.code_commande.localeCompare(b.code_commande));
+  orders.sort((a, b) => a.numero_commande.localeCompare(b.numero_commande));
 
   return { key, source, ruleId, startsAt, endsAt, totalOrders, orders };
 }

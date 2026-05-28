@@ -149,12 +149,12 @@ describe('VerticalWeekCalendar — rendu colonnes & bandes', () => {
       orders: [
         {
           order_id: 'o1',
-          code_commande: 'TRR-AAA01',
+          numero_commande: '0001-00001',
           starts_at: '2026-06-03T07:00:00.000Z',
         },
         {
           order_id: 'o2',
-          code_commande: 'TRR-BBB02',
+          numero_commande: '0001-00002',
           starts_at: '2026-06-03T07:00:00.000Z',
         },
       ],
@@ -185,7 +185,7 @@ describe('VerticalWeekCalendar — popover & navigation', () => {
       orders: [
         {
           order_id: 'order-xyz',
-          code_commande: 'TRR-HLFSJN5',
+          numero_commande: '0001-00003',
           starts_at: '2026-06-03T07:00:00.000Z',
         },
       ],
@@ -218,7 +218,7 @@ describe('VerticalWeekCalendar — popover & navigation', () => {
     ) as HTMLAnchorElement | null;
     expect(link).not.toBeNull();
     expect(link!.getAttribute('href')).toBe('/commandes/order-xyz');
-    expect(link!.textContent).toContain('TRR-HLFSJN5');
+    expect(link!.textContent).toContain('0001-00003');
   });
 
   it('Escape ferme le popover ouvert', () => {
@@ -228,7 +228,7 @@ describe('VerticalWeekCalendar — popover & navigation', () => {
       orders: [
         {
           order_id: 'o1',
-          code_commande: 'TRR-ZZZ',
+          numero_commande: '0001-00004',
           starts_at: '2026-06-03T07:00:00.000Z',
         },
       ],
@@ -327,17 +327,17 @@ describe('VerticalWeekCalendar — invariants & isToday', () => {
       orders: [
         {
           order_id: 'o1',
-          code_commande: 'TRR-A1',
+          numero_commande: '0001-00005',
           starts_at: '2026-06-03T07:00:00.000Z',
         },
         {
           order_id: 'o2',
-          code_commande: 'TRR-A2',
+          numero_commande: '0001-00006',
           starts_at: '2026-06-03T07:00:00.000Z',
         },
         {
           order_id: 'o3',
-          code_commande: 'TRR-A3',
+          numero_commande: '0001-00007',
           starts_at: '2026-06-03T07:00:00.000Z',
         },
       ],
