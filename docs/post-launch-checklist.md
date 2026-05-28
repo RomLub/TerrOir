@@ -431,3 +431,31 @@ production.
 - **Vérif post-déploiement** : le cron `leads-followups` (vercel.json, 7h)
   tourne sans erreur ; un envoi de formulaire prospect produit un lien
   `/devenir-producteur?prefill=…` valide.
+
+---
+
+## Hardening Stripe pré-launch volume
+
+### Symétriser `PRODUCER_REFUND_CAP_EUR` entre `/api/stripe/refund` et `/api/orders/[id]/cancel`
+
+- **Condition de déblocage** : avant le premier producteur public générant
+  > 100 €/jour de chiffre d'affaires moyen.
+- **Statut** : asymétrie identifiée dans l'audit
+  « Annuler et fermer » (2026-05-29). Le cap
+  `PRODUCER_REFUND_CAP_EUR` (default 500 €) est appliqué uniquement
+  dans `/api/stripe/refund/route.tsx` (refund standalone producer-
+  initiated). `/api/orders/[id]/cancel/route.tsx` émet un refund Stripe
+  dans le flux d'annulation sans aucun check sur ce cap. Un producteur
+  compromis (ou un bug) pourrait drainer la balance via une chaîne
+  d'annulations légitimes en apparence.
+- **Action** : importer `producerRefundCap()` (déjà extrait dans
+  `/api/stripe/refund/route.tsx`) ou centraliser dans
+  `lib/stripe/producer-refund-cap.ts` ; appliquer le même check
+  `attempted > cap` dans `/api/orders/[id]/cancel/route.tsx` avant
+  l'émission Stripe (ou créer un row `pending_refunds` avec workflow
+  approval admin identique). Tests : reproduire les cas du test
+  `refund/route.test.ts` (cap dépassé → 202 + row pending) sur
+  `/cancel/route.test.ts`.
+- **Pourquoi différé** : pré-launch, volume nul. À mettre en place avant
+  d'avoir un producteur réel qui pourrait commettre l'erreur (ou
+  être compromis).
