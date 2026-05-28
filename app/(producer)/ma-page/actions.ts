@@ -21,6 +21,79 @@ import {
 // l'UPDATE n'écrit que les champs ci-dessous. L'ownership vient de
 // resolveProducerOwner (id serveur), jamais d'un id fourni par le client.
 
+// =============================================================================
+// loadMaPageData — lecture owner-scopée de la fiche du producteur courant.
+// =============================================================================
+// Pourquoi via server action plutôt que browser client : la table `producers`
+// a un pattern de grants column-level explicites (liste blanche). Les
+// colonnes admin-only (bio_validated_at, publication_requested_at) et
+// owner-sensitive (bio_certificate_number) ne sont PAS granted au rôle
+// `authenticated`. Un SELECT depuis le browser client échoue avec 42501
+// permission denied dès qu'il les inclut (régression PR #206 + bio chantier 3).
+//
+// La doctrine (ADR-0015 + audit grants column-level 2026-05-28) : ne PAS
+// élargir les grants à `authenticated` pour ces colonnes, car la policy RLS
+// `producers public read when public` permet alors à tout authenticated de
+// lire ces colonnes pour les producers publics — sur-exposition non voulue.
+//
+// Solution : lecture via admin client (service_role, bypass RLS) avec
+// owner-check intégré dans le WHERE (user_id = session.id). Aucun id de
+// producer fourni par le client. Un user ne peut lire QUE sa propre fiche.
+
+export type MaPageData = {
+  id: string;
+  slug: string;
+  nom_exploitation: string | null;
+  description: string | null;
+  histoire: string | null;
+  generations: number | null;
+  annee_creation: number | null;
+  especes: string[] | null;
+  labels: string[] | null;
+  commune: string | null;
+  code_postal: string | null;
+  photo_principale: string | null;
+  photos: string[] | null;
+  note_moyenne: number | null;
+  nb_avis: number | null;
+  badge_stock_score: number | null;
+  badge_confirmation_score: number | null;
+  badge_annulation_score: number | null;
+  bio: boolean;
+  bio_certificate_number: string | null;
+  bio_validated_at: string | null;
+  statut: string | null;
+  publication_requested_at: string | null;
+};
+
+export type LoadMaPageResult =
+  | { ok: true; data: MaPageData }
+  | { ok: false; error: string };
+
+export async function loadMaPageData(): Promise<LoadMaPageResult> {
+  const session = await getSessionUser();
+  if (!session) return { ok: false, error: "Non authentifié" };
+
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin
+    .from("producers")
+    .select(
+      "id, slug, nom_exploitation, description, histoire, generations, annee_creation, especes, labels, commune, code_postal, photo_principale, photos, note_moyenne, nb_avis, badge_stock_score, badge_confirmation_score, badge_annulation_score, bio, bio_certificate_number, bio_validated_at, statut, publication_requested_at",
+    )
+    .eq("user_id", session.id)
+    .maybeSingle();
+
+  if (error) {
+    console.error(
+      `LOAD_MA_PAGE_ERROR user_id=${session.id} error=${error.message}`,
+    );
+    return { ok: false, error: "Chargement impossible." };
+  }
+  if (!data) return { ok: false, error: "Profil producteur introuvable." };
+
+  return { ok: true, data: data as unknown as MaPageData };
+}
+
 export type ProfileActionState = { error?: string; success?: boolean };
 
 const profileSchema = z.object({
