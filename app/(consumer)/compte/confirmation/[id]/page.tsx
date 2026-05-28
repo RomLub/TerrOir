@@ -14,6 +14,7 @@ import { SectionSkeleton } from '../../_components/ContentSkeletons';
 // PRIVACY: opt-out: lat/lng deja arrondies cote DB via vue producers_public,
 // roundCoord reapplique pour fail-safe si la vue venait a etre regressee.
 import { roundCoord } from '@/lib/producers/coords';
+import { formatOrderNumber } from '@/lib/orders/order-number';
 import { ConfirmationClient } from './ConfirmationClient';
 
 function formatDateLabel(iso: string): string {
@@ -57,7 +58,7 @@ async function ConfirmationGate(props: { paramsPromise: Promise<{ id: string }> 
   const { data: order } = await supabase
     .from('orders')
     .select(`
-      id, code_commande, consumer_id, producer_id, slot_id,
+      id, code_commande, producer_order_seq, consumer_id, producer_id, slot_id,
       date_retrait, heure_retrait, montant_total, statut, closure_reason,
       slots:slot_id ( starts_at, ends_at ),
       order_items ( quantite, prix_unitaire, sous_total, products:product_id ( nom, unite ) )
@@ -70,7 +71,7 @@ async function ConfirmationGate(props: { paramsPromise: Promise<{ id: string }> 
 
   const { data: producerRow } = await supabase
     .from('producers_public')
-    .select('nom_exploitation, adresse, commune, code_postal, latitude, longitude')
+    .select('nom_exploitation, adresse, commune, code_postal, latitude, longitude, producer_number')
     .eq('id', order.producer_id)
     .maybeSingle();
 
@@ -108,6 +109,10 @@ async function ConfirmationGate(props: { paramsPromise: Promise<{ id: string }> 
     <ConfirmationClient
       orderId={order.id}
       codeCommande={order.code_commande ?? ''}
+      numeroCommande={formatOrderNumber(
+        producerRow?.producer_number ?? 0,
+        order.producer_order_seq ?? 0,
+      )}
       statut={order.statut as string}
       closureReason={(order.closure_reason as string | null) ?? null}
       items={items}

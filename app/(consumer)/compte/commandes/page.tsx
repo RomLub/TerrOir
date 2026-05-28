@@ -4,6 +4,7 @@ import { getSessionUser } from '@/lib/auth/session';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { applyCursor, parseCursor } from '@/lib/pagination/cursor';
 import type { OrderStatus } from '@/components/ui';
+import { formatOrderNumber } from '@/lib/orders/order-number';
 import { ListSkeleton } from '../_components/ContentSkeletons';
 import { CommandesClient, type OrderRow } from './CommandesClient';
 
@@ -86,8 +87,8 @@ async function CommandesContent({
     admin
       .from('orders')
       .select(`
-        id, code_commande, created_at, statut, closure_reason, montant_total, producer_id,
-        producers:producer_id ( nom_exploitation, slug ),
+        id, code_commande, producer_order_seq, created_at, statut, closure_reason, montant_total, producer_id,
+        producers:producer_id ( nom_exploitation, slug, producer_number ),
         order_items ( id )
       `)
       .eq('consumer_id', userId),
@@ -113,9 +114,13 @@ async function CommandesContent({
     .map((o) => {
       const prod = Array.isArray(o.producers) ? o.producers[0] : o.producers;
       const itemsArr = Array.isArray(o.order_items) ? o.order_items : [];
+      const producerNumber =
+        (prod as { producer_number?: number } | null | undefined)?.producer_number ?? 0;
+      const orderSeq = (o.producer_order_seq as number | null | undefined) ?? 0;
       return {
         id: o.id as string,
         code_commande: (o.code_commande as string | null) ?? null,
+        numero_commande: formatOrderNumber(producerNumber, orderSeq),
         created_at: o.created_at as string,
         statut: o.statut as OrderStatus,
         closure_reason: (o.closure_reason as string | null) ?? null,

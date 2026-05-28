@@ -4,19 +4,21 @@ import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { StarRating } from "@/components/ui/star-rating";
+import { formatOrderNumber } from "@/lib/orders/order-number";
 import { ListSkeleton, SectionSkeleton } from "../_components/ContentSkeletons";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
 
 type ProducerEmbed =
-  | { nom_exploitation: string | null; slug: string | null }
-  | Array<{ nom_exploitation: string | null; slug: string | null }>
+  | { nom_exploitation: string | null; slug: string | null; producer_number?: number | null }
+  | Array<{ nom_exploitation: string | null; slug: string | null; producer_number?: number | null }>
   | null;
 
 type OrderRow = {
   id: string;
   code_commande: string;
+  producer_order_seq: number;
   completed_at: string | null;
   montant_total: number | string | null;
   producers: ProducerEmbed;
@@ -121,7 +123,7 @@ async function MesAvisContent({ userId }: { userId: string }) {
     admin
       .from("orders")
       .select(
-        "id, code_commande, completed_at, montant_total, producers:producer_id ( nom_exploitation, slug )",
+        "id, code_commande, producer_order_seq, completed_at, montant_total, producers:producer_id ( nom_exploitation, slug, producer_number )",
       )
       .eq("consumer_id", userId)
       .eq("statut", "completed")
@@ -170,7 +172,10 @@ async function MesAvisContent({ userId }: { userId: string }) {
                       {exploitation}
                     </p>
                     <p className="mt-0.5 text-xs text-terroir-muted">
-                      Commande {order.code_commande}
+                      Commande {formatOrderNumber(
+                        producer?.producer_number ?? 0,
+                        order.producer_order_seq,
+                      )}
                       {order.completed_at
                         ? ` · retirée le ${formatDate(order.completed_at)}`
                         : ""}

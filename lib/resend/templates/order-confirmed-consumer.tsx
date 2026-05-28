@@ -9,6 +9,7 @@ export interface OrderItemLine {
 
 export interface Props {
   codeCommande: string;
+  numeroCommande: string;
   exploitation: string;
   dateRetrait: string;
   heureRetrait: string;
@@ -19,7 +20,7 @@ export interface Props {
 }
 
 export const subject = (p: Props) =>
-  `Ta commande ${p.codeCommande} est confirmée`;
+  `Ta commande ${p.numeroCommande} est confirmée`;
 
 export default function OrderConfirmedConsumer(props: Props) {
   return (
@@ -41,7 +42,7 @@ export default function OrderConfirmedConsumer(props: Props) {
           textAlign: "center",
         }}
       >
-        <div style={{ fontSize: 12, color: "#6b6b6b" }}>Code commande</div>
+        <div style={{ fontSize: 12, color: "#6b6b6b" }}>Code retrait à présenter</div>
         <div
           style={{
             fontSize: 32,
@@ -51,6 +52,9 @@ export default function OrderConfirmedConsumer(props: Props) {
           }}
         >
           {props.codeCommande}
+        </div>
+        <div style={{ marginTop: 8, fontSize: 12, color: "#6b6b6b" }}>
+          Numéro de commande : <strong>{props.numeroCommande}</strong>
         </div>
       </div>
 
