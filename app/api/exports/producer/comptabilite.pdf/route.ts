@@ -10,15 +10,8 @@ import {
   buildProducerAccountingExportData,
   ProducerAccountingExportError,
 } from "@/lib/accounting/producer-export-data";
-import {
-  buildProducerAccountingCsv,
-  producerAccountingFilename,
-} from "@/lib/accounting/producer-export-csv";
-
-// GET /api/exports/producer/comptabilite.csv?from=YYYY-MM-DD&to=YYYY-MM-DD
-//
-// Export comptable producer. Les données et totaux viennent du moteur partagé
-// lib/accounting/producer-export-data.ts, consommé aussi par le PDF.
+import { producerAccountingFilename } from "@/lib/accounting/producer-export-csv";
+import { generateProducerAccountingPdf } from "@/lib/accounting/producer-export-pdf";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -53,17 +46,21 @@ export async function GET(request: Request) {
       from: url.searchParams.get("from"),
       to: url.searchParams.get("to"),
     });
-    const csv = buildProducerAccountingCsv(data);
+    const pdf = await generateProducerAccountingPdf(data);
+    const body = pdf.buffer.slice(
+      pdf.byteOffset,
+      pdf.byteOffset + pdf.byteLength,
+    ) as ArrayBuffer;
     const filename = producerAccountingFilename({
       from: data.period.from,
       to: data.period.to,
-      extension: "csv",
+      extension: "pdf",
     });
 
-    return new NextResponse(csv, {
+    return new NextResponse(body, {
       status: 200,
       headers: {
-        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Type": "application/pdf",
         "Content-Disposition": `attachment; filename="${filename}"`,
         "Cache-Control": "private, no-store",
       },

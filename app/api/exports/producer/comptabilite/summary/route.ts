@@ -3,22 +3,9 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth/session";
 import { dbErrorResponse } from "@/lib/api/db-error-response";
 import {
-  consumeRateLimit,
-  getExportComptaRateLimit,
-} from "@/lib/rate-limit";
-import {
   buildProducerAccountingExportData,
   ProducerAccountingExportError,
 } from "@/lib/accounting/producer-export-data";
-import {
-  buildProducerAccountingCsv,
-  producerAccountingFilename,
-} from "@/lib/accounting/producer-export-csv";
-
-// GET /api/exports/producer/comptabilite.csv?from=YYYY-MM-DD&to=YYYY-MM-DD
-//
-// Export comptable producer. Les données et totaux viennent du moteur partagé
-// lib/accounting/producer-export-data.ts, consommé aussi par le PDF.
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -29,22 +16,6 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
   }
 
-  const limiter = getExportComptaRateLimit();
-  const rateResult = await consumeRateLimit(limiter, `producer:${session.id}`);
-  if (!rateResult.success) {
-    return NextResponse.json(
-      { error: "Trop de requêtes" },
-      {
-        status: 429,
-        headers: {
-          "Retry-After": String(
-            Math.max(1, Math.ceil((rateResult.reset - Date.now()) / 1000)),
-          ),
-        },
-      },
-    );
-  }
-
   const url = new URL(request.url);
   try {
     const data = await buildProducerAccountingExportData({
@@ -53,21 +24,19 @@ export async function GET(request: Request) {
       from: url.searchParams.get("from"),
       to: url.searchParams.get("to"),
     });
-    const csv = buildProducerAccountingCsv(data);
-    const filename = producerAccountingFilename({
-      from: data.period.from,
-      to: data.period.to,
-      extension: "csv",
-    });
 
-    return new NextResponse(csv, {
-      status: 200,
-      headers: {
-        "Content-Type": "text/csv; charset=utf-8",
-        "Content-Disposition": `attachment; filename="${filename}"`,
-        "Cache-Control": "private, no-store",
+    return NextResponse.json(
+      {
+        generatedAt: data.generatedAt,
+        period: data.period,
+        producer: data.producer,
+        summary: data.summary,
       },
-    });
+      {
+        status: 200,
+        headers: { "Cache-Control": "private, no-store" },
+      },
+    );
   } catch (error) {
     return producerAccountingErrorResponse(error);
   }
