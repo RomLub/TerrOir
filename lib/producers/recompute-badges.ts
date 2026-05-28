@@ -1,16 +1,24 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { BADGE_WINDOW_MONTHS } from "@/lib/producers/scoring-constants";
+import {
+  computeBadgeDetails,
+  type ScoringOrder,
+} from "@/lib/producers/compute-badge-details";
 
 // Recompute des 3 scores badges pour UN producteur sur une fenêtre glissante
-// 12 mois. Logique extraite de l'ancienne route PATCH
-// /api/producers/[id]/badges supprimée par T-417 (le seul caller était le
-// cron weekly-badges, qui faisait un fetch HTTP interne avec Bearer manuel
-// — anti-pattern : latence + réinjection auth + complexité).
+// (cf. BADGE_WINDOW_MONTHS). Logique de calcul extraite dans le helper pur
+// `computeBadgeDetails` (réutilisé par /sante et /dashboard pour exposer
+// aussi les détails chiffrés). Ce fichier ne fait plus que l'I/O :
+// fetch orders → délègue le calcul → persiste les scores.
 //
 // 3 scores calculés (en pourcentage 0-100, arrondi 2 décimales) :
 //   - badge_stock_score        : (total - cancellations stock) / total
-//   - badge_confirmation_score : confirmations < 2h / total confirmations
-//   - badge_annulation_score   : (total - cancellations toutes raisons) / total
+//   - badge_confirmation_score : confirmations ≤ CONFIRMATION_THRESHOLD /
+//                                total confirmations
+//   - badge_annulation_score   : (total - cancellations imputables) / total
+//                                où "imputables" = closure_reason ∈
+//                                BLAMING_CLOSURE_REASONS.
 //
 // Pas d'appel notification ni email : pure DB recompute.
 
@@ -29,7 +37,7 @@ export async function recomputeBadgesForProducer(
   producerId: string,
 ): Promise<RecomputeBadgesResult> {
   const cutoff = new Date();
-  cutoff.setUTCMonth(cutoff.getUTCMonth() - 12);
+  cutoff.setUTCMonth(cutoff.getUTCMonth() - BADGE_WINDOW_MONTHS);
 
   const { data: orders, error: selectError } = await admin
     .from("orders")
@@ -45,30 +53,9 @@ export async function recomputeBadgesForProducer(
     return { producer_id: producerId, reason: "no_orders" };
   }
 
-  const total = orders.length;
-  const cancelledStock = orders.filter(
-    (o) => o.closure_reason === "stock",
-  ).length;
-  const cancelled = orders.filter(
-    (o) => o.statut === "cancelled" || o.statut === "refunded",
-  ).length;
-  const confirmed = orders.filter((o) => o.confirmed_at !== null);
-  const fastConfirmed = confirmed.filter((o) => {
-    if (!o.created_at || !o.confirmed_at) return false;
-    return (
-      new Date(o.confirmed_at).getTime() - new Date(o.created_at).getTime() <=
-      2 * 60 * 60 * 1000
-    );
-  }).length;
-
-  const pct = (x: number, y: number) =>
-    y === 0 ? 100 : Math.round(((x / y) * 100) * 100) / 100;
-
-  const scores = {
-    badge_stock_score: pct(total - cancelledStock, total),
-    badge_confirmation_score: pct(fastConfirmed, Math.max(confirmed.length, 1)),
-    badge_annulation_score: pct(total - cancelled, total),
-  };
+  const { scores, details } = computeBadgeDetails(
+    orders as ScoringOrder[],
+  );
 
   const { error: updateError } = await admin
     .from("producers")
@@ -81,7 +68,7 @@ export async function recomputeBadgesForProducer(
 
   return {
     producer_id: producerId,
-    total_orders: total,
+    total_orders: details.totalOrders,
     ...scores,
   };
 }

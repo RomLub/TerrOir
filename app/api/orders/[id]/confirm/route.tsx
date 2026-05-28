@@ -5,6 +5,10 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { userOwnsProducer } from "@/lib/auth/producerOwnership";
 import { sqlstateToStatus } from "@/lib/api/sqlstate-to-status";
 import { type OrderStatus } from "@/lib/orders/stateMachine";
+import {
+  BADGE_WINDOW_MONTHS,
+  CONFIRMATION_THRESHOLD_MS,
+} from "@/lib/producers/scoring-constants";
 import { googleMapsUrl, sendTemplate } from "@/lib/resend/send";
 import OrderConfirmedConsumer, {
   subject as confirmedSubject,
@@ -79,10 +83,10 @@ export async function POST(_request: Request, props0: RouteContext) {
     console.warn(`[STATS_REVAL_WARN] order=${order.id} ${(e as Error).message}`);
   }
 
-  // 1. Recalcul badge_confirmation_score du producteur (% confirmées ≤ 2h
-  //    sur les 12 derniers mois).
+  // 1. Recalcul badge_confirmation_score du producteur (% confirmées
+  //    ≤ CONFIRMATION_THRESHOLD sur la fenêtre BADGE_WINDOW_MONTHS).
   const cutoff = new Date();
-  cutoff.setUTCMonth(cutoff.getUTCMonth() - 12);
+  cutoff.setUTCMonth(cutoff.getUTCMonth() - BADGE_WINDOW_MONTHS);
   const { data: history } = await admin
     .from("orders")
     .select("created_at, confirmed_at")
@@ -95,7 +99,7 @@ export async function POST(_request: Request, props0: RouteContext) {
       if (!o.confirmed_at || !o.created_at) return false;
       const deltaMs =
         new Date(o.confirmed_at).getTime() - new Date(o.created_at).getTime();
-      return deltaMs <= 2 * 60 * 60 * 1000;
+      return deltaMs <= CONFIRMATION_THRESHOLD_MS;
     }).length;
     const score = Math.round((fast / history.length) * 10000) / 100;
     // bugs-P2-6 (T9 2026-05-07) : destructure error pour rendre visible un

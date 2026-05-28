@@ -26,12 +26,22 @@ interface Control {
   selectProducers?: SelectResp;
 }
 
-function buildClient(ctrl: Control = {}): SupabaseClient {
+type InCall = { col: string; values: unknown[] };
+
+function buildClient(
+  ctrl: Control = {},
+  inCalls: InCall[] = [],
+): SupabaseClient {
   return {
     from: (_table: string) => {
       const b: any = {};
       b.select = () => b;
-      b.eq = () => Promise.resolve(ctrl.selectProducers ?? { data: [], error: null });
+      b.in = (col: string, values: unknown[]) => {
+        inCalls.push({ col, values });
+        return Promise.resolve(
+          ctrl.selectProducers ?? { data: [], error: null },
+        );
+      };
       return b;
     },
   } as unknown as SupabaseClient;
@@ -72,6 +82,25 @@ describe("POST /api/cron/weekly-badges — auth", () => {
   it("returns 401 on wrong Bearer", async () => {
     const res = await POST(makeRequest({ auth: "Bearer wrong" }));
     expect(res.status).toBe(401);
+  });
+});
+
+describe("POST /api/cron/weekly-badges — filtre statut", () => {
+  it("filtre IN (draft, pending, public) — pas l'obsolète 'active'", async () => {
+    const inCalls: InCall[] = [];
+    const client = buildClient(
+      { selectProducers: { data: [], error: null } },
+      inCalls,
+    );
+    vi.mocked(createSupabaseAdminClient).mockReturnValue(client);
+
+    await POST(makeRequest({ auth: "Bearer test-secret" }));
+
+    expect(inCalls).toHaveLength(1);
+    expect(inCalls[0]!.col).toBe("statut");
+    expect(inCalls[0]!.values).toEqual(["draft", "pending", "public"]);
+    // Le statut obsolète "active" ne doit plus apparaître nulle part.
+    expect(inCalls[0]!.values).not.toContain("active");
   });
 });
 

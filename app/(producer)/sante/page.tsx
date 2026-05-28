@@ -5,6 +5,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { fetchProducerForUser, type ProducerRecord } from "@/lib/producers/context";
 import { PageHeader } from "@/components/ui";
 import { computeHealth, type HealthBand } from "@/lib/producers/health";
+import { fetchBadgeDetailsForProducer } from "@/lib/producers/fetch-badge-details";
 import { SectionSkeleton } from "../_components/ContentSkeletons";
 
 // « Santé de ma boutique » (ADR-0011) — présentation des indicateurs déjà
@@ -62,13 +63,16 @@ async function SanteGate() {
 async function SanteContent({ producer }: { producer: ProducerRecord }) {
   const admin = createSupabaseAdminClient();
 
-  const { data: row } = await admin
-    .from("producers")
-    .select(
-      "badge_stock_score, badge_confirmation_score, badge_annulation_score, note_moyenne, nb_avis",
-    )
-    .eq("id", producer.id)
-    .maybeSingle();
+  const [{ data: row }, badgeComputation] = await Promise.all([
+    admin
+      .from("producers")
+      .select(
+        "badge_stock_score, badge_confirmation_score, badge_annulation_score, note_moyenne, nb_avis",
+      )
+      .eq("id", producer.id)
+      .maybeSingle(),
+    fetchBadgeDetailsForProducer(admin, producer.id),
+  ]);
 
   const health = computeHealth({
     stock: Number(row?.badge_stock_score ?? 0),
@@ -76,6 +80,7 @@ async function SanteContent({ producer }: { producer: ProducerRecord }) {
     reliability: Number(row?.badge_annulation_score ?? 0),
     rating: Number(row?.note_moyenne ?? 0),
     reviewCount: Number(row?.nb_avis ?? 0),
+    badgeDetails: badgeComputation.details,
   });
 
   return (
@@ -115,6 +120,11 @@ async function SanteContent({ producer }: { producer: ProducerRecord }) {
               </div>
             </div>
             <p className="mt-2 text-[13px] text-dark/65">{m.tip}</p>
+            {m.detail && (
+              <p className="mt-2 text-[11px] text-dark/45 tabular-nums">
+                {m.detail}
+              </p>
+            )}
           </div>
         ))}
       </div>

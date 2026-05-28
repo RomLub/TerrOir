@@ -21,6 +21,8 @@ import {
   computeWeekHourRange,
   PLANNING_FALLBACK_RANGE,
 } from '@/lib/slots/week-hour-range';
+import { fetchBadgeDetailsForProducer } from '@/lib/producers/fetch-badge-details';
+import { formatBadgeDetailLine } from '@/lib/producers/compute-badge-details';
 import { DashboardSkeleton } from '../_components/ContentSkeletons';
 import { DashboardClient, type DashboardData } from './DashboardClient';
 
@@ -115,9 +117,14 @@ async function DashboardContent({
   // F-045 (audit pré-launch 2026-05-11) — RPC consolidée. Avant : 11 queries
   // Promise.all = 11 conn slots du pooler. Après : 1 RPC SECDEF = 1 conn.
   // Cf. migration 20260511101000_p0_sweep_f045_get_producer_dashboard.sql.
-  const { data: dashboard, error: dashboardError } = await admin.rpc(
-    'get_producer_dashboard',
-    {
+  //
+  // En parallèle : fetch des détails badges (round-trip dédié, ≤ 100 ms
+  // sur volume actuel) pour nourrir les sous-titres "X/Y confirmées en
+  // ≤ 24 h" sous chaque carte score (chantier scoring cleanup 2026-05-28).
+  // Si le volume devient critique, on basculera sur dénormalisation
+  // additive — pas le sujet aujourd'hui.
+  const [dashboardCall, badgeComputation] = await Promise.all([
+    admin.rpc('get_producer_dashboard', {
       p_producer_id: producer.id,
       p_user_id: userId,
       p_today_start: bounds.todayStart.toISOString(),
@@ -131,8 +138,10 @@ async function DashboardContent({
       p_today_iso: bounds.todayIso,
       p_week_start_iso: bounds.weekStartIso,
       p_week_end_iso: bounds.weekEndIso,
-    },
-  );
+    }),
+    fetchBadgeDetailsForProducer(admin, producer.id),
+  ]);
+  const { data: dashboard, error: dashboardError } = dashboardCall;
 
   if (dashboardError) {
     console.error(
@@ -297,6 +306,7 @@ async function DashboardContent({
   });
 
 
+  const badgeDetails = badgeComputation.details;
   const badges: DashboardData['badges'] = [
     {
       kind: 'stock',
@@ -304,20 +314,23 @@ async function DashboardContent({
       tip: (producerRow?.badge_stock_score ?? 0) >= 90
         ? 'Excellent. Continuez à actualiser vos stocks après chaque vente.'
         : 'Actualisez vos stocks régulièrement pour éviter les ruptures.',
+      detail: formatBadgeDetailLine('stock', badgeDetails),
     },
     {
       kind: 'response',
       score: Math.round(producerRow?.badge_confirmation_score ?? 0),
       tip: (producerRow?.badge_confirmation_score ?? 0) >= 85
         ? 'Très réactif. Vos clients apprécient.'
-        : 'Confirmez vos commandes plus rapidement pour atteindre 85+.',
+        : 'Confirmez vos commandes dans les 24 h pour atteindre 85+.',
+      detail: formatBadgeDetailLine('response', badgeDetails),
     },
     {
       kind: 'reliability',
       score: Math.round(producerRow?.badge_annulation_score ?? 0),
       tip: (producerRow?.badge_annulation_score ?? 0) >= 95
-        ? 'Parfait. Presque aucun désistement.'
-        : 'Évitez les annulations côté producteur pour améliorer ce score.',
+        ? 'Parfait. Presque aucune annulation de votre côté.'
+        : 'Évitez les annulations de votre côté pour améliorer ce score.',
+      detail: formatBadgeDetailLine('reliability', badgeDetails),
     },
   ];
 

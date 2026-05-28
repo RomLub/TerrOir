@@ -12,6 +12,10 @@ import {
   isTerminal,
   type OrderStatus,
 } from "@/lib/orders/stateMachine";
+import {
+  BADGE_WINDOW_MONTHS,
+  BLAMING_CLOSURE_REASONS,
+} from "@/lib/producers/scoring-constants";
 import { stripe } from "@/lib/stripe/server";
 import { sendTemplate } from "@/lib/resend/send";
 import { classifyRefundError } from "@/lib/refund-incidents/classify-error";
@@ -248,20 +252,35 @@ export async function POST(request: Request, props0: RouteContext) {
   // toute exception (cache flapping ne doit pas faire échouer le 200).
   await revalidatePublicStats({ source: "order-cancel", orderId: order.id });
 
-  // 2. Badge anti-annulation si l'annulation vient du producteur
-  if (authorizedByProducer) {
+  // 2. Badge anti-annulation : recompute SI l'annulation est imputable au
+  // producteur (reason ∈ BLAMING_CLOSURE_REASONS). Sinon (consumer_cancel,
+  // timeout, payment_failed, other), le ratio des annulations imputables
+  // n'a pas bougé — skip économise un round-trip DB sans perte de précision.
+  const isBlamingCancel =
+    authorizedByProducer &&
+    (BLAMING_CLOSURE_REASONS as readonly string[]).includes(reason);
+  if (isBlamingCancel) {
     const cutoff = new Date();
-    cutoff.setUTCMonth(cutoff.getUTCMonth() - 12);
+    cutoff.setUTCMonth(cutoff.getUTCMonth() - BADGE_WINDOW_MONTHS);
     const { data: history } = await admin
       .from("orders")
-      .select("id, statut")
+      .select("statut, closure_reason")
       .eq("producer_id", order.producer_id)
       .gte("created_at", cutoff.toISOString());
     if (history && history.length > 0) {
-      const nonCancelled = history.filter(
-        (o) => o.statut !== "cancelled" && o.statut !== "refunded",
+      // Filtre cohérent avec recompute-badges : on ne compte une order
+      // comme "annulation imputable" que si elle est cancelled/refunded
+      // ET son closure_reason est dans BLAMING_CLOSURE_REASONS.
+      const cancelledBlaming = history.filter(
+        (o) =>
+          (o.statut === "cancelled" || o.statut === "refunded") &&
+          (BLAMING_CLOSURE_REASONS as readonly string[]).includes(
+            o.closure_reason ?? "",
+          ),
       ).length;
-      const score = Math.round((nonCancelled / history.length) * 10000) / 100;
+      const score =
+        Math.round(((history.length - cancelledBlaming) / history.length) * 10000) /
+        100;
       await admin
         .from("producers")
         .update({ badge_annulation_score: score })

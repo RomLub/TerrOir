@@ -520,7 +520,7 @@ describe("D. Auth — utilisateur", () => {
     expect(captured.updates).toEqual([]);
   });
 
-  it("D3 session producer owner → 200 + badge recalculé sur producers", async () => {
+  it("D3 session producer owner + reason='producer_cancel' (blaming) → 200 + badge recalculé", async () => {
     sessionUser = {
       id: "user-prod-owner",
       email: "prod@example.com",
@@ -532,16 +532,20 @@ describe("D. Auth — utilisateur", () => {
       { data: DEFAULT_ORDER, error: null },
       {
         data: [
-          { id: "o1", statut: "completed" },
-          { id: "o2", statut: "cancelled" },
+          { id: "o1", statut: "completed", closure_reason: null },
+          { id: "o2", statut: "cancelled", closure_reason: "producer_cancel" },
         ],
         error: null,
       },
     );
-    const res = await POST(makeRequest(), PARAMS);
+    const res = await POST(
+      makeRequest({ body: { reason: "producer_cancel" } }),
+      PARAMS,
+    );
     expect(res.status).toBe(200);
     const badgeUpdate = captured.updates.find((u) => u.table === "producers");
     expect(badgeUpdate).toBeDefined();
+    // 1 annulation imputable (producer_cancel) sur 2 total → 50.
     expect(
       (badgeUpdate!.payload as Record<string, unknown>).badge_annulation_score,
     ).toBe(50);
@@ -689,7 +693,7 @@ describe("G. revalidateTag", () => {
 // --- H. Badge anti-annulation --------------------------------------------
 
 describe("H. Badge anti-annulation (gating sur authorizedByProducer)", () => {
-  it("H1 producer owner → SELECT historique 12 mois (gte created_at) + UPDATE producers.badge_annulation_score (formule)", async () => {
+  it("H1 producer owner + reason='producer_cancel' → SELECT historique 12 mois + UPDATE badge_annulation_score (filtre BLAMING)", async () => {
     sessionUser = {
       id: "user-prod-owner",
       email: "prod@example.com",
@@ -697,28 +701,30 @@ describe("H. Badge anti-annulation (gating sur authorizedByProducer)", () => {
       isAdmin: false,
     };
     userOwnsProducerResult = true;
-    // 6 commandes : 3 completed + 2 cancelled + 1 refunded.
-    // nonCancelled = 3, total = 6 → score = 3/6*100 = 50.
+    // 6 commandes : 3 completed + 3 annulées dont 1 imputable au producteur
+    // (producer_cancel), 1 stock (imputable), 1 consumer_cancel (externe).
+    // cancelledBlaming = 2 (producer_cancel + stock).
+    // nonCancelled imputable = 6 - 2 = 4 → score = 4/6 = 66.67.
     pushOrderSelects(
       { data: DEFAULT_ORDER, error: null }, // fetch
       {
         data: [
-          { id: "o1", statut: "completed" },
-          { id: "o2", statut: "completed" },
-          { id: "o3", statut: "completed" },
-          { id: "o4", statut: "cancelled" },
-          { id: "o5", statut: "cancelled" },
-          { id: "o6", statut: "refunded" },
+          { id: "o1", statut: "completed", closure_reason: null },
+          { id: "o2", statut: "completed", closure_reason: null },
+          { id: "o3", statut: "completed", closure_reason: null },
+          { id: "o4", statut: "cancelled", closure_reason: "producer_cancel" },
+          { id: "o5", statut: "cancelled", closure_reason: "stock" },
+          { id: "o6", statut: "refunded", closure_reason: "consumer_cancel" },
         ],
         error: null,
       },
     );
-    await POST(makeRequest(), PARAMS);
+    await POST(makeRequest({ body: { reason: "producer_cancel" } }), PARAMS);
     const badgeUpdate = captured.updates.find((u) => u.table === "producers");
     expect(badgeUpdate).toBeDefined();
     expect(
       (badgeUpdate!.payload as Record<string, unknown>).badge_annulation_score,
-    ).toBe(50);
+    ).toBe(66.67);
     // Vérifie le filtre temporel 12 mois (gte sur created_at de la table
     // orders) — garde-fou contre une régression vers une fenêtre absente.
     const historyGte = captured.gteCalls.find(
@@ -738,6 +744,73 @@ describe("H. Badge anti-annulation (gating sur authorizedByProducer)", () => {
         (g) => g.table === "orders" && g.col === "created_at",
       ),
     ).toBeUndefined();
+  });
+
+  it("H3 producer owner + reason='consumer_cancel' (non-blaming) → SKIP recompute, aucun UPDATE producers", async () => {
+    sessionUser = {
+      id: "user-prod-owner",
+      email: "prod@example.com",
+      roles: ["producer"],
+      isAdmin: false,
+    };
+    userOwnsProducerResult = true;
+    await POST(
+      makeRequest({ body: { reason: "consumer_cancel" } }),
+      PARAMS,
+    );
+    // L'annulation client n'est pas imputable au producteur → ne change pas
+    // le ratio, on évite un SELECT history + un UPDATE producers inutiles.
+    expect(
+      captured.updates.find((u) => u.table === "producers"),
+    ).toBeUndefined();
+    expect(
+      captured.gteCalls.find(
+        (g) => g.table === "orders" && g.col === "created_at",
+      ),
+    ).toBeUndefined();
+  });
+
+  it("H4 producer owner + reason='other' (non-blaming) → SKIP recompute", async () => {
+    sessionUser = {
+      id: "user-prod-owner",
+      email: "prod@example.com",
+      roles: ["producer"],
+      isAdmin: false,
+    };
+    userOwnsProducerResult = true;
+    await POST(makeRequest({ body: { reason: "other" } }), PARAMS);
+    expect(
+      captured.updates.find((u) => u.table === "producers"),
+    ).toBeUndefined();
+  });
+
+  it("H5 producer owner + reason='stock' (blaming via stock) → recompute déclenché", async () => {
+    sessionUser = {
+      id: "user-prod-owner",
+      email: "prod@example.com",
+      roles: ["producer"],
+      isAdmin: false,
+    };
+    userOwnsProducerResult = true;
+    pushOrderSelects(
+      { data: DEFAULT_ORDER, error: null },
+      {
+        data: [
+          { id: "o1", statut: "completed", closure_reason: null },
+          { id: "o2", statut: "cancelled", closure_reason: "stock" },
+        ],
+        error: null,
+      },
+      // Côté alerte 2e rupture stock (cf. I) : count seul, on stub null.
+      { data: null, count: 1, error: null },
+    );
+    await POST(makeRequest({ body: { reason: "stock" } }), PARAMS);
+    const badgeUpdate = captured.updates.find((u) => u.table === "producers");
+    expect(badgeUpdate).toBeDefined();
+    // 1 stock sur 2 total → score = (2-1)/2 = 50.
+    expect(
+      (badgeUpdate!.payload as Record<string, unknown>).badge_annulation_score,
+    ).toBe(50);
   });
 });
 
