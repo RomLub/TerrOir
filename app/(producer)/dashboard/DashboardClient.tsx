@@ -310,10 +310,10 @@ export function DashboardClient({ data }: { data: DashboardData }) {
       </section>
 
       <section className="mb-10">
-        <div className="flex items-end justify-between mb-4">
+        <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="font-serif text-[28px] text-green-900 leading-tight">À confirmer</h2>
-            <p className="text-[13px] text-dark/60 mt-0.5">Confirmez dans les 24 h pour ne pas pénaliser votre score de réactivité.</p>
+            <h2 className="text-[12px] font-semibold uppercase tracking-[0.16em] text-dark/55">À confirmer</h2>
+            <p className="text-[13px] text-dark/60 mt-1">Confirmez dans les 24 h pour ne pas pénaliser votre score de réactivité.</p>
           </div>
           <Link href="/commandes" className="text-[13px] text-green-700 font-medium hover:text-green-900">Toutes les commandes →</Link>
         </div>
@@ -350,7 +350,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
 
       <section className="mb-10" aria-busy={isWeekNavPending}>
         <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
-          <h2 className="font-serif text-[28px] text-green-900 leading-tight">Planning de la semaine</h2>
+          <h2 className="text-[12px] font-semibold uppercase tracking-[0.16em] text-dark/55">Planning de la semaine</h2>
           <WeekNavigator
             weekOffset={data.weekOffset}
             periodLabel={data.weekPeriodLabel}
@@ -371,8 +371,8 @@ export function DashboardClient({ data }: { data: DashboardData }) {
       </section>
 
       <section>
-        <h2 className="font-serif text-[28px] text-green-900 leading-tight mb-1">Badges de fiabilité</h2>
-        <p className="text-[13px] text-dark/60 mb-5">Ces badges sont affichés publiquement sur votre page.</p>
+        <h2 className="text-[12px] font-semibold uppercase tracking-[0.16em] text-dark/55">Badges de fiabilité</h2>
+        <p className="text-[13px] text-dark/60 mt-1 mb-5">Ces badges sont affichés publiquement sur votre page.</p>
         <div className="grid md:grid-cols-3 gap-4">
           {data.badges.map((b) => (
             <div key={b.kind} className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-5">
