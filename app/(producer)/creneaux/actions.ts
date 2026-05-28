@@ -40,7 +40,11 @@ import {
   generateSlotsForProducer,
   invalidateProducer,
 } from "@/lib/slots/generate";
-import { slotRuleSchema, timeToMinutes } from "@/lib/slots/validators";
+import {
+  adHocSlotSchema,
+  slotRuleSchema,
+  timeToMinutes,
+} from "@/lib/slots/validators";
 import { sliceWindow } from "@/lib/slots/slice-window";
 import { ACTIVE_ORDER_STATUTS } from "@/lib/orders/stateMachine";
 
@@ -325,41 +329,6 @@ function dateStrToParisUTC(dateStr: string): string {
   const [y, m, d] = dateStr.split("-").map(Number);
   return new TZDate(y, (m ?? 1) - 1, d ?? 1, 0, 0, 0, TZ_PARIS).toISOString();
 }
-
-const adHocSlotSchema = z
-  .object({
-    start_at: z
-      .string()
-      .regex(
-        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/,
-        "Format attendu : YYYY-MM-DDTHH:MM",
-      ),
-    end_at: z
-      .string()
-      .regex(
-        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/,
-        "Format attendu : YYYY-MM-DDTHH:MM",
-      ),
-    mode: z.enum(["libre", "rdv"]).default("libre"),
-    slot_duration_minutes: z.coerce.number().int().optional(),
-    capacity_per_slot: z.coerce
-      .number()
-      .int()
-      .min(1, "Capacité minimale : 1 client"),
-  })
-  .refine((d) => d.end_at > d.start_at, {
-    message: "L'heure de fin doit être après l'heure de début",
-    path: ["end_at"],
-  })
-  .refine(
-    (d) =>
-      d.mode !== "rdv" ||
-      (d.slot_duration_minutes != null && d.slot_duration_minutes >= 5),
-    {
-      message: "En mode rendez-vous, indiquez une durée d'au moins 5 minutes",
-      path: ["slot_duration_minutes"],
-    },
-  );
 
 export async function createAdHocSlotAction(
   _prev: SlotRuleActionState,
