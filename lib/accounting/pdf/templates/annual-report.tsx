@@ -1,9 +1,31 @@
-import { Document, Image, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
+import {
+  Document,
+  Font,
+  Image,
+  Page,
+  StyleSheet,
+  Text,
+  View,
+} from "@react-pdf/renderer";
 import type {
   ProducerAnnualReportData,
   ProducerAnnualReportMonth,
   ProducerAnnualReportProduct,
 } from "@/lib/accounting/producer-annual-report";
+
+Font.register({
+  family: "NotoSans",
+  fonts: [
+    {
+      src: `${process.cwd()}/public/fonts/NotoSans-Regular.ttf`,
+      fontWeight: "normal",
+    },
+    {
+      src: `${process.cwd()}/public/fonts/NotoSans-Bold.ttf`,
+      fontWeight: "bold",
+    },
+  ],
+});
 
 export function AnnualReportDocument({
   data,
@@ -62,9 +84,10 @@ function Header({
 }
 
 function KeyFigures({ data }: { data: ProducerAnnualReportData }) {
-  const bestMonth = data.summary.bestMonth
-    ? `${data.summary.bestMonth.label} (${formatEuro(data.summary.bestMonth.totalTtc)})`
-    : "Aucun";
+  const bestMonthLabel = data.summary.bestMonth?.label ?? "Aucun";
+  const bestMonthAmount = data.summary.bestMonth
+    ? formatEuro(data.summary.bestMonth.totalTtc)
+    : undefined;
 
   return (
     <View style={styles.section}>
@@ -75,7 +98,7 @@ function KeyFigures({ data }: { data: ProducerAnnualReportData }) {
         <Figure label="Commission TerrOir" value={formatEuro(data.summary.terroirCommission)} />
         <Figure label="Net producteur" value={formatEuro(data.summary.producerNet)} strong />
         <Figure label="Panier moyen" value={formatEuro(data.summary.averageBasket)} />
-        <Figure label="Meilleur mois" value={bestMonth} />
+        <Figure label="Meilleur mois" value={bestMonthLabel} subValue={bestMonthAmount} />
         <Figure label="Clients uniques" value={String(data.summary.uniqueClients)} />
       </View>
     </View>
@@ -85,16 +108,19 @@ function KeyFigures({ data }: { data: ProducerAnnualReportData }) {
 function Figure({
   label,
   value,
+  subValue,
   strong = false,
 }: {
   label: string;
   value: string;
+  subValue?: string;
   strong?: boolean;
 }) {
   return (
     <View style={strong ? styles.figureStrong : styles.figure}>
       <Text style={strong ? styles.figureLabelStrong : styles.figureLabel}>{label}</Text>
       <Text style={strong ? styles.figureValueStrong : styles.figureValue}>{value}</Text>
+      {subValue ? <Text style={styles.figureSubValue}>{subValue}</Text> : null}
     </View>
   );
 }
@@ -150,7 +176,7 @@ function TopProducts({
   products: ProducerAnnualReportProduct[];
 }) {
   return (
-    <View style={styles.section}>
+    <View style={styles.section} break>
       <Text style={styles.sectionTitle}>Top produits</Text>
       {products.length === 0 ? (
         <Text style={styles.empty}>Aucun produit vendu sur cette année.</Text>
@@ -186,16 +212,26 @@ function Footer() {
 }
 
 function formatEuro(value: number): string {
-  return new Intl.NumberFormat("fr-FR", {
-    style: "currency",
-    currency: "EUR",
-  }).format(value);
+  return `${formatFrenchNumber(value, 2, { trimDecimals: false })} €`;
 }
 
 function formatQuantity(value: number): string {
-  return new Intl.NumberFormat("fr-FR", {
-    maximumFractionDigits: 3,
-  }).format(value);
+  return formatFrenchNumber(value, 3, { trimDecimals: true });
+}
+
+function formatFrenchNumber(
+  value: number,
+  maximumFractionDigits: number,
+  options: { trimDecimals: boolean },
+): string {
+  const sign = value < 0 ? "-" : "";
+  const fixed = Math.abs(value).toFixed(maximumFractionDigits);
+  const [integer = "0", decimals = ""] = fixed.split(".");
+  const integerWithSpaces = integer.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  const trimmedDecimals = options.trimDecimals ? decimals.replace(/0+$/, "") : decimals;
+  return trimmedDecimals
+    ? `${sign}${integerWithSpaces},${trimmedDecimals}`
+    : `${sign}${integerWithSpaces}`;
 }
 
 const styles = StyleSheet.create({
@@ -204,7 +240,7 @@ const styles = StyleSheet.create({
     paddingRight: 30,
     paddingBottom: 58,
     paddingLeft: 30,
-    fontFamily: "Helvetica",
+    fontFamily: "NotoSans",
     fontSize: 9,
     color: "#243128",
     backgroundColor: "#fffdf8",
@@ -238,7 +274,8 @@ const styles = StyleSheet.create({
   title: {
     color: "#FFFFFF",
     fontSize: 24,
-    fontFamily: "Helvetica-Bold",
+    fontFamily: "NotoSans",
+    fontWeight: "bold",
   },
   subtitle: {
     color: "#f5e6dc",
@@ -256,7 +293,8 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     color: "#1f3328",
-    fontFamily: "Helvetica-Bold",
+    fontFamily: "NotoSans",
+    fontWeight: "bold",
     fontSize: 13,
     marginBottom: 8,
   },
@@ -296,14 +334,21 @@ const styles = StyleSheet.create({
   figureValue: {
     marginTop: 5,
     color: "#1f3328",
-    fontFamily: "Helvetica-Bold",
+    fontFamily: "NotoSans",
+    fontWeight: "bold",
     fontSize: 11,
   },
   figureValueStrong: {
     marginTop: 5,
     color: "#2d6a4f",
-    fontFamily: "Helvetica-Bold",
+    fontFamily: "NotoSans",
+    fontWeight: "bold",
     fontSize: 11,
+  },
+  figureSubValue: {
+    marginTop: 2,
+    color: "#6a6a62",
+    fontSize: 8,
   },
   monthTable: {
     borderWidth: 1,
@@ -320,7 +365,8 @@ const styles = StyleSheet.create({
   monthHeadCell: {
     width: "22%",
     color: "#FFFFFF",
-    fontFamily: "Helvetica-Bold",
+    fontFamily: "NotoSans",
+    fontWeight: "bold",
     fontSize: 7,
     paddingVertical: 6,
     paddingHorizontal: 5,
@@ -346,7 +392,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 5,
     fontSize: 8,
     color: "#2d6a4f",
-    fontFamily: "Helvetica-Bold",
+    fontFamily: "NotoSans",
+    fontWeight: "bold",
     textAlign: "right",
   },
   monthAmountCell: {
@@ -385,11 +432,13 @@ const styles = StyleSheet.create({
   productRank: {
     width: "8%",
     color: "#8f4f2a",
-    fontFamily: "Helvetica-Bold",
+    fontFamily: "NotoSans",
+    fontWeight: "bold",
   },
   productName: {
     width: "42%",
-    fontFamily: "Helvetica-Bold",
+    fontFamily: "NotoSans",
+    fontWeight: "bold",
   },
   productMetric: {
     width: "17%",
@@ -399,7 +448,8 @@ const styles = StyleSheet.create({
   productTotal: {
     width: "16%",
     color: "#2d6a4f",
-    fontFamily: "Helvetica-Bold",
+    fontFamily: "NotoSans",
+    fontWeight: "bold",
     textAlign: "right",
   },
   empty: {
@@ -427,6 +477,7 @@ const styles = StyleSheet.create({
     top: 8,
     color: "#2d6a4f",
     fontSize: 8,
-    fontFamily: "Helvetica-Bold",
+    fontFamily: "NotoSans",
+    fontWeight: "bold",
   },
 });
