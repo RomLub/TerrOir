@@ -79,6 +79,42 @@
   --postit-icon: #f59e0b;
 
   --shadow-lift: 0 12px 32px rgba(27, 67, 50, 0.12);
+
+  /* Tokens DS exposés en CSS vars pour les artifacts handoff Claude Design
+     (CircuitVisualizer V2 et suivants). Miroir 1:1 de tailwind.config.js
+     + colors_and_type.css. */
+  --terroir-bg: #f7f4ef;
+  --terroir-ink: #1a1a1a;
+  --terroir-muted: #6b7280;
+  --terroir-border: #e6e1d6;
+
+  --green-50: #f1faf3;
+  --green-100: #d8f3dc;
+  --green-200: #b7e4c7;
+  --green-300: #95d5b2;
+  --green-400: #74c69d;
+  --green-500: #52b788;
+  --green-600: #40916c;
+  --green-700: #2d6a4f;
+  --green-800: #1b4332;
+  --green-900: #081c15;
+
+  --shadow-soft: 0 2px 12px rgba(107, 54, 32, 0.07);
+  --shadow-card: 0 4px 16px rgba(107, 54, 32, 0.09);
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-3xl: 24px;
+  --radius-full: 9999px;
+
+  --font-sans: var(--font-inter), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-serif: var(--font-cormorant), "Cormorant Garamond", Georgia, "Times New Roman", serif;
+
+  --fg-muted: rgba(26, 26, 26, 0.7);
+  --fg-subtle: rgba(26, 26, 26, 0.55);
 }
 
 html,

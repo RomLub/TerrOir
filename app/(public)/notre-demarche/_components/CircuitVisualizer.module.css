@@ -1,0 +1,479 @@
+/* ─────────────────────────────────────────────────────────────────
+ * CircuitVisualizer V2 — port 1:1 de la maquette Claude Design
+ * notre_demarche/circuit_visualizer_v2.html lignes 7-362.
+ * ───────────────────────────────────────────────────────────────── */
+
+.cv {
+  background: #ffffff;
+  border: 1px solid var(--terroir-border);
+  border-radius: var(--radius-2xl);
+  padding: 24px 28px 20px;
+  box-shadow: var(--shadow-soft);
+  position: relative;
+}
+
+.header {
+  margin-bottom: 4px;
+  max-width: 640px;
+}
+.eyebrow {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--terra-700);
+  margin-bottom: 6px;
+}
+.title {
+  font-family: var(--font-serif);
+  font-size: 26px;
+  line-height: 1.12;
+  font-weight: 500;
+  color: var(--terroir-ink);
+  margin: 0 0 6px;
+}
+.title em {
+  font-style: italic;
+  color: var(--terra-700);
+}
+.sub {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--fg-muted);
+  margin: 0;
+  max-width: 600px;
+}
+
+/* ── lane (one circuit row) ─────────────────────────────────────── */
+.lane {
+  position: relative;
+  margin-top: 10px;
+  padding: 4px 0 0;
+}
+.lane + .lane {
+  margin-top: 0;
+}
+
+.laneHead {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 0 8px 2px;
+}
+.laneName {
+  font-family: var(--font-serif);
+  font-size: 19px;
+  line-height: 1.1;
+  font-weight: 500;
+  color: var(--terroir-ink);
+  letter-spacing: -0.005em;
+}
+.laneName em {
+  font-style: italic;
+}
+.laneKey {
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  color: var(--fg-muted);
+  font-weight: 500;
+}
+.laneKey strong {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: -0.01em;
+}
+.lane[data-circuit="gms"] .laneKey strong {
+  color: var(--terra-800);
+}
+.lane[data-circuit="terroir"] .laneKey strong {
+  color: var(--green-700);
+}
+
+/* ── stage (SVG river + nodes overlay) ──────────────────────────── */
+.stage {
+  position: relative;
+  /* overflow-x: auto rendu nécessaire par min-width: 880px sur le
+     stageInner mobile (cf @media plus bas). Conséquence CSS : overflow-y
+     est computed à 'auto' aussi (la spec interdit overflow-x:auto +
+     overflow-y:visible). Sans padding, les nodes en position absolute
+     avec translate(-50%,-50%) débordent du stageInner (height fixe SVG)
+     d'environ 40-45px en haut et en bas — déclenche une scrollbar
+     verticale parasite + clip les disques. Padding 80px chaque côté
+     absorbe le débordement dans la padding-box (qui n'agrandit pas le
+     scrollHeight). */
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 80px 0;
+}
+.stageInner {
+  position: relative;
+  width: 100%;
+}
+.stage[data-circuit="gms"] .stageInner {
+  min-height: 170px;
+}
+.stage[data-circuit="terroir"] .stageInner {
+  min-height: 150px;
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+.stage[data-circuit="gms"] .svg {
+  height: 170px;
+}
+.stage[data-circuit="terroir"] .svg {
+  height: 150px;
+}
+
+/* ── nodes ──────────────────────────────────────────────────────── */
+.nodes {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.node {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  text-align: center;
+  transition: opacity 0.45s ease, filter 0.45s ease, transform 0.45s ease;
+}
+.node.isDisabled {
+  opacity: 0.28;
+  filter: grayscale(0.6);
+}
+.nodeDisc {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid var(--terra-300);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 6px;
+  box-shadow: var(--shadow-soft);
+  transition: border-color 0.3s ease, transform 0.3s ease, background 0.3s ease;
+  cursor: default;
+  position: relative;
+  background: none;
+  background-color: #ffffff;
+  appearance: none;
+}
+button.nodeDisc {
+  font: inherit;
+  color: inherit;
+  padding: 0;
+}
+.node[data-role="source"] .nodeDisc {
+  border-color: var(--green-700);
+  background-color: var(--green-50);
+}
+.node[data-role="terroir"] .nodeDisc {
+  border-color: var(--terra-700);
+  background-color: var(--terra-100);
+}
+.node[data-role="consumer"] .nodeDisc {
+  border-color: var(--terroir-ink);
+  background-color: var(--terroir-bg);
+}
+.stage[data-circuit="gms"] .node[data-role="intermediary"] .nodeDisc {
+  cursor: pointer;
+}
+.stage[data-circuit="gms"] .node[data-role="intermediary"]:not(.isDisabled) .nodeDisc:hover {
+  transform: translateY(-2px);
+  border-color: var(--terra-700);
+}
+.nodeDisc svg {
+  width: 20px;
+  height: 20px;
+  color: var(--terra-700);
+}
+.node[data-role="source"] .nodeDisc svg {
+  color: var(--green-700);
+}
+.node[data-role="consumer"] .nodeDisc svg {
+  color: var(--terroir-ink);
+}
+
+.nodeLabel {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--terroir-ink);
+  line-height: 1.2;
+  max-width: 92px;
+  margin: 0 auto 2px;
+}
+.nodePct {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+  color: var(--terra-700);
+  letter-spacing: -0.01em;
+  cursor: help;
+  display: inline-block;
+  transition: color 0.4s ease, transform 0.4s ease;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.nodePct:focus-visible {
+  outline: 2px solid var(--terra-700);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.node[data-role="source"] .nodePct {
+  color: var(--green-700);
+}
+.node[data-role="terroir"] .nodePct {
+  color: var(--terra-700);
+}
+.node[data-role="consumer"] .nodePct {
+  display: none;
+}
+
+.nodePct.isPulsing {
+  animation: cv-pulse 0.9s ease-out;
+}
+@keyframes cv-pulse {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.18);
+    color: var(--green-800);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.cross {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+.node.isDisabled .cross {
+  opacity: 1;
+}
+.cross svg {
+  width: 30px;
+  height: 30px;
+  color: var(--terra-800);
+}
+
+.stage[data-circuit="gms"] .node[data-role="intermediary"]:not(.isDisabled) .nodeDisc::after {
+  content: "";
+  position: absolute;
+  inset: -7px;
+  border-radius: 50%;
+  border: 1px dashed transparent;
+  transition: border-color 0.25s ease;
+}
+.stage[data-circuit="gms"] .node[data-role="intermediary"]:not(.isDisabled) .nodeDisc:hover::after {
+  border-color: var(--terra-300);
+}
+
+/* ── tooltip ────────────────────────────────────────────────────── */
+.tooltip {
+  position: absolute;
+  z-index: 30;
+  background: var(--terroir-ink);
+  color: #f5f0e6;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  max-width: 240px;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -100%) translateY(-12px);
+  transition: opacity 0.2s ease;
+  box-shadow: var(--shadow-card);
+}
+.tooltip.isVisible {
+  opacity: 1;
+}
+.tooltip::after {
+  content: "";
+  position: absolute;
+  bottom: -5px;
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+  width: 10px;
+  height: 10px;
+  background: var(--terroir-ink);
+}
+.tooltipTitle {
+  font-weight: 600;
+  color: #ffffff;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+.tooltipRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: rgba(255, 255, 255, 0.78);
+  font-variant-numeric: tabular-nums;
+}
+.tooltipRow.isMean {
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  padding-top: 4px;
+  margin-top: 4px;
+  color: #ffffff;
+  font-weight: 600;
+}
+.tooltipFoot {
+  margin-top: 8px;
+  color: rgba(255, 255, 255, 0.7);
+  font-style: italic;
+  font-size: 11.5px;
+}
+
+/* ── footer ─────────────────────────────────────────────────────── */
+.controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--terroir-border);
+  flex-wrap: wrap;
+}
+.hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--terra-50);
+  border: 1px solid var(--terra-100);
+  color: var(--terra-800);
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 8px 14px;
+  border-radius: var(--radius-full);
+}
+.hint svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+.reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--terra-700);
+  background: transparent;
+  border: 1px solid var(--terra-300);
+  border-radius: var(--radius-full);
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+.reset:hover:not([disabled]) {
+  background: var(--terra-50);
+  border-color: var(--terra-700);
+  color: var(--terra-800);
+}
+.reset[disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.reset:focus-visible {
+  outline: 2px solid var(--terra-700);
+  outline-offset: 2px;
+}
+.reset svg {
+  width: 14px;
+  height: 14px;
+}
+
+.sources {
+  margin-top: 10px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--fg-muted);
+}
+.sources p {
+  margin: 0 0 2px;
+}
+.sources p + p {
+  color: var(--fg-subtle);
+  font-size: 11px;
+}
+
+@media (max-width: 880px) {
+  .cv {
+    padding: 24px 16px 20px;
+  }
+  .stage[data-circuit="gms"] .stageInner,
+  .stage[data-circuit="terroir"] .stageInner {
+    min-width: 880px;
+  }
+}
+
+/* ── scroll-in animation ───────────────────────────────────────────
+ * Trois états :
+ *   1. .cv.preAnim          → paths invisibles (dashoffset: longueur)
+ *   2. .cv.isAnimating      → animation cubic-bezier 1.2s, forwards
+ *      garde dashoffset: 0 à la fin
+ *   3. (aucune classe)      → paths visibles statiques (dashoffset: 0)
+ *
+ * Le composant ajoute .preAnim au mount client, puis bascule vers
+ * .isAnimating quand l'IntersectionObserver détecte ≥ 25% visible.
+ * Sans IO support, .preAnim → .isAnimating immédiat (no-flash fallback).
+ * SSR initial : aucune classe → paths visibles (graceful degradation
+ * pour no-JS / pre-hydration).
+ *
+ * prefers-reduced-motion : skip total, paths toujours visibles. */
+.river {
+  stroke-dasharray: 2000;
+  stroke-dashoffset: 0;
+}
+.cv.preAnim .river {
+  stroke-dashoffset: 2000;
+}
+.cv.isAnimating .river {
+  animation: cv-river 1.2s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+@keyframes cv-river {
+  from {
+    stroke-dashoffset: 2000;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cv.preAnim .river,
+  .cv.isAnimating .river {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+  .nodePct.isPulsing {
+    animation: none;
+  }
+  .node {
+    transition: none;
+  }
+}
