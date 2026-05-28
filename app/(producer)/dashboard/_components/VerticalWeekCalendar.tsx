@@ -198,7 +198,7 @@ function BandBlock({
           aria-expanded={open}
           aria-controls={popoverId}
           aria-label={`Plage ${formatBandRange(band.startsAt, band.endsAt)} — ${band.totalOrders} commande${band.totalOrders > 1 ? 's' : ''}`}
-          className={`w-full h-full rounded-md text-left transition-colors outline-none ${bandClasses}`}
+          className={`w-full h-full rounded-md text-left transition-colors outline-none flex flex-col items-stretch ${bandClasses}`}
           data-testid="planning-band"
           data-source={band.source}
           data-orders-count={band.totalOrders}
@@ -207,7 +207,7 @@ function BandBlock({
         </button>
       ) : (
         <div
-          className={`w-full h-full rounded-md ${bandClasses}`}
+          className={`w-full h-full rounded-md flex flex-col items-stretch ${bandClasses}`}
           data-testid="planning-band"
           data-source={band.source}
           data-orders-count={0}
