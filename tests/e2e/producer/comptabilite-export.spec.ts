@@ -27,7 +27,7 @@ import { loginAs } from "../helpers/user-lifecycle";
 import { getReadOnlyAdminClient } from "../helpers/supabase-admin";
 
 test.describe("Producer — Comptabilité (/comptabilite + CSV/PDF export)", () => {
-  test("page /comptabilite affiche synthèse + boutons CSV/PDF", async ({
+  test("page /comptabilite affiche exports comptables + bilan annuel sans débordement", async ({
     page,
     ctx,
   }) => {
@@ -39,11 +39,18 @@ test.describe("Producer — Comptabilité (/comptabilite + CSV/PDF export)", () 
     });
 
     await loginAs(page, producer.user);
+    await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto("/comptabilite");
 
     await expect(
       page.getByRole("heading", { name: /Export comptable/i }),
     ).toBeVisible();
+    const accountingSection = page.locator(
+      'section[aria-labelledby="comptabilite-export-title"]',
+    );
+    const annualSection = page.locator(
+      'section[aria-labelledby="bilan-annuel-title"]',
+    );
     await expect(page.getByLabel(/^Du$/i)).toBeVisible();
     await expect(page.getByLabel(/^Au$/i)).toBeVisible();
     await expect(
@@ -52,9 +59,57 @@ test.describe("Producer — Comptabilité (/comptabilite + CSV/PDF export)", () 
     await expect(
       page.getByRole("button", { name: /Télécharger le PDF/i }),
     ).toBeVisible();
-    await expect(page.getByText(/Chiffre d'affaires TTC/i)).toBeVisible();
-    await expect(page.getByText(/Commission TerrOir/i)).toBeVisible();
-    await expect(page.getByText(/Net producteur/i)).toBeVisible();
+    await expect(
+      accountingSection.getByText(/Chiffre d'affaires TTC/i),
+    ).toBeVisible();
+    await expect(accountingSection.getByText(/Commission TerrOir/i)).toBeVisible();
+    await expect(accountingSection.getByText(/Net producteur/i)).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /^Bilan annuel$/i }),
+    ).toBeVisible();
+    await expect(page.getByLabel(/^Année$/i)).toBeVisible();
+    await expect(annualSection.getByText(/Panier moyen/i)).toBeVisible();
+    await expect(annualSection.getByText(/Meilleur mois/i)).toBeVisible();
+    await expect(annualSection.getByText(/Clients uniques/i)).toBeVisible();
+    await expect(annualSection.getByText(/Évolution mensuelle/i)).toBeVisible();
+    await expect(annualSection.getByText(/Top produits/i)).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /Télécharger le bilan annuel PDF/i }),
+    ).toBeVisible();
+
+    await expect(
+      page.evaluate(
+        () =>
+          document.documentElement.scrollWidth <=
+          document.documentElement.clientWidth,
+      ),
+    ).resolves.toBe(true);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.reload();
+    await expect(
+      page.getByRole("heading", { name: /^Bilan annuel$/i }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /Télécharger le bilan annuel PDF/i }),
+    ).toBeVisible();
+    await expect(
+      page.evaluate(
+        () =>
+          document.documentElement.scrollWidth <=
+          document.documentElement.clientWidth,
+      ),
+    ).resolves.toBe(true);
+
+    const year = new Date().getFullYear();
+    const annualPdf = await page.request.get(
+      `/api/exports/producer/bilan-annuel.pdf?year=${year}`,
+    );
+    expect(annualPdf.status()).toBe(200);
+    expect(annualPdf.headers()["content-type"] ?? "").toMatch(/application\/pdf/i);
+    expect((await annualPdf.body()).subarray(0, 5).toString("utf-8")).toBe(
+      "%PDF-",
+    );
   });
 
   test("export CSV avec 1 commande completed → headers + 1 ligne + UTF-8 BOM + email masqué", async ({
