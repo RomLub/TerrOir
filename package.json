@@ -26,6 +26,7 @@
     "test:e2e:debug": "playwright test --debug",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:report": "playwright show-report",
+    "pdf:examples": "tsx scripts/generate-pdf-examples.ts",
     "codegen:enums": "tsx scripts/codegen-enums.ts",
     "codegen:enums:check": "tsx scripts/codegen-enums.ts --check",
     "check:column-grants": "tsx scripts/check-column-grants.ts"

@@ -4,6 +4,10 @@ import { PdfHeader } from "@/lib/accounting/pdf/components/PdfHeader";
 import { PdfFooter } from "@/lib/accounting/pdf/components/PdfFooter";
 import { SummaryCards } from "@/lib/accounting/pdf/components/SummaryCards";
 import { OrdersTable } from "@/lib/accounting/pdf/components/OrdersTable";
+import {
+  pdfPageStyle,
+  registerPdfFonts,
+} from "@/lib/accounting/pdf/theme";
 
 export function AccountingSummaryDocument({
   data,
@@ -12,6 +16,8 @@ export function AccountingSummaryDocument({
   data: ProducerAccountingExportData;
   logoSrc: string;
 }) {
+  registerPdfFonts();
+
   return (
     <Document
       title={`Relevé d'activité TerrOir - ${data.producer.exploitation}`}
@@ -32,14 +38,5 @@ export function AccountingSummaryDocument({
 }
 
 const styles = StyleSheet.create({
-  page: {
-    paddingTop: 28,
-    paddingRight: 30,
-    paddingBottom: 76,
-    paddingLeft: 30,
-    fontFamily: "Helvetica",
-    fontSize: 9,
-    color: "#243128",
-    backgroundColor: "#FFFFFF",
-  },
+  page: pdfPageStyle,
 });
