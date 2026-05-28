@@ -3,11 +3,10 @@
  *
  * Couverture (3 tests) :
  *   1. /comptabilite : page accessible, présente sélecteurs date "Du" /
- *      "Au" + bouton "Télécharger CSV".
+ *      "Au" + boutons de synthèse et téléchargement CSV.
  *   2. Export CSV (cas avec données) : seed 1 commande completed + GET
  *      /api/exports/producer/comptabilite.csv via page.request → réponse
- *      Content-Type CSV + UTF-8 BOM + headers + ligne data + email
- *      consumer masqué.
+ *      Content-Type CSV + UTF-8 BOM + headers + ligne data.
  *   3. Filtre période : seed 2 commandes completed à 2 dates distinctes,
  *      requête CSV sur période qui n'inclut qu'une des 2 → seule
  *      l'order matchant apparaît dans le CSV.
@@ -15,7 +14,8 @@
  * Notes :
  *   - Le filtre période est `completed_at` (pas created_at) — comportement
  *     comptable français cf. comptabilite.csv route.ts:23-27.
- *   - Email consumer masqué (j***@d***.fr) defense-in-depth RGPD.
+ *   - Le CSV expose le nom client utile au rapprochement comptable, pas
+ *     l'email.
  *
  * Resend : aucun email envoyé (export pure GET CSV).
  */
@@ -47,11 +47,14 @@ test.describe("Producer — Comptabilité (/comptabilite + CSV export)", () => {
     await expect(page.getByLabel(/^Du$/i)).toBeVisible();
     await expect(page.getByLabel(/^Au$/i)).toBeVisible();
     await expect(
-      page.getByRole("button", { name: /Télécharger CSV/i }),
+      page.getByRole("button", { name: /Afficher la synthèse/i }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /Télécharger le CSV/i }),
     ).toBeVisible();
   });
 
-  test("export CSV avec 1 commande completed → headers + 1 ligne + UTF-8 BOM + email masqué", async ({
+  test("export CSV avec 1 commande completed → headers + 1 ligne + UTF-8 BOM", async ({
     page,
     ctx,
   }) => {
@@ -90,7 +93,7 @@ test.describe("Producer — Comptabilité (/comptabilite + CSV export)", () => {
       const fromStr = yesterday.toISOString().slice(0, 10);
 
       const res = await page.request.get(
-        `/api/exports/producer/comptabilite.csv?from=${fromStr}&to=${todayStr}`,
+        `/api/exports/producer/comptabilite.csv?period=custom&from=${fromStr}&to=${todayStr}`,
       );
       expect(res.status()).toBe(200);
 
@@ -111,20 +114,16 @@ test.describe("Producer — Comptabilité (/comptabilite + CSV export)", () => {
 
       const text = buffer.toString("utf-8");
       // Header présent (1ère ligne après BOM).
-      expect(text).toContain("commande_id");
-      expect(text).toContain("date_validation");
-      expect(text).toContain("consumer_email_masked");
-      expect(text).toContain("commission_terroir_6%");
-      expect(text).toContain("payout_net");
+      expect(text).toContain("date commande");
+      expect(text).toContain("numero commande");
+      expect(text).toContain("client");
+      expect(text).toContain("commission TerrOir");
+      expect(text).toContain("montant net producteur");
 
-      // La commande créée apparaît (commande_id en colonne 1).
-      expect(text).toContain(order.orderId);
-
-      // Email consumer masqué : pattern j***@d***.fr (jamais l'email
-      // brut). On vérifie que l'email original n'apparaît PAS et qu'on
-      // a au moins 1 substring "***" dans le contenu (marqueur masking).
+      // La commande créée apparaît sur la période, jamais via l'email
+      // consumer.
+      expect(text).toContain(todayStr);
       expect(text).not.toContain(consumer.email);
-      expect(text).toMatch(/\*\*\*/);
     } finally {
       await cleanupOrdersForProducers([producer.producerId]);
     }
@@ -181,14 +180,14 @@ test.describe("Producer — Comptabilité (/comptabilite + CSV export)", () => {
       const fromStr = yesterday.toISOString().slice(0, 10);
 
       const res = await page.request.get(
-        `/api/exports/producer/comptabilite.csv?from=${fromStr}&to=${todayStr}`,
+        `/api/exports/producer/comptabilite.csv?period=custom&from=${fromStr}&to=${todayStr}`,
       );
       expect(res.status()).toBe(200);
       const text = (await res.body()).toString("utf-8");
 
-      // orderInRange présent, orderOutOfRange absent.
-      expect(text).toContain(orderInRange.orderId);
-      expect(text).not.toContain(orderOutOfRange.orderId);
+      // La date incluse est présente, la date hors plage est absente.
+      expect(text).toContain(todayStr);
+      expect(text).not.toContain(thirtyDaysAgo.toISOString().slice(0, 10));
     } finally {
       await cleanupOrdersForProducers([producer.producerId]);
     }
