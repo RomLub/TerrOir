@@ -281,15 +281,15 @@ function TopProducts({
       ) : (
         <View style={styles.productList}>
           <View style={styles.productHeader} wrap={false}>
-            <Text style={[styles.productHeadCell, styles.productRank]}>Rang</Text>
-            <Text style={[styles.productHeadCell, styles.productName]}>Produit</Text>
-            <Text style={[styles.productHeadCell, styles.productMetric]}>
+            <Text style={[styles.productHeadCell, styles.productRank, styles.productHeadCellContrast]}>Rang</Text>
+            <Text style={[styles.productHeadCell, styles.productName, styles.productHeadCellContrast]}>Produit</Text>
+            <Text style={[styles.productHeadCell, styles.productMetric, styles.productHeadCellContrast]}>
               Quantité
             </Text>
-            <Text style={[styles.productHeadCell, styles.productMetric]}>
+            <Text style={[styles.productHeadCell, styles.productMetric, styles.productHeadCellContrast]}>
               Commandes
             </Text>
-            <Text style={[styles.productHeadCell, styles.productTotal]}>CA TTC</Text>
+            <Text style={[styles.productHeadCell, styles.productTotal, styles.productHeadCellContrast]}>CA TTC</Text>
           </View>
           {products.map((product, index) => (
             <View key={product.productId} style={styles.productRow} wrap={false}>
@@ -546,6 +546,9 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 6,
     textTransform: "uppercase",
+  },
+  productHeadCellContrast: {
+    color: pdfColors.white,
   },
   productRow: {
     flexDirection: "row",
