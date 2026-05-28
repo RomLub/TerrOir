@@ -11,14 +11,23 @@ import {
   excludeSlotsByIdsAction,
   unexcludeSlotsByIdsAction,
   bulkExcludeRangeAction,
+  type BlockingOrder,
 } from "../actions";
 import OpeningModal from "./OpeningModal";
+import { CancelAndCloseModal } from "./CancelAndCloseModal";
 
 // Calendrier hebdomadaire des ouvertures (ADR-0012). Une grille 7 jours, des
 // blocs colorés par ouverture, et 3 gestes : ajouter (régulier/ponctuel),
 // fermer ponctuellement / vacances, supprimer. Langage non technique.
 
-type ActionResult = { error?: string; success?: boolean };
+type ActionResult = {
+  error?: string;
+  success?: boolean;
+  /** Liste détaillée des commandes qui bloquent l'exclusion. Présent
+   *  uniquement quand le serveur a refusé une action exclude pour cause
+   *  de commandes actives — déclenche la modale "Annuler et fermer". */
+  blocking_orders?: BlockingOrder[];
+};
 
 type ModalState =
   | { type: "create"; recurrence: "recurring" | "oneoff"; date?: string }
@@ -60,11 +69,51 @@ export default function CreneauxCalendarClient({
   const [flash, setFlash] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
+  // État de la modale "Annuler et fermer" : ouverte quand une action exclude
+  // a retourné blocking_orders. La modale orchestre les annulations + on
+  // retente l'exclusion via la closure capturée à l'ouverture (cf.
+  // onAllCancelled). Stockage de la fonction de retry pour ne pas perdre
+  // les paramètres de l'action initiale (slotId vs slotIds).
+  const [cancelAndClose, setCancelAndClose] = useState<{
+    blockingOrders: BlockingOrder[];
+    retry: () => Promise<ActionResult>;
+  } | null>(null);
+
   function run(fn: () => Promise<ActionResult>) {
     startTransition(async () => {
       const res = await fn();
       setMenu(null);
-      if (res.error) {
+      if (res.blocking_orders && res.blocking_orders.length > 0) {
+        // Le serveur refuse l'exclusion à cause de commandes actives — on
+        // ouvre la modale "Annuler et fermer" pour orchestrer
+        // l'annulation puis re-tenter la même action.
+        setFlash(null);
+        setCancelAndClose({
+          blockingOrders: res.blocking_orders,
+          retry: fn,
+        });
+      } else if (res.error) {
+        setFlash(res.error);
+      } else {
+        setFlash(null);
+        router.refresh();
+      }
+    });
+  }
+
+  function onAllCancelled() {
+    if (!cancelAndClose) return;
+    const retry = cancelAndClose.retry;
+    setCancelAndClose(null);
+    // Boucle d'annulation modale terminée OK → on retente l'exclusion
+    // initiale automatiquement (sans seconde confirmation utilisateur).
+    startTransition(async () => {
+      const res = await retry();
+      if (res.blocking_orders && res.blocking_orders.length > 0) {
+        // Race rarissime : une nouvelle commande est arrivée pendant les
+        // annulations. On ré-ouvre la modale avec la liste mise à jour.
+        setCancelAndClose({ blockingOrders: res.blocking_orders, retry });
+      } else if (res.error) {
         setFlash(res.error);
       } else {
         setFlash(null);
@@ -221,6 +270,14 @@ export default function CreneauxCalendarClient({
       {modal?.type === "vacation" ? (
         <VacationModal onClose={() => setModal(null)} onSuccess={onSuccess} />
       ) : null}
+
+      {cancelAndClose ? (
+        <CancelAndCloseModal
+          blockingOrders={cancelAndClose.blockingOrders}
+          onClose={() => setCancelAndClose(null)}
+          onAllCancelled={onAllCancelled}
+        />
+      ) : null}
     </div>
   );
 }
@@ -278,15 +335,15 @@ function BlockMenu({
           <button
             type="button"
             onClick={onCloseDay}
-            disabled={pending || block.hasActiveOrder}
-            title={
-              block.hasActiveOrder
-                ? "Une commande est liée à ce créneau"
-                : undefined
-            }
+            disabled={pending}
             className={itemClass}
           >
             Fermer ce jour
+            {block.hasActiveOrder && (
+              <span className="ml-2 text-[10px] text-terra-700">
+                · commandes à annuler
+              </span>
+            )}
           </button>
         )}
 
