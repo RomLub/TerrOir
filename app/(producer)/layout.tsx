@@ -42,12 +42,12 @@ export default async function ProducerLayout({
   const producer = await fetchProducerForUser(admin, session.id);
   const badges: ProducerNavBadges = producer
     ? await fetchProducerNavBadges(admin, producer.id)
-    : { ordersToConfirm: 0, stockRuptures: 0 };
+    : { ordersToConfirm: 0, stockRuptures: 0, reviewsToAnswer: 0 };
 
   return (
     <div className="flex min-h-screen flex-col bg-bg">
       <ProducerHeader />
-      <div className="flex flex-1">
+      <div className="flex flex-1 flex-col lg:flex-row">
         <ProducerSidebar badges={badges} />
         <main className="min-w-0 flex-1">{children}</main>
       </div>

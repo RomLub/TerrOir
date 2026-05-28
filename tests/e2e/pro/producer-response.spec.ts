@@ -68,6 +68,11 @@ async function cleanupReview(ctx: TestContext, reviewId: string) {
   });
 }
 
+async function openFirstReview(page: import("@playwright/test").Page) {
+  await page.getByRole("button", { name: "Ouvrir", exact: true }).first().click();
+  await expect(page.getByText(/Répondre à cet avis/i)).toBeVisible();
+}
+
 test.describe("Producer response (CGU 6.4)", () => {
   test("producer répond à un avis → DB peuplée + audit log + lock 24h", async ({
     page,
@@ -101,6 +106,7 @@ test.describe("Producer response (CGU 6.4)", () => {
       await expect(
         page.getByRole("heading", { name: "Mes avis", exact: true }),
       ).toBeVisible();
+      await openFirstReview(page);
 
       // Compose la réponse.
       const responseText =
@@ -187,6 +193,7 @@ test.describe("Producer response (CGU 6.4)", () => {
 
       await loginAs(page, producer.user);
       await page.goto("/mes-avis");
+      await openFirstReview(page);
 
       // Première publication. Marqueur fiable : retour mode display avec
       // bouton Modifier visible (évite la race textarea content).
@@ -263,6 +270,7 @@ test.describe("Producer response (CGU 6.4)", () => {
 
       await loginAs(page, producer.user);
       await page.goto("/mes-avis");
+      await openFirstReview(page);
 
       // Publish.
       await page.getByPlaceholder(/Votre réponse publique/i).fill("À supprimer");
@@ -288,6 +296,53 @@ test.describe("Producer response (CGU 6.4)", () => {
         .single();
       expect(row!.producer_response).toBeNull();
       expect(row!.producer_response_status).toBe("removed_producer");
+    } finally {
+      if (reviewId) await cleanupReview(ctx, reviewId);
+      await cleanupOrdersForProducers([producer.producerId]);
+    }
+  });
+
+  test("mobile : ouverture d'un avis sans débordement horizontal", async ({
+    page,
+    ctx,
+  }) => {
+    test.setTimeout(120_000);
+
+    const producer = await createTestProducer(ctx, {
+      suffix: "resp-mobile",
+      statut: "public",
+    });
+    const consumer = await createTestUser(ctx, { suffix: "resp-mobile-cons" });
+
+    let reviewId: string | null = null;
+    try {
+      const order = await createTestOrder(ctx, {
+        producerId: producer.producerId,
+        consumerId: consumer.id,
+        statut: "completed",
+      });
+      reviewId = await insertPublishedReview(ctx, {
+        producerId: producer.producerId,
+        consumerId: consumer.id,
+        orderId: order.orderId,
+      });
+
+      await page.setViewportSize({ width: 390, height: 844 });
+      await loginAs(page, producer.user);
+      await page.goto("/mes-avis");
+      await expect(
+        page.getByRole("heading", { name: "Mes avis", exact: true }),
+      ).toBeVisible();
+
+      await openFirstReview(page);
+      await expect(page.getByPlaceholder(/Votre réponse publique/i)).toBeVisible();
+      await expect
+        .poll(async () =>
+          page.evaluate(
+            () => document.documentElement.scrollWidth <= window.innerWidth + 1,
+          ),
+        )
+        .toBe(true);
     } finally {
       if (reviewId) await cleanupReview(ctx, reviewId);
       await cleanupOrdersForProducers([producer.producerId]);
