@@ -32,14 +32,14 @@ function parisDayEndISO(dateKey: string): string {
 }
 
 // Pose une ou plusieurs indisponibilités (option B). Si l'une des dates a
-// des commandes actives, refus avec liste détaillée (BLOCKING_ORDERS) pour
-// que l'UI déclenche le pattern "Annuler et fermer" (PR #198), puis retente.
+// des commandes actives, refus avec liste détaillée (BLOCKING_ORDERS) : l'UI
+// affiche une erreur bloquante et renvoie le producteur vers /commandes.
 //
 // Effet de bord après INSERT : pose `excluded_at = now()` sur les slots
 // existants de ces jours pour cohérence display immédiate (le calendrier
 // producteur les affiche fermés sans attendre la régénération). Ces slots
-// resteront en sécurité grâce à la garde RPC. La PR #2 (UI) retirera
-// l'unique caller direct d'excluded_at (`bulkExcludeRangeAction`).
+// resteront en sécurité grâce à la garde RPC. Le seul autre chemin autorisé
+// sur excluded_at est la restauration symétrique par `deleteUnavailability`.
 export async function createUnavailabilities(
   input: CreateUnavailabilitiesInput,
 ): Promise<CreateUnavailabilitiesResult> {

@@ -76,7 +76,7 @@ function day(opts: Partial<MonitoringDay> & { blocks: MonitoringBlock[] }): Moni
 
 describe("<MonitoringSection>", () => {
   it("days vide → ne rend rien", () => {
-    const { container } = render(<MonitoringSection days={[]} />);
+    const { container } = render(<MonitoringSection days={[]} unavailableDates={new Set()} />);
     expect(container.querySelector('[data-testid="monitoring-section"]')).toBeNull();
   });
 
@@ -95,7 +95,7 @@ describe("<MonitoringSection>", () => {
         }),
       ],
     });
-    render(<MonitoringSection days={[d]} />);
+    render(<MonitoringSection days={[d]} unavailableDates={new Set()} />);
 
     expect(screen.getByText("Remplissage des places")).toBeTruthy();
     expect(screen.getByText(/Jeudi 28/)).toBeTruthy();
@@ -129,7 +129,7 @@ describe("<MonitoringSection>", () => {
         }),
       ],
     });
-    render(<MonitoringSection days={[d]} />);
+    render(<MonitoringSection days={[d]} unavailableDates={new Set()} />);
     const reserved = screen.getByTestId("monitoring-cell-reserved");
     expect(reserved.getAttribute("aria-label")).toBe("10h30 · 0001-00042 · Léa");
     const free = screen.getByTestId("monitoring-cell-free");
@@ -150,7 +150,7 @@ describe("<MonitoringSection>", () => {
         }),
       ],
     });
-    render(<MonitoringSection days={[d]} />);
+    render(<MonitoringSection days={[d]} unavailableDates={new Set()} />);
     const reserved = screen.getByTestId("monitoring-cell-reserved");
     expect(reserved.getAttribute("aria-label")).toBe("0001-00099 · Client");
   });
@@ -165,7 +165,7 @@ describe("<MonitoringSection>", () => {
         }),
       ],
     });
-    const { unmount } = render(<MonitoringSection days={[oneBlock]} />);
+    const { unmount } = render(<MonitoringSection days={[oneBlock]} unavailableDates={new Set()} />);
     const dayCard = screen.getByTestId("monitoring-day");
     expect(within(dayCard).getByText(/1 créneau$/)).toBeTruthy();
     expect(within(dayCard).getByTestId("day-fill-label").textContent).toBe(
@@ -185,7 +185,7 @@ describe("<MonitoringSection>", () => {
         }),
       ],
     });
-    render(<MonitoringSection days={[twoBlocks]} />);
+    render(<MonitoringSection days={[twoBlocks]} unavailableDates={new Set()} />);
     const dayCard2 = screen.getByTestId("monitoring-day");
     expect(within(dayCard2).getByText(/2 créneaux$/)).toBeTruthy();
     expect(within(dayCard2).getByTestId("day-fill-label").textContent).toBe(
@@ -205,7 +205,7 @@ describe("<MonitoringSection>", () => {
         }),
       ],
     });
-    render(<MonitoringSection days={[d]} />);
+    render(<MonitoringSection days={[d]} unavailableDates={new Set()} />);
     const links = screen.getAllByTestId("monitoring-cell-reserved");
     expect(links.map((l) => l.getAttribute("href"))).toEqual([
       "/commandes/id-A",
@@ -227,11 +227,51 @@ describe("<MonitoringSection>", () => {
       dayNum: 28,
       blocks: [block({ cells: [cellFree()] })],
     });
-    render(<MonitoringSection days={[d1, d2]} />);
+    render(<MonitoringSection days={[d1, d2]} unavailableDates={new Set()} />);
     const cards = screen.getAllByTestId("monitoring-day");
     expect(cards.map((c) => c.getAttribute("data-date-key"))).toEqual([
       "2026-05-25",
       "2026-05-28",
+    ]);
+  });
+
+  it("affiche une ligne Indisponibilité pour un jour fermé sans créneau actif", () => {
+    render(
+      <MonitoringSection
+        days={[]}
+        unavailableDates={new Set(["2026-05-29"])}
+      />,
+    );
+
+    expect(screen.getByTestId("monitoring-section")).toBeTruthy();
+    const unavailable = screen.getByTestId("monitoring-day-unavailable");
+    expect(unavailable.getAttribute("data-date-key")).toBe("2026-05-29");
+    expect(within(unavailable).getByText("Indisponibilité")).toBeTruthy();
+  });
+
+  it("fusionne jours avec créneaux et jours indisponibles en ordre chronologique", () => {
+    const d = day({
+      dateKey: "2026-05-30",
+      weekdayLabel: "Samedi",
+      dayNum: 30,
+      blocks: [block({ cells: [cellFree()] })],
+    });
+
+    render(
+      <MonitoringSection
+        days={[d]}
+        unavailableDates={new Set(["2026-05-29"])}
+      />,
+    );
+
+    const rows = Array.from(
+      document.querySelectorAll(
+        '[data-testid="monitoring-day-unavailable"], [data-testid="monitoring-day"]',
+      ),
+    );
+    expect(rows.map((r) => r.getAttribute("data-date-key"))).toEqual([
+      "2026-05-29",
+      "2026-05-30",
     ]);
   });
 });

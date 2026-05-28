@@ -9,31 +9,31 @@
 //   - toggleSlotRuleActiveAction(ruleId)         : direct call
 //   - deleteSlotRuleAction(ruleId)               : direct call + guard orders
 //
-// Ponctuels + exceptions (Phase "Créneaux ponctuels + exceptions") :
+// Ponctuels :
 //   - createAdHocSlotAction(prev, formData)      : via useFormState
 //   - deleteAdHocSlotAction(slotId)              : direct call + guard orders
-//   - excludeSlotAction(slotId)                  : direct call + guard active orders
-//   - unexcludeSlotAction(slotId)                : direct call
-//   - bulkExcludeRangeAction(prev, formData)     : via useFormState, skip slots
-//                                                  avec active orders (non-bloquant)
+//   - deleteAdHocOpeningAction(slotIds)          : delete groupé d'une
+//                                                  ouverture ponctuelle RDV
+//
+// Indisponibilités (chantier ADR-0016, 2026-05-28) — SOURCE DE VÉRITÉ :
+//   - createUnavailabilitiesAction(prev, formData) : pose 1..N indispos
+//                                                    (jour entier, raison?)
+//   - deleteUnavailabilityAction(id)               : supprime 1 indispo +
+//                                                    régénération ciblée
+//                                                    du jour libéré
+//
+// `excluded_at` est un ARTEFACT INTERNE : posé/retiré exclusivement par
+// `createUnavailabilities` / `deleteUnavailability`. Aucune autre action UI
+// ne touche `excluded_at` (ADR-0016 PS).
 //
 // Ownership check systématique : match producers.user_id = session.id via
 // service_role (slot_rules n'a pas de relation user directe, on passe par
 // producers). RLS "owner all" sur slot_rules sert aussi de défense en
 // profondeur côté DB.
-//
-// Après chaque mutation rules : invalidateProducer(producerId) +
-// generateSlotsForProducer(90) pour que l'UI consumer reflète immédiatement
-// les changements (nouveaux slots matérialisés).
-//
-// NOTE : Phase 2 UI (à venir) consommera ces actions via 2 nouvelles
-// sections dans /creneaux/page.tsx (Créneaux ponctuels + Exceptions).
 // =============================================================================
 
 import { revalidatePath } from "next/cache";
-import { z } from "zod";
 import { TZDate } from "@date-fns/tz";
-import { addDays } from "date-fns";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
@@ -46,8 +46,6 @@ import {
   timeToMinutes,
 } from "@/lib/slots/validators";
 import { sliceWindow } from "@/lib/slots/slice-window";
-import { ACTIVE_ORDER_STATUTS } from "@/lib/orders/stateMachine";
-import { formatOrderNumber } from "@/lib/orders/order-number";
 import { createUnavailabilities } from "@/lib/unavailabilities/create";
 import { deleteUnavailability } from "@/lib/unavailabilities/delete";
 import type {
@@ -331,12 +329,6 @@ function localDateTimeToParisUTC(local: string): string {
     .toISOString();
 }
 
-// Convertit une date "YYYY-MM-DD" en timestamptz UTC, minuit Europe/Paris.
-function dateStrToParisUTC(dateStr: string): string {
-  const [y, m, d] = dateStr.split("-").map(Number);
-  return new TZDate(y, (m ?? 1) - 1, d ?? 1, 0, 0, 0, TZ_PARIS).toISOString();
-}
-
 export async function createAdHocSlotAction(
   _prev: SlotRuleActionState,
   formData: FormData,
@@ -526,359 +518,20 @@ export async function deleteAdHocOpeningAction(
   return { success: true, deleted: slotIds.length };
 }
 
-/**
- * Détail d'une commande qui bloque l'exclusion d'un slot. Exposé dans le
- * retour d'erreur des actions exclude pour permettre à l'UI client de
- * proposer la modale "Annuler et fermer" (cf. chantier 2026-05-29).
- */
-export type BlockingOrder = {
-  id: string;
-  numero_commande: string;
-  consumer_prenom: string | null;
-  montant_total: number;
-  slot_starts_at: string | null;
-  slot_ends_at: string | null;
-};
-
-export type ExcludeActionResult =
-  | { success: true }
-  | { error: string; blocking_orders?: BlockingOrder[] };
-
-// Helper interne : fetch des orders actives liées à un set de slot ids,
-// avec les infos nécessaires à l'UI modale (consumer prenom, montant,
-// horaire, numero_commande producteur-facing). ADR-0015 : `code_commande`
-// n'est plus exposé côté producteur — on compose `numero_commande` via
-// le producer_order_seq + le producer_number joint.
-// Service_role → bypass RLS, l'ownership a déjà été vérifié en amont.
-async function fetchBlockingOrders(
-  admin: ReturnType<typeof createSupabaseAdminClient>,
-  slotIds: string[],
-): Promise<BlockingOrder[]> {
-  if (slotIds.length === 0) return [];
-  const { data, error } = await admin
-    .from("orders")
-    .select(
-      "id, producer_order_seq, montant_total, consumer:users!orders_consumer_id_fkey(prenom), slot:slots!orders_slot_id_fkey(starts_at, ends_at), producer:producers!orders_producer_id_fkey(producer_number)",
-    )
-    .in("slot_id", slotIds)
-    .in("statut", ACTIVE_ORDER_STATUTS as unknown as string[])
-    .order("created_at", { ascending: true });
-  if (error || !data) return [];
-  return data.map((row) => {
-    const consumer = Array.isArray(row.consumer) ? row.consumer[0] : row.consumer;
-    const slot = Array.isArray(row.slot) ? row.slot[0] : row.slot;
-    const producer = Array.isArray(row.producer) ? row.producer[0] : row.producer;
-    const producerNumber =
-      (producer as { producer_number: number } | null)?.producer_number ?? 0;
-    return {
-      id: row.id as string,
-      numero_commande: formatOrderNumber(
-        producerNumber,
-        (row.producer_order_seq as number) ?? 0,
-      ),
-      consumer_prenom: (consumer as { prenom: string | null } | null)?.prenom ?? null,
-      montant_total: Number(row.montant_total ?? 0),
-      slot_starts_at: (slot as { starts_at: string | null } | null)?.starts_at ?? null,
-      slot_ends_at: (slot as { ends_at: string | null } | null)?.ends_at ?? null,
-    };
-  });
-}
-
-export async function excludeSlotAction(
-  slotId: string,
-): Promise<ExcludeActionResult> {
-  const session = await getSessionUser();
-  if (!session) return { error: "Non authentifié" };
-
-  const producerRes = await resolveProducerId(session.id);
-  if ("error" in producerRes) return { error: producerRes.error };
-
-  const admin = createSupabaseAdminClient();
-  const { data: slot } = await admin
-    .from("slots")
-    .select("id, producer_id")
-    .eq("id", slotId)
-    .maybeSingle();
-  if (!slot || slot.producer_id !== producerRes.id) {
-    return { error: "Créneau introuvable." };
-  }
-
-  // Guard : pas d'exclusion si order active (pending/confirmed).
-  // Les orders historiques (completed/cancelled/refunded) n'empêchent pas
-  // l'exclusion : le slot est déjà consommé ou annulé côté commande.
-  // Si bloquantes : on remonte la liste détaillée pour l'UI "Annuler et
-  // fermer" — le producteur pourra annuler puis re-tenter, ou refuser.
-  const blockingOrders = await fetchBlockingOrders(admin, [slotId]);
-  if (blockingOrders.length > 0) {
-    return {
-      error:
-        "Une commande active est liée à ce créneau. Annulez-la avant d'exclure.",
-      blocking_orders: blockingOrders,
-    };
-  }
-
-  const { error: updateError } = await admin
-    .from("slots")
-    .update({ excluded_at: new Date().toISOString() })
-    .eq("id", slotId);
-  if (updateError) {
-    console.error(
-      `EXCLUDE_SLOT_ERROR slot_id=${slotId} error=${updateError.message}`,
-    );
-    return { error: "Impossible d'exclure le créneau." };
-  }
-
-  revalidatePath("/creneaux");
-  return { success: true };
-}
-
-export async function unexcludeSlotAction(
-  slotId: string,
-): Promise<{ success: true } | { error: string }> {
-  const session = await getSessionUser();
-  if (!session) return { error: "Non authentifié" };
-
-  const producerRes = await resolveProducerId(session.id);
-  if ("error" in producerRes) return { error: producerRes.error };
-
-  const admin = createSupabaseAdminClient();
-  const { data: slot } = await admin
-    .from("slots")
-    .select("id, producer_id")
-    .eq("id", slotId)
-    .maybeSingle();
-  if (!slot || slot.producer_id !== producerRes.id) {
-    return { error: "Créneau introuvable." };
-  }
-
-  const { error: updateError } = await admin
-    .from("slots")
-    .update({ excluded_at: null })
-    .eq("id", slotId);
-  if (updateError) {
-    console.error(
-      `UNEXCLUDE_SLOT_ERROR slot_id=${slotId} error=${updateError.message}`,
-    );
-    return { error: "Impossible de rétablir le créneau." };
-  }
-
-  revalidatePath("/creneaux");
-  return { success: true };
-}
-
-// Exclusion groupée par ids — calendrier « Fermer ce jour » sur une ouverture
-// (libre = 1 slot, rdv = N slots). Refuse si une commande active est liée à
-// l'un des créneaux (cohérent avec excludeSlotAction). Ownership vérifié.
-// Si bloquantes : remonte la liste détaillée pour l'UI "Annuler et fermer".
-export async function excludeSlotsByIdsAction(
-  slotIds: string[],
-): Promise<ExcludeActionResult> {
-  const session = await getSessionUser();
-  if (!session) return { error: "Non authentifié" };
-
-  const producerRes = await resolveProducerId(session.id);
-  if ("error" in producerRes) return { error: producerRes.error };
-
-  if (!slotIds || slotIds.length === 0) return { success: true };
-
-  const admin = createSupabaseAdminClient();
-  const { data: slots } = await admin
-    .from("slots")
-    .select("id, producer_id")
-    .in("id", slotIds);
-  const owned = (slots ?? []).filter((s) => s.producer_id === producerRes.id);
-  if (owned.length !== slotIds.length) {
-    return { error: "Créneau introuvable." };
-  }
-
-  const blockingOrders = await fetchBlockingOrders(admin, slotIds);
-  if (blockingOrders.length > 0) {
-    return {
-      error:
-        "Une commande active est liée à cette ouverture. Annulez-la avant de fermer ce jour.",
-      blocking_orders: blockingOrders,
-    };
-  }
-
-  const { error: updateError } = await admin
-    .from("slots")
-    .update({ excluded_at: new Date().toISOString() })
-    .in("id", slotIds);
-  if (updateError) {
-    console.error(
-      `EXCLUDE_SLOTS_BY_IDS_ERROR producer_id=${producerRes.id} error=${updateError.message}`,
-    );
-    return { error: "Impossible de fermer ce jour." };
-  }
-
-  revalidatePath("/creneaux");
-  return { success: true };
-}
-
-// Réouverture groupée par ids — calendrier « Rouvrir » sur une ouverture fermée.
-export async function unexcludeSlotsByIdsAction(
-  slotIds: string[],
-): Promise<{ success: true } | { error: string }> {
-  const session = await getSessionUser();
-  if (!session) return { error: "Non authentifié" };
-
-  const producerRes = await resolveProducerId(session.id);
-  if ("error" in producerRes) return { error: producerRes.error };
-
-  if (!slotIds || slotIds.length === 0) return { success: true };
-
-  const admin = createSupabaseAdminClient();
-  const { data: slots } = await admin
-    .from("slots")
-    .select("id, producer_id")
-    .in("id", slotIds);
-  const owned = (slots ?? []).filter((s) => s.producer_id === producerRes.id);
-  if (owned.length !== slotIds.length) {
-    return { error: "Créneau introuvable." };
-  }
-
-  const { error: updateError } = await admin
-    .from("slots")
-    .update({ excluded_at: null })
-    .in("id", slotIds);
-  if (updateError) {
-    console.error(
-      `UNEXCLUDE_SLOTS_BY_IDS_ERROR producer_id=${producerRes.id} error=${updateError.message}`,
-    );
-    return { error: "Impossible de rouvrir ce jour." };
-  }
-
-  revalidatePath("/creneaux");
-  return { success: true };
-}
-
-const bulkExcludeRangeSchema = z
-  .object({
-    start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Format YYYY-MM-DD"),
-    end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Format YYYY-MM-DD"),
-  })
-  .refine((d) => d.end_date >= d.start_date, {
-    message: "La date de fin doit être après la date de début",
-    path: ["end_date"],
-  });
-
-export type BulkExcludeRangeState = {
-  error?: string;
-  success?: boolean;
-  count_excluded?: number;
-  count_skipped_orders?: number;
-};
-
-export async function bulkExcludeRangeAction(
-  _prev: BulkExcludeRangeState,
-  formData: FormData,
-): Promise<BulkExcludeRangeState> {
-  const session = await getSessionUser();
-  if (!session) return { error: "Non authentifié" };
-
-  const producerRes = await resolveProducerId(session.id);
-  if ("error" in producerRes) return { error: producerRes.error };
-
-  const parsed = bulkExcludeRangeSchema.safeParse({
-    start_date: formData.get("start_date"),
-    end_date: formData.get("end_date"),
-  });
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Saisie invalide" };
-  }
-
-  // Bornes inclusives côté Europe/Paris : [start_date 00:00 Paris,
-  // end_date+1 00:00 Paris) en UTC ISO.
-  const startBoundary = dateStrToParisUTC(parsed.data.start_date);
-  const endDateTZ = new TZDate(
-    ...(parsed.data.end_date.split("-").map(Number) as [number, number, number]),
-    0,
-    0,
-    0,
-    TZ_PARIS,
-  );
-  const endBoundary = addDays(
-    new TZDate(
-      endDateTZ.getFullYear(),
-      endDateTZ.getMonth(),
-      endDateTZ.getDate(),
-      0,
-      0,
-      0,
-      TZ_PARIS,
-    ),
-    1,
-  ).toISOString();
-
-  const admin = createSupabaseAdminClient();
-
-  // 1. Candidats : slots du producer dans la plage, pas encore exclus.
-  const { data: candidates, error: fetchError } = await admin
-    .from("slots")
-    .select("id")
-    .eq("producer_id", producerRes.id)
-    .is("excluded_at", null)
-    .gte("starts_at", startBoundary)
-    .lt("starts_at", endBoundary);
-  if (fetchError) {
-    console.error(
-      `BULK_EXCLUDE_FETCH_ERROR producer_id=${producerRes.id} error=${fetchError.message}`,
-    );
-    return { error: "Impossible de lire les créneaux." };
-  }
-
-  const candidateIds = (candidates ?? []).map((s) => s.id as string);
-  if (candidateIds.length === 0) {
-    return { success: true, count_excluded: 0, count_skipped_orders: 0 };
-  }
-
-  // 2. Slots bloqués par une order active → skip (non-bloquant, on exclut
-  //    le reste et on retourne le compte).
-  const { data: blockedOrders } = await admin
-    .from("orders")
-    .select("slot_id")
-    .in("slot_id", candidateIds)
-    .in("statut", ACTIVE_ORDER_STATUTS as unknown as string[]);
-  const blockedSet = new Set(
-    (blockedOrders ?? [])
-      .map((o) => o.slot_id as string | null)
-      .filter((id): id is string => id !== null),
-  );
-  const toExclude = candidateIds.filter((id) => !blockedSet.has(id));
-
-  // 3. UPDATE bulk
-  if (toExclude.length > 0) {
-    const { error: updateError } = await admin
-      .from("slots")
-      .update({ excluded_at: new Date().toISOString() })
-      .in("id", toExclude);
-    if (updateError) {
-      console.error(
-        `BULK_EXCLUDE_UPDATE_ERROR producer_id=${producerRes.id} error=${updateError.message}`,
-      );
-      return { error: "Impossible d'appliquer l'exclusion." };
-    }
-  }
-
-  revalidatePath("/creneaux");
-  return {
-    success: true,
-    count_excluded: toExclude.length,
-    count_skipped_orders: blockedSet.size,
-  };
-}
-
 // =============================================================================
-// Indisponibilités producteur (option B — chantier 2026-05-28)
+// Indisponibilités producteur (option B — chantier ADR-0016, 2026-05-28)
 // =============================================================================
 // Source de vérité = table `unavailabilities` (cf. lib/unavailabilities/*).
-// Ces actions remplaceront `bulkExcludeRangeAction` quand la PR #2 (UI
-// calendaire) sera mergée. La consommation par l'UI vient en PR #2 — les
-// tests vitest les importent dès PR #1 pour valider la chaîne backend.
+// Ces actions sont les SEULS chemins UI qui mutent indirectement
+// `slots.excluded_at` (effet de bord display, retiré symétriquement par
+// `deleteUnavailability`). Toute autre mutation directe d'`excluded_at` a
+// été supprimée en PR #2 (cf. ADR-0016 PS).
 //
-// L'ADR docs/decisions/0009-unavailabilities-option-b.md documente la
-// décision produit et les invariants (raison owner-only, garde RPC en
-// défense en profondeur, régénération ciblée au delete, etc.).
+// Garde anti-régression : si une requête arrive sur un jour à commandes
+// actives, `createUnavailabilities` retourne { code: 'BLOCKING_ORDERS',
+// blocking_orders } — l'UI affiche un message d'erreur explicite, sans
+// flow d'annulation interne (décision produit : geste délibéré par
+// /commandes pour ne pas banaliser la rupture d'engagement client).
 // =============================================================================
 
 export async function createUnavailabilitiesAction(
