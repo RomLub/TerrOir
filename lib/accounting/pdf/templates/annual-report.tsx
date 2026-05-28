@@ -1,31 +1,25 @@
-import {
-  Document,
-  Font,
-  Image,
-  Page,
-  StyleSheet,
-  Text,
-  View,
-} from "@react-pdf/renderer";
+import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 import type {
   ProducerAnnualReportData,
   ProducerAnnualReportMonth,
   ProducerAnnualReportProduct,
 } from "@/lib/accounting/producer-annual-report";
-
-Font.register({
-  family: "NotoSans",
-  fonts: [
-    {
-      src: `${process.cwd()}/public/fonts/NotoSans-Regular.ttf`,
-      fontWeight: "normal",
-    },
-    {
-      src: `${process.cwd()}/public/fonts/NotoSans-Bold.ttf`,
-      fontWeight: "bold",
-    },
-  ],
-});
+import { buildAnnualReportSummaryText } from "@/lib/accounting/pdf/annual-summary";
+import { PdfBrandHeader } from "@/lib/accounting/pdf/components/PdfBrandHeader";
+import { PdfFooter } from "@/lib/accounting/pdf/components/PdfFooter";
+import {
+  formatPdfDateTime,
+  formatPdfEuro,
+  formatPdfQuantity,
+  pdfColors,
+  pdfEyebrowStyle,
+  pdfFonts,
+  pdfPageStyle,
+  pdfSectionTitleStyle,
+  pdfSpacing,
+  pdfTableShellStyle,
+  registerPdfFonts,
+} from "@/lib/accounting/pdf/theme";
 
 export function AnnualReportDocument({
   data,
@@ -34,6 +28,8 @@ export function AnnualReportDocument({
   data: ProducerAnnualReportData;
   logoSrc: string;
 }) {
+  registerPdfFonts();
+
   return (
     <Document
       title={`Bilan annuel TerrOir - ${data.producer.exploitation} - ${data.year}`}
@@ -44,41 +40,50 @@ export function AnnualReportDocument({
       language="fr-FR"
     >
       <Page size="A4" style={styles.page} wrap>
-        <Header data={data} logoSrc={logoSrc} />
+        <PdfBrandHeader
+          logoSrc={logoSrc}
+          eyebrow="Bilan d'activité producteur"
+          title="Bilan annuel TerrOir"
+          subtitle={`${data.producer.exploitation} · Année ${data.year}`}
+          highContrastText
+          intro="Une synthèse lisible de l'activité réalisée via TerrOir sur l'année, pensée pour suivre la dynamique commerciale de l'exploitation."
+          info={[
+            { label: "Producteur", value: data.producer.name },
+            { label: "Exploitation", value: data.producer.exploitation },
+            { label: "SIRET", value: data.producer.siret ?? "Non renseigné" },
+            { label: "Généré le", value: formatPdfDateTime(data.generatedAt) },
+            { label: "Période", value: data.period.label, wide: true },
+          ]}
+        />
+        <AnnualSummary data={data} />
         <KeyFigures data={data} />
-        <MonthlyEvolution months={data.monthly} />
+        <MonthlyEvolution
+          months={data.monthly}
+          bestMonth={data.summary.bestMonth}
+        />
         <TopProducts products={data.topProducts} />
-        <Footer />
+        <PdfFooter
+          lines={[
+            "Ce document est un bilan d'activité non comptable généré par TerrOir.",
+            "Il complète le relevé comptable et ne remplace pas les obligations comptables légales du producteur.",
+          ]}
+        />
       </Page>
     </Document>
   );
 }
 
-function Header({
-  data,
-  logoSrc,
-}: {
-  data: ProducerAnnualReportData;
-  logoSrc: string;
-}) {
+function AnnualSummary({ data }: { data: ProducerAnnualReportData }) {
+  const lines = buildAnnualReportSummaryText(data);
+
   return (
-    <View style={styles.header}>
-      <View style={styles.brandRow}>
-        {/* eslint-disable-next-line jsx-a11y/alt-text -- React-PDF Image ne supporte pas l'attribut alt HTML. */}
-        <Image src={logoSrc} style={styles.logo} />
-        <View style={styles.headerText}>
-          <Text style={styles.eyebrow}>Bilan d&apos;activité producteur</Text>
-          <Text style={styles.title}>Bilan annuel TerrOir</Text>
-          <Text style={styles.subtitle}>
-            {data.producer.exploitation} · Année {data.year}
-          </Text>
-        </View>
-      </View>
-      <Text style={styles.intro}>
-        Une synthèse lisible de l&apos;activité réalisée via TerrOir sur
-        l&apos;année, pensée pour suivre la dynamique commerciale de
-        l&apos;exploitation.
-      </Text>
+    <View style={styles.summaryBox} wrap={false}>
+      <Text style={styles.summaryKicker}>Synthèse automatique</Text>
+      {lines.map((line) => (
+        <Text key={line} style={styles.summaryText}>
+          {line}
+        </Text>
+      ))}
     </View>
   );
 }
@@ -86,20 +91,46 @@ function Header({
 function KeyFigures({ data }: { data: ProducerAnnualReportData }) {
   const bestMonthLabel = data.summary.bestMonth?.label ?? "Aucun";
   const bestMonthAmount = data.summary.bestMonth
-    ? formatEuro(data.summary.bestMonth.totalTtc)
+    ? formatPdfEuro(data.summary.bestMonth.totalTtc)
     : undefined;
 
   return (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>Chiffres clés</Text>
+      <View style={styles.heroCards} wrap={false}>
+        <Figure
+          label="CA annuel TTC"
+          value={formatPdfEuro(data.summary.totalTtc)}
+          tone="accent"
+          large
+        />
+        <Figure
+          label="Net producteur"
+          value={formatPdfEuro(data.summary.producerNet)}
+          tone="positive"
+          large
+        />
+      </View>
       <View style={styles.cards}>
         <Figure label="Commandes" value={String(data.summary.ordersCount)} />
-        <Figure label="Chiffre d'affaires TTC" value={formatEuro(data.summary.totalTtc)} />
-        <Figure label="Commission TerrOir" value={formatEuro(data.summary.terroirCommission)} />
-        <Figure label="Net producteur" value={formatEuro(data.summary.producerNet)} strong />
-        <Figure label="Panier moyen" value={formatEuro(data.summary.averageBasket)} />
-        <Figure label="Meilleur mois" value={bestMonthLabel} subValue={bestMonthAmount} />
-        <Figure label="Clients uniques" value={String(data.summary.uniqueClients)} />
+        <Figure
+          label="Panier moyen"
+          value={formatPdfEuro(data.summary.averageBasket)}
+        />
+        <Figure
+          label="Commission TerrOir"
+          value={formatPdfEuro(data.summary.terroirCommission)}
+        />
+        <Figure
+          label="Clients uniques"
+          value={String(data.summary.uniqueClients)}
+        />
+        <Figure
+          label="Meilleur mois"
+          value={bestMonthLabel}
+          subValue={bestMonthAmount}
+          tone="accent"
+        />
       </View>
     </View>
   );
@@ -109,17 +140,35 @@ function Figure({
   label,
   value,
   subValue,
-  strong = false,
+  tone = "neutral",
+  large = false,
 }: {
   label: string;
   value: string;
   subValue?: string;
-  strong?: boolean;
+  tone?: "neutral" | "accent" | "positive";
+  large?: boolean;
 }) {
+  const baseStyle = large ? styles.figureLarge : styles.figure;
+  const cardStyle =
+    tone === "accent"
+      ? [baseStyle, styles.figureAccent]
+      : tone === "positive"
+        ? [baseStyle, styles.figurePositive]
+        : baseStyle;
+  const valueStyle =
+    tone === "positive"
+      ? styles.figureValuePositive
+      : tone === "accent"
+        ? styles.figureValueAccent
+        : styles.figureValue;
+
   return (
-    <View style={strong ? styles.figureStrong : styles.figure}>
-      <Text style={strong ? styles.figureLabelStrong : styles.figureLabel}>{label}</Text>
-      <Text style={strong ? styles.figureValueStrong : styles.figureValue}>{value}</Text>
+    <View style={cardStyle}>
+      <Text style={styles.figureLabel}>{label}</Text>
+      <Text style={large ? [valueStyle, styles.figureValueLarge] : valueStyle}>
+        {value}
+      </Text>
       {subValue ? <Text style={styles.figureSubValue}>{subValue}</Text> : null}
     </View>
   );
@@ -127,14 +176,17 @@ function Figure({
 
 function MonthlyEvolution({
   months,
+  bestMonth,
 }: {
   months: ProducerAnnualReportMonth[];
+  bestMonth: ProducerAnnualReportMonth | null;
 }) {
   const maxTotal = Math.max(...months.map((month) => month.totalTtc), 0);
 
   return (
-    <View style={styles.section}>
+    <View style={styles.section} wrap={false}>
       <Text style={styles.sectionTitle}>Évolution mensuelle</Text>
+      <MonthlyChart months={months} maxTotal={maxTotal} bestMonth={bestMonth} />
       <View style={styles.monthTable}>
         <View style={styles.monthHeader} wrap={false}>
           <Text style={[styles.monthHeadCell, styles.monthName]}>Mois</Text>
@@ -142,29 +194,75 @@ function MonthlyEvolution({
           <Text style={styles.monthHeadCell}>CA TTC</Text>
           <Text style={styles.monthHeadCell}>Net producteur</Text>
         </View>
-        {months.map((month) => (
-          <View key={month.month} style={styles.monthRow} wrap={false}>
-            <Text style={[styles.monthCell, styles.monthName]}>{month.label}</Text>
-            <Text style={styles.monthCell}>{month.ordersCount}</Text>
-            <View style={styles.monthAmountCell}>
-              <Text style={styles.monthAmountText}>{formatEuro(month.totalTtc)}</Text>
-              <View style={styles.barTrack}>
+        {months.map((month) => {
+          const isBestMonth = bestMonth?.month === month.month;
+          return (
+            <View
+              key={month.month}
+              style={isBestMonth ? styles.monthRowBest : styles.monthRow}
+              wrap={false}
+            >
+              <Text
+                style={
+                  isBestMonth
+                    ? [styles.monthCell, styles.monthName, styles.monthCellBest]
+                    : [styles.monthCell, styles.monthName]
+                }
+              >
+                {month.label}
+              </Text>
+              <Text style={styles.monthCell}>{month.ordersCount}</Text>
+              <Text style={styles.monthCellAmount}>
+                {formatPdfEuro(month.totalTtc)}
+              </Text>
+              <Text style={styles.monthCellStrong}>
+                {formatPdfEuro(month.producerNet)}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+function MonthlyChart({
+  months,
+  maxTotal,
+  bestMonth,
+}: {
+  months: ProducerAnnualReportMonth[];
+  maxTotal: number;
+  bestMonth: ProducerAnnualReportMonth | null;
+}) {
+  return (
+    <View style={styles.chart} wrap={false}>
+      <View style={styles.chartAxis}>
+        <Text style={styles.chartAxisLabel}>{formatPdfEuro(maxTotal)}</Text>
+        <Text style={styles.chartAxisLabel}>0 €</Text>
+      </View>
+      <View style={styles.chartBars}>
+        {months.map((month) => {
+          const height =
+            maxTotal > 0 ? Math.max(4, (month.totalTtc / maxTotal) * 52) : 0;
+          const isBestMonth = bestMonth?.month === month.month;
+          return (
+            <View key={month.month} style={styles.chartMonth}>
+              <View style={styles.chartTrack}>
                 <View
-                  style={[
-                    styles.barFill,
-                    {
-                      width:
-                        maxTotal > 0
-                          ? `${Math.max(4, (month.totalTtc / maxTotal) * 100)}%`
-                          : "0%",
-                    },
-                  ]}
+                  style={
+                    isBestMonth
+                      ? [styles.chartBar, styles.chartBarBest, { height }]
+                      : [styles.chartBar, { height }]
+                  }
                 />
               </View>
+              <Text style={isBestMonth ? styles.chartLabelBest : styles.chartLabel}>
+                {month.label.slice(0, 3)}
+              </Text>
             </View>
-            <Text style={styles.monthCellStrong}>{formatEuro(month.producerNet)}</Text>
-          </View>
-        ))}
+          );
+        })}
       </View>
     </View>
   );
@@ -176,19 +274,34 @@ function TopProducts({
   products: ProducerAnnualReportProduct[];
 }) {
   return (
-    <View style={styles.section} break>
+    <View style={styles.section}>
       <Text style={styles.sectionTitle}>Top produits</Text>
       {products.length === 0 ? (
         <Text style={styles.empty}>Aucun produit vendu sur cette année.</Text>
       ) : (
         <View style={styles.productList}>
+          <View style={styles.productHeader} wrap={false}>
+            <Text style={[styles.productHeadCell, styles.productRank]}>Rang</Text>
+            <Text style={[styles.productHeadCell, styles.productName]}>Produit</Text>
+            <Text style={[styles.productHeadCell, styles.productMetric]}>
+              Quantité
+            </Text>
+            <Text style={[styles.productHeadCell, styles.productMetric]}>
+              Commandes
+            </Text>
+            <Text style={[styles.productHeadCell, styles.productTotal]}>CA TTC</Text>
+          </View>
           {products.map((product, index) => (
             <View key={product.productId} style={styles.productRow} wrap={false}>
               <Text style={styles.productRank}>#{index + 1}</Text>
               <Text style={styles.productName}>{product.name}</Text>
-              <Text style={styles.productMetric}>{formatQuantity(product.quantity)}</Text>
-              <Text style={styles.productMetric}>{product.ordersCount} commandes</Text>
-              <Text style={styles.productTotal}>{formatEuro(product.totalTtc)}</Text>
+              <Text style={styles.productMetric}>
+                {formatPdfQuantity(product.quantity)}
+              </Text>
+              <Text style={styles.productMetric}>{product.ordersCount}</Text>
+              <Text style={styles.productTotal}>
+                {formatPdfEuro(product.totalTtc)}
+              </Text>
             </View>
           ))}
         </View>
@@ -197,105 +310,36 @@ function TopProducts({
   );
 }
 
-function Footer() {
-  return (
-    <View style={styles.footer} fixed>
-      <Text>
-        Ce document est un bilan d&apos;activité non comptable généré par TerrOir.
-      </Text>
-      <Text
-        style={styles.pageNumber}
-        render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`}
-      />
-    </View>
-  );
-}
-
-function formatEuro(value: number): string {
-  return `${formatFrenchNumber(value, 2, { trimDecimals: false })} €`;
-}
-
-function formatQuantity(value: number): string {
-  return formatFrenchNumber(value, 3, { trimDecimals: true });
-}
-
-function formatFrenchNumber(
-  value: number,
-  maximumFractionDigits: number,
-  options: { trimDecimals: boolean },
-): string {
-  const sign = value < 0 ? "-" : "";
-  const fixed = Math.abs(value).toFixed(maximumFractionDigits);
-  const [integer = "0", decimals = ""] = fixed.split(".");
-  const integerWithSpaces = integer.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-  const trimmedDecimals = options.trimDecimals ? decimals.replace(/0+$/, "") : decimals;
-  return trimmedDecimals
-    ? `${sign}${integerWithSpaces},${trimmedDecimals}`
-    : `${sign}${integerWithSpaces}`;
-}
-
 const styles = StyleSheet.create({
-  page: {
-    paddingTop: 28,
-    paddingRight: 30,
-    paddingBottom: 58,
-    paddingLeft: 30,
-    fontFamily: "NotoSans",
-    fontSize: 9,
-    color: "#243128",
-    backgroundColor: "#fffdf8",
+  page: pdfPageStyle,
+  section: {
+    marginBottom: pdfSpacing.sectionGap,
   },
-  header: {
-    marginBottom: 18,
-    borderRadius: 8,
-    backgroundColor: "#2d6a4f",
-    padding: 18,
+  sectionTitle: pdfSectionTitleStyle,
+  summaryBox: {
+    marginBottom: pdfSpacing.sectionGap,
+    borderWidth: 1,
+    borderColor: pdfColors.border,
+    borderRadius: pdfSpacing.radius,
+    backgroundColor: pdfColors.white,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: pdfColors.terracotta,
   },
-  brandRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  logo: {
-    width: 104,
-    height: 56,
-    objectFit: "contain",
-  },
-  headerText: {
-    textAlign: "right",
-    maxWidth: 330,
-  },
-  eyebrow: {
-    color: "#f5e6dc",
-    fontSize: 8,
-    textTransform: "uppercase",
+  summaryKicker: {
+    ...pdfEyebrowStyle,
     marginBottom: 5,
   },
-  title: {
-    color: "#FFFFFF",
-    fontSize: 24,
-    fontFamily: "NotoSans",
-    fontWeight: "bold",
-  },
-  subtitle: {
-    color: "#f5e6dc",
-    marginTop: 6,
-    fontSize: 11,
-  },
-  intro: {
-    color: "#fff7ef",
-    marginTop: 14,
+  summaryText: {
+    color: pdfColors.ink,
+    fontSize: 9,
     lineHeight: 1.45,
-    fontSize: 10,
+    marginTop: 2,
   },
-  section: {
-    marginBottom: 18,
-  },
-  sectionTitle: {
-    color: "#1f3328",
-    fontFamily: "NotoSans",
-    fontWeight: "bold",
-    fontSize: 13,
+  heroCards: {
+    flexDirection: "row",
+    gap: 8,
     marginBottom: 8,
   },
   cards: {
@@ -304,68 +348,141 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   figure: {
-    width: "23.5%",
-    minHeight: 55,
+    width: "18.75%",
+    minHeight: 58,
     borderWidth: 1,
-    borderColor: "#e7ded6",
-    borderRadius: 6,
+    borderColor: pdfColors.border,
+    borderRadius: pdfSpacing.radius,
     padding: 9,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: pdfColors.white,
   },
-  figureStrong: {
-    width: "23.5%",
-    minHeight: 55,
+  figureLarge: {
+    width: "49.25%",
+    minHeight: 72,
     borderWidth: 1,
-    borderColor: "#2d6a4f",
-    borderRadius: 6,
-    padding: 9,
-    backgroundColor: "#edf6ef",
+    borderColor: pdfColors.border,
+    borderRadius: pdfSpacing.radius,
+    padding: 11,
+    backgroundColor: pdfColors.white,
+  },
+  figureAccent: {
+    borderColor: pdfColors.terracotta,
+    backgroundColor: pdfColors.terracottaPale,
+  },
+  figurePositive: {
+    borderColor: pdfColors.green,
+    backgroundColor: pdfColors.greenSoft,
   },
   figureLabel: {
-    color: "#6a6a62",
-    fontSize: 7,
-    textTransform: "uppercase",
-  },
-  figureLabelStrong: {
-    color: "#2d6a4f",
-    fontSize: 7,
-    textTransform: "uppercase",
+    ...pdfEyebrowStyle,
+    color: pdfColors.muted,
   },
   figureValue: {
     marginTop: 5,
-    color: "#1f3328",
-    fontFamily: "NotoSans",
+    color: pdfColors.ink,
+    fontFamily: pdfFonts.bold,
     fontWeight: "bold",
-    fontSize: 11,
+    fontSize: 10,
   },
-  figureValueStrong: {
+  figureValueAccent: {
     marginTop: 5,
-    color: "#2d6a4f",
-    fontFamily: "NotoSans",
+    color: pdfColors.terracottaDark,
+    fontFamily: pdfFonts.bold,
     fontWeight: "bold",
-    fontSize: 11,
+    fontSize: 10,
+  },
+  figureValuePositive: {
+    marginTop: 5,
+    color: pdfColors.greenDark,
+    fontFamily: pdfFonts.bold,
+    fontWeight: "bold",
+    fontSize: 10,
+  },
+  figureValueLarge: {
+    fontSize: 18,
+    marginTop: 7,
   },
   figureSubValue: {
     marginTop: 2,
-    color: "#6a6a62",
+    color: pdfColors.muted,
     fontSize: 8,
   },
-  monthTable: {
+  chart: {
+    flexDirection: "row",
     borderWidth: 1,
-    borderColor: "#d8cec5",
-    borderRadius: 6,
-    backgroundColor: "#FFFFFF",
+    borderColor: pdfColors.border,
+    borderRadius: pdfSpacing.radius,
+    backgroundColor: pdfColors.white,
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+    marginBottom: 8,
   },
+  chartAxis: {
+    width: 48,
+    height: 76,
+    justifyContent: "space-between",
+    paddingRight: 6,
+  },
+  chartAxisLabel: {
+    color: pdfColors.muted,
+    fontSize: 6,
+    textAlign: "right",
+  },
+  chartBars: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    flexGrow: 1,
+    height: 76,
+    borderLeftWidth: 1,
+    borderLeftColor: pdfColors.border,
+    borderBottomWidth: 1,
+    borderBottomColor: pdfColors.border,
+    paddingLeft: 8,
+    paddingRight: 2,
+  },
+  chartMonth: {
+    width: 30,
+    alignItems: "center",
+  },
+  chartTrack: {
+    height: 56,
+    width: 12,
+    justifyContent: "flex-end",
+    backgroundColor: pdfColors.beige,
+    borderRadius: 3,
+  },
+  chartBar: {
+    width: 12,
+    backgroundColor: pdfColors.green,
+    borderRadius: 3,
+  },
+  chartBarBest: {
+    backgroundColor: pdfColors.terracotta,
+  },
+  chartLabel: {
+    marginTop: 5,
+    color: pdfColors.muted,
+    fontSize: 6,
+  },
+  chartLabelBest: {
+    marginTop: 5,
+    color: pdfColors.terracottaDark,
+    fontSize: 6,
+    fontFamily: pdfFonts.bold,
+    fontWeight: "bold",
+  },
+  monthTable: pdfTableShellStyle,
   monthHeader: {
     flexDirection: "row",
-    backgroundColor: "#8f4f2a",
+    backgroundColor: pdfColors.terracotta,
     borderTopLeftRadius: 5,
     borderTopRightRadius: 5,
   },
   monthHeadCell: {
     width: "22%",
-    color: "#FFFFFF",
-    fontFamily: "NotoSans",
+    color: pdfColors.white,
+    fontFamily: pdfFonts.bold,
     fontWeight: "bold",
     fontSize: 7,
     paddingVertical: 6,
@@ -375,7 +492,14 @@ const styles = StyleSheet.create({
   monthRow: {
     flexDirection: "row",
     borderTopWidth: 1,
-    borderTopColor: "#eee3da",
+    borderTopColor: pdfColors.border,
+    backgroundColor: pdfColors.white,
+  },
+  monthRowBest: {
+    flexDirection: "row",
+    borderTopWidth: 1,
+    borderTopColor: pdfColors.border,
+    backgroundColor: pdfColors.terracottaPale,
   },
   monthName: {
     width: "24%",
@@ -385,99 +509,86 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 5,
     fontSize: 8,
+    color: pdfColors.ink,
+  },
+  monthCellBest: {
+    color: pdfColors.terracottaDark,
+    fontFamily: pdfFonts.bold,
+    fontWeight: "bold",
+  },
+  monthCellAmount: {
+    width: "32%",
+    paddingVertical: 6,
+    paddingHorizontal: 5,
+    fontSize: 8,
+    color: pdfColors.ink,
+    textAlign: "right",
   },
   monthCellStrong: {
     width: "22%",
     paddingVertical: 6,
     paddingHorizontal: 5,
     fontSize: 8,
-    color: "#2d6a4f",
-    fontFamily: "NotoSans",
+    color: pdfColors.greenDark,
+    fontFamily: pdfFonts.bold,
     fontWeight: "bold",
     textAlign: "right",
   },
-  monthAmountCell: {
-    width: "32%",
-    paddingVertical: 5,
-    paddingHorizontal: 5,
+  productList: pdfTableShellStyle,
+  productHeader: {
+    flexDirection: "row",
+    backgroundColor: pdfColors.terracotta,
+    borderTopLeftRadius: 5,
+    borderTopRightRadius: 5,
   },
-  monthAmountText: {
-    fontSize: 8,
-    marginBottom: 3,
-  },
-  barTrack: {
-    height: 4,
-    backgroundColor: "#f1e8df",
-    borderRadius: 2,
-  },
-  barFill: {
-    height: 4,
-    backgroundColor: "#2d6a4f",
-    borderRadius: 2,
-  },
-  productList: {
-    borderWidth: 1,
-    borderColor: "#d8cec5",
-    borderRadius: 6,
-    backgroundColor: "#FFFFFF",
+  productHeadCell: {
+    color: pdfColors.white,
+    fontFamily: pdfFonts.bold,
+    fontWeight: "bold",
+    fontSize: 7,
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+    textTransform: "uppercase",
   },
   productRow: {
     flexDirection: "row",
     alignItems: "center",
     borderTopWidth: 1,
-    borderTopColor: "#eee3da",
-    paddingVertical: 8,
-    paddingHorizontal: 8,
+    borderTopColor: pdfColors.border,
+    paddingVertical: 7,
+    paddingHorizontal: 6,
+    backgroundColor: pdfColors.white,
   },
   productRank: {
-    width: "8%",
-    color: "#8f4f2a",
-    fontFamily: "NotoSans",
+    width: "9%",
+    color: pdfColors.terracottaDark,
+    fontFamily: pdfFonts.bold,
     fontWeight: "bold",
   },
   productName: {
-    width: "42%",
-    fontFamily: "NotoSans",
+    width: "41%",
+    color: pdfColors.ink,
+    fontFamily: pdfFonts.bold,
     fontWeight: "bold",
   },
   productMetric: {
     width: "17%",
-    color: "#6a6a62",
+    color: pdfColors.muted,
     textAlign: "right",
   },
   productTotal: {
     width: "16%",
-    color: "#2d6a4f",
-    fontFamily: "NotoSans",
+    color: pdfColors.greenDark,
+    fontFamily: pdfFonts.bold,
     fontWeight: "bold",
     textAlign: "right",
   },
   empty: {
     borderWidth: 1,
-    borderColor: "#d8cec5",
-    borderRadius: 6,
+    borderColor: pdfColors.borderStrong,
+    borderRadius: pdfSpacing.radius,
     padding: 12,
-    color: "#6a6a62",
-    backgroundColor: "#FFFFFF",
-  },
-  footer: {
-    position: "absolute",
-    left: 30,
-    right: 30,
-    bottom: 22,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: "#e7ded6",
-    color: "#66665d",
-    fontSize: 7,
-  },
-  pageNumber: {
-    position: "absolute",
-    right: 0,
-    top: 8,
-    color: "#2d6a4f",
-    fontSize: 8,
-    fontFamily: "NotoSans",
-    fontWeight: "bold",
+    color: pdfColors.muted,
+    backgroundColor: pdfColors.white,
   },
 });

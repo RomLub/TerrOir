@@ -1,5 +1,14 @@
 import { StyleSheet, Text, View } from "@react-pdf/renderer";
 import type { ProducerAccountingSummary } from "@/lib/accounting/producer-export-data";
+import {
+  formatPdfEuro,
+  pdfColors,
+  pdfEyebrowStyle,
+  pdfFonts,
+  pdfSpacing,
+} from "@/lib/accounting/pdf/theme";
+
+type CardTone = "neutral" | "accent" | "positive";
 
 export function SummaryCards({
   summary,
@@ -8,10 +17,22 @@ export function SummaryCards({
 }) {
   return (
     <View style={styles.container}>
-      <Card label="Commandes" value={String(summary.ordersCount)} />
-      <Card label="Chiffre d'affaires TTC" value={formatEuro(summary.totalTtc)} />
-      <Card label="Commission TerrOir" value={formatEuro(summary.terroirCommission)} />
-      <Card label="Net producteur" value={formatEuro(summary.producerNet)} strong />
+      <Card label="Commandes" value={String(summary.ordersCount)} tone="neutral" />
+      <Card
+        label="Chiffre d'affaires TTC"
+        value={formatPdfEuro(summary.totalTtc)}
+        tone="accent"
+      />
+      <Card
+        label="Commission TerrOir"
+        value={formatPdfEuro(summary.terroirCommission)}
+        tone="neutral"
+      />
+      <Card
+        label="Net producteur"
+        value={formatPdfEuro(summary.producerNet)}
+        tone="positive"
+      />
     </View>
   );
 }
@@ -19,71 +40,81 @@ export function SummaryCards({
 function Card({
   label,
   value,
-  strong = false,
+  tone,
 }: {
   label: string;
   value: string;
-  strong?: boolean;
+  tone: CardTone;
 }) {
+  const styleByTone = {
+    neutral: [styles.card, styles.cardNeutral],
+    accent: [styles.card, styles.cardAccent],
+    positive: [styles.card, styles.cardPositive],
+  }[tone];
+
+  const valueStyleByTone = {
+    neutral: styles.value,
+    accent: styles.valueAccent,
+    positive: styles.valuePositive,
+  }[tone];
+
   return (
-    <View style={strong ? styles.cardStrong : styles.card}>
-      <Text style={strong ? styles.labelStrong : styles.label}>{label}</Text>
-      <Text style={strong ? styles.valueStrong : styles.value}>{value}</Text>
+    <View style={styleByTone}>
+      <Text style={styles.label}>{label}</Text>
+      <Text style={valueStyleByTone}>{value}</Text>
     </View>
   );
-}
-
-function formatEuro(value: number): string {
-  return new Intl.NumberFormat("fr-FR", {
-    style: "currency",
-    currency: "EUR",
-  }).format(value);
 }
 
 const styles = StyleSheet.create({
   container: {
     flexDirection: "row",
     gap: 8,
-    marginBottom: 18,
+    marginBottom: pdfSpacing.sectionGap,
   },
   card: {
     flexGrow: 1,
     flexBasis: 0,
+    minHeight: 62,
     borderWidth: 1,
-    borderColor: "#e7ded6",
-    borderRadius: 6,
-    padding: 10,
-    backgroundColor: "#fbfaf8",
+    borderRadius: pdfSpacing.radius,
+    padding: pdfSpacing.cardPadding,
+    backgroundColor: pdfColors.white,
   },
-  cardStrong: {
-    flexGrow: 1,
-    flexBasis: 0,
-    borderWidth: 1,
-    borderColor: "#2d6a4f",
-    borderRadius: 6,
-    padding: 10,
-    backgroundColor: "#f1f7f3",
+  cardNeutral: {
+    borderColor: pdfColors.border,
+  },
+  cardAccent: {
+    borderColor: pdfColors.terracotta,
+    backgroundColor: pdfColors.terracottaPale,
+  },
+  cardPositive: {
+    borderColor: pdfColors.green,
+    backgroundColor: pdfColors.greenSoft,
   },
   label: {
-    color: "#6a6a62",
-    fontSize: 7,
-    textTransform: "uppercase",
-  },
-  labelStrong: {
-    color: "#2d6a4f",
-    fontSize: 7,
-    textTransform: "uppercase",
+    ...pdfEyebrowStyle,
+    color: pdfColors.muted,
   },
   value: {
-    color: "#1f3328",
-    fontFamily: "Helvetica-Bold",
-    fontSize: 13,
+    color: pdfColors.ink,
+    fontFamily: pdfFonts.bold,
+    fontWeight: "bold",
+    fontSize: 12,
     marginTop: 6,
   },
-  valueStrong: {
-    color: "#2d6a4f",
-    fontFamily: "Helvetica-Bold",
-    fontSize: 13,
+  valueAccent: {
+    color: pdfColors.terracottaDark,
+    fontFamily: pdfFonts.bold,
+    fontWeight: "bold",
+    fontSize: 12,
+    marginTop: 6,
+  },
+  valuePositive: {
+    color: pdfColors.greenDark,
+    fontFamily: pdfFonts.bold,
+    fontWeight: "bold",
+    fontSize: 12,
     marginTop: 6,
   },
 });

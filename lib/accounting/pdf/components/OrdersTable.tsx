@@ -1,5 +1,12 @@
 import { StyleSheet, Text, View } from "@react-pdf/renderer";
 import type { ProducerAccountingExportOrder } from "@/lib/accounting/producer-export-data";
+import {
+  formatPdfEuro,
+  pdfColors,
+  pdfFonts,
+  pdfSectionTitleStyle,
+  pdfTableShellStyle,
+} from "@/lib/accounting/pdf/theme";
 
 const COLUMNS = [
   { label: "Date", width: "13%" },
@@ -18,7 +25,10 @@ export function OrdersTable({
 }) {
   return (
     <View style={styles.container}>
-      <Text style={styles.heading}>Détail des commandes</Text>
+      <View style={styles.sectionTitleRow}>
+        <Text style={styles.heading}>Détail des commandes</Text>
+        <Text style={styles.count}>{orders.length} ligne(s)</Text>
+      </View>
       <View style={styles.table}>
         <View style={styles.headerRow} wrap={false}>
           {COLUMNS.map((column) => (
@@ -46,15 +56,17 @@ export function OrdersTable({
                 {order.orderNumber}
               </Text>
               <Text style={[styles.cell, { width: COLUMNS[2].width }]}>{order.client}</Text>
-              <Text style={[styles.cell, { width: COLUMNS[3].width }]}>{order.status}</Text>
+              <Text style={[styles.cellStatus, { width: COLUMNS[3].width }]}>
+                {order.status}
+              </Text>
               <Text style={[styles.cellAmount, { width: COLUMNS[4].width }]}>
-                {formatEuro(order.totalTtc)}
+                {formatPdfEuro(order.totalTtc)}
               </Text>
               <Text style={[styles.cellAmount, { width: COLUMNS[5].width }]}>
-                {formatEuro(order.terroirCommission)}
+                {formatPdfEuro(order.terroirCommission)}
               </Text>
               <Text style={[styles.cellAmountStrong, { width: COLUMNS[6].width }]}>
-                {formatEuro(order.producerNet)}
+                {formatPdfEuro(order.producerNet)}
               </Text>
             </View>
           ))
@@ -64,37 +76,32 @@ export function OrdersTable({
   );
 }
 
-function formatEuro(value: number): string {
-  return new Intl.NumberFormat("fr-FR", {
-    style: "currency",
-    currency: "EUR",
-  }).format(value);
-}
-
 const styles = StyleSheet.create({
   container: {
     marginTop: 2,
   },
-  heading: {
-    color: "#1f3328",
-    fontFamily: "Helvetica-Bold",
-    fontSize: 12,
+  sectionTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     marginBottom: 8,
   },
-  table: {
-    borderWidth: 1,
-    borderColor: "#d8cec5",
-    borderRadius: 5,
+  heading: pdfSectionTitleStyle,
+  count: {
+    color: pdfColors.muted,
+    fontSize: 8,
   },
+  table: pdfTableShellStyle,
   headerRow: {
     flexDirection: "row",
-    backgroundColor: "#2d6a4f",
-    borderTopLeftRadius: 4,
-    borderTopRightRadius: 4,
+    backgroundColor: pdfColors.terracotta,
+    borderTopLeftRadius: 5,
+    borderTopRightRadius: 5,
   },
   headerCell: {
-    color: "#FFFFFF",
-    fontFamily: "Helvetica-Bold",
+    color: pdfColors.white,
+    fontFamily: pdfFonts.bold,
+    fontWeight: "bold",
     fontSize: 7,
     paddingVertical: 7,
     paddingHorizontal: 4,
@@ -103,48 +110,55 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     borderTopWidth: 1,
-    borderTopColor: "#e7ded6",
-    backgroundColor: "#FFFFFF",
+    borderTopColor: pdfColors.border,
+    backgroundColor: pdfColors.white,
   },
   rowAlt: {
     flexDirection: "row",
     borderTopWidth: 1,
-    borderTopColor: "#e7ded6",
-    backgroundColor: "#fbfaf8",
+    borderTopColor: pdfColors.border,
+    backgroundColor: pdfColors.beige,
   },
   cell: {
     paddingVertical: 7,
     paddingHorizontal: 4,
     fontSize: 8,
-    color: "#243128",
+    color: pdfColors.ink,
+  },
+  cellStatus: {
+    paddingVertical: 7,
+    paddingHorizontal: 4,
+    fontSize: 8,
+    color: pdfColors.inkSoft,
   },
   cellMono: {
     paddingVertical: 7,
     paddingHorizontal: 4,
     fontSize: 8,
-    color: "#243128",
-    fontFamily: "Courier",
+    color: pdfColors.ink,
+    fontFamily: pdfFonts.mono,
   },
   cellAmount: {
     paddingVertical: 7,
     paddingHorizontal: 4,
     fontSize: 8,
-    color: "#243128",
+    color: pdfColors.ink,
     textAlign: "right",
   },
   cellAmountStrong: {
     paddingVertical: 7,
     paddingHorizontal: 4,
     fontSize: 8,
-    color: "#2d6a4f",
-    fontFamily: "Helvetica-Bold",
+    color: pdfColors.greenDark,
+    fontFamily: pdfFonts.bold,
+    fontWeight: "bold",
     textAlign: "right",
   },
   emptyRow: {
     padding: 16,
   },
   emptyText: {
-    color: "#6a6a62",
+    color: pdfColors.muted,
     fontSize: 9,
   },
 });

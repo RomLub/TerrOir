@@ -1,16 +1,19 @@
 import { StyleSheet, Text, View } from "@react-pdf/renderer";
+import { pdfColors, pdfFonts, pdfSpacing } from "@/lib/accounting/pdf/theme";
 
-export function PdfFooter() {
+const DEFAULT_LINES = [
+  "Document généré automatiquement par TerrOir. Les paiements sont traités via Stripe Connect.",
+  "Ce document constitue un relevé récapitulatif et ne remplace pas les obligations comptables légales du producteur.",
+];
+
+export function PdfFooter({ lines = DEFAULT_LINES }: { lines?: string[] }) {
   return (
     <View style={styles.footer} fixed>
-      <Text style={styles.legal}>
-        Document généré automatiquement par TerrOir. Les paiements sont traités
-        via Stripe Connect.
-      </Text>
-      <Text style={styles.legal}>
-        Ce document constitue un relevé récapitulatif et ne remplace pas les
-        obligations comptables légales du producteur.
-      </Text>
+      {lines.map((line) => (
+        <Text key={line} style={styles.legal}>
+          {line}
+        </Text>
+      ))}
       <Text
         style={styles.pageNumber}
         render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`}
@@ -22,13 +25,13 @@ export function PdfFooter() {
 const styles = StyleSheet.create({
   footer: {
     position: "absolute",
-    left: 30,
-    right: 30,
+    left: pdfSpacing.pageX,
+    right: pdfSpacing.pageX,
     bottom: 22,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: "#e7ded6",
-    color: "#66665d",
+    borderTopColor: pdfColors.border,
+    color: pdfColors.mutedWarm,
     fontSize: 7,
   },
   legal: {
@@ -38,8 +41,9 @@ const styles = StyleSheet.create({
     position: "absolute",
     right: 0,
     top: 8,
-    color: "#2d6a4f",
+    color: pdfColors.terracotta,
     fontSize: 8,
-    fontFamily: "Helvetica-Bold",
+    fontFamily: pdfFonts.bold,
+    fontWeight: "bold",
   },
 });

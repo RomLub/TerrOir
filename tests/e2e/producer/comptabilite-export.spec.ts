@@ -1,5 +1,5 @@
 /**
- * E2E producer/comptabilite — page /comptabilite + export CSV.
+ * E2E producer/comptabilite — page /comptabilite + exports CSV/PDF.
  *
  * Couverture (3 tests) :
  *   1. /comptabilite : page accessible, présente sélecteurs date "Du" /
@@ -11,6 +11,8 @@
  *   3. Filtre période : seed 2 commandes completed à 2 dates distinctes,
  *      requête CSV sur période qui n'inclut qu'une des 2 → seule
  *      l'order matchant apparaît dans le CSV.
+ *
+ * Le premier test vérifie aussi les endpoints PDF comptable et bilan annuel.
  *
  * Notes :
  *   - Le filtre période est `completed_at` (pas created_at) — comportement
@@ -108,6 +110,18 @@ test.describe("Producer — Comptabilité (/comptabilite + CSV/PDF export)", () 
     expect(annualPdf.status()).toBe(200);
     expect(annualPdf.headers()["content-type"] ?? "").toMatch(/application\/pdf/i);
     expect((await annualPdf.body()).subarray(0, 5).toString("utf-8")).toBe(
+      "%PDF-",
+    );
+
+    const today = new Date().toISOString().slice(0, 10);
+    const accountingPdf = await page.request.get(
+      `/api/exports/producer/comptabilite.pdf?from=${year}-01-01&to=${today}`,
+    );
+    expect(accountingPdf.status()).toBe(200);
+    expect(accountingPdf.headers()["content-type"] ?? "").toMatch(
+      /application\/pdf/i,
+    );
+    expect((await accountingPdf.body()).subarray(0, 5).toString("utf-8")).toBe(
       "%PDF-",
     );
   });
