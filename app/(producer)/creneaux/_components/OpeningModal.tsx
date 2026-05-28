@@ -71,8 +71,11 @@ export default function OpeningModal({
   const [duration, setDuration] = useState<number>(
     editRule && editRule.mode === "rdv" ? editRule.slot_duration_minutes : 30,
   );
+  // Default 4 = ceil(30/15)*2 : max autorisé pour rdv 30min (durée rdv par
+  // défaut). Reste safe pour libre 9-12 (maxCap=24) et évite de démarrer en
+  // violation si l'utilisateur bascule en rdv sans toucher à la capacité.
   const [capacity, setCapacity] = useState<number>(
-    editRule?.capacity_per_slot ?? 10,
+    editRule?.capacity_per_slot ?? 4,
   );
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -101,6 +104,16 @@ export default function OpeningModal({
   const maxCap =
     effectiveDuration > 0 ? maxCapacityForDuration(effectiveDuration) : 1;
   const capacityExceeds = capacity > maxCap;
+
+  // Auto-clamp : quand la durée effective change (switch mode, nouvelle durée
+  // rdv, amplitude réduite), la capacité courante peut dépasser le nouveau
+  // max → on la ramène silencieusement au max plutôt que de planter
+  // l'utilisateur sur une erreur qu'il n'a pas provoquée. La saisie manuelle
+  // au-dessus du max (incoming change sur capacity seule) reste signalée en
+  // alerte rouge — pas de clamp à la saisie, l'utilisateur garde la main.
+  useEffect(() => {
+    setCapacity((prev) => (prev > maxCap ? maxCap : prev));
+  }, [maxCap]);
   const valid =
     amplitude > 0 &&
     capacity >= 1 &&

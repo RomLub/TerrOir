@@ -76,6 +76,17 @@ function setMode(target: "libre" | "rdv") {
   act(() => btn.click());
 }
 
+function setSelectValue(select: HTMLSelectElement, value: string) {
+  const nativeSetter = Object.getOwnPropertyDescriptor(
+    window.HTMLSelectElement.prototype,
+    "value",
+  )!.set!;
+  act(() => {
+    nativeSetter.call(select, value);
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+}
+
 describe("OpeningModal — feedback capacité", () => {
   it("mode libre 9h-12h → hint affiche 'Maximum 24 pour 180 min'", () => {
     render(<OpeningModal onClose={() => {}} onSuccess={() => {}} />);
@@ -128,5 +139,51 @@ describe("OpeningModal — feedback capacité", () => {
     setMode("rdv");
     const input = capacityInput();
     expect(input.getAttribute("max")).toBe("4");
+  });
+
+  it("valeur par défaut respecte le max pour les modes par défaut (libre 9-12 ET rdv 30min)", () => {
+    render(<OpeningModal onClose={() => {}} onSuccess={() => {}} />);
+    // libre 9-12 (amplitude 180min, maxCap=24) : default doit être ≤ 24.
+    const initialValue = parseInt(capacityInput().value, 10);
+    expect(initialValue).toBeGreaterThanOrEqual(1);
+    expect(initialValue).toBeLessThanOrEqual(24);
+
+    // rdv 30min (maxCap=4) : default doit être ≤ 4 (sans saisie manuelle).
+    setMode("rdv");
+    const rdvValue = parseInt(capacityInput().value, 10);
+    expect(rdvValue).toBeGreaterThanOrEqual(1);
+    expect(rdvValue).toBeLessThanOrEqual(4);
+  });
+
+  it("auto-clamp — switch libre → rdv avec capacité > nouveau max ramène au max", () => {
+    render(<OpeningModal onClose={() => {}} onSuccess={() => {}} />);
+    // libre 9-12 → maxCap=24, on monte à 20.
+    setCapacity(20);
+    expect(parseInt(capacityInput().value, 10)).toBe(20);
+    // switch en rdv 30min → maxCap=4, capacité doit être clampée à 4.
+    setMode("rdv");
+    expect(parseInt(capacityInput().value, 10)).toBe(4);
+  });
+
+  it("auto-clamp — réduction de la durée rdv (30 → 15) ramène la capacité au nouveau max", () => {
+    render(<OpeningModal onClose={() => {}} onSuccess={() => {}} />);
+    setMode("rdv");
+    setCapacity(4); // OK pour 30min (max=4)
+    // Passer à 15 min via le select des durées (1er <select> du formulaire).
+    const select = container.querySelector("select") as HTMLSelectElement;
+    if (!select) throw new Error("duration select not found");
+    setSelectValue(select, "15");
+    // 15min → maxCap=2, capacity=4 doit être clampée à 2.
+    expect(parseInt(capacityInput().value, 10)).toBe(2);
+  });
+
+  it("auto-clamp — pas de clamp à la saisie manuelle au-dessus du max (alerte seule)", () => {
+    render(<OpeningModal onClose={() => {}} onSuccess={() => {}} />);
+    setMode("rdv"); // maxCap=4
+    setCapacity(10); // saisie manuelle au-dessus
+    // La saisie manuelle reste affichée : on signale l'erreur sans corriger
+    // silencieusement (l'utilisateur garde la main).
+    expect(parseInt(capacityInput().value, 10)).toBe(10);
+    expect(hint().className).toContain("terra-700");
   });
 });
