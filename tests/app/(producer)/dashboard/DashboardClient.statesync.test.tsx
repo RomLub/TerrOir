@@ -134,13 +134,12 @@ function render(node: ReactElement) {
 function makeDay(
   dateIso: string,
   dayLabel: string,
-  over: { isToday?: boolean; isOpen?: boolean; slots?: DashboardData['weekPlanning'][number]['slots'] } = {},
+  over: { isToday?: boolean; slots?: DashboardData['weekPlanning'][number]['slots'] } = {},
 ): DashboardData['weekPlanning'][number] {
   return {
     dateIso,
     dayLabel,
     isToday: over.isToday ?? false,
-    isOpen: over.isOpen ?? true,
     slots: over.slots ?? [],
   };
 }
@@ -195,12 +194,12 @@ function weekNavigatorAttrs(): { offset: string; label: string } {
 }
 
 function planningDays(): string[] {
-  // Le `weekPlanning` est rendu via WeekPlanningHeatmap, qui produit une
-  // ligne `<a data-testid="planning-day-row" data-date-iso="…">` par jour.
-  // On lit le data-date-iso (clé stable) pour vérifier la propagation
+  // Le `weekPlanning` est rendu via VerticalWeekCalendar, qui produit une
+  // colonne `<div data-testid="planning-day-column" data-date-iso="…">` par
+  // jour. On lit le data-date-iso (clé stable) pour vérifier la propagation
   // de prop, indépendamment du formatage du label.
-  const rows = container.querySelectorAll('[data-testid="planning-day-row"]');
-  return Array.from(rows).map((r) => (r as HTMLElement).dataset.dateIso ?? '');
+  const cols = container.querySelectorAll('[data-testid="planning-day-column"]');
+  return Array.from(cols).map((c) => (c as HTMLElement).dataset.dateIso ?? '');
 }
 
 describe('DashboardClient — propagation prop sur re-render (anti-stale)', () => {
