@@ -26,8 +26,8 @@ import { createTestOrder, cleanupOrdersForProducers } from "../helpers/order-lif
 import { loginAs } from "../helpers/user-lifecycle";
 import { getReadOnlyAdminClient } from "../helpers/supabase-admin";
 
-test.describe("Producer — Comptabilité (/comptabilite + CSV export)", () => {
-  test("page /comptabilite affiche sélecteurs période + bouton CSV", async ({
+test.describe("Producer — Comptabilité (/comptabilite + CSV/PDF export)", () => {
+  test("page /comptabilite affiche synthèse + boutons CSV/PDF", async ({
     page,
     ctx,
   }) => {
@@ -49,6 +49,12 @@ test.describe("Producer — Comptabilité (/comptabilite + CSV export)", () => {
     await expect(
       page.getByRole("button", { name: /Télécharger CSV/i }),
     ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /Télécharger le PDF/i }),
+    ).toBeVisible();
+    await expect(page.getByText(/Chiffre d'affaires TTC/i)).toBeVisible();
+    await expect(page.getByText(/Commission TerrOir/i)).toBeVisible();
+    await expect(page.getByText(/Net producteur/i)).toBeVisible();
   });
 
   test("export CSV avec 1 commande completed → headers + 1 ligne + UTF-8 BOM + email masqué", async ({
@@ -67,7 +73,6 @@ test.describe("Producer — Comptabilité (/comptabilite + CSV export)", () => {
       const order = await createTestOrder(ctx, {
         producerId: producer.producerId,
         consumerId: consumer.id,
-        codeCommande: `CMPT-${Date.now()}-A`,
         statut: "completed",
       });
 
@@ -146,14 +151,12 @@ test.describe("Producer — Comptabilité (/comptabilite + CSV export)", () => {
       const orderInRange = await createTestOrder(ctx, {
         producerId: producer.producerId,
         consumerId: consumer.id,
-        codeCommande: `CMPTIN-${Date.now()}`,
         statut: "completed",
         daysAhead: 1,
       });
       const orderOutOfRange = await createTestOrder(ctx, {
         producerId: producer.producerId,
         consumerId: consumer.id,
-        codeCommande: `CMPTOUT-${Date.now()}`,
         statut: "completed",
         daysAhead: 2,
       });

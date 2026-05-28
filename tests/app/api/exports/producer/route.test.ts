@@ -174,4 +174,55 @@ describe("GET /api/exports/producer/comptabilite.csv — happy path", () => {
     expect(captured.filters).toContainEqual(["producer_id", "producer-99"]);
     expect(captured.filters).toContainEqual(["statut", "completed"]);
   });
+
+  it("retourne un PDF comptable sur le même périmètre producteur", async () => {
+    sessionMock.mockResolvedValue({
+      id: "user-42",
+      email: "p@e.fr",
+      roles: [],
+      isAdmin: false,
+    });
+    producerResp = {
+      data: {
+        id: "producer-99",
+        nom_exploitation: "Ferme du Test",
+        siret: "12345678901234",
+        producer_number: 42,
+        user: { prenom: "Romain", nom: "Martin", email: "p@e.fr" },
+      },
+      error: null,
+    };
+    ordersResp = {
+      data: [
+        {
+          id: "order-1",
+          completed_at: "2026-03-15T10:00:00.000Z",
+          statut: "completed",
+          montant_total: 25.0,
+          commission_terroir: 1.5,
+          montant_net_producteur: 23.5,
+          producer_order_seq: 1,
+          consumer: { email: "julien@example.fr" },
+        },
+      ],
+      error: null,
+    };
+
+    const { GET } = await import(
+      "@/app/api/exports/producer/comptabilite.pdf/route"
+    );
+    const res = await GET(
+      new Request(
+        "https://t.fr/api/exports/producer/comptabilite.pdf?from=2026-01-01&to=2026-12-31",
+      ),
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toMatch(/application\/pdf/i);
+    expect(res.headers.get("content-disposition")).toMatch(
+      /comptabilite_producer_2026-01-01_2026-12-31\.pdf/i,
+    );
+    const buf = Buffer.from(await res.arrayBuffer());
+    expect(buf.subarray(0, 5).toString("utf-8")).toBe("%PDF-");
+  });
 });
