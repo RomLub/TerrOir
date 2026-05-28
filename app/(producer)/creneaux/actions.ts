@@ -550,9 +550,62 @@ export async function deleteAdHocOpeningAction(
   return { success: true, deleted: slotIds.length };
 }
 
+/**
+ * Détail d'une commande qui bloque l'exclusion d'un slot. Exposé dans le
+ * retour d'erreur des actions exclude pour permettre à l'UI client de
+ * proposer la modale "Annuler et fermer" (cf. chantier 2026-05-29).
+ */
+export type BlockingOrder = {
+  id: string;
+  code_commande: string | null;
+  consumer_prenom: string | null;
+  montant_total: number;
+  slot_starts_at: string | null;
+  slot_ends_at: string | null;
+};
+
+export type ExcludeActionResult =
+  | { success: true }
+  | { error: string; blocking_orders?: BlockingOrder[] };
+
+// Helper interne : fetch des orders actives liées à un set de slot ids,
+// avec les infos nécessaires à l'UI modale (consumer prenom, montant,
+// horaire). Service_role → bypass RLS, l'ownership a déjà été vérifié
+// en amont par le caller.
+async function fetchBlockingOrders(
+  admin: ReturnType<typeof createSupabaseAdminClient>,
+  slotIds: string[],
+): Promise<BlockingOrder[]> {
+  if (slotIds.length === 0) return [];
+  const { data, error } = await admin
+    .from("orders")
+    .select(
+      "id, code_commande, montant_total, consumer:users!orders_consumer_id_fkey(prenom), slot:slots!orders_slot_id_fkey(starts_at, ends_at)",
+    )
+    .in("slot_id", slotIds)
+    .in("statut", ACTIVE_ORDER_STATUTS as unknown as string[])
+    .order("created_at", { ascending: true });
+  if (error || !data) return [];
+  return data.map((row) => {
+    // Supabase JS renvoie consumer/slot soit comme objet soit comme tableau
+    // selon la version de PostgREST + l'inférence côté typage généré. On
+    // normalise défensivement avec une union TS étroite.
+    const consumer = Array.isArray(row.consumer) ? row.consumer[0] : row.consumer;
+    const slot = Array.isArray(row.slot) ? row.slot[0] : row.slot;
+    return {
+      id: row.id as string,
+      code_commande: (row.code_commande as string | null) ?? null,
+      consumer_prenom: (consumer as { prenom: string | null } | null)?.prenom ?? null,
+      montant_total: Number(row.montant_total ?? 0),
+      slot_starts_at: (slot as { starts_at: string | null } | null)?.starts_at ?? null,
+      slot_ends_at: (slot as { ends_at: string | null } | null)?.ends_at ?? null,
+    };
+  });
+}
+
 export async function excludeSlotAction(
   slotId: string,
-): Promise<{ success: true } | { error: string }> {
+): Promise<ExcludeActionResult> {
   const session = await getSessionUser();
   if (!session) return { error: "Non authentifié" };
 
@@ -572,15 +625,14 @@ export async function excludeSlotAction(
   // Guard : pas d'exclusion si order active (pending/confirmed).
   // Les orders historiques (completed/cancelled/refunded) n'empêchent pas
   // l'exclusion : le slot est déjà consommé ou annulé côté commande.
-  const { count: activeOrderCount } = await admin
-    .from("orders")
-    .select("id", { count: "exact", head: true })
-    .eq("slot_id", slotId)
-    .in("statut", ACTIVE_ORDER_STATUTS as unknown as string[]);
-  if ((activeOrderCount ?? 0) > 0) {
+  // Si bloquantes : on remonte la liste détaillée pour l'UI "Annuler et
+  // fermer" — le producteur pourra annuler puis re-tenter, ou refuser.
+  const blockingOrders = await fetchBlockingOrders(admin, [slotId]);
+  if (blockingOrders.length > 0) {
     return {
       error:
         "Une commande active est liée à ce créneau. Annulez-la avant d'exclure.",
+      blocking_orders: blockingOrders,
     };
   }
 
@@ -636,9 +688,10 @@ export async function unexcludeSlotAction(
 // Exclusion groupée par ids — calendrier « Fermer ce jour » sur une ouverture
 // (libre = 1 slot, rdv = N slots). Refuse si une commande active est liée à
 // l'un des créneaux (cohérent avec excludeSlotAction). Ownership vérifié.
+// Si bloquantes : remonte la liste détaillée pour l'UI "Annuler et fermer".
 export async function excludeSlotsByIdsAction(
   slotIds: string[],
-): Promise<{ success: true } | { error: string }> {
+): Promise<ExcludeActionResult> {
   const session = await getSessionUser();
   if (!session) return { error: "Non authentifié" };
 
@@ -657,15 +710,12 @@ export async function excludeSlotsByIdsAction(
     return { error: "Créneau introuvable." };
   }
 
-  const { count: activeOrderCount } = await admin
-    .from("orders")
-    .select("id", { count: "exact", head: true })
-    .in("slot_id", slotIds)
-    .in("statut", ACTIVE_ORDER_STATUTS as unknown as string[]);
-  if ((activeOrderCount ?? 0) > 0) {
+  const blockingOrders = await fetchBlockingOrders(admin, slotIds);
+  if (blockingOrders.length > 0) {
     return {
       error:
         "Une commande active est liée à cette ouverture. Annulez-la avant de fermer ce jour.",
+      blocking_orders: blockingOrders,
     };
   }
 
