@@ -7,6 +7,7 @@ import {
   createAdHocSlotAction,
 } from "../actions";
 import type { SlotRuleRow } from "@/lib/slots/validators";
+import { maxCapacityForDuration } from "@/lib/slots/capacity-limit";
 
 // Formulaire unifié d'ajout / modification d'une ouverture (ADR-0012).
 // Deux axes en langage simple :
@@ -93,9 +94,17 @@ export default function OpeningModal({
     });
 
   const amplitude = timeToMin(endTime) - timeToMin(startTime);
+  // Durée effective sur laquelle s'applique le plafond capacité :
+  // - rdv   : taille d'une tranche (15/30/60)
+  // - libre : amplitude totale (le slot couvre toute la plage)
+  const effectiveDuration = mode === "rdv" ? duration : amplitude;
+  const maxCap =
+    effectiveDuration > 0 ? maxCapacityForDuration(effectiveDuration) : 1;
+  const capacityExceeds = capacity > maxCap;
   const valid =
     amplitude > 0 &&
     capacity >= 1 &&
+    !capacityExceeds &&
     (mode === "libre" || (duration >= 5 && duration <= amplitude)) &&
     (recurrence === "recurring" ? days.size > 0 : date !== "");
 
@@ -308,10 +317,24 @@ export default function OpeningModal({
               <input
                 type="number"
                 min={1}
+                max={maxCap}
                 value={capacity}
                 onChange={(e) => setCapacity(parseInt(e.target.value, 10) || 0)}
                 className={inputClass}
+                data-testid="capacity-input"
+                aria-describedby="capacity-hint"
               />
+              <span
+                id="capacity-hint"
+                data-testid="capacity-hint"
+                className={`mt-1 block text-[11px] ${
+                  capacityExceeds ? "font-medium text-terra-700" : "text-dark/55"
+                }`}
+              >
+                {capacityExceeds
+                  ? `Maximum ${maxCap} pour ${effectiveDuration} min (2 places par quart d'heure).`
+                  : `Maximum ${maxCap} pour ${effectiveDuration} min.`}
+              </span>
             </label>
           </div>
 
