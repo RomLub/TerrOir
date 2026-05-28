@@ -33,6 +33,10 @@ export const pdfSpacing = {
 export const pdfFonts = {
   body: "NotoSans",
   bold: "NotoSans",
+  // PDF-safe display font, used only for titles and key figures.
+  // The app serif font is loaded by next/font and no reusable font file is versioned.
+  display: "Times-Roman",
+  displayBold: "Times-Bold",
   mono: "Courier",
 } as const;
 
@@ -69,8 +73,7 @@ export const pdfPageStyle = {
 
 export const pdfSectionTitleStyle = {
   color: pdfColors.greenDark,
-  fontFamily: pdfFonts.bold,
-  fontWeight: "bold" as const,
+  fontFamily: pdfFonts.displayBold,
   fontSize: 12,
   marginBottom: 8,
 };
