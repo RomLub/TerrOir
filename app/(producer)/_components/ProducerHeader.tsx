@@ -26,15 +26,15 @@ export function ProducerHeader() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-gray-200 bg-white">
-      <div className="flex h-16 items-center justify-between gap-4 px-6 py-4">
-        <div className="flex items-center gap-4">
+      <div className="flex h-16 items-center justify-between gap-3 px-4 py-4 sm:px-6">
+        <div className="flex min-w-0 items-center gap-3 sm:gap-4">
           <Logo size="sm" href="/" />
-          <div className="h-6 w-px bg-gray-300" aria-hidden="true" />
-          <span className="text-sm font-bold uppercase tracking-wide text-gray-800">
+          <div className="hidden h-6 w-px bg-gray-300 sm:block" aria-hidden="true" />
+          <span className="hidden text-sm font-bold uppercase tracking-wide text-gray-800 sm:inline">
             Espace Producteur
           </span>
         </div>
-        <div className="flex items-center gap-3 sm:gap-4">
+        <div className="flex min-w-0 flex-1 items-center justify-end gap-3 overflow-x-auto sm:gap-4">
           {showPublicFicheLink ? (
             <a
               href={buildPublicProducerUrl(producer!.slug)}

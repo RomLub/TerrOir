@@ -4,6 +4,10 @@ import { getSessionUser } from '@/lib/auth/session';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { fetchProducerForUser, type ProducerRecord } from '@/lib/producers/context';
+import {
+  compareReviewConversationState,
+  getReviewConversationState,
+} from '@/lib/producers/review-conversation-state';
 import { ListSkeleton } from '../_components/ContentSkeletons';
 import { AvisClient, type AvisRow } from './AvisClient';
 
@@ -52,6 +56,22 @@ async function AvisContent({ producer }: { producer: ProducerRecord }) {
 
   if (error) throw error;
 
+  const reviewIds = (data ?? []).map((r) => r.id as string);
+  const readByReviewId = new Map<string, string>();
+  if (reviewIds.length > 0) {
+    const { data: reads, error: readsError } = await admin
+      .from('review_producer_reads')
+      .select('review_id, read_at')
+      .eq('producer_id', producer.id)
+      .in('review_id', reviewIds);
+
+    if (readsError) throw readsError;
+
+    for (const read of reads ?? []) {
+      readByReviewId.set(read.review_id as string, read.read_at as string);
+    }
+  }
+
   const rows: AvisRow[] = (data ?? []).map((r) => {
     const consumer = Array.isArray(r.consumer) ? r.consumer[0] : r.consumer;
     const author = (() => {
@@ -60,6 +80,17 @@ async function AvisContent({ producer }: { producer: ProducerRecord }) {
       const built = [prenom, initiale ? `${initiale}.` : ''].filter(Boolean).join(' ').trim();
       return built || 'Anonyme';
     })();
+    const producerReadAt = readByReviewId.get(r.id as string) ?? null;
+    const conversation = getReviewConversationState({
+      createdAt: r.created_at as string | null,
+      publishedAt: r.published_at as string | null,
+      producerResponse: r.producer_response,
+      producerResponseAt: r.producer_response_at as string | null,
+      producerResponseUpdatedAt: r.producer_response_updated_at as string | null,
+      producerResponseStatus: r.producer_response_status as AvisRow['responseStatus'],
+      producerReadAt,
+    });
+
     return {
       id: r.id,
       author,
@@ -72,8 +103,10 @@ async function AvisContent({ producer }: { producer: ProducerRecord }) {
       responseUpdatedAt: r.producer_response_updated_at as string | null,
       responseLockedAt: r.producer_response_locked_at as string | null,
       responseStatus: r.producer_response_status as AvisRow['responseStatus'],
+      producerReadAt,
+      ...conversation,
     };
-  });
+  }).sort((a, b) => compareReviewConversationState(a, b));
 
   return <AvisClient initialRows={rows} />;
 }

@@ -1,9 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-
-// fetchProducerNavBadges agrège 2 compteurs pour la sidebar producteur
-// (ADR-0011). On mocke le client Supabase (chaîne from/select/eq awaitable)
-// et fetchProducerAlerts. `server-only` est neutralisé par tests/setup.ts.
 
 vi.mock("@/lib/stock-alerts/fetch-producer-alerts", () => ({
   fetchProducerAlerts: vi.fn(),
@@ -16,19 +12,50 @@ const mockedFetchAlerts = vi.mocked(fetchProducerAlerts);
 
 type EqCall = [string, unknown];
 
-function makeAdmin(count: number | null) {
+type ReviewFixture = {
+  created_at: string | null;
+  published_at: string | null;
+  producer_response: string | null;
+  producer_response_at: string | null;
+  producer_response_updated_at: string | null;
+  producer_response_status: "published" | "removed_admin" | "removed_producer" | null;
+};
+
+function makeAdmin(
+  count: number | null,
+  reviews: ReviewFixture[] = [],
+  reviewsError: unknown = null,
+) {
   const eqCalls: EqCall[] = [];
-  const builder: Record<string, unknown> = {
-    from: vi.fn(() => builder),
-    select: vi.fn(() => builder),
+  const ordersBuilder: Record<string, unknown> = {
+    select: vi.fn(() => ordersBuilder),
     eq: vi.fn((col: string, val: unknown) => {
       eqCalls.push([col, val]);
-      return builder;
+      return ordersBuilder;
     }),
     then: (resolve: (v: { count: number | null }) => unknown) =>
       resolve({ count }),
   };
-  return { admin: builder as unknown as SupabaseClient, eqCalls };
+  const reviewsBuilder: Record<string, unknown> = {
+    select: vi.fn(() => reviewsBuilder),
+    eq: vi.fn((col: string, val: unknown) => {
+      eqCalls.push([col, val]);
+      return reviewsBuilder;
+    }),
+    then: (resolve: (v: { data: ReviewFixture[] | null; error: unknown }) => unknown) =>
+      resolve({
+        data: reviewsError ? null : reviews,
+        error: reviewsError,
+      }),
+  };
+  const admin = {
+    from: vi.fn((table: string) => {
+      if (table === "orders") return ordersBuilder;
+      if (table === "reviews") return reviewsBuilder;
+      throw new Error(`table inattendue: ${table}`);
+    }),
+  } as unknown as SupabaseClient;
+  return { admin, eqCalls };
 }
 
 beforeEach(() => {
@@ -36,14 +63,13 @@ beforeEach(() => {
 });
 
 describe("fetchProducerNavBadges", () => {
-  it("ordersToConfirm reflète le count des commandes pending", async () => {
+  it("ordersToConfirm reflete le count des commandes pending", async () => {
     mockedFetchAlerts.mockResolvedValue([]);
     const { admin, eqCalls } = makeAdmin(3);
 
     const badges = await fetchProducerNavBadges(admin, "prod-1");
 
     expect(badges.ordersToConfirm).toBe(3);
-    // Filtre bien sur producer_id + statut 'pending'.
     expect(eqCalls).toContainEqual(["producer_id", "prod-1"]);
     expect(eqCalls).toContainEqual(["statut", "pending"]);
   });
@@ -60,7 +86,41 @@ describe("fetchProducerNavBadges", () => {
     expect(badges.stockRuptures).toBe(2);
   });
 
-  it("fail-open : count null → 0", async () => {
+  it("reviewsToAnswer compte les conversations dont le dernier message vient du client", async () => {
+    mockedFetchAlerts.mockResolvedValue([]);
+    const { admin } = makeAdmin(0, [
+      {
+        created_at: "2026-05-20T10:00:00.000Z",
+        published_at: "2026-05-20T10:00:00.000Z",
+        producer_response: null,
+        producer_response_at: null,
+        producer_response_updated_at: null,
+        producer_response_status: null,
+      },
+      {
+        created_at: "2026-05-21T10:00:00.000Z",
+        published_at: "2026-05-21T10:00:00.000Z",
+        producer_response: "Merci",
+        producer_response_at: "2026-05-21T11:00:00.000Z",
+        producer_response_updated_at: null,
+        producer_response_status: "published",
+      },
+      {
+        created_at: "2026-05-22T10:00:00.000Z",
+        published_at: "2026-05-23T10:00:00.000Z",
+        producer_response: "Ancienne reponse",
+        producer_response_at: "2026-05-22T11:00:00.000Z",
+        producer_response_updated_at: null,
+        producer_response_status: "published",
+      },
+    ]);
+
+    const badges = await fetchProducerNavBadges(admin, "prod-1");
+
+    expect(badges.reviewsToAnswer).toBe(2);
+  });
+
+  it("fail-open : count null -> 0", async () => {
     mockedFetchAlerts.mockResolvedValue([]);
     const { admin } = makeAdmin(null);
 
@@ -69,12 +129,25 @@ describe("fetchProducerNavBadges", () => {
     expect(badges.ordersToConfirm).toBe(0);
   });
 
-  it("fail-open : erreur alertes → stockRuptures 0 (pas de throw)", async () => {
+  it("fail-open : erreur alertes -> stockRuptures 0", async () => {
     mockedFetchAlerts.mockRejectedValue(new Error("boom"));
     const { admin } = makeAdmin(5);
 
     const badges = await fetchProducerNavBadges(admin, "prod-1");
 
-    expect(badges).toEqual({ ordersToConfirm: 5, stockRuptures: 0 });
+    expect(badges).toEqual({
+      ordersToConfirm: 5,
+      stockRuptures: 0,
+      reviewsToAnswer: 0,
+    });
+  });
+
+  it("fail-open : erreur reviews -> reviewsToAnswer 0", async () => {
+    mockedFetchAlerts.mockResolvedValue([]);
+    const { admin } = makeAdmin(0, [], new Error("reviews down"));
+
+    const badges = await fetchProducerNavBadges(admin, "prod-1");
+
+    expect(badges.reviewsToAnswer).toBe(0);
   });
 });

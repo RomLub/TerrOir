@@ -90,6 +90,7 @@ const NAV: NavEntry[] = [
     kind: "item",
     href: "/mes-avis",
     label: "Avis",
+    badgeKey: "reviewsToAnswer",
     icon: (
       <Ic>
         <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
@@ -203,22 +204,23 @@ export function ProducerSidebar({ badges }: ProducerSidebarProps = {}) {
   const badgeValues: ProducerNavBadges = {
     ordersToConfirm: badges?.ordersToConfirm ?? 0,
     stockRuptures: badges?.stockRuptures ?? 0,
+    reviewsToAnswer: badges?.reviewsToAnswer ?? 0,
   };
 
   return (
-    <aside className="sticky top-16 flex h-[calc(100vh-4rem)] w-64 shrink-0 flex-col bg-green-900 text-white">
+    <aside className="w-full shrink-0 bg-green-900 text-white lg:sticky lg:top-16 lg:flex lg:h-[calc(100vh-4rem)] lg:w-64 lg:flex-col">
       <nav
         aria-label="Navigation producteur"
-        className="flex-1 overflow-y-auto p-3"
+        className="overflow-x-auto p-3 lg:flex-1 lg:overflow-y-auto"
       >
-        <ul className="flex flex-col space-y-0.5">
+        <ul className="flex gap-2 lg:flex-col lg:gap-0 lg:space-y-0.5">
           {NAV.map((entry, idx) => {
             if (entry.kind === "group") {
               return (
                 <li
                   key={`group-${idx}`}
                   role="presentation"
-                  className="mt-4 border-t border-white/10 px-3 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-terra-300"
+                  className="mt-4 hidden border-t border-white/10 px-3 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-terra-300 lg:block"
                 >
                   {entry.label}
                 </li>
@@ -231,7 +233,7 @@ export function ProducerSidebar({ badges }: ProducerSidebarProps = {}) {
                 <Link
                   href={entry.href}
                   aria-current={active ? "page" : undefined}
-                  className={`flex h-10 items-center gap-3 rounded-lg px-3 text-[14px] transition-colors ${
+                  className={`flex h-10 items-center gap-3 whitespace-nowrap rounded-lg px-3 text-[14px] transition-colors ${
                     active
                       ? "bg-terra-700 font-semibold text-white"
                       : "text-white/75 hover:bg-white/5 hover:text-white"
@@ -256,7 +258,7 @@ export function ProducerSidebar({ badges }: ProducerSidebarProps = {}) {
         </ul>
       </nav>
 
-      <div className="border-t border-white/10 p-4">
+      <div className="hidden border-t border-white/10 p-4 lg:block">
         {producer ? (
           <>
             <div className="font-serif text-[18px] leading-tight">
