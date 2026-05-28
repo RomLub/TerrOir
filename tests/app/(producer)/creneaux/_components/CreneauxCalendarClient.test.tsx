@@ -132,7 +132,7 @@ const RULES: SlotRuleRow[] = [];
 function makeOrder(over: Partial<BlockingOrder> = {}): BlockingOrder {
   return {
     id: "order-1",
-    code_commande: "X-001",
+    numero_commande: "0001-00001",
     consumer_prenom: "Marie",
     montant_total: 28.5,
     slot_starts_at: "2026-05-30T08:00:00Z",

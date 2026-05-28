@@ -23,7 +23,7 @@ const PUBLICATION_INLINE_MAX = 4;
 
 type PendingOrder = {
   id: string;
-  codeCommande: string | null;
+  numeroCommande: string;
   clientFirstName: string;
   itemsSummary: string;
   total: number;
@@ -332,7 +332,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
               <div className="flex items-center justify-between gap-4 flex-wrap">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 text-[12px] text-dark/50">
-                    {p.codeCommande && <><span>{p.codeCommande}</span><span>·</span></>}
+                    <span>{p.numeroCommande}</span><span>·</span>
                     <span>{p.slotLabel}</span>
                   </div>
                   <div className="mt-1 font-serif text-[20px] text-green-900">{p.clientFirstName}</div>

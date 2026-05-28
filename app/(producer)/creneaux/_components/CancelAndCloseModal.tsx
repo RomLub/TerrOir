@@ -187,7 +187,7 @@ export function CancelAndCloseModal({
                     {status === "ok" && <span aria-hidden="true">✓ </span>}
                     {status === "fail" && <span aria-hidden="true">✗ </span>}
                     {o.consumer_prenom ?? "Client"}
-                    {o.code_commande ? ` · ${o.code_commande}` : ""}
+                    {` · ${o.numero_commande}`}
                   </div>
                   <div className="tabular-nums text-dark/70">
                     {formatMontant(o.montant_total)}

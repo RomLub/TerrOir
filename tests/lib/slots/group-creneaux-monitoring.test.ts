@@ -53,7 +53,7 @@ function makeSlot(opts: Partial<MonitoringSlot> & { id: string }): MonitoringSlo
 function makeOrder(opts: Partial<MonitoringOrder> & { id: string }): MonitoringOrder {
   return {
     id: opts.id,
-    code: opts.code ?? "TRR-00001",
+    numero: opts.numero ?? "0001-00001",
     consumerFirstName:
       opts.consumerFirstName === undefined ? "Jean" : opts.consumerFirstName,
     createdAt: opts.createdAt ?? "2026-05-20T10:00:00Z",
@@ -114,9 +114,9 @@ describe("groupCreneauxMonitoring", () => {
         capacity_per_slot: 8,
         slot_duration_minutes: 540,
       });
-      const o1 = makeOrder({ id: "o-c", code: "TRR-3", createdAt: "2026-05-20T12:00:00Z" });
-      const o2 = makeOrder({ id: "o-a", code: "TRR-1", createdAt: "2026-05-20T10:00:00Z" });
-      const o3 = makeOrder({ id: "o-b", code: "TRR-2", createdAt: "2026-05-20T11:00:00Z" });
+      const o1 = makeOrder({ id: "o-c", numero: "0001-00003", createdAt: "2026-05-20T12:00:00Z" });
+      const o2 = makeOrder({ id: "o-a", numero: "0001-00001", createdAt: "2026-05-20T10:00:00Z" });
+      const o3 = makeOrder({ id: "o-b", numero: "0001-00002", createdAt: "2026-05-20T11:00:00Z" });
       const days = groupCreneauxMonitoring({
         dayKeys: WEEK,
         todayKey: TODAY,
@@ -132,9 +132,9 @@ describe("groupCreneauxMonitoring", () => {
       // Ordre attendu : createdAt asc → o-a (10h), o-b (11h), o-c (12h)
       expect(
         reserved.map((c) =>
-          c.kind === "reserved" ? c.orderCode : null,
+          c.kind === "reserved" ? c.orderNumber : null,
         ),
-      ).toEqual(["TRR-1", "TRR-2", "TRR-3"]);
+      ).toEqual(["0001-00001", "0001-00002", "0001-00003"]);
       // Les 3 premières cases sont les réservées
       expect(block.cells[0]!.kind).toBe("reserved");
       expect(block.cells[1]!.kind).toBe("reserved");
@@ -215,7 +215,7 @@ describe("groupCreneauxMonitoring", () => {
           }),
         );
       });
-      const order = makeOrder({ id: "o1", code: "TRR-42" });
+      const order = makeOrder({ id: "o1", numero: "0001-00042" });
       const days = groupCreneauxMonitoring({
         dayKeys: WEEK,
         todayKey: TODAY,
@@ -235,7 +235,7 @@ describe("groupCreneauxMonitoring", () => {
       expect(block.cells[11]!.kind).toBe("free");
       expect(block.cells[12]!.kind).toBe("reserved");
       if (block.cells[12]!.kind === "reserved") {
-        expect(block.cells[12]!.orderCode).toBe("TRR-42");
+        expect(block.cells[12]!.orderNumber).toBe("0001-00042");
         expect(block.cells[12]!.subSlotStartIso).toBe(iso(28, 10, 30));
       }
       expect(block.cells[13]!.kind).toBe("free");
@@ -268,11 +268,11 @@ describe("groupCreneauxMonitoring", () => {
         );
       }
       const ordersBySlot = new Map<string, MonitoringOrder[]>([
-        ["s0", [makeOrder({ id: "o0", code: "TRR-1" })]],
-        ["s3", [makeOrder({ id: "o3", code: "TRR-2" })]],
-        ["s5", [makeOrder({ id: "o5", code: "TRR-3" })]],
-        ["s8", [makeOrder({ id: "o8", code: "TRR-4" })]],
-        ["s11", [makeOrder({ id: "o11", code: "TRR-5" })]],
+        ["s0", [makeOrder({ id: "o0", numero: "0001-00001" })]],
+        ["s3", [makeOrder({ id: "o3", numero: "0001-00002" })]],
+        ["s5", [makeOrder({ id: "o5", numero: "0001-00003" })]],
+        ["s8", [makeOrder({ id: "o8", numero: "0001-00004" })]],
+        ["s11", [makeOrder({ id: "o11", numero: "0001-00005" })]],
       ]);
       const days = groupCreneauxMonitoring({
         dayKeys: WEEK,
@@ -537,9 +537,9 @@ describe("groupCreneauxMonitoring", () => {
       });
       const sameDate = "2026-05-20T10:00:00Z";
       const orders: MonitoringOrder[] = [
-        makeOrder({ id: "zzz", code: "TRR-Z", createdAt: sameDate }),
-        makeOrder({ id: "aaa", code: "TRR-A", createdAt: sameDate }),
-        makeOrder({ id: "mmm", code: "TRR-M", createdAt: sameDate }),
+        makeOrder({ id: "zzz", numero: "0001-00026", createdAt: sameDate }),
+        makeOrder({ id: "aaa", numero: "0001-00001", createdAt: sameDate }),
+        makeOrder({ id: "mmm", numero: "0001-00013", createdAt: sameDate }),
       ];
       const days = groupCreneauxMonitoring({
         dayKeys: WEEK,
@@ -549,9 +549,10 @@ describe("groupCreneauxMonitoring", () => {
         ordersBySlot: new Map([["s1", orders]]),
       });
       const codes = days[0]!.blocks[0]!.cells.map((c) =>
-        c.kind === "reserved" ? c.orderCode : null,
+        c.kind === "reserved" ? c.orderNumber : null,
       );
-      expect(codes).toEqual(["TRR-A", "TRR-M", "TRR-Z"]);
+      // Tri par id ASC : aaa < mmm < zzz → numeros [00001, 00013, 00026]
+      expect(codes).toEqual(["0001-00001", "0001-00013", "0001-00026"]);
     });
 
     it("today flag positionné quand dateKey === todayKey", () => {

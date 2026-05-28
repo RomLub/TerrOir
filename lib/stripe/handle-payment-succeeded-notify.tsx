@@ -12,6 +12,7 @@ import OrderRevivalBlocked, {
 } from "@/lib/resend/templates/order-revival-blocked";
 import type { OrderItemLine } from "@/lib/resend/templates/order-confirmed-consumer";
 import type { PaymentSucceededResult } from "@/lib/stripe/handle-payment-succeeded";
+import { formatOrderNumber } from "@/lib/orders/order-number";
 
 // debt-P1-2 — extraction de la branche `payment_intent.succeeded` du webhook
 // route.tsx (501 lignes -> ~280 lignes une fois extraite). Le handler
@@ -160,14 +161,17 @@ export async function notifyPaymentSucceeded(
   const { data: order } = await admin
     .from("orders")
     .select(
-      "id, producer_id, consumer_id, statut, code_commande, date_retrait, heure_retrait, montant_total",
+      "id, producer_id, consumer_id, statut, code_commande, producer_order_seq, date_retrait, heure_retrait, montant_total",
     )
     .eq("id", orderId)
     .maybeSingle();
 
   if (!order) return;
 
-  // Lookups parallèles pour composer l'email producteur
+  // Lookups parallèles pour composer l'email producteur. ADR-0015 : on
+  // récupère aussi producer_number pour composer le numero_commande
+  // affichable côté producteur (le code_commande reste pour le payload
+  // consumer côté SMS rappel J0).
   const [{ data: consumer }, { data: producer }, { data: lines }] =
     await Promise.all([
       admin
@@ -177,7 +181,7 @@ export async function notifyPaymentSucceeded(
         .maybeSingle(),
       admin
         .from("producers")
-        .select("user_id, nom_exploitation")
+        .select("user_id, nom_exploitation, producer_number")
         .eq("id", order.producer_id)
         .maybeSingle(),
       admin
@@ -226,7 +230,10 @@ export async function notifyPaymentSucceeded(
 
   if (producerUser?.email) {
     const props = {
-      codeCommande: order.code_commande,
+      numeroCommande: formatOrderNumber(
+        producer.producer_number ?? 0,
+        (order.producer_order_seq as number) ?? 0,
+      ),
       customerPrenom: consumer?.prenom ?? "",
       customerNom: consumer?.nom ?? "",
       customerEmail: consumer?.email ?? "",

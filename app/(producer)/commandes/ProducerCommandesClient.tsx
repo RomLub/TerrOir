@@ -9,7 +9,7 @@ import { PickupValidationCard } from './_components/PickupValidationCard';
 
 export type ProducerOrderRow = {
   id: string;
-  code_commande: string | null;
+  numero_commande: string;
   created_at: string;
   status: OrderStatus;
   client_name: string;
@@ -130,7 +130,7 @@ export function ProducerCommandesClient({
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 text-[12px] text-dark/50">
-                  {o.code_commande && <><span>{o.code_commande}</span><span>·</span></>}
+                  <span>{o.numero_commande}</span><span>·</span>
                   <span>Reçu {formatReceived(o.created_at)}</span>
                 </div>
                 <div className="mt-1 flex items-baseline gap-3 flex-wrap">

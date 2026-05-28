@@ -46,7 +46,7 @@ function render(node: ReactElement) {
 function makeOrder(over: Partial<BlockingOrder> = {}): BlockingOrder {
   return {
     id: "o1",
-    code_commande: "ABC-001",
+    numero_commande: "ABC-001",
     consumer_prenom: "Marie",
     montant_total: 28.5,
     slot_starts_at: "2026-05-30T08:00:00Z",
@@ -113,8 +113,8 @@ describe("CancelAndCloseModal — rendu initial", () => {
     render(
       <CancelAndCloseModal
         blockingOrders={[
-          makeOrder({ id: "o1", consumer_prenom: "Marie", code_commande: "ABC-001", montant_total: 28.5 }),
-          makeOrder({ id: "o2", consumer_prenom: "Paul", code_commande: "ABC-002", montant_total: 45 }),
+          makeOrder({ id: "o1", consumer_prenom: "Marie", numero_commande: "ABC-001", montant_total: 28.5 }),
+          makeOrder({ id: "o2", consumer_prenom: "Paul", numero_commande: "ABC-002", montant_total: 45 }),
         ]}
         onClose={() => {}}
         onAllCancelled={() => {}}
@@ -175,7 +175,7 @@ describe("CancelAndCloseModal — succès complet", () => {
       <CancelAndCloseModal
         blockingOrders={[
           makeOrder({ id: "o1" }),
-          makeOrder({ id: "o2", code_commande: "B" }),
+          makeOrder({ id: "o2", numero_commande: "B" }),
         ]}
         onClose={() => {}}
         onAllCancelled={onAllCancelled}

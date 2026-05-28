@@ -166,17 +166,19 @@ describe("excludeSlotAction — chantier annuler-et-fermer", () => {
     const blockingRows = [
       {
         id: "o1",
-        code_commande: "ABC-001",
+        producer_order_seq: 1,
         montant_total: 28.5,
         consumer: { prenom: "Marie" },
         slot: { starts_at: "2026-05-30T08:00:00Z", ends_at: "2026-05-30T08:15:00Z" },
+        producer: { producer_number: 42 },
       },
       {
         id: "o2",
-        code_commande: "ABC-002",
+        producer_order_seq: 2,
         montant_total: 45,
         consumer: { prenom: "Paul" },
         slot: { starts_at: "2026-05-30T08:30:00Z", ends_at: "2026-05-30T08:45:00Z" },
+        producer: { producer_number: 42 },
       },
     ];
     const { client, captured } = buildClient({
@@ -195,7 +197,7 @@ describe("excludeSlotAction — chantier annuler-et-fermer", () => {
       expect(orders).toHaveLength(2);
       expect(orders[0]).toEqual({
         id: "o1",
-        code_commande: "ABC-001",
+        numero_commande: "0042-00001",
         consumer_prenom: "Marie",
         montant_total: 28.5,
         slot_starts_at: "2026-05-30T08:00:00Z",
@@ -203,7 +205,7 @@ describe("excludeSlotAction — chantier annuler-et-fermer", () => {
       });
       expect(orders[1]).toEqual({
         id: "o2",
-        code_commande: "ABC-002",
+        numero_commande: "0042-00002",
         consumer_prenom: "Paul",
         montant_total: 45,
         slot_starts_at: "2026-05-30T08:30:00Z",

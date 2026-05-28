@@ -51,7 +51,7 @@ export type MonitoringRule = {
 
 export type MonitoringOrder = {
   id: string;
-  code: string;
+  numero: string;
   consumerFirstName: string | null;
   createdAt: string;
 };
@@ -60,7 +60,7 @@ export type MonitoringCell =
   | {
       kind: "reserved";
       orderId: string;
-      orderCode: string;
+      orderNumber: string;
       consumerFirstName: string | null;
       subSlotStartIso: string;
     }
@@ -270,7 +270,7 @@ function makeBlock(params: {
       cells.push({
         kind: "reserved",
         orderId: o.id,
-        orderCode: o.code,
+        orderNumber: o.numero,
         consumerFirstName: o.consumerFirstName,
         subSlotStartIso: slot.starts_at,
       });

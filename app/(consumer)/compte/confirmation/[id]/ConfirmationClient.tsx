@@ -8,6 +8,7 @@ import { OrderProvenance } from '@/components/consumer/OrderProvenance';
 export type ConfirmationProps = {
   orderId: string;
   codeCommande: string;
+  numeroCommande: string;
   statut: string;
   closureReason: string | null;
   items: { name: string; qty: string; price: number }[];
@@ -90,7 +91,7 @@ function RevivalBlockedView({
   );
 }
 
-export function ConfirmationClient({ orderId, codeCommande, statut, closureReason, items, producer, slot, total }: ConfirmationProps) {
+export function ConfirmationClient({ orderId, codeCommande, numeroCommande, statut, closureReason, items, producer, slot, total }: ConfirmationProps) {
   // Hooks d'animation du path nominal — déclarés AVANT le branchement
   // conditionnel pour respecter les rules-of-hooks (mêmes hooks dans le
   // même ordre à chaque render). Inutilisés sur le path RevivalBlockedView
@@ -151,6 +152,9 @@ export function ConfirmationClient({ orderId, codeCommande, statut, closureReaso
           <CodeCommande code={codeCommande} />
           <p className="mt-4 text-[14px] text-dark/70 font-medium">
             Note ce code — tu devras le présenter au producteur.
+          </p>
+          <p className="mt-2 text-[12px] text-dark/50">
+            Numéro de commande : <span className="font-mono">{numeroCommande}</span>
           </p>
         </div>
 

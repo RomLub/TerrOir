@@ -165,7 +165,7 @@ async function DashboardContent({
     } | null;
     pending_orders?: Array<{
       id: string;
-      code_commande: string | null;
+      numero_commande: string;
       created_at: string;
       montant_total: number | null;
       date_retrait: string | null;
@@ -175,7 +175,7 @@ async function DashboardContent({
     }>;
     upcoming_orders?: Array<{
       id: string;
-      code_commande: string | null;
+      numero_commande: string;
       heure_retrait: string | null;
       date_retrait: string | null;
       consumer: { prenom: string | null } | null;
@@ -189,7 +189,7 @@ async function DashboardContent({
       rule_id?: string | null;
       orders?: Array<{
         order_id: string;
-        code_commande: string;
+        numero_commande: string;
         starts_at: string;
       }>;
     }>;
@@ -246,7 +246,7 @@ async function DashboardContent({
     const hoursLeft = Math.max(0, 24 - Math.floor((now.getTime() - new Date(o.created_at).getTime()) / 3_600_000));
     return {
       id: o.id,
-      codeCommande: o.code_commande,
+      numeroCommande: o.numero_commande,
       clientFirstName: consumer?.prenom?.trim() || 'Client',
       itemsSummary: itemsSummary || '—',
       total: Number(o.montant_total ?? 0),
@@ -265,7 +265,7 @@ async function DashboardContent({
       : '';
     nextPickup = {
       label,
-      sub: `${consumer?.prenom ?? 'Client'} · ${u.code_commande ?? ''} · ${subDate}`.trim(),
+      sub: `${consumer?.prenom ?? 'Client'} · ${u.numero_commande} · ${subDate}`.trim(),
     };
   }
 

@@ -8,6 +8,7 @@ import { OrderProvenance } from '@/components/consumer/OrderProvenance';
 export type OrderDetailData = {
   id: string;
   codeCommande: string | null;
+  numeroCommande: string;
   statut: OrderStatus;
   createdAt: string;
   total: number;
@@ -72,7 +73,7 @@ export function OrderDetailClient({ data }: { data: OrderDetailData }) {
       <Link href="/compte/commandes" className="text-[13px] text-dark/60 hover:text-green-900">← Mes commandes</Link>
         <div className="mt-3 flex items-start justify-between gap-4 flex-wrap">
           <div>
-            {o.codeCommande && <div className="text-[12px] text-dark/50">{o.codeCommande}</div>}
+            <div className="text-[12px] text-dark/50">{o.numeroCommande}</div>
             <h1 className="font-serif text-[40px] md:text-[48px] text-green-900 leading-tight">{o.producer.name}</h1>
             <div className="text-[14px] text-dark/60 mt-1">Commandé le {o.createdAt}</div>
           </div>

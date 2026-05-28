@@ -6,6 +6,7 @@ export type ProducerRecord = {
   slug: string;
   nom_exploitation: string;
   statut: 'draft' | 'pending' | 'active' | 'public' | 'suspended';
+  producer_number: number;
 };
 
 export async function fetchProducerForUser(
@@ -14,7 +15,7 @@ export async function fetchProducerForUser(
 ): Promise<ProducerRecord | null> {
   const { data } = await supabase
     .from('producers')
-    .select('id, user_id, slug, nom_exploitation, statut')
+    .select('id, user_id, slug, nom_exploitation, statut, producer_number')
     .eq('user_id', userId)
     .maybeSingle();
   return (data as ProducerRecord | null) ?? null;

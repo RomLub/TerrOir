@@ -15,6 +15,7 @@ import { SectionSkeleton } from '../../_components/ContentSkeletons';
 // PRIVACY: opt-out: lat/lng deja arrondies cote DB via vue producers_public,
 // roundCoord reapplique pour fail-safe si la vue venait a etre regressee.
 import { roundCoord } from '@/lib/producers/coords';
+import { formatOrderNumber } from '@/lib/orders/order-number';
 import { OrderDetailClient, type OrderDetailData } from './OrderDetailClient';
 
 function formatDateLabel(iso: string): string {
@@ -60,7 +61,7 @@ async function OrderDetailGate(props: { paramsPromise: Promise<{ id: string }> }
   const { data: order } = await supabase
     .from('orders')
     .select(`
-      id, code_commande, consumer_id, producer_id, statut, created_at,
+      id, code_commande, producer_order_seq, consumer_id, producer_id, statut, created_at,
       date_retrait, heure_retrait, montant_total,
       slots:slot_id ( starts_at, ends_at ),
       order_items ( quantite, sous_total, products:product_id ( nom, unite ) )
@@ -76,7 +77,7 @@ async function OrderDetailGate(props: { paramsPromise: Promise<{ id: string }> }
   // dans le body de la vue).
   const { data: producerRow } = await supabase
     .from('producers_public')
-    .select('nom_exploitation, slug, adresse, commune, code_postal, latitude, longitude')
+    .select('nom_exploitation, slug, adresse, commune, code_postal, latitude, longitude, producer_number')
     .eq('id', order.producer_id)
     .maybeSingle();
 
@@ -107,9 +108,15 @@ async function OrderDetailGate(props: { paramsPromise: Promise<{ id: string }> }
     };
   });
 
+  const numeroCommande = formatOrderNumber(
+    producerRow?.producer_number ?? 0,
+    order.producer_order_seq ?? 0,
+  );
+
   const data: OrderDetailData = {
     id: order.id,
     codeCommande: order.code_commande ?? null,
+    numeroCommande,
     statut: order.statut as OrderStatus,
     createdAt: formatDateTimeLabel(order.created_at),
     total: Number(order.montant_total ?? 0),

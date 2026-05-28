@@ -37,6 +37,7 @@ type ApiError =
 type PreviewOrder = {
   id: string;
   code_commande: string;
+  numero_commande: string;
   consumer_name: string;
   items: { name: string; qty: string; unit_price: number; total: number }[];
   total_amount: number;
@@ -47,6 +48,7 @@ type PreviewOrder = {
 type ValidatedOrder = {
   id: string;
   code_commande: string;
+  numero_commande: string;
   consumer_name: string;
   status: 'completed';
   completed_at: string;
@@ -393,12 +395,22 @@ export function PickupValidationCard({
               </div>
             </div>
 
-            <div>
-              <div className="text-[11px] uppercase tracking-[0.14em] text-dark/50 font-semibold">
-                Code de retrait
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.14em] text-dark/50 font-semibold">
+                  Numéro
+                </div>
+                <div className="mt-1 font-mono text-[15px] text-green-900">
+                  {view.preview.numero_commande}
+                </div>
               </div>
-              <div className="mt-1 font-mono text-[15px] text-green-900">
-                {view.preview.code_commande}
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.14em] text-dark/50 font-semibold">
+                  Code de retrait
+                </div>
+                <div className="mt-1 font-mono text-[15px] text-green-900">
+                  {view.preview.code_commande}
+                </div>
               </div>
             </div>
 

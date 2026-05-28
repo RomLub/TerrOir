@@ -36,7 +36,7 @@ export type VerticalSlot = {
   capacity_per_slot: number;
   rule_id: string | null;
   orders_count: number;
-  orders: { order_id: string; code_commande: string; starts_at: string }[];
+  orders: { order_id: string; numero_commande: string; starts_at: string }[];
 };
 
 export type VerticalDay = {
@@ -248,7 +248,7 @@ function BandBlock({
                     {formatTimeParis(o.starts_at)}
                   </span>
                   <span className="font-mono text-[11px] text-terra-900 truncate">
-                    {o.code_commande}
+                    {o.numero_commande}
                   </span>
                 </Link>
               </li>

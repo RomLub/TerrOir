@@ -47,6 +47,7 @@ import {
 } from "@/lib/slots/validators";
 import { sliceWindow } from "@/lib/slots/slice-window";
 import { ACTIVE_ORDER_STATUTS } from "@/lib/orders/stateMachine";
+import { formatOrderNumber } from "@/lib/orders/order-number";
 
 const TZ_PARIS = "Europe/Paris";
 
@@ -526,7 +527,7 @@ export async function deleteAdHocOpeningAction(
  */
 export type BlockingOrder = {
   id: string;
-  code_commande: string | null;
+  numero_commande: string;
   consumer_prenom: string | null;
   montant_total: number;
   slot_starts_at: string | null;
@@ -539,8 +540,10 @@ export type ExcludeActionResult =
 
 // Helper interne : fetch des orders actives liées à un set de slot ids,
 // avec les infos nécessaires à l'UI modale (consumer prenom, montant,
-// horaire). Service_role → bypass RLS, l'ownership a déjà été vérifié
-// en amont par le caller.
+// horaire, numero_commande producteur-facing). ADR-0015 : `code_commande`
+// n'est plus exposé côté producteur — on compose `numero_commande` via
+// le producer_order_seq + le producer_number joint.
+// Service_role → bypass RLS, l'ownership a déjà été vérifié en amont.
 async function fetchBlockingOrders(
   admin: ReturnType<typeof createSupabaseAdminClient>,
   slotIds: string[],
@@ -549,21 +552,24 @@ async function fetchBlockingOrders(
   const { data, error } = await admin
     .from("orders")
     .select(
-      "id, code_commande, montant_total, consumer:users!orders_consumer_id_fkey(prenom), slot:slots!orders_slot_id_fkey(starts_at, ends_at)",
+      "id, producer_order_seq, montant_total, consumer:users!orders_consumer_id_fkey(prenom), slot:slots!orders_slot_id_fkey(starts_at, ends_at), producer:producers!orders_producer_id_fkey(producer_number)",
     )
     .in("slot_id", slotIds)
     .in("statut", ACTIVE_ORDER_STATUTS as unknown as string[])
     .order("created_at", { ascending: true });
   if (error || !data) return [];
   return data.map((row) => {
-    // Supabase JS renvoie consumer/slot soit comme objet soit comme tableau
-    // selon la version de PostgREST + l'inférence côté typage généré. On
-    // normalise défensivement avec une union TS étroite.
     const consumer = Array.isArray(row.consumer) ? row.consumer[0] : row.consumer;
     const slot = Array.isArray(row.slot) ? row.slot[0] : row.slot;
+    const producer = Array.isArray(row.producer) ? row.producer[0] : row.producer;
+    const producerNumber =
+      (producer as { producer_number: number } | null)?.producer_number ?? 0;
     return {
       id: row.id as string,
-      code_commande: (row.code_commande as string | null) ?? null,
+      numero_commande: formatOrderNumber(
+        producerNumber,
+        (row.producer_order_seq as number) ?? 0,
+      ),
       consumer_prenom: (consumer as { prenom: string | null } | null)?.prenom ?? null,
       montant_total: Number(row.montant_total ?? 0),
       slot_starts_at: (slot as { starts_at: string | null } | null)?.starts_at ?? null,

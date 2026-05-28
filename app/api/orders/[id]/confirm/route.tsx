@@ -14,6 +14,7 @@ import OrderConfirmedConsumer, {
   subject as confirmedSubject,
   type OrderItemLine,
 } from "@/lib/resend/templates/order-confirmed-consumer";
+import { formatOrderNumber } from "@/lib/orders/order-number";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -31,7 +32,7 @@ export async function POST(_request: Request, props0: RouteContext) {
   const { data: order } = await admin
     .from("orders")
     .select(
-      "id, producer_id, consumer_id, statut, code_commande, created_at, date_retrait, heure_retrait, montant_total",
+      "id, producer_id, consumer_id, statut, code_commande, producer_order_seq, created_at, date_retrait, heure_retrait, montant_total",
     )
     .eq("id", params.id)
     .maybeSingle();
@@ -127,7 +128,7 @@ export async function POST(_request: Request, props0: RouteContext) {
         .maybeSingle(),
       admin
         .from("producers")
-        .select("nom_exploitation, adresse, commune, code_postal")
+        .select("nom_exploitation, adresse, commune, code_postal, producer_number")
         .eq("id", order.producer_id)
         .maybeSingle(),
       admin
@@ -158,6 +159,10 @@ export async function POST(_request: Request, props0: RouteContext) {
 
     const props = {
       codeCommande: order.code_commande,
+      numeroCommande: formatOrderNumber(
+        (producer as { producer_number?: number }).producer_number ?? 0,
+        order.producer_order_seq ?? 0,
+      ),
       exploitation: producer.nom_exploitation,
       dateRetrait: order.date_retrait ?? "",
       heureRetrait: (order.heure_retrait ?? "").slice(0, 5),

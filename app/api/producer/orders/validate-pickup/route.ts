@@ -190,6 +190,7 @@ export async function GET(request: Request) {
       order: {
         id: result.order.id,
         code_commande: result.order.code_commande,
+        numero_commande: result.order.numero_commande,
         consumer_name: result.order.consumer_name,
         items: result.order.items,
         total_amount: result.order.total_amount,
@@ -263,6 +264,7 @@ export async function POST(request: Request) {
       order: {
         id: result.order.id,
         code_commande: result.order.code_commande,
+        numero_commande: result.order.numero_commande,
         consumer_name: result.order.consumer_name,
         status: result.order.status,
         completed_at: result.order.completed_at,

@@ -14,6 +14,7 @@ import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 export type OrderRow = {
   id: string;
   code_commande: string | null;
+  numero_commande: string;
   created_at: string;
   statut: OrderStatus;
   closure_reason: string | null;
@@ -161,7 +162,7 @@ export function CommandesClient({
             <div className="flex items-center justify-between gap-4 flex-wrap">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 text-[12px] text-dark/50">
-                  {o.code_commande && <><span>{o.code_commande}</span><span>·</span></>}
+                  <span>{o.numero_commande}</span><span>·</span>
                   <span>{formatDateFr(o.created_at)}</span>
                 </div>
                 <div className="mt-1 font-serif text-[22px] text-green-900 leading-tight">{o.producer_name}</div>
