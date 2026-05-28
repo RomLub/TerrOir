@@ -26,7 +26,11 @@ export function RoleToggle({ current, className = "" }: RoleToggleProps) {
   return (
     <nav
       aria-label="Basculer d'espace"
-      className={`relative inline-grid grid-cols-2 items-stretch rounded-full border border-terroir-border bg-terroir-bg p-1 text-xs font-medium ${className}`}
+      // shrink-0 : indispensable quand le toggle vit dans un flex parent tight
+      // (ex : NavbarPublic desktop). Sans ca, les cellules grid-cols-2
+      // (minmax(0,1fr)) shrinkent sous leur contenu, et les labels
+      // whitespace-nowrap se chevauchent ("Espace acheteuEspace producteur").
+      className={`relative inline-grid shrink-0 grid-cols-2 items-stretch rounded-full border border-terroir-border bg-terroir-bg p-1 text-xs font-medium ${className}`}
     >
       {/* Curseur slider absolu qui translate selon `current`. Largeur
           calc(50%-0.25rem) = moitié du conteneur moins la moitié du padding

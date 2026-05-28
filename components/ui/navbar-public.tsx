@@ -192,7 +192,7 @@ export function NavbarPublic({
                 <button
                   type="submit"
                   disabled={isLoggingOut}
-                  className="text-xs text-terroir-muted transition-colors hover:text-terra-700 hover:underline disabled:opacity-50"
+                  className="text-sm text-terroir-muted transition-colors hover:text-terra-700 hover:underline disabled:opacity-50"
                 >
                   Déconnexion
                 </button>
