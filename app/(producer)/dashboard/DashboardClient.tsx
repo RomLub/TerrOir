@@ -1,8 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState, useTransition } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { Button, ProducerBadge } from '@/components/ui';
 import { StatCard } from '@/components/producer/StatCard';
@@ -36,10 +35,16 @@ export type DashboardData = {
   producerId: string;
   producerName: string;
   firstName: string;
-  /** Offset de semaine consulté (0 = semaine en cours, négatif = passé). */
-  weekOffset: number;
-  /** Libellé de la semaine consultée (ex. « 19 – 25 mai »). */
-  weekPeriodLabel: string;
+  /**
+   * 10 semaines pré-chargées (index 0 = semaine -1, 1 = courante, 2..9 = +1..+8).
+   * La navigation entre ces semaines se fait côté client (swipe ‹/›), sans
+   * appel réseau supplémentaire ni rechargement de page.
+   */
+  weekPlannings: VerticalDay[][];
+  /** Libellés alignés sur `weekPlannings` (ex. « 19 – 25 mai »). */
+  weekPeriodLabels: string[];
+  /** Index dans `weekPlannings` qui correspond à la semaine courante (= 1). */
+  currentWeekIndex: number;
   ordersToday: number;
   ordersYesterday: number;
   revenueWeek: number;
@@ -48,10 +53,6 @@ export type DashboardData = {
   reviewCount: number;
   nextPickup: { label: string; sub: string } | null;
   pendingOrders: PendingOrder[];
-  /** 7 jours (Lun→Dim) pour le composant VerticalWeekCalendar. */
-  weekPlanning: VerticalDay[];
-  /** Échelle horaire commune (Europe/Paris) pour aligner les 7 colonnes. */
-  weekHourRange: { startHour: number; endHour: number };
   badges: {
     kind: 'stock' | 'response' | 'reliability';
     score: number;
@@ -183,12 +184,20 @@ export function DashboardClient({ data }: { data: DashboardData }) {
   // useState(initial) qui figerait le snapshot et bloquerait la propagation
   // des nouveaux searchParams (cf. bug planning semaine 2026-05-27).
   const [liveOrdersToday, setLiveOrdersToday] = useState(data.ordersToday);
-  const router = useRouter();
-  const [isWeekNavPending, startWeekNavTransition] = useTransition();
+  // Index de la semaine affichée dans le calendrier. La donnée des 10
+  // semaines est déjà côté client — naviguer = changer cet index, zéro
+  // refetch. Démarre toujours sur la semaine courante (currentWeekIndex).
+  const [weekIndex, setWeekIndex] = useState(data.currentWeekIndex);
 
   useEffect(() => {
     setLiveOrdersToday(data.ordersToday);
   }, [data.ordersToday]);
+
+  // Resync l'index quand le serveur ré-render (ex. semaine courante qui change
+  // à minuit) : on revient sur la nouvelle semaine courante par défaut.
+  useEffect(() => {
+    setWeekIndex(data.currentWeekIndex);
+  }, [data.currentWeekIndex]);
 
   useEffect(() => {
     const supabase = createSupabaseBrowserClient();
@@ -215,17 +224,9 @@ export function DashboardClient({ data }: { data: DashboardData }) {
     };
   }, [data.producerId]);
 
-  function handleWeekNavigate(href: string) {
-    startWeekNavTransition(() => {
-      router.push(href);
-    });
-  }
-
   const revenueDelta = data.revenueLastWeek > 0
     ? Math.round(((data.revenueWeek - data.revenueLastWeek) / data.revenueLastWeek) * 100)
     : null;
-
-  const isCurrentWeek = data.weekOffset === 0;
 
   const metrics = [
     {
@@ -235,7 +236,11 @@ export function DashboardClient({ data }: { data: DashboardData }) {
       tone: 'green' as const,
     },
     {
-      label: isCurrentWeek ? 'Revenus cette semaine' : 'Revenus de la semaine',
+      // Toujours « cette semaine » : le revenu reste figé sur la semaine
+      // courante quelle que soit la semaine du calendrier affichée (option A
+      // 2026-05-28). Naviguer le calendrier vers le futur ne déplace pas les
+      // chiffres revenus (qui afficheraient 0 € systématiquement).
+      label: 'Revenus cette semaine',
       value: euros(data.revenueWeek),
       sub: revenueDelta === null ? '—' : `${revenueDelta >= 0 ? '+' : ''}${revenueDelta}% vs semaine passée`,
       tone: 'green' as const,
@@ -348,24 +353,22 @@ export function DashboardClient({ data }: { data: DashboardData }) {
         </div>
       </section>
 
-      <section className="mb-10" aria-busy={isWeekNavPending}>
+      <section className="mb-10">
         <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
           <h2 className="text-[12px] font-semibold uppercase tracking-[0.16em] text-dark/55">Planning de la semaine</h2>
           <WeekNavigator
-            weekOffset={data.weekOffset}
-            periodLabel={data.weekPeriodLabel}
-            isPending={isWeekNavPending}
-            onNavigate={handleWeekNavigate}
+            mode="client"
+            currentIndex={weekIndex}
+            minIndex={0}
+            maxIndex={data.weekPlannings.length - 1}
+            homeIndex={data.currentWeekIndex}
+            periodLabel={data.weekPeriodLabels[weekIndex] ?? ''}
+            onIndexChange={setWeekIndex}
           />
         </div>
-        <div
-          className={`bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-5 transition-opacity ${
-            isWeekNavPending ? 'opacity-60' : ''
-          }`}
-        >
+        <div className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-5">
           <VerticalWeekCalendar
-            days={data.weekPlanning}
-            hourRange={data.weekHourRange}
+            days={data.weekPlannings[weekIndex] ?? data.weekPlannings[data.currentWeekIndex]!}
           />
         </div>
       </section>

@@ -21,6 +21,14 @@ import { groupIntoBands, type Band } from '@/lib/slots/group-into-bands';
 
 const TZ = 'Europe/Paris';
 
+// Amplitude horaire fixe pour le calendrier dashboard (2026-05-28). La grille
+// affiche toujours 6h-21h, indépendamment des créneaux paramétrés. Décision
+// produit : l'amplitude doit donner un repère stable plutôt que de zoomer sur
+// les seuls créneaux ouverts (un jour 9h-12h ne doit pas dicter la lecture
+// des 6 autres colonnes). Plage volontairement large pour absorber les
+// horaires extrêmes (marchés matinaux, AMAP en soirée).
+const FIXED_HOUR_RANGE = { startHour: 6, endHour: 21 } as const;
+
 export type VerticalSlot = {
   id: string;
   starts_at: string;
@@ -42,7 +50,6 @@ type HourRange = { startHour: number; endHour: number };
 
 type Props = {
   days: VerticalDay[];
-  hourRange: HourRange;
 };
 
 // Heure décimale Paris depuis un ISO timestamptz (ex: 9.5 = 9h30).
@@ -276,7 +283,8 @@ function DayColumn({
   );
 }
 
-export function VerticalWeekCalendar({ days, hourRange }: Props) {
+export function VerticalWeekCalendar({ days }: Props) {
+  const hourRange = FIXED_HOUR_RANGE;
   return (
     <div data-testid="vertical-week-calendar">
       {/* Header : axe + 7 labels jours */}

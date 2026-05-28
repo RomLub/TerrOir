@@ -67,7 +67,11 @@ function render(node: React.ReactElement) {
   act(() => root.render(node));
 }
 
-function arrow(label: 'Semaine précédente' | 'Semaine suivante'): HTMLAnchorElement | null {
+function arrow(
+  label: 'Semaine précédente' | 'Semaine suivante',
+): HTMLElement | null {
+  // En mode URL (legacy) → <a>. En mode client → <button>. On retourne le
+  // HTMLElement générique : dispatchEvent fonctionne sur les deux.
   return container.querySelector(`[aria-label="${label}"]`);
 }
 
@@ -135,64 +139,143 @@ describe('WeekNavigator — interactions clic (mode autonome, fallback /revenus)
   });
 });
 
-describe('WeekNavigator — contrôle externe (mode dashboard)', () => {
-  it('onNavigate fourni : clic appelle onNavigate, pas router.push', () => {
-    const onNavigate = vi.fn();
+// Mode "client" (swipe pré-chargé /dashboard 2026-05-28) : la navigation
+// pilote un index local via `onIndexChange`, sans router.push ni `<Link>`.
+// Les bornes et le bouton "Revenir à cette semaine" sont contrôlés
+// explicitement par le parent (currentIndex / minIndex / maxIndex / homeIndex).
+describe('WeekNavigator — mode client (swipe local)', () => {
+  it('flèches : appellent onIndexChange(prev/next), pas router.push', () => {
+    const onIndexChange = vi.fn();
     render(
       <WeekNavigator
-        weekOffset={0}
+        mode="client"
+        currentIndex={1}
+        minIndex={0}
+        maxIndex={9}
+        homeIndex={1}
         periodLabel="25 – 31 mai"
-        isPending={false}
-        onNavigate={onNavigate}
+        onIndexChange={onIndexChange}
       />,
     );
-    const next = arrow('Semaine suivante')!;
     act(() => {
-      next.dispatchEvent(
+      arrow('Semaine suivante')!.dispatchEvent(
         new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }),
       );
     });
-    expect(onNavigate).toHaveBeenCalledTimes(1);
-    expect(onNavigate).toHaveBeenCalledWith('/dashboard?week=1');
+    act(() => {
+      arrow('Semaine précédente')!.dispatchEvent(
+        new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }),
+      );
+    });
+    expect(onIndexChange).toHaveBeenNthCalledWith(1, 2);
+    expect(onIndexChange).toHaveBeenNthCalledWith(2, 0);
     expect(pushMock).not.toHaveBeenCalled();
   });
 
-  it('isPending=true : label en opacity-60, flèches pointer-events-none + aria-disabled', () => {
+  it('borne basse : flèche précédente non cliquable à minIndex', () => {
+    const onIndexChange = vi.fn();
     render(
       <WeekNavigator
-        weekOffset={-1}
+        mode="client"
+        currentIndex={0}
+        minIndex={0}
+        maxIndex={9}
+        homeIndex={1}
         periodLabel="18 – 24 mai"
-        isPending={true}
-        onNavigate={vi.fn()}
+        onIndexChange={onIndexChange}
       />,
     );
-    const label = periodLabelEl();
-    expect(label.className).toContain('opacity-60');
-
-    const prev = arrow('Semaine précédente')!;
-    const next = arrow('Semaine suivante')!;
-    expect(prev.className).toContain('pointer-events-none');
-    expect(next.className).toContain('pointer-events-none');
-    expect(prev.getAttribute('aria-disabled')).toBe('true');
-    expect(next.getAttribute('aria-disabled')).toBe('true');
+    // Pas de <button> ‹ — le composant rend un <span aria-hidden>.
+    expect(arrow('Semaine précédente')).toBeNull();
+    // Flèche suivante toujours cliquable.
+    act(() => {
+      arrow('Semaine suivante')!.dispatchEvent(
+        new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }),
+      );
+    });
+    expect(onIndexChange).toHaveBeenCalledWith(1);
   });
 
-  it('isPending=false : pas d\'opacity-60 ni pointer-events-none', () => {
+  it('borne haute : flèche suivante non cliquable à maxIndex', () => {
+    const onIndexChange = vi.fn();
     render(
       <WeekNavigator
-        weekOffset={0}
-        periodLabel="25 – 31 mai"
-        isPending={false}
-        onNavigate={vi.fn()}
+        mode="client"
+        currentIndex={9}
+        minIndex={0}
+        maxIndex={9}
+        homeIndex={1}
+        periodLabel="20 – 26 juillet"
+        onIndexChange={onIndexChange}
       />,
     );
-    const label = periodLabelEl();
-    expect(label.className).not.toContain('opacity-60');
+    expect(arrow('Semaine suivante')).toBeNull();
+    act(() => {
+      arrow('Semaine précédente')!.dispatchEvent(
+        new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }),
+      );
+    });
+    expect(onIndexChange).toHaveBeenCalledWith(8);
+  });
 
-    const prev = arrow('Semaine précédente')!;
-    // La flèche garde sa transition-colors et son arrowEnabled, jamais
-    // pointer-events-none en mode actif.
-    expect(prev.className).not.toMatch(/\bpointer-events-none\b/);
-    expect(prev.getAttribute('aria-disabled')).toBeNull();
+  it('« Revenir à cette semaine » → onIndexChange(homeIndex)', () => {
+    const onIndexChange = vi.fn();
+    render(
+      <WeekNavigator
+        mode="client"
+        currentIndex={4}
+        minIndex={0}
+        maxIndex={9}
+        homeIndex={1}
+        periodLabel="15 – 21 juin"
+        onIndexChange={onIndexChange}
+      />,
+    );
+    // Le bouton est rendu en tant que <button> texte.
+    const homeBtn = Array.from(
+      container.querySelectorAll('button'),
+    ).find((b) => b.textContent === 'Revenir à cette semaine') as
+      | HTMLButtonElement
+      | undefined;
+    expect(homeBtn).toBeDefined();
+    act(() => {
+      homeBtn!.dispatchEvent(
+        new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }),
+      );
+    });
+    expect(onIndexChange).toHaveBeenCalledWith(1);
+  });
+
+  it('sur homeIndex : pas de bouton « Revenir à cette semaine », mention « Cette semaine »', () => {
+    render(
+      <WeekNavigator
+        mode="client"
+        currentIndex={1}
+        minIndex={0}
+        maxIndex={9}
+        homeIndex={1}
+        periodLabel="25 – 31 mai"
+        onIndexChange={vi.fn()}
+      />,
+    );
+    expect(container.textContent).toContain('Cette semaine');
+    expect(container.textContent).not.toContain('Revenir à cette semaine');
+  });
+
+  it('aucun rendu <a href> en mode client (pas de Link, pas d\'URL touchée)', () => {
+    render(
+      <WeekNavigator
+        mode="client"
+        currentIndex={3}
+        minIndex={0}
+        maxIndex={9}
+        homeIndex={1}
+        periodLabel="8 – 14 juin"
+        onIndexChange={vi.fn()}
+      />,
+    );
+    // Les flèches doivent être des <button>, pas des <a>.
+    const links = container.querySelectorAll('a[href]');
+    expect(links).toHaveLength(0);
   });
 });
