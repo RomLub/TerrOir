@@ -26,12 +26,10 @@ import { formatBadgeDetailLine } from '@/lib/producers/compute-badge-details';
 import { DashboardSkeleton } from '../_components/ContentSkeletons';
 import { DashboardClient, type DashboardData } from './DashboardClient';
 
-const TZ_PARIS = 'Europe/Paris';
-
 type SearchParams = Record<string, string | string[] | undefined>;
 
-// Extrait "YYYY-MM-DD" depuis un ISO timestamptz en Europe/Paris.
-// Utilisé pour matcher slots.starts_at au jour iso d'un planning semaine.
+// Extrait "YYYY-MM-DD" depuis un ISO timestamptz en Europe/Paris. Utilisé
+// pour matcher slots.starts_at au jour iso d'un planning semaine.
 function slotDateInParis(iso: string): string {
   const d = new TZDate(iso, TZ_PARIS);
   const y = d.getFullYear();
@@ -40,20 +38,8 @@ function slotDateInParis(iso: string): string {
   return `${y}-${m}-${day}`;
 }
 
-// Heure décimale Paris d'un timestamptz ISO (ex: 9.5 = 9h30). Utilisée pour
-// positionner les segments du WeekPlanningHeatmap sur l'échelle horaire.
-function hourFracInParis(iso: string): number {
-  const d = new TZDate(iso, TZ_PARIS);
-  return d.getHours() + d.getMinutes() / 60;
-}
-
 const WEEK_DAYS_LABEL = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
-
-// Fallback robustesse pre-migration : tant que la RPC SQL n'expose pas
-// week_open_days, on assume "ouvert tous les jours" plutôt que "fermé tous
-// les jours" pour ne pas dégrader le rendu. Cf. doctrine déploiement
-// CLAUDE.md (return-shape change = APRÈS merge).
-const ALL_DAYS_OPEN: boolean[] = [true, true, true, true, true, true, true];
+const TZ_PARIS = 'Europe/Paris';
 
 // Coquille SYNCHRONE : la page retourne immédiatement le <Suspense> + son
 // skeleton, SANS aucun await en tête. Les gardes (session + producteur, ~3
@@ -183,11 +169,14 @@ async function DashboardContent({
       id: string;
       starts_at: string;
       ends_at: string;
-      // Nouveaux champs (post-migration get_producer_dashboard chantier
-      // heatmap). Optionnels le temps que la migration soit appliquée en prod
-      // — fallback géré ci-dessous.
       capacity_per_slot?: number;
       orders_count?: number;
+      rule_id?: string | null;
+      orders?: Array<{
+        order_id: string;
+        code_commande: string;
+        starts_at: string;
+      }>;
     }>;
     week_open_days?: boolean[];
     week_pickups?: Array<{ date_retrait: string | null; slot_id: string | null; statut: string }>;
@@ -208,16 +197,12 @@ async function DashboardContent({
   const pendingRaw = dash.pending_orders ?? [];
   const upcomingRaw = dash.upcoming_orders ?? [];
   const slots = dash.slots ?? [];
-  const weekOpenDays =
-    dash.week_open_days && dash.week_open_days.length === 7
-      ? dash.week_open_days
-      : ALL_DAYS_OPEN;
-  // Note : `week_pickups` (compteur d'orders par (date_retrait, slot_id))
-  // n'est plus consommé. Le compteur de réservations est désormais agrégé
-  // côté SQL et exposé par slot dans `slots[].orders_count` (filtre statut
-  // pending/confirmed/ready). La RPC continue à retourner week_pickups
-  // pour minimiser le diff return-shape ; un nettoyage SQL pourra le
-  // dropper dans un chantier suivant.
+  // Note : `week_pickups` et `week_open_days` ne sont plus consommés. Le
+  // compteur de réservations est agrégé côté SQL et exposé par slot dans
+  // `slots[].orders_count`. Le nouveau composant VerticalWeekCalendar
+  // abolit la notion ouvert/fermé (spec Claude Design). La RPC continue à
+  // les retourner pour minimiser le diff return-shape ; un nettoyage SQL
+  // pourra les dropper dans un chantier suivant.
   const lowStockProducts = dash.low_stock_products ?? [];
 
   const firstName = user?.prenom?.trim() || user?.nom?.trim() || 'Pierre';
@@ -269,9 +254,9 @@ async function DashboardContent({
     };
   }
 
-  // Échelle horaire commune aux 7 colonnes du WeekPlanningHeatmap. Calculée
-  // ici (serveur Next) pour arriver figée au client — cf. ADR/audit chantier
-  // heatmap 2026-05-28. Fallback [8h, 20h] si aucun slot dans la semaine.
+  // Échelle horaire commune aux 7 colonnes du VerticalWeekCalendar.
+  // Calculée ici (serveur Next) pour arriver figée au client. Fallback
+  // [8h, 20h] si aucun slot dans la semaine (cf. PLANNING_FALLBACK_RANGE).
   const weekHourRange = computeWeekHourRange(slots ?? []);
 
   // dateIso utilisé comme clé de jour côté heatmap + drill-down. Construit en
@@ -291,16 +276,17 @@ async function DashboardContent({
       .filter((s) => s.starts_at && slotDateInParis(s.starts_at as string) === dateIso)
       .map((s) => ({
         id: s.id as string,
-        startHourFrac: hourFracInParis(s.starts_at as string),
-        endHourFrac: hourFracInParis(s.ends_at as string),
-        capacity: s.capacity_per_slot ?? 1,
-        ordersCount: s.orders_count ?? 0,
+        starts_at: s.starts_at as string,
+        ends_at: s.ends_at as string,
+        capacity_per_slot: s.capacity_per_slot ?? 1,
+        rule_id: s.rule_id ?? null,
+        orders_count: s.orders_count ?? 0,
+        orders: s.orders ?? [],
       }));
     return {
       dateIso,
       dayLabel: `${label} ${dayDate.getDate()}`,
       isToday: dayDate.toDateString() === todayStart.toDateString(),
-      isOpen: weekOpenDays[i] === true,
       slots: daySlots,
     };
   });

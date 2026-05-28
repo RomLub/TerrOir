@@ -13,9 +13,9 @@ import {
 } from '@/lib/producers/publication-criteria';
 import { WeekNavigator } from '../_components/WeekNavigator';
 import {
-  WeekPlanningHeatmap,
-  type WeekPlanningDay,
-} from './_components/WeekPlanningHeatmap';
+  VerticalWeekCalendar,
+  type VerticalDay,
+} from './_components/VerticalWeekCalendar';
 
 // Nombre max d'étapes restantes affichées inline dans la carte « mise en
 // ligne » : au-delà on tronque à 3 + « et X autre(s)… » pour rester sur une
@@ -48,8 +48,8 @@ export type DashboardData = {
   reviewCount: number;
   nextPickup: { label: string; sub: string } | null;
   pendingOrders: PendingOrder[];
-  /** 7 jours (Lun→Dim) pour le composant WeekPlanningHeatmap. */
-  weekPlanning: WeekPlanningDay[];
+  /** 7 jours (Lun→Dim) pour le composant VerticalWeekCalendar. */
+  weekPlanning: VerticalDay[];
   /** Échelle horaire commune (Europe/Paris) pour aligner les 7 colonnes. */
   weekHourRange: { startHour: number; endHour: number };
   badges: {
@@ -363,7 +363,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
             isWeekNavPending ? 'opacity-60' : ''
           }`}
         >
-          <WeekPlanningHeatmap
+          <VerticalWeekCalendar
             days={data.weekPlanning}
             hourRange={data.weekHourRange}
           />
