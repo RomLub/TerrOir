@@ -10,6 +10,7 @@ import {
   PUBLICATION_CRITERIA,
   type CriterionKey,
 } from '@/lib/producers/publication-criteria';
+import { computeRevenueDelta } from '@/lib/producers/compute-revenue-delta';
 import { WeekNavigator } from '../_components/WeekNavigator';
 import {
   VerticalWeekCalendar,
@@ -224,9 +225,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
     };
   }, [data.producerId]);
 
-  const revenueDelta = data.revenueLastWeek > 0
-    ? Math.round(((data.revenueWeek - data.revenueLastWeek) / data.revenueLastWeek) * 100)
-    : null;
+  const revenueDelta = computeRevenueDelta(data.revenueWeek, data.revenueLastWeek);
 
   const metrics = [
     {
