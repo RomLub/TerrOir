@@ -9,7 +9,7 @@ import { uploadProducerPhoto } from '@/lib/producers/upload';
 import { labelEspece, labelLabel } from '@/lib/producers/labels';
 import { RequestPublicationPanel } from './_components/RequestPublicationPanel';
 import { useTabFocusFromQuery } from './_lib/use-tab-focus';
-import { updateProfileAction } from './actions';
+import { loadMaPageData, updateProfileAction } from './actions';
 
 // Sous-composant Suspense-wrappé pour useSearchParams (requis Next 14+). Active
 // l'onglet « Modifier » et scrolle vers la section ciblée selon
@@ -120,22 +120,17 @@ export default function MaPagePage() {
 
   useEffect(() => {
     let active = true;
-    const supabase = createSupabaseBrowserClient();
 
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { if (active) { setError('Non connecté.'); setLoading(false); } return; }
-
-      const { data: prod, error: fetchError } = await supabase
-        .from('producers')
-        .select('id, slug, nom_exploitation, description, histoire, generations, annee_creation, especes, labels, commune, code_postal, photo_principale, photos, note_moyenne, nb_avis, badge_stock_score, badge_confirmation_score, badge_annulation_score, bio, bio_certificate_number, bio_validated_at, statut, publication_requested_at')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
+      // Lecture owner-scopée via server action (admin client + owner check
+      // intégré). Évite le SELECT browser client qui plantait avec 42501 sur
+      // les colonnes muettes pour `authenticated` (bio_*, publication_requested_at).
+      // Cf. ADR-0015 + audit grants column-level 2026-05-28.
+      const res = await loadMaPageData();
       if (!active) return;
-      if (fetchError) { setError(fetchError.message); setLoading(false); return; }
-      if (!prod) { setError('Profil producteur introuvable.'); setLoading(false); return; }
+      if (!res.ok) { setError(res.error); setLoading(false); return; }
 
+      const prod = res.data;
       setProducerId(prod.id);
       setForm({
         nom_exploitation: prod.nom_exploitation ?? '',
