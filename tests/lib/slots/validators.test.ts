@@ -2,13 +2,16 @@ import { describe, it, expect } from "vitest";
 import { slotRuleSchema } from "@/lib/slots/validators";
 
 function base() {
+  // capacity_per_slot=4 = max autorisé pour slot_duration_minutes=30
+  // (plafond 2/15min, cf. lib/slots/capacity-limit.ts). Les tests
+  // dédiés au plafond vivent dans validators.capacity.test.ts.
   return {
     days_of_week: [1, 3, 5],
     periodicity_weeks: 1,
     start_time: "09:00",
     end_time: "12:00",
     slot_duration_minutes: 30,
-    capacity_per_slot: 5,
+    capacity_per_slot: 4,
   };
 }
 
@@ -84,17 +87,18 @@ describe("slotRuleSchema", () => {
   });
 
   it("coerce string → number (formdata flow)", () => {
+    // capacity 6 = max pour duration 45min (ceil(45/15)*2 = 6).
     const res = slotRuleSchema.safeParse({
       ...base(),
       periodicity_weeks: "2",
       slot_duration_minutes: "45",
-      capacity_per_slot: "8",
+      capacity_per_slot: "6",
     });
     expect(res.success).toBe(true);
     if (res.success) {
       expect(res.data.periodicity_weeks).toBe(2);
       expect(res.data.slot_duration_minutes).toBe(45);
-      expect(res.data.capacity_per_slot).toBe(8);
+      expect(res.data.capacity_per_slot).toBe(6);
     }
   });
 });
