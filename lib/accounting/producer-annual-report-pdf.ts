@@ -1,14 +1,14 @@
 import { createElement } from "react";
 import { renderToBuffer } from "@react-pdf/renderer";
-import { AccountingSummaryDocument } from "@/lib/accounting/pdf/templates/accounting-summary";
-import type { ProducerAccountingExportData } from "@/lib/accounting/producer-export-data";
+import { AnnualReportDocument } from "@/lib/accounting/pdf/templates/annual-report";
+import type { ProducerAnnualReportData } from "@/lib/accounting/producer-annual-report";
 import { loadAccountingLogoDataUri } from "@/lib/accounting/producer-pdf-assets";
 
-export async function generateProducerAccountingPdf(
-  data: ProducerAccountingExportData,
+export async function generateProducerAnnualReportPdf(
+  data: ProducerAnnualReportData,
 ): Promise<Buffer> {
   const logoSrc = await loadAccountingLogoDataUri();
-  const document = createElement(AccountingSummaryDocument, {
+  const document = createElement(AnnualReportDocument, {
     data,
     logoSrc,
   }) as Parameters<typeof renderToBuffer>[0];

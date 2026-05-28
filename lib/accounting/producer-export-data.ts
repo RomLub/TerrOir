@@ -6,6 +6,7 @@ import type { Database } from "@/lib/types/database.types";
 
 export type ProducerAccountingExportOrder = {
   id: string;
+  consumerId?: string | null;
   orderNumber: string;
   date: string;
   client: string;
@@ -62,6 +63,7 @@ type OrderRow = {
   commission_terroir: number | null;
   montant_net_producteur: number | null;
   producer_order_seq: number | null;
+  consumer_id: string | null;
   consumer: { email: string | null } | { email: string | null }[] | null;
 };
 
@@ -124,6 +126,7 @@ export async function buildProducerAccountingExportData(args: {
     .from("orders")
     .select(
       `id, completed_at, statut, montant_total, commission_terroir, montant_net_producteur,
+       consumer_id,
        producer_order_seq, consumer:users!consumer_id(email)`,
     )
     .eq("producer_id", producer.id)
@@ -156,6 +159,7 @@ export async function buildProducerAccountingExportData(args: {
     const date = formatDateInExportTimezone(row.completed_at);
     return {
       id: row.id,
+      consumerId: row.consumer_id,
       orderNumber: row.producer_order_seq
         ? formatOrderNumber(producerNumber, row.producer_order_seq)
         : row.id,
