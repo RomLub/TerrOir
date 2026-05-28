@@ -56,6 +56,17 @@ jobs:
         # par doctrine (cf. CLAUDE.md règle workflow git « interdits »).
         run: npm ci
 
+      - name: Check column-grants (anti-régression PR #206)
+        # Garde statique : aucune connexion DB. Parse les migrations
+        # `supabase/migrations/*.sql` et détecte toute colonne ajoutée
+        # sur une table à grants column-level (public.producers) sans
+        # GRANT SELECT explicite ni whitelist owner-only/admin-only.
+        # Origine de la garde : régression PR #206 (2026-05-28) — l'ajout
+        # de `producer_number` + `next_order_seq` sans GRANT a cassé
+        # l'espace producteur entier (42501 permission denied). Cf.
+        # CLAUDE.md §4 « Grants column-level ».
+        run: npm run check:column-grants
+
       - name: Lint (ESLint flat config)
         # Pas de `env:` ici. `eslint .` est analyse statique pure (parse
         # AST + applique règles), ne load aucun module — pas de fail-fast

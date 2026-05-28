@@ -309,10 +309,17 @@ l'audit révélera) DOIT décider EXPLICITEMENT du scope de lecture** :
    `createSupabaseAdminClient()` côté serveur (server action / API route).
 
 **Garde mécanique** : un script `scripts/check-column-grants.ts` détecte
-les colonnes muettes non whitelistées. À exécuter post-apply migration
-(`npm run check:column-grants`). Whitelist intentionnelle pour les
-colonnes owner-only ou admin-only (ex. `producers.latitude/longitude` qui
-sont lues via la vue `producers_public` floutée pour privacy).
+les colonnes muettes non whitelistées. **Câblé en CI bloquante** dans
+`.github/workflows/ci.yml` (step « Check column-grants », juste après
+`npm ci`, avant lint) : aucune PR ne peut être mergée si une colonne
+ajoutée sur `producers` n'a ni `GRANT SELECT` ni whitelist explicite. À
+exécuter aussi en local post-apply migration (`npm run check:column-grants`).
+Test anti-régression de la garde : fixtures + assertions dans
+`tests/scripts/check-column-grants.test.ts` (couvre les 3 cas — violation,
+GRANT explicite, table hors liste blanche — et confirme exit code 1 en
+mode CLI). Whitelist intentionnelle pour les colonnes owner-only ou
+admin-only (ex. `producers.latitude/longitude` qui sont lues via la vue
+`producers_public` floutée pour privacy).
 
 **Origine de la règle** : régression PR #206 (2026-05-28) où l'ajout de
 `producer_number` + `next_order_seq` sans grant a fait tomber l'espace
