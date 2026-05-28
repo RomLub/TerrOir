@@ -50,6 +50,12 @@ function render(data: OrderDetailData): string {
 }
 
 describe("OrderDetailClient producer — gate section 'Validation du retrait'", () => {
+  it("affiche un retour vers la liste des commandes", () => {
+    const html = render(makeData("confirmed"));
+    expect(html).toContain('href="/commandes"');
+    expect(html).toContain("Mes commandes");
+  });
+
   it("status='confirmed' → section visible (modèle 3 états : pickup direct)", () => {
     const html = render(makeData("confirmed"));
     expect(html).toContain("Validation du retrait");
