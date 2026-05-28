@@ -102,7 +102,6 @@ export function CancelAndCloseModal({
     const results: CancelResult[] = [];
     for (let i = 0; i < toCancel.length; i++) {
       setPhase({ kind: "running", current: i + 1, total: toCancel.length });
-      // eslint-disable-next-line no-await-in-loop
       const r = await cancelOne(toCancel[i]!);
       results.push(r);
     }
