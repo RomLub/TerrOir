@@ -516,6 +516,7 @@ export type Database = {
           montant_total: number | null
           notes_client: string | null
           producer_id: string | null
+          producer_order_seq: number
           review_followup_d2_sent_at: string | null
           review_followup_d7_sent_at: string | null
           slot_id: string | null
@@ -540,6 +541,7 @@ export type Database = {
           montant_total?: number | null
           notes_client?: string | null
           producer_id?: string | null
+          producer_order_seq?: number
           review_followup_d2_sent_at?: string | null
           review_followup_d7_sent_at?: string | null
           slot_id?: string | null
@@ -564,6 +566,7 @@ export type Database = {
           montant_total?: number | null
           notes_client?: string | null
           producer_id?: string | null
+          producer_order_seq?: number
           review_followup_d2_sent_at?: string | null
           review_followup_d7_sent_at?: string | null
           slot_id?: string | null
@@ -854,10 +857,12 @@ export type Database = {
           latitude: number | null
           longitude: number | null
           nb_avis: number
+          next_order_seq: number
           nom_exploitation: string
           note_moyenne: number
           photo_principale: string | null
           photos: string[] | null
+          producer_number: number
           publication_requested_at: string | null
           siret: string | null
           slug: string
@@ -896,10 +901,12 @@ export type Database = {
           latitude?: number | null
           longitude?: number | null
           nb_avis?: number
+          next_order_seq?: number
           nom_exploitation: string
           note_moyenne?: number
           photo_principale?: string | null
           photos?: string[] | null
+          producer_number?: number
           publication_requested_at?: string | null
           siret?: string | null
           slug: string
@@ -938,10 +945,12 @@ export type Database = {
           latitude?: number | null
           longitude?: number | null
           nb_avis?: number
+          next_order_seq?: number
           nom_exploitation?: string
           note_moyenne?: number
           photo_principale?: string | null
           photos?: string[] | null
+          producer_number?: number
           publication_requested_at?: string | null
           siret?: string | null
           slug?: string
