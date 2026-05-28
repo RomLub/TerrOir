@@ -12,7 +12,6 @@ import {
   formatLegacyTimeHHMM,
 } from '@/lib/slots/format-slot-time';
 import {
-  parseWeekOffset,
   computeDashboardBounds,
   formatWeekRangeLabel,
   addDays,
@@ -37,6 +36,24 @@ function slotDateInParis(iso: string): string {
 const WEEK_DAYS_LABEL = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 const TZ_PARIS = 'Europe/Paris';
 
+// Pré-chargement 10 semaines pour la navigation swipe client du calendrier
+// dashboard (2026-05-28). La RPC est appelée UNE seule fois avec une fenêtre
+// slots élargie ; le client navigue ensuite par index sans rechargement.
+//
+// Convention :
+//   - index 0       = semaine -1 (passée)
+//   - index 1       = CURRENT_WEEK_INDEX = semaine courante (par défaut au chargement)
+//   - index 2..9    = semaines +1..+8 (futur)
+//
+// Option A (validée 2026-05-28) : seul le calendrier navigue. Les chiffres
+// "revenus cette semaine" + delta % restent figés sur la semaine courante
+// (offset 0), quelle que soit la semaine du calendrier affichée. Le swipe est
+// une exploration visuelle du planning, pas un voyage temporel global.
+const DASHBOARD_WEEKS_PAST = 1;
+const DASHBOARD_WEEKS_FUTURE = 8;
+const DASHBOARD_WEEKS_TOTAL = DASHBOARD_WEEKS_PAST + 1 + DASHBOARD_WEEKS_FUTURE; // = 10
+const CURRENT_WEEK_INDEX = DASHBOARD_WEEKS_PAST; // = 1
+
 // Coquille SYNCHRONE : la page retourne immédiatement le <Suspense> + son
 // skeleton, SANS aucun await en tête. Les gardes (session + producteur, ~3
 // requêtes) sont déplacées DANS le flux (DashboardGate) pour que le cadre
@@ -57,7 +74,10 @@ async function DashboardGate({
 }: {
   searchParamsPromise: Promise<SearchParams>;
 }) {
-  const searchParams = await searchParamsPromise;
+  // searchParams consommé pour respecter le contrat Next 16 (Promise async)
+  // mais non lu : la navigation semaine du dashboard se fait désormais
+  // entièrement côté client (swipe pré-chargé), plus de `?week=` ici.
+  await searchParamsPromise;
   const session = await getSessionUser();
   if (!session) redirect('/connexion');
 
@@ -65,13 +85,10 @@ async function DashboardGate({
   const producer = await fetchProducerForUser(supabase, session.id);
   if (!producer) redirect('/invitation');
 
-  const weekOffset = parseWeekOffset(searchParams.week);
-
   return (
     <DashboardContent
       producer={producer}
       userId={session.id}
-      weekOffset={weekOffset}
     />
   );
 }
@@ -79,22 +96,24 @@ async function DashboardGate({
 async function DashboardContent({
   producer,
   userId,
-  weekOffset,
 }: {
   producer: ProducerRecord;
   userId: string;
-  weekOffset: number;
 }) {
   const admin = createSupabaseAdminClient();
 
-  // Navigation par semaine (chantier 10) : `?week=-1` recule d'une semaine,
-  // `?week=2` avance de deux. Seules les bornes scopées semaine (planning +
-  // revenus semaine + comparaison) suivent l'offset ; les ancres « live »
-  // (today/yesterday/tomorrow, prochains retraits, alertes stock) restent
-  // sur le vrai now (cf. computeDashboardBounds).
+  // Bornes ancrées sur la semaine courante (offset 0). Les chiffres revenus +
+  // delta % restent figés sur cette semaine — la navigation swipe du
+  // calendrier ne touche QUE le rendu visuel des slots (option A 2026-05-28).
   const now = new Date();
-  const bounds = computeDashboardBounds(now, weekOffset);
+  const bounds = computeDashboardBounds(now, 0);
   const { weekStart, todayStart } = bounds;
+
+  // Fenêtre slots élargie : -1 semaine (passée) à +8 semaines (futur), soit
+  // 10 semaines total. Un seul appel RPC ; le client découpe par semaine via
+  // weekPlannings[w].
+  const slotsRangeStart = addDays(weekStart, -7 * DASHBOARD_WEEKS_PAST);
+  const slotsRangeEnd = addDays(weekStart, 7 * (1 + DASHBOARD_WEEKS_FUTURE));
 
   // F-045 (audit pré-launch 2026-05-11) — RPC consolidée. Avant : 11 queries
   // Promise.all = 11 conn slots du pooler. Après : 1 RPC SECDEF = 1 conn.
@@ -115,8 +134,8 @@ async function DashboardContent({
       p_week_start: bounds.weekStart.toISOString(),
       p_week_end: bounds.weekEnd.toISOString(),
       p_last_week_start: bounds.lastWeekStart.toISOString(),
-      p_slots_range_start: bounds.slotsRangeStart.toISOString(),
-      p_slots_range_end: bounds.slotsRangeEnd.toISOString(),
+      p_slots_range_start: slotsRangeStart.toISOString(),
+      p_slots_range_end: slotsRangeEnd.toISOString(),
       p_today_iso: bounds.todayIso,
       p_week_start_iso: bounds.weekStartIso,
       p_week_end_iso: bounds.weekEndIso,
@@ -260,27 +279,39 @@ async function DashboardContent({
     return `${y}-${m}-${day}`;
   }
 
-  const weekPlanning = WEEK_DAYS_LABEL.map((label, i) => {
-    const dayDate = addDays(weekStart, i);
-    const dateIso = dayIsoLocal(dayDate);
-    const daySlots = (slots ?? [])
-      .filter((s) => s.starts_at && slotDateInParis(s.starts_at as string) === dateIso)
-      .map((s) => ({
-        id: s.id as string,
-        starts_at: s.starts_at as string,
-        ends_at: s.ends_at as string,
-        capacity_per_slot: s.capacity_per_slot ?? 1,
-        rule_id: s.rule_id ?? null,
-        orders_count: s.orders_count ?? 0,
-        orders: s.orders ?? [],
-      }));
-    return {
-      dateIso,
-      dayLabel: `${label} ${dayDate.getDate()}`,
-      isToday: dayDate.toDateString() === todayStart.toDateString(),
-      slots: daySlots,
-    };
+  // Pré-construction des 10 semaines (index 0=-1, 1=courante, 2..9=+1..+8).
+  // `isToday` n'est calé sur dayDate que pour la semaine courante : sur les
+  // autres semaines, le concept "aujourd'hui" n'existe pas (forcément `false`).
+  const weekPlannings = Array.from({ length: DASHBOARD_WEEKS_TOTAL }, (_, w) => {
+    const weekStartW = addDays(weekStart, (w - CURRENT_WEEK_INDEX) * 7);
+    const isCurrentWeek = w === CURRENT_WEEK_INDEX;
+    return WEEK_DAYS_LABEL.map((label, i) => {
+      const dayDate = addDays(weekStartW, i);
+      const dateIso = dayIsoLocal(dayDate);
+      const daySlots = (slots ?? [])
+        .filter((s) => s.starts_at && slotDateInParis(s.starts_at as string) === dateIso)
+        .map((s) => ({
+          id: s.id as string,
+          starts_at: s.starts_at as string,
+          ends_at: s.ends_at as string,
+          capacity_per_slot: s.capacity_per_slot ?? 1,
+          rule_id: s.rule_id ?? null,
+          orders_count: s.orders_count ?? 0,
+          orders: s.orders ?? [],
+        }));
+      return {
+        dateIso,
+        dayLabel: `${label} ${dayDate.getDate()}`,
+        isToday: isCurrentWeek && dayDate.toDateString() === todayStart.toDateString(),
+        slots: daySlots,
+      };
+    });
   });
+
+  const weekPeriodLabels = Array.from(
+    { length: DASHBOARD_WEEKS_TOTAL },
+    (_, w) => formatWeekRangeLabel(addDays(weekStart, (w - CURRENT_WEEK_INDEX) * 7)),
+  );
 
 
   const badgeDetails = badgeComputation.details;
@@ -346,8 +377,9 @@ async function DashboardContent({
     producerId: producer.id,
     producerName: producer.nom_exploitation,
     firstName,
-    weekOffset,
-    weekPeriodLabel: formatWeekRangeLabel(weekStart),
+    weekPlannings,
+    weekPeriodLabels,
+    currentWeekIndex: CURRENT_WEEK_INDEX,
     ordersToday: ordersToday ?? 0,
     ordersYesterday: ordersYesterday ?? 0,
     revenueWeek,
@@ -356,7 +388,6 @@ async function DashboardContent({
     reviewCount: producerRow?.nb_avis ?? 0,
     nextPickup,
     pendingOrders,
-    weekPlanning,
     badges,
     stockAlerts,
     publicationToDo,
