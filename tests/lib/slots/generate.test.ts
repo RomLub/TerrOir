@@ -18,6 +18,7 @@ type SlotRuleMock = {
   end_time: string;
   slot_duration_minutes: number;
   capacity_per_slot: number;
+  availability_scope?: "shared" | "product_restricted" | null;
   created_at: string;
 };
 
@@ -30,6 +31,7 @@ type Captured = {
     starts_at: string;
     ends_at: string;
     capacity_per_slot: number;
+    availability_scope?: "shared" | "product_restricted";
   }>;
   upsertOpts?: { onConflict?: string; ignoreDuplicates?: boolean };
 };
@@ -141,6 +143,34 @@ describe("generateSlotsForProducer", () => {
       "2026-01-06T08:00:00.000Z",
     );
     expect(captured.upsertedRows[0]?.capacity_per_slot).toBe(5);
+    expect(captured.upsertedRows[0]?.availability_scope).toBe("shared");
+  });
+
+  it("availability_scope product_restricted est herite depuis la rule", async () => {
+    vi.setSystemTime(new Date("2026-01-04T23:00:00.000Z"));
+
+    const producerId = uniqueProducerId();
+    const { client, captured } = makeSupabase([
+      {
+        id: "rule-restricted",
+        producer_id: producerId,
+        days_of_week: [1],
+        periodicity_weeks: 1,
+        start_time: "09:00:00",
+        end_time: "10:00:00",
+        slot_duration_minutes: 60,
+        capacity_per_slot: 1,
+        availability_scope: "product_restricted",
+        created_at: "2026-01-05T00:00:00.000Z",
+      },
+    ]);
+
+    const res = await generateSlotsForProducer(client, producerId, 7);
+
+    expect(res.inserted).toBe(1);
+    expect(captured.upsertedRows[0]?.availability_scope).toBe(
+      "product_restricted",
+    );
   });
 
   it("periodicity 2 semaines → skip une semaine sur deux", async () => {
