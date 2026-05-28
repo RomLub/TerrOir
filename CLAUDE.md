@@ -274,6 +274,51 @@ automatiquement.
 - `DROP POLICY IF EXISTS` avant `CREATE POLICY`
 - Pas de rétro-modification des migrations historiques (forward-only)
 
+### Grants column-level — règle obligatoire pour les tables à liste blanche
+
+Certaines tables ont un pattern de grants `SELECT` **explicites par colonne**
+(liste blanche). Quand on `ADD COLUMN` dessus, Postgres applique
+`INSERT/UPDATE/REFERENCES` (grants au niveau TABLE) mais **PAS** le `SELECT`
+(qui est column-level). La nouvelle colonne est alors **muette** pour les
+rôles client (`anon`, `authenticated`) → toute requête qui la sélectionne
+échoue avec `42501 permission denied` → erreur souvent silencieuse côté code
+(Supabase JS renvoie `{data: null, error: ...}` que les helpers ignorent).
+
+**Tables concernées** (audit 2026-05-28) :
+- `public.producers` — la seule table client-facing avec ce pattern.
+
+**Toute migration `ADD COLUMN` sur `producers` (ou toute autre table que
+l'audit révélera) DOIT décider EXPLICITEMENT du scope de lecture** :
+
+1. **Owner-only** (lecture limitée au propriétaire de la ligne) → **PAS de
+   `GRANT SELECT` à anon/authenticated**. La lecture passe par une **server
+   action** + admin client (service_role, bypass RLS) avec **owner-check
+   intégré dans le `WHERE`** (`eq('user_id', session.id)`). Aucun id de
+   producer fourni par le client. Pattern de référence :
+   `app/(producer)/ma-page/actions.ts` `loadMaPageData()`.
+
+2. **Public** (lecture par tout utilisateur, connecté ou anonyme) → ajouter
+   `GRANT SELECT (<col>) ON public.<table> TO anon, authenticated;` dans la
+   même migration. **ATTENTION** : vérifier d'abord que les policies RLS
+   ne créent pas de sur-exposition involontaire (notamment
+   `producers public read when public` qui expose les colonnes granted à
+   TOUT authenticated pour les producers `statut='public'`).
+
+3. **Admin-only** (lecture réservée au service_role + admin) → ne rien
+   ajouter. La colonne reste muette par défaut. La lecture passe par
+   `createSupabaseAdminClient()` côté serveur (server action / API route).
+
+**Garde mécanique** : un script `scripts/check-column-grants.ts` détecte
+les colonnes muettes non whitelistées. À exécuter post-apply migration
+(`npm run check:column-grants`). Whitelist intentionnelle pour les
+colonnes owner-only ou admin-only (ex. `producers.latitude/longitude` qui
+sont lues via la vue `producers_public` floutée pour privacy).
+
+**Origine de la règle** : régression PR #206 (2026-05-28) où l'ajout de
+`producer_number` + `next_order_seq` sans grant a fait tomber l'espace
+producteur entier (redirect /invitation systématique). Hotfix PR #207 +
+fix `/ma-page` PR #208.
+
 ### Romain intervient UNIQUEMENT si :
 
 - Action UI Supabase Dashboard sans équivalent API/CLI confirmée comme

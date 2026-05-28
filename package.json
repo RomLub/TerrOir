@@ -27,7 +27,8 @@
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:report": "playwright show-report",
     "codegen:enums": "tsx scripts/codegen-enums.ts",
-    "codegen:enums:check": "tsx scripts/codegen-enums.ts --check"
+    "codegen:enums:check": "tsx scripts/codegen-enums.ts --check",
+    "check:column-grants": "tsx scripts/check-column-grants.ts"
   },
   "dependencies": {
     "@date-fns/tz": "^1.4.1",
