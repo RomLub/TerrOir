@@ -380,22 +380,19 @@ const styles = StyleSheet.create({
   figureValue: {
     marginTop: 5,
     color: pdfColors.ink,
-    fontFamily: pdfFonts.bold,
-    fontWeight: "bold",
+    fontFamily: pdfFonts.displayBold,
     fontSize: 10,
   },
   figureValueAccent: {
     marginTop: 5,
     color: pdfColors.terracottaDark,
-    fontFamily: pdfFonts.bold,
-    fontWeight: "bold",
+    fontFamily: pdfFonts.displayBold,
     fontSize: 10,
   },
   figureValuePositive: {
     marginTop: 5,
     color: pdfColors.greenDark,
-    fontFamily: pdfFonts.bold,
-    fontWeight: "bold",
+    fontFamily: pdfFonts.displayBold,
     fontSize: 10,
   },
   figureValueLarge: {

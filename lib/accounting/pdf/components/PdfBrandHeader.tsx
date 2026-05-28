@@ -118,8 +118,7 @@ const styles = StyleSheet.create({
   title: {
     color: pdfColors.white,
     fontSize: 22,
-    fontFamily: pdfFonts.bold,
-    fontWeight: "bold",
+    fontFamily: pdfFonts.displayBold,
   },
   subtitle: {
     color: pdfColors.terracottaSoft,
