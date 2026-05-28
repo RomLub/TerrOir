@@ -100,7 +100,7 @@ ctxTest.describe('Producer /creneaux — monitoring des places', () => {
         statut: 'pending',
         montant_total: 9.99,
       })
-      .select('id, code_commande')
+      .select('id, code_commande, producer_order_seq')
       .single();
     expect(orderErr, orderErr?.message).toBeNull();
 
@@ -111,25 +111,25 @@ ctxTest.describe('Producer /creneaux — monitoring des places', () => {
       const section = page.getByTestId('monitoring-section');
       await expect(section).toBeVisible({ timeout: 15_000 });
 
-      // 1 bloc, cap 4 → 1 case pleine + 3 libres
       const reserved = section.getByTestId('monitoring-cell-reserved');
       const free = section.getByTestId('monitoring-cell-free');
       await expect(reserved).toHaveCount(1);
       await expect(free).toHaveCount(3);
 
-      // Le lien pointe vers /commandes/{id}
       await expect(reserved.first()).toHaveAttribute(
         'href',
         `/commandes/${order!.id}`,
       );
 
-      // Tooltip en mode libre : "TRR-XXX · Lucie"
+      // Tooltip en mode libre : "PPPP-CCCCC · Lucie". ADR-0015 : aucun
+      // TRR- ne doit apparaître côté producteur en pré-remise.
       const aria = await reserved.first().getAttribute('aria-label');
-      expect(aria).toContain(order!.code_commande);
+      expect(aria).toMatch(/^\d{4}-\d{5} · /);
       expect(aria).toContain('Lucie');
+      expect(aria).not.toContain('TRR-');
+      expect(aria).not.toContain(order!.code_commande as string);
       expect(aria).not.toMatch(/\b\d{1,2}h/); // pas d'heure en mode libre
 
-      // Clic → page détail commande
       await reserved.first().click();
       await page.waitForURL(new RegExp(`/commandes/${order!.id}$`));
     } finally {
@@ -231,13 +231,13 @@ ctxTest.describe('Producer /creneaux — monitoring des places', () => {
       await expect(reserved).toHaveCount(1);
       await expect(free).toHaveCount(7);
 
-      // Tooltip : "9h30 · TRR-XXX · Hugo"
+      // Tooltip : "9h30 · PPPP-CCCCC · Hugo". ADR-0015 : aucun TRR-.
       const aria = await reserved.first().getAttribute('aria-label');
-      expect(aria).toMatch(/^9h30 · /);
-      expect(aria).toContain(order!.code_commande);
+      expect(aria).toMatch(/^9h30 · \d{4}-\d{5} · /);
       expect(aria).toContain('Hugo');
+      expect(aria).not.toContain('TRR-');
+      expect(aria).not.toContain(order!.code_commande as string);
 
-      // Badge durée
       const duration = section.getByTestId('block-duration').first();
       await expect(duration).toHaveText('RDV 30 min');
     } finally {
