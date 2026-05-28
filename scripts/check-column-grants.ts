@@ -26,6 +26,7 @@
 
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // =============================================================================
 // Configuration : tables au pattern liste blanche + whitelist owner-only / admin-only.
@@ -77,24 +78,24 @@ const DROP_COLUMN_RE =
 const GRANT_SELECT_RE =
   /grant\s+select\s*\(([^)]+)\)\s+on\s+(?:public\.)?"?(\w+)"?\s+to\s+/gi;
 
-type AddedColumn = { table: string; column: string; migration: string };
-type GrantedColumn = { table: string; column: string; migration: string };
-type DroppedColumn = { table: string; column: string; migration: string };
+export type AddedColumn = { table: string; column: string; migration: string };
+export type GrantedColumn = { table: string; column: string; migration: string };
+export type DroppedColumn = { table: string; column: string; migration: string };
 
-function parseMigrations(): {
+export function parseMigrations(migrationsDir: string = MIGRATIONS_DIR): {
   added: AddedColumn[];
   granted: GrantedColumn[];
   dropped: DroppedColumn[];
 } {
   let files: string[];
   try {
-    files = readdirSync(MIGRATIONS_DIR)
+    files = readdirSync(migrationsDir)
       .filter((f) => f.endsWith(".sql"))
       .sort();
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     throw new Error(
-      `Impossible de lire ${MIGRATIONS_DIR} : ${msg}`,
+      `Impossible de lire ${migrationsDir} : ${msg}`,
     );
   }
 
@@ -103,7 +104,7 @@ function parseMigrations(): {
   const dropped: DroppedColumn[] = [];
 
   for (const file of files) {
-    const path = join(MIGRATIONS_DIR, file);
+    const path = join(migrationsDir, file);
     const sql = readFileSync(path, "utf8");
 
     // Reset regex state (global flag).
@@ -145,21 +146,23 @@ function parseMigrations(): {
 // Diagnostic
 // =============================================================================
 
-function main(): void {
-  const verbose = process.argv.includes("--verbose");
+export type CheckResult = {
+  drift: AddedColumn[];
+  dedupAdded: Map<string, AddedColumn>;
+  grantedSet: Set<string>;
+  whitelistedCount: number;
+};
 
-  let added: AddedColumn[];
-  let granted: GrantedColumn[];
-  let dropped: DroppedColumn[];
-  try {
-    ({ added, granted, dropped } = parseMigrations());
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`✗ ${msg}`);
-    process.exit(2);
-  }
+const grantedKey = (t: string, c: string) => `${t}.${c}`;
 
-  const grantedKey = (t: string, c: string) => `${t}.${c}`;
+/**
+ * Coeur de la garde : parse + détection de drift. Pure (déterministe sur le
+ * contenu du dossier), exportée pour tester via fixtures sans avoir à spawn
+ * le script complet.
+ */
+export function checkColumnGrants(migrationsDir: string = MIGRATIONS_DIR): CheckResult {
+  const { added, granted, dropped } = parseMigrations(migrationsDir);
+
   const grantedSet = new Set(granted.map((g) => grantedKey(g.table, g.column)));
   const droppedSet = new Set(dropped.map((d) => grantedKey(d.table, d.column)));
   const whitelistSet = new Set(WHITELIST.map((w) => grantedKey(w.table, w.column)));
@@ -182,14 +185,32 @@ function main(): void {
     drift.push(a);
   }
 
+  return { drift, dedupAdded, grantedSet, whitelistedCount: WHITELIST.length };
+}
+
+function main(): void {
+  const verbose = process.argv.includes("--verbose");
+
+  let result: CheckResult;
+  try {
+    result = checkColumnGrants();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`✗ ${msg}`);
+    process.exit(2);
+  }
+
+  const { drift, dedupAdded, grantedSet, whitelistedCount } = result;
+
   if (verbose) {
+    const whitelistSet = new Set(WHITELIST.map((w) => grantedKey(w.table, w.column)));
     console.log("=".repeat(70));
     console.log("check-column-grants — résultat");
     console.log("=".repeat(70));
     console.log(`Tables surveillées : ${WHITELIST_TABLES.join(", ")}`);
     console.log(`Colonnes ajoutées via ADD COLUMN : ${dedupAdded.size}`);
     console.log(`Colonnes avec GRANT SELECT explicite : ${grantedSet.size}`);
-    console.log(`Colonnes whitelistées (owner-only / privacy) : ${WHITELIST.length}`);
+    console.log(`Colonnes whitelistées (owner-only / privacy) : ${whitelistedCount}`);
     console.log(`Drift détecté : ${drift.length}`);
     console.log("");
     if (dedupAdded.size > 0) {
@@ -225,9 +246,16 @@ function main(): void {
   }
 
   console.log(
-    `✓ Aucun drift de grants column-level (${dedupAdded.size} colonne(s) ajoutée(s) à des tables liste blanche, ${grantedSet.size} avec GRANT, ${WHITELIST.length} whitelistée(s)).`,
+    `✓ Aucun drift de grants column-level (${dedupAdded.size} colonne(s) ajoutée(s) à des tables liste blanche, ${grantedSet.size} avec GRANT, ${whitelistedCount} whitelistée(s)).`,
   );
   process.exit(0);
 }
 
-main();
+// Ne lance main() que lorsque le module est invoqué comme CLI direct
+// (tsx scripts/check-column-grants.ts), pas quand il est importé par un test.
+const invokedAsCli =
+  process.argv[1] !== undefined &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (invokedAsCli) {
+  main();
+}
