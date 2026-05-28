@@ -9,6 +9,38 @@ Pour les décisions structurantes (ADRs), voir [`decisions/`](./decisions/).
 
 ---
 
+## 2026-05-28 (Producteur — UI indisponibilités, suppression du legacy vacances)
+
+> PR `feat/unavailabilities-ui`. **Étape 2/2** du chantier
+> indisponibilités producteur : l'ancien flow « Poser des vacances » disparaît
+> complètement au profit d'un seul concept visible, « Indisponibilité ».
+>
+> 🟢 `/creneaux` : bouton **Indisponibilité**, modale calendrier multi-mois
+> sans dépendance externe, sélection jour par jour, raison facultative,
+> suppression d'une indisponibilité par mini-confirmation sur le jour.
+>
+> 🟢 Garde UX : les jours avec commandes actives sont grisés, non
+> sélectionnables, marqués par une icône panier ambre et un message explicite.
+> Si le serveur retourne malgré tout `BLOCKING_ORDERS`, l'UI affiche une erreur
+> bloquante simple : le producteur doit annuler depuis `/commandes` avant de
+> retenter.
+>
+> 🟢 Marquage agenda : un jour indisponible est rendu comme fermé net sur la
+> grille hebdo (`Indisponible` + cadenas), sans créneaux fantômes barrés. Le
+> bloc « Remplissage des places » affiche une ligne dédiée
+> **Indisponibilité**, même sans créneau actif.
+>
+> 🟢 Cleanup legacy : suppression de `VacationModal`,
+> `CancelAndCloseModal`, `bulkExcludeRangeAction`, `excludeSlotAction`,
+> `unexcludeSlotAction`, et des tests associés. `slots.excluded_at` reste un
+> artefact interne exclusivement posé/retiré par `lib/unavailabilities/*`.
+>
+> 🟢 Tests : nouveaux tests unitaires de calendrier/modale/monitoring/actions
+> + E2E producteur qui pose une indispo, vérifie que le créneau disparaît côté
+> fiche publique, retire l'indispo, puis vérifie que le créneau réapparaît.
+
+---
+
 ## 2026-05-28 (Producteur — indisponibilités, fondations backend dormantes)
 
 > PR `feat/unavailabilities-backend`. **Étape 1/2** d'un chantier qui remplace

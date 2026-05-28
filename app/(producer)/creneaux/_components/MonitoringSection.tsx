@@ -12,8 +12,36 @@ import type {
 // Une case pleine = une place réservée pointant vers SA commande.
 // Une case vide = une place libre. Server component (zéro JS client).
 
-export function MonitoringSection({ days }: { days: MonitoringDay[] }) {
-  if (days.length === 0) return null;
+export function MonitoringSection({
+  days,
+  unavailableDates,
+}: {
+  days: MonitoringDay[];
+  /** Jours marqués indisponibles (ADR-0016). Affichés en ligne dédiée
+   *  même sans slots actifs, pour transparence sur l'agenda fermé. */
+  unavailableDates: Set<string>;
+}) {
+  // Liste de jours à afficher : monitoring habituel (jours avec slots actifs)
+  // + jours indispos qui ne sont pas déjà dans monitoring. On préserve l'ordre
+  // chronologique en mergeant par dateKey.
+  type Row =
+    | { kind: "monitoring"; day: MonitoringDay; dateKey: string }
+    | { kind: "unavailable"; dateKey: string };
+
+  const seenDates = new Set(days.map((d) => d.dateKey));
+  const rows: Row[] = days.map((d) => ({
+    kind: "monitoring",
+    day: d,
+    dateKey: d.dateKey,
+  }));
+  for (const date of unavailableDates) {
+    if (!seenDates.has(date)) {
+      rows.push({ kind: "unavailable", dateKey: date });
+    }
+  }
+  rows.sort((a, b) => a.dateKey.localeCompare(b.dateKey));
+
+  if (rows.length === 0) return null;
 
   return (
     <section
@@ -35,12 +63,49 @@ export function MonitoringSection({ days }: { days: MonitoringDay[] }) {
       </header>
 
       <div className="flex flex-col gap-8">
-        {days.map((day) => (
-          <MonitoringDayCard key={day.dateKey} day={day} />
-        ))}
+        {rows.map((row) =>
+          row.kind === "monitoring" ? (
+            <MonitoringDayCard key={row.dateKey} day={row.day} />
+          ) : (
+            <UnavailableDayCard key={row.dateKey} dateKey={row.dateKey} />
+          ),
+        )}
       </div>
     </section>
   );
+}
+
+function UnavailableDayCard({ dateKey }: { dateKey: string }) {
+  // Affichage minimal : "Lundi 14" + label "Indisponibilité". Le détail
+  // (raison, qui a posé) est owner-only et reste dans la modale calendaire.
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const dt = new Date(y!, (m ?? 1) - 1, d ?? 1);
+  const fmt = new Intl.DateTimeFormat("fr-FR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+  const headline = capitalize(fmt.format(dt));
+
+  return (
+    <article
+      data-testid="monitoring-day-unavailable"
+      data-date-key={dateKey}
+      className="rounded-2xl border border-dashed border-terra-700/40 bg-terra-700/[0.04] p-5"
+    >
+      <header className="flex items-baseline gap-x-3">
+        <h3 className="font-serif text-lg text-dark">{headline}</h3>
+        <span className="text-sm text-dark/60">·</span>
+        <span className="text-sm font-medium uppercase tracking-wide text-terra-700">
+          Indisponibilité
+        </span>
+      </header>
+    </article>
+  );
+}
+
+function capitalize(s: string): string {
+  return s.length > 0 ? s[0]!.toUpperCase() + s.slice(1) : s;
 }
 
 function MonitoringDayCard({ day }: { day: MonitoringDay }) {

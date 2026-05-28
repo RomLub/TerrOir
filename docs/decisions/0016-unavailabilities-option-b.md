@@ -94,13 +94,16 @@ Ordre du `deleteUnavailability` (sécurisé) :
    (`ignoreDuplicates: true`) → slots avec commandes actives strictement
    intacts.
 
-### Pattern « annuler-et-fermer » (PR #198) réutilisé
+### Blocage des jours avec commandes actives
 
 Si une indispo est posée sur un jour avec commandes actives, la server
 action retourne `{ error, code: 'BLOCKING_ORDERS', blocking_orders: [...] }`
 avec la shape `BlockingOrderForUnavail` (extension de `BlockingOrder`
-existante avec `date_key`). L'UI (PR #2) déclenchera le modal d'annulation
-séquentielle existante, puis retentera la pose.
+existante avec `date_key`). Décision finale PR #2 : l'UI ne déclenche pas
+le flow `CancelAndCloseModal` depuis la modale d'indisponibilité. Le jour
+est non sélectionnable en amont ; si le backend retourne malgré tout
+`BLOCKING_ORDERS`, l'UI affiche une erreur bloquante simple et le producteur
+doit annuler depuis `/commandes` avant de retenter.
 
 ## Alternatives rejetées
 

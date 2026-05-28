@@ -11,6 +11,7 @@ import {
 import type { SlotRuleRow } from "@/lib/slots/validators";
 import {
   groupWeekSlots,
+  parisDateKey,
   type CalendarSlot,
 } from "@/lib/slots/group-week-slots";
 import {
@@ -20,6 +21,7 @@ import {
   type MonitoringSlot,
 } from "@/lib/slots/group-creneaux-monitoring";
 import { formatOrderNumber } from "@/lib/orders/order-number";
+import { listDatesWithActiveOrders } from "@/lib/unavailabilities/list-dates-with-active-orders";
 import { PageHeader } from "@/components/ui";
 import { SectionSkeleton } from "../_components/ContentSkeletons";
 import CreneauxCalendarClient from "./_components/CreneauxCalendarClient";
@@ -82,7 +84,7 @@ export default function CreneauxPage({
         tone="producer"
         eyebrow="Créneaux"
         title="Vos créneaux de retrait"
-        subtitle="Votre agenda d'ouvertures. Ajoutez vos créneaux réguliers ou ponctuels, fermez un jour ou posez des vacances."
+        subtitle="Votre agenda d'ouvertures. Ajoutez vos créneaux réguliers ou ponctuels, ou posez une indisponibilité."
       />
 
       <Suspense fallback={<SectionSkeleton rows={5} />}>
@@ -222,6 +224,49 @@ async function CreneauxContent({
     ordersBySlot,
   });
 
+  // Pré-chargement indisponibilités + jours à commandes actives sur un
+  // horizon large (90 j) : la modale calendaire navigue librement dans le
+  // futur, l'utilisateur doit voir l'état immédiat sans fetch additionnel.
+  // Horizon partagé avec la garde générative `generateSlotsForProducer`
+  // pour cohérence (cf. lib/slots/generate.ts).
+  const horizonStartKey = todayKey;
+  const horizonEnd = new TZDate(now.getTime(), TZ);
+  horizonEnd.setDate(horizonEnd.getDate() + 90);
+  const horizonEndKey = `${horizonEnd.getFullYear()}-${String(
+    horizonEnd.getMonth() + 1,
+  ).padStart(2, "0")}-${String(horizonEnd.getDate()).padStart(2, "0")}`;
+
+  const [{ data: unavailRows }, datesWithActiveOrders] = await Promise.all([
+    admin
+      .from("unavailabilities")
+      .select("id, date")
+      .eq("producer_id", producerId)
+      .gte("date", horizonStartKey)
+      .lte("date", horizonEndKey),
+    listDatesWithActiveOrders(admin, producerId, horizonStartKey, horizonEndKey),
+  ]);
+
+  const unavailableDates = new Set<string>(
+    (unavailRows ?? []).map((r) => r.date as string),
+  );
+  const unavailabilityIdByDate = new Map<string, string>(
+    (unavailRows ?? []).map((r) => [r.date as string, r.id as string]),
+  );
+
+  // Dates avec créneaux configurés sur l'horizon : approximé par fetch
+  // léger des starts_at futurs (pas de capacity/rule_id nécessaires ici).
+  const { data: futureSlotStarts } = await admin
+    .from("slots")
+    .select("starts_at")
+    .eq("producer_id", producerId)
+    .eq("active", true)
+    .gte("starts_at", new Date().toISOString())
+    .lt("starts_at", keyToParisIso(horizonEndKey, 1));
+  const datesWithSlots = new Set<string>();
+  for (const row of futureSlotStarts ?? []) {
+    datesWithSlots.add(parisDateKey(row.starts_at as string));
+  }
+
   const [ly, lm, ld] = dayKeys[0]!.split("-").map(Number);
   const periodLabel = formatWeekRangeLabel(new Date(ly!, lm! - 1, ld!));
 
@@ -232,8 +277,15 @@ async function CreneauxContent({
         periodLabel={periodLabel}
         days={days}
         rules={rules}
+        unavailableDateKeys={Array.from(unavailableDates)}
+        dateKeysWithSlots={Array.from(datesWithSlots)}
+        dateKeysWithActiveOrders={Array.from(datesWithActiveOrders)}
+        unavailabilityEntries={Array.from(unavailabilityIdByDate)}
       />
-      <MonitoringSection days={monitoringDays} />
+      <MonitoringSection
+        days={monitoringDays}
+        unavailableDates={new Set(dayKeys.filter((key) => unavailableDates.has(key)))}
+      />
     </>
   );
 }
