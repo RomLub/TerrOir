@@ -13,9 +13,16 @@ import {
   groupWeekSlots,
   type CalendarSlot,
 } from "@/lib/slots/group-week-slots";
+import {
+  groupCreneauxMonitoring,
+  type MonitoringOrder,
+  type MonitoringRule,
+  type MonitoringSlot,
+} from "@/lib/slots/group-creneaux-monitoring";
 import { PageHeader } from "@/components/ui";
 import { SectionSkeleton } from "../_components/ContentSkeletons";
 import CreneauxCalendarClient from "./_components/CreneauxCalendarClient";
+import { MonitoringSection } from "./_components/MonitoringSection";
 
 // Rendu dynamique : les créneaux évoluent à chaque visite (nouveau slot
 // matérialisé, exclusion, etc.). Pas de cache SSR.
@@ -143,20 +150,43 @@ async function CreneauxContent({
   const slots = (slotsRaw ?? []) as unknown as CalendarSlot[];
   const rules = (rulesRaw ?? []) as unknown as SlotRuleRow[];
 
-  // Commandes actives sur ces créneaux → bloque « Fermer ce jour ».
+  // Commandes actives sur ces créneaux : alimente à la fois la garde
+  // « Fermer ce jour » (Set<slot_id>) et le monitoring du remplissage
+  // (Map<slot_id, MonitoringOrder[]> avec id, code, prénom, createdAt).
   const slotIds = slots.map((s) => s.id);
-  let blocked = new Set<string>();
+  const blocked = new Set<string>();
+  const ordersBySlot = new Map<string, MonitoringOrder[]>();
   if (slotIds.length > 0) {
-    const { data: blockedRaw } = await admin
+    const { data: ordersRaw } = await admin
       .from("orders")
-      .select("slot_id")
+      .select(
+        "id, code_commande, slot_id, created_at, consumer:users!orders_consumer_id_fkey(prenom)",
+      )
       .in("slot_id", slotIds)
       .in("statut", [...ACTIVE_ORDER_STATUTS]);
-    blocked = new Set(
-      (blockedRaw ?? [])
-        .map((o) => o.slot_id as string | null)
-        .filter((id): id is string => id !== null),
-    );
+    type OrderRow = {
+      id: string;
+      code_commande: string;
+      slot_id: string | null;
+      created_at: string;
+      consumer: { prenom: string | null } | { prenom: string | null }[] | null;
+    };
+    for (const row of (ordersRaw ?? []) as unknown as OrderRow[]) {
+      if (!row.slot_id) continue;
+      blocked.add(row.slot_id);
+      const consumer = Array.isArray(row.consumer)
+        ? (row.consumer[0] ?? null)
+        : row.consumer;
+      const order: MonitoringOrder = {
+        id: row.id,
+        code: row.code_commande,
+        consumerFirstName: consumer?.prenom ?? null,
+        createdAt: row.created_at,
+      };
+      const arr = ordersBySlot.get(row.slot_id);
+      if (arr) arr.push(order);
+      else ordersBySlot.set(row.slot_id, [order]);
+    }
   }
 
   const days = groupWeekSlots({
@@ -167,15 +197,32 @@ async function CreneauxContent({
     blockedSlotIds: blocked,
   });
 
+  const monitoringRules: MonitoringRule[] = rules.map((r) => ({
+    id: r.id,
+    mode: r.mode,
+    capacity_per_slot: r.capacity_per_slot,
+    slot_duration_minutes: r.slot_duration_minutes,
+  }));
+  const monitoringDays = groupCreneauxMonitoring({
+    dayKeys,
+    todayKey,
+    slots: slots satisfies MonitoringSlot[],
+    rules: monitoringRules,
+    ordersBySlot,
+  });
+
   const [ly, lm, ld] = dayKeys[0]!.split("-").map(Number);
   const periodLabel = formatWeekRangeLabel(new Date(ly!, lm! - 1, ld!));
 
   return (
-    <CreneauxCalendarClient
-      weekOffset={weekOffset}
-      periodLabel={periodLabel}
-      days={days}
-      rules={rules}
-    />
+    <>
+      <CreneauxCalendarClient
+        weekOffset={weekOffset}
+        periodLabel={periodLabel}
+        days={days}
+        rules={rules}
+      />
+      <MonitoringSection days={monitoringDays} />
+    </>
   );
 }
