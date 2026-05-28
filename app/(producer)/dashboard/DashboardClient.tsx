@@ -50,8 +50,6 @@ export type DashboardData = {
   pendingOrders: PendingOrder[];
   /** 7 jours (Lun→Dim) pour le composant VerticalWeekCalendar. */
   weekPlanning: VerticalDay[];
-  /** Échelle horaire commune (Europe/Paris) pour aligner les 7 colonnes. */
-  weekHourRange: { startHour: number; endHour: number };
   badges: {
     kind: 'stock' | 'response' | 'reliability';
     score: number;
@@ -363,10 +361,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
             isWeekNavPending ? 'opacity-60' : ''
           }`}
         >
-          <VerticalWeekCalendar
-            days={data.weekPlanning}
-            hourRange={data.weekHourRange}
-          />
+          <VerticalWeekCalendar days={data.weekPlanning} />
         </div>
       </section>
 

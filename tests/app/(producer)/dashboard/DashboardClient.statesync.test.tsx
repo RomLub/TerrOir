@@ -168,7 +168,6 @@ function makeData(over: Partial<DashboardData> = {}): DashboardData {
       makeDay('2026-05-30', 'Sam 30'),
       makeDay('2026-05-31', 'Dim 31'),
     ],
-    weekHourRange: { startHour: 8, endHour: 20 },
     badges: [],
     stockAlerts: [],
     publicationToDo: null,

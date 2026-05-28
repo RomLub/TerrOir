@@ -112,17 +112,15 @@ function bandsForDay(dateIso: string): HTMLElement[] {
 }
 
 describe('VerticalWeekCalendar — rendu colonnes & bandes', () => {
-  it('rend 7 colonnes-jours et l\'axe horaire avec graduations', () => {
-    render(
-      <VerticalWeekCalendar
-        days={sevenDays()}
-        hourRange={{ startHour: 8, endHour: 20 }}
-      />,
-    );
+  it('rend 7 colonnes-jours et l\'axe horaire fixe 6h-21h', () => {
+    // Amplitude désormais figée (2026-05-28) — la grille couvre 6h-21h
+    // indépendamment des slots fournis, pour donner un repère stable
+    // (un jour à 9h-12h ne dicte plus la lecture des 6 autres colonnes).
+    render(<VerticalWeekCalendar days={sevenDays()} />);
     const cols = container.querySelectorAll('[data-testid="planning-day-column"]');
     expect(cols).toHaveLength(7);
-    // Au moins une graduation horaire visible (axe).
-    expect(container.textContent).toContain('8h');
+    // Graduations 6h (début) et 20h ou 21h (fin — pas pile selon step).
+    expect(container.textContent).toContain('6h');
     expect(container.textContent).toContain('20h');
   });
 
@@ -135,7 +133,6 @@ describe('VerticalWeekCalendar — rendu colonnes & bandes', () => {
     render(
       <VerticalWeekCalendar
         days={days}
-        hourRange={{ startHour: 8, endHour: 20 }}
       />,
     );
     const b = bandsForDay('2026-06-03');
@@ -169,7 +166,6 @@ describe('VerticalWeekCalendar — rendu colonnes & bandes', () => {
     render(
       <VerticalWeekCalendar
         days={days}
-        hourRange={{ startHour: 8, endHour: 20 }}
       />,
     );
     const b = bandsForDay('2026-06-03');
@@ -201,7 +197,6 @@ describe('VerticalWeekCalendar — popover & navigation', () => {
     render(
       <VerticalWeekCalendar
         days={days}
-        hourRange={{ startHour: 8, endHour: 20 }}
       />,
     );
     // Avant clic : pas de popover.
@@ -245,7 +240,6 @@ describe('VerticalWeekCalendar — popover & navigation', () => {
     render(
       <VerticalWeekCalendar
         days={days}
-        hourRange={{ startHour: 8, endHour: 20 }}
       />,
     );
     act(() => {
@@ -282,7 +276,6 @@ describe('VerticalWeekCalendar — cas multi-plages et jour vide', () => {
     render(
       <VerticalWeekCalendar
         days={days}
-        hourRange={{ startHour: 8, endHour: 20 }}
       />,
     );
     expect(bandsForDay('2026-06-03')).toHaveLength(2);
@@ -296,7 +289,6 @@ describe('VerticalWeekCalendar — cas multi-plages et jour vide', () => {
     render(
       <VerticalWeekCalendar
         days={sevenDays()}
-        hourRange={{ startHour: 8, endHour: 20 }}
       />,
     );
     expect(bands()).toHaveLength(0);
@@ -306,8 +298,8 @@ describe('VerticalWeekCalendar — cas multi-plages et jour vide', () => {
     expect(
       container.querySelectorAll('[data-testid="planning-day-column"]'),
     ).toHaveLength(7);
-    // Axe horaire toujours visible (au moins une graduation).
-    expect(container.textContent).toContain('8h');
+    // Axe horaire toujours visible (au moins une graduation 6h).
+    expect(container.textContent).toContain('6h');
   });
 });
 
@@ -320,7 +312,6 @@ describe('VerticalWeekCalendar — invariants & isToday', () => {
     render(
       <VerticalWeekCalendar
         days={days}
-        hourRange={{ startHour: 8, endHour: 20 }}
       />,
     );
     const col = container.querySelector(
@@ -358,7 +349,6 @@ describe('VerticalWeekCalendar — invariants & isToday', () => {
     render(
       <VerticalWeekCalendar
         days={days}
-        hourRange={{ startHour: 8, endHour: 20 }}
       />,
     );
     const b = bandsForDay('2026-06-03')[0]!;

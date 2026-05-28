@@ -17,10 +17,6 @@ import {
   formatWeekRangeLabel,
   addDays,
 } from '@/lib/dates/week-navigation';
-import {
-  computeWeekHourRange,
-  PLANNING_FALLBACK_RANGE,
-} from '@/lib/slots/week-hour-range';
 import { fetchBadgeDetailsForProducer } from '@/lib/producers/fetch-badge-details';
 import { formatBadgeDetailLine } from '@/lib/producers/compute-badge-details';
 import { DashboardSkeleton } from '../_components/ContentSkeletons';
@@ -254,11 +250,6 @@ async function DashboardContent({
     };
   }
 
-  // Échelle horaire commune aux 7 colonnes du VerticalWeekCalendar.
-  // Calculée ici (serveur Next) pour arriver figée au client. Fallback
-  // [8h, 20h] si aucun slot dans la semaine (cf. PLANNING_FALLBACK_RANGE).
-  const weekHourRange = computeWeekHourRange(slots ?? []);
-
   // dateIso utilisé comme clé de jour côté heatmap + drill-down. Construit en
   // heure locale (pas toISOString qui retourne UTC) pour matcher l'horizon
   // de la semaine côté producteur Paris.
@@ -366,7 +357,6 @@ async function DashboardContent({
     nextPickup,
     pendingOrders,
     weekPlanning,
-    weekHourRange,
     badges,
     stockAlerts,
     publicationToDo,
