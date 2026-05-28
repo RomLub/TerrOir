@@ -32,7 +32,13 @@ import { fileURLToPath } from "node:url";
 // Configuration : tables au pattern liste blanche + whitelist owner-only / admin-only.
 // =============================================================================
 
-const WHITELIST_TABLES = ["producers"] as const;
+// Tables au pattern liste blanche : SELECT révoqué à anon/authenticated puis
+// GRANT SELECT (col) par colonne. Toute `ALTER TABLE ADD COLUMN` sur l'une
+// de ces tables DOIT décider explicitement du scope (grant explicite ou
+// entrée WHITELIST ci-dessous).
+//
+// 2026-05-28 : ajout de `unavailabilities` (raison owner-only, cf. ADR-0009).
+const WHITELIST_TABLES = ["producers", "unavailabilities"] as const;
 
 type WhitelistEntry = { table: string; column: string; rationale: string };
 

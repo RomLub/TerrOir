@@ -9,6 +9,47 @@ Pour les décisions structurantes (ADRs), voir [`decisions/`](./decisions/).
 
 ---
 
+## 2026-05-28 (Producteur — indisponibilités, fondations backend dormantes)
+
+> PR `feat/unavailabilities-backend`. **Étape 1/2** d'un chantier qui remplace
+> « Poser des vacances » par un vrai système d'indisponibilités côté
+> producteur. Cette PR pose les fondations DB et backend — **complètement
+> dormantes** tant que l'UI (PR #2) ne crée pas d'indisponibilité. Aucune
+> régression possible côté checkout (vérifié post-apply).
+>
+> 🟢 Nouvelle table `unavailabilities (producer_id, date, raison?, …)`.
+> Indépendante des créneaux : une date marquée reste fermée même si une
+> règle récurrente créée APRÈS la couvre. La raison est strictement
+> owner-only (peut contenir du perso type « rdv médical ») — column-grants
+> publics limités à `(id, producer_id, date)`. Pattern liste blanche
+> identique à `producers`, audit étendu (`check:column-grants`).
+>
+> 🟢 Défense en profondeur : (1) la matérialisation des slots saute les
+> jours indisponibles ; (2) la RPC `create_order_with_items` refuse toute
+> commande dont le slot tombe sur un jour indisponible. La 2e garde
+> couvre les races conditions.
+>
+> 🟢 Nouvelle fonction `generateSlotsForProducerOnDate(producer, date)` —
+> régénération CIBLÉE d'un seul jour, utilisée à la suppression d'une
+> indisponibilité (UN-exclude + regen propre du jour, slots avec
+> commandes actives intacts via UPSERT idempotent).
+>
+> 🟢 Pattern « Annuler-et-fermer » (PR #198) prêt à être réutilisé : si
+> une indispo est posée sur un jour avec commandes actives, la server
+> action retourne la liste des commandes bloquantes (UI PR #2).
+>
+> ℹ️ ADR [ADR-0016](./decisions/0016-unavailabilities-option-b.md) — choix
+> d'archi, alternatives rejetées, conséquences. La PR #2 supprimera
+> l'ancien bouton, `VacationModal` et `bulkExcludeRangeAction` — un seul
+> concept à la fin du chantier.
+>
+> 🟢 Tests : 40 tests vitest dédiés (création, suppression, détection
+> blocking_orders, garde générative, fonction ciblée, parité
+> check-column-grants). Lint / type-check / build OK, suite complète
+> verte.
+
+---
+
 ## 2026-05-25 (UX — espace acheteur : barre du haut épurée, parité producteur)
 
 > PR `feat/consumer-header`. La barre du haut de l'espace compte (/compte) reprend le style minimal de l'espace producteur. On **retire les menus publics** (Producteurs, Carte, Notre démarche, Comment ça marche) — on revient à la boutique via le **logo**. La nav du compte reste dans la barre latérale.
