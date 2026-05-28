@@ -82,9 +82,14 @@ export function OrderDetailClient({ data }: { data: OrderDetailData }) {
   return (
     <div className="max-w-5xl mx-auto px-8 py-10">
       <header className="mb-8">
-        <Link href="/commandes" className="text-[13px] text-dark/60 hover:text-green-900">← Retour aux commandes</Link>
-        <div className="mt-3 flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
+            <Link
+              href="/commandes"
+              className="mb-5 inline-flex items-center justify-center rounded-md bg-terra-100 px-4 py-2 text-[14px] font-medium text-terra-700 transition-colors hover:bg-terra-100/70 focus:outline-none focus:ring-2 focus:ring-terra-700"
+            >
+              Mes commandes
+            </Link>
             <div className="text-[11px] uppercase tracking-[0.18em] text-terra-700 font-semibold">{order.numeroCommande}</div>
             <h1 className="mt-1 font-serif text-[40px] text-green-900 leading-tight">Commande de {order.client.name.split(' ')[0]}</h1>
             <p className="text-[13px] text-dark/60 mt-1">Reçue le {order.createdAtLabel}</p>
