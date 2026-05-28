@@ -1,0 +1,42 @@
+-- =============================================================================
+-- TerrOir — HOTFIX urgent post-PR #206 (2026-05-28) : grants column-level
+-- manquants sur producers.producer_number + producers.next_order_seq.
+-- =============================================================================
+-- Symptôme observé en prod après merge PR #206 : tout l'espace producteur
+-- redirige systématiquement vers /invitation, alors que les comptes
+-- producteurs existent bien en base.
+--
+-- Cause racine : la table `public.producers` a un pattern de grants
+-- column-level EXPLICITES (liste blanche). Quand la migration
+-- `20260528210000_order_number_separation.sql` a ajouté les colonnes
+-- `producer_number` et `next_order_seq`, Postgres a appliqué les grants
+-- `INSERT / UPDATE / REFERENCES` (qui sont posés au niveau TABLE) mais
+-- PAS le `SELECT` (qui est posé via liste de colonnes explicite, ne
+-- couvrait pas les nouvelles colonnes).
+--
+-- Conséquence : `fetchProducerForUser` (lib/producers/context.ts), appelé
+-- avec un server client (rôle `authenticated`), faisait
+-- `SELECT id, user_id, slug, nom_exploitation, statut, producer_number`.
+-- Postgres répondait `42501 permission denied for table producers`.
+-- Supabase JS retournait `{data: null, error: ...}`. Le helper ignorait
+-- l'erreur (`(data as ProducerRecord | null) ?? null`) et retournait null.
+-- Toutes les pages `app/(producer)/*` font ensuite
+-- `if (!producer) redirect('/invitation')` → DOWN.
+--
+-- Pourquoi le layout marchait quand même : `app/(producer)/layout.tsx`
+-- utilise l'admin client (service_role) qui a SELECT tous-droits ; donc la
+-- sidebar + les badges s'affichaient, mais le contenu streamé via Suspense
+-- échouait en arrière-plan.
+--
+-- Fix : ajouter explicitement le `SELECT` column-level sur les 2 colonnes
+-- aux rôles `anon` et `authenticated`. Aucun risque d'expo de secret :
+--   - `producer_number` = identifiant non sensible, équivalent fonctionnel
+--     du slug public ; déjà exposé via la vue `producers_public`.
+--   - `next_order_seq` = simple compteur interne ; pas confidentiel.
+--
+-- Hotfix appliqué en prod via MCP au moment de la rédaction de ce fichier.
+-- Forward-only, idempotent (les GRANT SELECT additionnels ne cassent rien
+-- s'ils existent déjà).
+-- =============================================================================
+
+grant select (producer_number, next_order_seq) on public.producers to anon, authenticated;
