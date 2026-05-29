@@ -16,12 +16,21 @@ import {
 import { CATEGORIES_WITH_ANIMAL } from '@/lib/products/categories-with-animal';
 import { STOCK_UNLIMITED_SENTINEL } from '@/lib/products/constants';
 import type { Animal, Cut, ProductCategory } from '@/lib/products/types';
+import {
+  ProductPickupSection,
+  type ProductPickupAvailabilityMode,
+  type ProductPickupSlotOption,
+  type ReservedProductSlotDraft,
+} from '../../_components/ProductPickupSection';
 
 type Form = {
   name: string; description: string; price: string; unit: string;
   weightStep: string; estimatedWeight: string; stock: string; stockUnlimited: boolean;
   delai: string; active: boolean;
   conseilActive: boolean; conseilTexte: string;
+  pickupAvailabilityMode: ProductPickupAvailabilityMode;
+  selectedSlotIds: string[];
+  reservedSlots: ReservedProductSlotDraft[];
   // T-220 PR-B : tagging catégorisation produit (FK nullable transitoire
   // pendant le backfill — cf. migration PR-A 20260501002856).
   categoryId: string | null; animalId: string | null; cutId: string | null;
@@ -31,6 +40,9 @@ const EMPTY: Form = {
   name: '', description: '', price: '', unit: 'kg',
   weightStep: '0.25', estimatedWeight: '', stock: '', stockUnlimited: false, delai: '2', active: true,
   conseilActive: false, conseilTexte: '',
+  pickupAvailabilityMode: 'all_shared_slots',
+  selectedSlotIds: [],
+  reservedSlots: [],
   categoryId: null, animalId: null, cutId: null,
 };
 
@@ -48,6 +60,8 @@ export default function ProductEditPage() {
   const [dragging, setDragging] = useState(false);
   const [producerId, setProducerId] = useState<string | null>(null);
   const [producerName, setProducerName] = useState('');
+  const [pickupSlots, setPickupSlots] = useState<ProductPickupSlotOption[]>([]);
+  const [pickupError, setPickupError] = useState<string | null>(null);
   // slug + statut : pour afficher le lien "Voir ma fiche publique ↗"
   // uniquement si le producer est publié (statut='public'). Sinon la
   // route consumer renverrait 404.
@@ -94,15 +108,29 @@ export default function ProductEditPage() {
         fetchedCategories,
         fetchedAnimals,
         fetchedCuts,
+        { data: fetchedSlots },
+        { data: fetchedLinks },
       ] = await Promise.all([
         supabase
           .from('products')
-          .select('id, producer_id, nom, description, prix, unite, poids_estime_kg, stock_disponible, stock_illimite, delai_preparation_jours, active, photos, conseil_active, conseil_texte, category_id, animal_id, cut_id')
+          .select('id, producer_id, nom, description, prix, unite, poids_estime_kg, stock_disponible, stock_illimite, delai_preparation_jours, active, photos, conseil_active, conseil_texte, category_id, animal_id, cut_id, pickup_availability_mode')
           .eq('id', productId)
           .maybeSingle(),
         fetchProductCategories(supabase),
         fetchAnimals(supabase),
         fetchCuts(supabase),
+        supabase
+          .from('slots')
+          .select('id, starts_at, ends_at, availability_scope')
+          .eq('producer_id', prod.id)
+          .eq('active', true)
+          .is('excluded_at', null)
+          .gte('starts_at', new Date().toISOString())
+          .order('starts_at', { ascending: true }),
+        supabase
+          .from('product_slot_availabilities')
+          .select('product_id, slot_id')
+          .eq('producer_id', prod.id),
       ]);
 
       if (!active) return;
@@ -113,6 +141,29 @@ export default function ProductEditPage() {
 
       if (fetchError) { setError(fetchError.message); setLoading(false); return; }
       if (!product || product.producer_id !== prod.id) { setNotFound(true); setLoading(false); return; }
+
+      const linksBySlot = new Map<string, string[]>();
+      const selectedSlotIds: string[] = [];
+      for (const link of (fetchedLinks ?? []) as Array<{ product_id: string; slot_id: string }>) {
+        const current = linksBySlot.get(link.slot_id) ?? [];
+        current.push(link.product_id);
+        linksBySlot.set(link.slot_id, current);
+        if (link.product_id === productId) selectedSlotIds.push(link.slot_id);
+      }
+      setPickupSlots(
+        ((fetchedSlots ?? []) as Array<{
+          id: string;
+          starts_at: string;
+          ends_at: string;
+          availability_scope: 'shared' | 'product_restricted';
+        }>).map((slot) => ({
+          id: slot.id,
+          startsAt: slot.starts_at,
+          endsAt: slot.ends_at,
+          availabilityScope: slot.availability_scope,
+          linkedProductIds: linksBySlot.get(slot.id) ?? [],
+        })),
+      );
 
       // T-220 PR-B — Auto-cleanup Q5 (silencieux, en mémoire uniquement) :
       // Si la catégorie persistée n'expose pas le select Animal (ex: produit
@@ -151,6 +202,11 @@ export default function ProductEditPage() {
         active: !!product.active,
         conseilActive: !!product.conseil_active,
         conseilTexte: (product.conseil_texte as string | null) ?? '',
+        pickupAvailabilityMode:
+          (product.pickup_availability_mode as ProductPickupAvailabilityMode | null) ??
+          'all_shared_slots',
+        selectedSlotIds,
+        reservedSlots: [],
         categoryId: persistedCategoryId,
         animalId: initialAnimalId,
         cutId: initialCutId,
@@ -168,6 +224,54 @@ export default function ProductEditPage() {
 
   const up = (k: keyof Form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const setPickupMode = (mode: ProductPickupAvailabilityMode) => {
+    setPickupError(null);
+    setForm((f) => ({ ...f, pickupAvailabilityMode: mode }));
+  };
+
+  const togglePickupSlot = (slotId: string) => {
+    setPickupError(null);
+    setForm((f) => ({
+      ...f,
+      selectedSlotIds: f.selectedSlotIds.includes(slotId)
+        ? f.selectedSlotIds.filter((id) => id !== slotId)
+        : [...f.selectedSlotIds, slotId],
+    }));
+  };
+
+  const addReservedSlot = () => {
+    setPickupError(null);
+    setForm((f) => ({
+      ...f,
+      reservedSlots: [
+        ...f.reservedSlots,
+        { id: crypto.randomUUID(), startAt: '', endAt: '', capacity: '1' },
+      ],
+    }));
+  };
+
+  const updateReservedSlot = (
+    id: string,
+    field: keyof Omit<ReservedProductSlotDraft, 'id'>,
+    value: string,
+  ) => {
+    setPickupError(null);
+    setForm((f) => ({
+      ...f,
+      reservedSlots: f.reservedSlots.map((slot) =>
+        slot.id === id ? { ...slot, [field]: value } : slot,
+      ),
+    }));
+  };
+
+  const removeReservedSlot = (id: string) => {
+    setPickupError(null);
+    setForm((f) => ({
+      ...f,
+      reservedSlots: f.reservedSlots.filter((slot) => slot.id !== id),
+    }));
+  };
 
   const handleFiles = (files: FileList | null) => {
     if (!files) return;
@@ -233,8 +337,17 @@ export default function ProductEditPage() {
       setError('Conseil activé : saisissez le texte ou désactivez le conseil.');
       return;
     }
+    if (
+      form.pickupAvailabilityMode === 'selected_slots' &&
+      form.selectedSlotIds.length === 0 &&
+      form.reservedSlots.length === 0
+    ) {
+      setPickupError('Sélectionnez au moins un créneau pour ce produit.');
+      return;
+    }
     setSaving(true);
     setError(null);
+    setPickupError(null);
 
     const supabase = createSupabaseBrowserClient();
 
@@ -263,6 +376,14 @@ export default function ProductEditPage() {
         category_id: form.categoryId,
         animal_id: form.animalId,
         cut_id: form.cutId,
+        pickup_availability_mode: form.pickupAvailabilityMode,
+        slot_ids: form.selectedSlotIds,
+        reserved_slots: form.reservedSlots.map((slot) => ({
+          start_at: slot.startAt,
+          end_at: slot.endAt,
+          capacity_per_slot: Number(slot.capacity),
+          mode: 'libre' as const,
+        })),
       });
       if (res.error) throw new Error(res.error);
       router.push('/catalogue');
@@ -332,7 +453,7 @@ export default function ProductEditPage() {
           <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
             <h2 className="font-serif text-[22px] text-green-900 mb-4">Informations produit</h2>
             <div className="space-y-4">
-              <Input label="Nom du produit *" value={form.name} onChange={up('name')} required />
+              <Input id="product-name" label="Nom du produit *" value={form.name} onChange={up('name')} required />
               <Textarea label="Description" rows={4} value={form.description} onChange={up('description')} />
               {/* T-220 PR-B : cascade catégorie → animal → morceau.
                   Comportement identique à la page nouveau (cf. nouveau/page.tsx
@@ -400,7 +521,7 @@ export default function ProductEditPage() {
           <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
             <h2 className="font-serif text-[22px] text-green-900 mb-4">Prix et conditionnement</h2>
             <div className="grid sm:grid-cols-2 gap-4">
-              <Input label="Prix *" type="number" step="0.01" min="0" value={form.price} onChange={up('price')} required />
+              <Input id="product-price" label="Prix *" type="number" step="0.01" min="0" value={form.price} onChange={up('price')} required />
               <Select label="Unité *" value={form.unit} onChange={up('unit')}>
                 <option value="kg">Au kilo (kg)</option>
                 <option value="piece">À la pièce</option>
@@ -477,12 +598,26 @@ export default function ProductEditPage() {
               <span className="text-[14px] font-medium">Stock illimité</span>
             </label>
             {!form.stockUnlimited && (
-              <Input label={`Quantité en stock (${form.unit})`} type="number" min="0" value={form.stock} onChange={up('stock')} />
+              <Input id="product-stock" label={`Quantité en stock (${form.unit})`} type="number" min="0" value={form.stock} onChange={up('stock')} />
             )}
             <div className="mt-4">
               <Input label="Délai de préparation (en jours)" type="number" min="0" value={form.delai} onChange={up('delai')} />
             </div>
           </section>
+
+          <ProductPickupSection
+            productId={productId}
+            mode={form.pickupAvailabilityMode}
+            slots={pickupSlots}
+            selectedSlotIds={form.selectedSlotIds}
+            reservedSlots={form.reservedSlots}
+            error={pickupError}
+            onModeChange={setPickupMode}
+            onToggleSlot={togglePickupSlot}
+            onAddReservedSlot={addReservedSlot}
+            onUpdateReservedSlot={updateReservedSlot}
+            onRemoveReservedSlot={removeReservedSlot}
+          />
 
           <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
             <label className="flex items-center justify-between gap-3 cursor-pointer">
