@@ -39,6 +39,7 @@ async function seedSlot(
   producerId: string,
   capacity = 5,
   startsAt: Date = TOMORROW(),
+  availabilityScope: 'shared' | 'product_restricted' = 'shared',
 ): Promise<{ id: string; dateISO: string }> {
   const admin = getRawAdminClient();
   const end = new Date(startsAt);
@@ -51,6 +52,7 @@ async function seedSlot(
       ends_at: end.toISOString(),
       capacity_per_slot: capacity,
       active: true,
+      availability_scope: availabilityScope,
     })
     .select('id')
     .single();
@@ -122,6 +124,50 @@ test.describe('Consumer — checkout flow (API)', () => {
     }
   });
 
+  test('product-slot incompatible : POST /api/orders/create bloque avant paiement', async ({
+    page,
+    ctx,
+  }) => {
+    test.setTimeout(120_000);
+
+    const consumer = await seedConsumer(ctx, { suffix: 'co-slot-ko' });
+    const producer = await seedProducer(ctx, {
+      suffix: 'co-slot-ko-prod',
+      statut: 'public',
+    });
+    await setProducerStripeReady(producer.producerId, true);
+
+    try {
+      const product = await seedProduct(ctx, {
+        producerId: producer.producerId,
+        nom: `CheckoutSlotKo-${Date.now()}`,
+        stockDisponible: 100,
+        active: true,
+        pickupAvailabilityMode: 'selected_slots',
+      });
+      const slot = await seedSlot(producer.producerId);
+
+      await loginAs(page, consumer);
+
+      const orderRes = await page.request.post('/api/orders/create', {
+        data: {
+          producer_id: producer.producerId,
+          slot_id: slot.id,
+          date_retrait: slot.dateISO,
+          items: [{ product_id: product.id, quantite: 1 }],
+          cgv_accepted: true,
+        },
+      });
+
+      expect(orderRes.status(), await orderRes.text()).toBe(409);
+      const body = (await orderRes.json()) as { hint?: string; error?: string };
+      expect(body.hint).toBe('product_slot_unavailable');
+      expect(body.error).toMatch(/Aucun créneau de retrait commun/i);
+    } finally {
+      await cleanupOrdersForProducers([producer.producerId]);
+    }
+  });
+
   test('stock 0 : RPC raise 23514 stock_depleted → 409', async ({ page, ctx }) => {
     test.setTimeout(120_000);
 
@@ -182,21 +228,22 @@ test.describe('Consumer — checkout flow (API)', () => {
       // Slot capacity = 1, on l'épuise via une order déjà confirmée
       const slot = await seedSlot(producer.producerId, 1);
 
-      const admin = getRawAdminClient();
-      // Order pré-existante consumant la capacité du slot (statut confirmed
-      // = compte dans le booking count selon la RPC slot_full check).
+      // Order pre-existante consommant la capacite du slot. On passe par la
+      // route publique pour exercer le meme chemin que le consumer final.
       const otherConsumer = await seedConsumer(ctx, { suffix: 'co-cap-other' });
-      await admin.from('orders').insert({
-        producer_id: producer.producerId,
-        consumer_id: otherConsumer.id,
-        slot_id: slot.id,
-        date_retrait: slot.dateISO,
-        heure_retrait: '10:00',
-        statut: 'confirmed',
-        montant_total: 5,
-        code_commande: `CAP-OTHER-${Date.now()}`,
+      await loginAs(page, otherConsumer);
+      const seedOrderRes = await page.request.post('/api/orders/create', {
+        data: {
+          producer_id: producer.producerId,
+          slot_id: slot.id,
+          date_retrait: slot.dateISO,
+          items: [{ product_id: product.id, quantite: 1 }],
+          cgv_accepted: true,
+        },
       });
+      expect(seedOrderRes.status(), await seedOrderRes.text()).toBe(200);
 
+      await page.context().clearCookies();
       await loginAs(page, consumer);
       const orderRes = await page.request.post('/api/orders/create', {
         data: {

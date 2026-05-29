@@ -131,7 +131,13 @@ function pushResp(table: string, ...resps: Resp[]) {
 function pushNominalProducer() {
   pushResp("producers", { data: [{ id: PRODUCER_ID }], error: null });
 }
-function pushProduct(stockDisponible: number | string | null, stockIllimite: boolean, productId = PRODUCT_ID, producerId = PRODUCER_ID) {
+function pushProduct(
+  stockDisponible: number | string | null,
+  stockIllimite: boolean,
+  productId = PRODUCT_ID,
+  producerId = PRODUCER_ID,
+  pickupAvailabilityMode = "all_shared_slots",
+) {
   pushResp("products", {
     data: [
       {
@@ -139,14 +145,27 @@ function pushProduct(stockDisponible: number | string | null, stockIllimite: boo
         producer_id: producerId,
         stock_disponible: stockDisponible,
         stock_illimite: stockIllimite,
+        active: true,
+        pickup_availability_mode: pickupAvailabilityMode,
       },
     ],
     error: null,
   });
 }
 function pushSlot(capacityPerSlot: number, slotId = SLOT_ID, producerId = PRODUCER_ID) {
+  const row = {
+    id: slotId,
+    producer_id: producerId,
+    capacity_per_slot: capacityPerSlot,
+    active: true,
+    excluded_at: null,
+    availability_scope: "shared",
+  };
   pushResp("slots", {
-    data: [{ id: slotId, producer_id: producerId, capacity_per_slot: capacityPerSlot }],
+    data: [row],
+    error: null,
+  }, {
+    data: [row],
     error: null,
   });
 }
@@ -226,15 +245,17 @@ describe("B. Path nominal", () => {
     const res = await POST(makeRequest({ items: [item] }));
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
+    expect(await res.json()).toMatchObject({
       results: { [itemKey(item)]: { ok: true } },
     });
-    // 4 SELECTs batch (Promise.all en parallèle, ordre source = producers,
-    // products, slots, orders).
+    // SELECTs batch (Promise.all en parallèle, ordre source = producers,
+    // products, slots, slots compatibles, liens produit-creneau, orders).
     expect(captured.fromCalls).toEqual([
       "producers",
       "products",
       "slots",
+      "slots",
+      "product_slot_availabilities",
       "orders",
     ]);
   });
@@ -255,7 +276,7 @@ describe("C. producer_unavailable", () => {
     const res = await POST(makeRequest({ items: [item] }));
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
+    expect(await res.json()).toMatchObject({
       results: {
         [itemKey(item)]: { ok: false, fatal: true, reason: "producer_unavailable" },
       },
@@ -278,7 +299,7 @@ describe("D. product_unavailable", () => {
     const res = await POST(makeRequest({ items: [item] }));
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
+    expect(await res.json()).toMatchObject({
       results: {
         [itemKey(item)]: { ok: false, fatal: true, reason: "product_unavailable" },
       },
@@ -295,7 +316,7 @@ describe("D. product_unavailable", () => {
     const res = await POST(makeRequest({ items: [item] }));
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
+    expect(await res.json()).toMatchObject({
       results: {
         [itemKey(item)]: { ok: false, fatal: true, reason: "product_unavailable" },
       },
@@ -313,7 +334,7 @@ describe("D. product_unavailable", () => {
     const res = await POST(makeRequest({ items: [item] }));
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
+    expect(await res.json()).toMatchObject({
       results: {
         [itemKey(item)]: { ok: false, fatal: true, reason: "product_unavailable" },
       },
@@ -329,14 +350,14 @@ describe("E. slot_unavailable", () => {
   it("E1 — slot absent SELECT (supprimé / excluded / active=false — même path)", async () => {
     pushNominalProducer();
     pushProduct(10, false);
-    pushResp("slots", { data: [], error: null }); // slot absent
+    pushResp("slots", { data: [], error: null }, { data: [], error: null }); // slot absent
     pushOrders([]);
 
     const item = makeValidItem();
     const res = await POST(makeRequest({ items: [item] }));
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
+    expect(await res.json()).toMatchObject({
       results: {
         [itemKey(item)]: { ok: false, fatal: true, reason: "slot_unavailable" },
       },
@@ -353,9 +374,40 @@ describe("E. slot_unavailable", () => {
     const res = await POST(makeRequest({ items: [item] }));
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
+    expect(await res.json()).toMatchObject({
       results: {
         [itemKey(item)]: { ok: false, fatal: true, reason: "slot_unavailable" },
+      },
+    });
+  });
+});
+
+// =============================================================================
+// E2. product_slot_unavailable
+// =============================================================================
+
+describe("E2. product_slot_unavailable", () => {
+  it("E2.1 - produit limite non lie au creneau choisi", async () => {
+    pushNominalProducer();
+    pushProduct(10, false, PRODUCT_ID, PRODUCER_ID, "selected_slots");
+    pushSlot(5);
+    pushOrders([]);
+
+    const item = makeValidItem();
+    const res = await POST(makeRequest({ items: [item] }));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      results: {
+        [itemKey(item)]: {
+          ok: false,
+          fatal: true,
+          reason: "product_slot_unavailable",
+        },
+      },
+      slotCompatibility: {
+        hasSlotConflict: true,
+        compatibleSlots: { [PRODUCER_ID]: [] },
       },
     });
   });
@@ -376,7 +428,7 @@ describe("F. slot_full", () => {
     const res = await POST(makeRequest({ items: [item] }));
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
+    expect(await res.json()).toMatchObject({
       results: {
         [itemKey(item)]: { ok: false, fatal: true, reason: "slot_full" },
       },
@@ -399,7 +451,7 @@ describe("G. stock_insufficient + edges", () => {
     const res = await POST(makeRequest({ items: [item] }));
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
+    expect(await res.json()).toMatchObject({
       results: {
         [itemKey(item)]: {
           ok: false,
@@ -421,7 +473,7 @@ describe("G. stock_insufficient + edges", () => {
     const res = await POST(makeRequest({ items: [item] }));
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
+    expect(await res.json()).toMatchObject({
       results: { [itemKey(item)]: { ok: true } },
     });
   });
@@ -436,7 +488,7 @@ describe("G. stock_insufficient + edges", () => {
     const res = await POST(makeRequest({ items: [item] }));
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
+    expect(await res.json()).toMatchObject({
       results: {
         [itemKey(item)]: {
           ok: false,
@@ -467,12 +519,16 @@ describe("H. Multi-items + ordre évaluation", () => {
           producer_id: PRODUCER_ID,
           stock_disponible: 10,
           stock_illimite: false,
+          active: true,
+          pickup_availability_mode: "all_shared_slots",
         },
         {
           id: PRODUCT_ID_3,
           producer_id: PRODUCER_ID,
           stock_disponible: 5,
           stock_illimite: false,
+          active: true,
+          pickup_availability_mode: "all_shared_slots",
         },
         // PRODUCT_ID_2 omis volontairement (absent du SELECT result)
       ],
@@ -488,7 +544,7 @@ describe("H. Multi-items + ordre évaluation", () => {
     const res = await POST(makeRequest({ items: [item1, item2, item3] }));
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
+    expect(await res.json()).toMatchObject({
       results: {
         [itemKey(item1)]: { ok: true },
         [itemKey(item2)]: {
@@ -512,14 +568,14 @@ describe("H. Multi-items + ordre évaluation", () => {
     // (l. 119, premier check), pas product/slot/stock_*.
     pushResp("producers", { data: [], error: null });
     pushResp("products", { data: [], error: null });
-    pushResp("slots", { data: [], error: null });
+    pushResp("slots", { data: [], error: null }, { data: [], error: null });
     pushOrders([]);
 
     const item = makeValidItem({ quantite: 1 });
     const res = await POST(makeRequest({ items: [item] }));
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
+    expect(await res.json()).toMatchObject({
       results: {
         [itemKey(item)]: {
           ok: false,
@@ -589,7 +645,7 @@ describe("W. Fail SELECT batch (forensique T-450)", () => {
 
     // Route reste 200, fail-soft préservé via `?? []`.
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
+    expect(await res.json()).toMatchObject({
       results: {
         [itemKey(item)]: {
           ok: false,
@@ -619,7 +675,7 @@ describe("W. Fail SELECT batch (forensique T-450)", () => {
 
     // Route reste 200, items flag slot_unavailable (slotsMap vide via `?? []`).
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
+    expect(await res.json()).toMatchObject({
       results: {
         [itemKey(item)]: {
           ok: false,

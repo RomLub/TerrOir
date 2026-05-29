@@ -46,6 +46,9 @@ type TechnicalError = {
   details?: string;
 };
 
+const SLOT_CONFLICT_MESSAGE =
+  "Aucun créneau de retrait commun n'est disponible pour les produits de cette commande.";
+
 type CheckoutGroup = {
   producerId: string;
   slug: string;
@@ -139,10 +142,32 @@ export default function CheckoutPage() {
         });
         if (validateRes.ok) {
           const vData = (await validateRes.json()) as ValidateResponse;
+          const groupCompatibleSlots =
+            vData.slotCompatibility?.compatibleSlots[group.producerId] ?? [];
+          const hasSlotConflict =
+            vData.slotCompatibility?.hasSlotConflict === true ||
+            (groupCompatibleSlots.length > 0 &&
+              !groupCompatibleSlots.includes(group.slotId));
           const hasIssue = group.items.some((it) => {
             const status = vData.results[itemKey(it)];
             return status !== undefined && !status.ok;
           });
+          const hasProductSlotIssue = group.items.some((it) => {
+            const status = vData.results[itemKey(it)];
+            return (
+              status !== undefined &&
+              !status.ok &&
+              status.fatal &&
+              status.reason === 'product_slot_unavailable'
+            );
+          });
+          if (hasSlotConflict || hasProductSlotIssue) {
+            setInitError({
+              kind: 'generic',
+              message: SLOT_CONFLICT_MESSAGE,
+            });
+            return;
+          }
           if (hasIssue) {
             router.replace('/compte/panier?stale=1');
             return;
@@ -185,6 +210,14 @@ export default function CheckoutPage() {
             case 'slot_invalid':
             case 'slot_full':
             case 'stock_depleted':
+            case 'product_slot_unavailable':
+              if (errPayload.hint === 'product_slot_unavailable') {
+                setInitError({
+                  kind: 'generic',
+                  message: errPayload.error ?? SLOT_CONFLICT_MESSAGE,
+                });
+                return;
+              }
               router.replace('/compte/panier?stale=1');
               return;
             // Anomalie technique : item du panier appartient à un autre
@@ -428,4 +461,3 @@ export default function CheckoutPage() {
     </section>
   );
 }
-

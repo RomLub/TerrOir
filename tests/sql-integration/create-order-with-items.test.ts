@@ -93,6 +93,7 @@ async function seedSlot(
     capacity_per_slot: number;
     starts_at: string;
     ends_at: string;
+    availability_scope: "shared" | "product_restricted";
   }>,
 ): Promise<string> {
   const { data, error } = await SUPABASE
@@ -104,6 +105,7 @@ async function seedSlot(
       ends_at: overrides?.ends_at ?? "2026-06-02T10:00:00+02:00",
       capacity_per_slot: overrides?.capacity_per_slot ?? 2,
       active: overrides?.active ?? true,
+      availability_scope: overrides?.availability_scope ?? "shared",
     })
     .select("id")
     .single();
@@ -117,6 +119,7 @@ async function seedProduct(
     active: boolean;
     stock_disponible: number;
     stock_illimite: boolean;
+    pickup_availability_mode: "all_shared_slots" | "selected_slots";
   }>,
 ): Promise<string> {
   const { data, error } = await SUPABASE
@@ -129,6 +132,8 @@ async function seedProduct(
       active: overrides?.active ?? true,
       stock_disponible: overrides?.stock_disponible ?? 10,
       stock_illimite: overrides?.stock_illimite ?? false,
+      pickup_availability_mode:
+        overrides?.pickup_availability_mode ?? "all_shared_slots",
     })
     .select("id")
     .single();
@@ -246,6 +251,78 @@ describeIfLocal("create_order_with_items", () => {
       .eq("id", productId)
       .single();
     expect(Number(product?.stock_disponible)).toBe(9);
+  });
+
+  it("produit limite compatible: accepte avec lien produit-creneau", async () => {
+    const producer = await seedProducer();
+    const consumer = await seedConsumer();
+    const slotId = await seedSlot(producer.producerId);
+    const productId = await seedProduct(producer.producerId, {
+      pickup_availability_mode: "selected_slots",
+    });
+
+    const { error: linkErr } = await SUPABASE
+      .from("product_slot_availabilities")
+      .insert({ product_id: productId, slot_id: slotId });
+    if (linkErr) throw new Error(linkErr.message);
+
+    const { data: orderId, error } = await callCreateOrder(consumer.client, {
+      consumerId: consumer.userId,
+      producerId: producer.producerId,
+      slotId,
+      productId,
+    });
+
+    expect(error).toBeNull();
+    expect(orderId).toEqual(expect.any(String));
+  });
+
+  it("produit limite incompatible: refuse avec product_slot_unavailable", async () => {
+    const producer = await seedProducer();
+    const consumer = await seedConsumer();
+    const slotId = await seedSlot(producer.producerId);
+    const productId = await seedProduct(producer.producerId, {
+      pickup_availability_mode: "selected_slots",
+    });
+
+    const { error } = await callCreateOrder(consumer.client, {
+      consumerId: consumer.userId,
+      producerId: producer.producerId,
+      slotId,
+      productId,
+    });
+
+    expectRpcError(error, {
+      code: "23514",
+      hint: "product_slot_unavailable",
+    });
+  });
+
+  it("creneau reserve a d'autres produits: refuse avec product_slot_unavailable", async () => {
+    const producer = await seedProducer();
+    const consumer = await seedConsumer();
+    const slotId = await seedSlot(producer.producerId, {
+      availability_scope: "product_restricted",
+    });
+    const productId = await seedProduct(producer.producerId);
+    const linkedProductId = await seedProduct(producer.producerId);
+
+    const { error: linkErr } = await SUPABASE
+      .from("product_slot_availabilities")
+      .insert({ product_id: linkedProductId, slot_id: slotId });
+    if (linkErr) throw new Error(linkErr.message);
+
+    const { error } = await callCreateOrder(consumer.client, {
+      consumerId: consumer.userId,
+      producerId: producer.producerId,
+      slotId,
+      productId,
+    });
+
+    expectRpcError(error, {
+      code: "23514",
+      hint: "product_slot_unavailable",
+    });
   });
 
   it("stock insuffisant: refuse avec l'erreur structuree stock_depleted", async () => {

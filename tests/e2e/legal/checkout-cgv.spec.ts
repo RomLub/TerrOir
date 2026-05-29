@@ -44,6 +44,9 @@ async function setupCheckout(
   page: import("@playwright/test").Page,
   ctx: import("../helpers/supabase-admin").TestContext,
   scenarioSuffix: string,
+  options: Partial<{
+    pickupAvailabilityMode: "all_shared_slots" | "selected_slots";
+  }> = {},
 ): Promise<CheckoutSetup> {
   const admin = getRawAdminClient();
 
@@ -76,6 +79,8 @@ async function setupCheckout(
       stock_illimite: false,
       delai_preparation_jours: 1,
       active: true,
+      pickup_availability_mode:
+        options.pickupAvailabilityMode ?? "all_shared_slots",
     })
     .select("id")
     .single();
@@ -196,7 +201,7 @@ test.describe("Checkout CGV (opposabilité juridique)", () => {
       // Le message gate doit être visible.
       await expect(
         page.getByText(
-          /Pour finaliser votre commande, acceptez les conditions générales de vente/i,
+          /Pour finaliser (ta|votre) commande, accepte[z]? les conditions générales de vente/i,
         ),
       ).toBeVisible();
 
@@ -219,6 +224,47 @@ test.describe("Checkout CGV (opposabilité juridique)", () => {
       ).toHaveCount(0);
 
       // Aucune order n'a été créée en DB pour ce consumer.
+      const admin = getRawAdminClient();
+      const { count, error } = await admin
+        .from("orders")
+        .select("id", { count: "exact", head: true })
+        .eq("consumer_id", setup.consumerId);
+      expect(error?.message).toBeUndefined();
+      expect(count).toBe(0);
+    } finally {
+      await cleanupCheckoutData(setup);
+    }
+  });
+
+  test("checkout bloque un panier sans creneau commun", async ({
+    page,
+    ctx,
+  }) => {
+    test.setTimeout(90_000);
+    const setup = await setupCheckout(page, ctx, "slot-conflict", {
+      pickupAvailabilityMode: "selected_slots",
+    });
+
+    try {
+      await injectCart(page, setup);
+      await page.goto("/compte/checkout");
+
+      await expect(
+        page.getByRole("heading", { name: /Finaliser la commande/i }),
+      ).toBeVisible({ timeout: 15_000 });
+
+      const cgvCheckbox = page.getByRole("checkbox", {
+        name: /Conditions générales de vente/i,
+      });
+      await cgvCheckbox.check();
+
+      await expect(
+        page.getByText(/Aucun .* retrait commun .* disponible/i),
+      ).toBeVisible({ timeout: 45_000 });
+      await expect(
+        page.locator('iframe[name^="__privateStripeFrame"]'),
+      ).toHaveCount(0);
+
       const admin = getRawAdminClient();
       const { count, error } = await admin
         .from("orders")

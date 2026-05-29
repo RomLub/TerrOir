@@ -11,6 +11,7 @@ import {
   consumeRateLimit,
   getOrdersCreateRateLimit,
 } from "@/lib/rate-limit";
+import { isProductAvailableOnSlot } from "@/lib/product-slot-availability/server";
 
 const bodySchema = z.object({
   producer_id: z.string().guid(),
@@ -72,6 +73,8 @@ const RPC_ERROR_HINTS: Record<string, string> = {
   stock_depleted:
     "Un produit de votre panier n'est plus disponible. Ajustez votre panier.",
   product_producer_mismatch: "Erreur technique. Contactez le support.",
+  product_slot_unavailable:
+    "Aucun créneau de retrait commun n'est disponible pour les produits de cette commande.",
 };
 
 export async function POST(request: Request) {
@@ -131,6 +134,30 @@ export async function POST(request: Request) {
   if (!slot) {
     return NextResponse.json(
       { error: "Créneau invalide ou indisponible" },
+      { status: 409 },
+    );
+  }
+
+  const productSlotChecks = await Promise.all(
+    items.map(async (item) => ({
+      productId: item.product_id,
+      available: await isProductAvailableOnSlot(
+        supabase,
+        item.product_id,
+        slot_id,
+      ),
+    })),
+  );
+  const unavailableProduct = productSlotChecks.find((check) => !check.available);
+  if (unavailableProduct) {
+    return NextResponse.json(
+      {
+        error:
+          "Aucun créneau de retrait commun n'est disponible pour les produits de cette commande.",
+        code: "23514",
+        hint: "product_slot_unavailable",
+        details: `product_id=${unavailableProduct.productId};slot_id=${slot_id}`,
+      },
       { status: 409 },
     );
   }

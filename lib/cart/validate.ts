@@ -30,6 +30,7 @@ export type FatalReason =
   | "producer_unavailable"
   | "product_unavailable"
   | "slot_unavailable"
+  | "product_slot_unavailable"
   | "slot_full";
 
 export type ItemStatus =
@@ -39,6 +40,10 @@ export type ItemStatus =
 
 export type ValidateResponse = {
   results: Record<string, ItemStatus>;
+  slotCompatibility?: {
+    hasSlotConflict: boolean;
+    compatibleSlots: Record<string, string[]>;
+  };
 };
 
 export function itemKey(item: {

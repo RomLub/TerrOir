@@ -12,7 +12,7 @@ import { StaleItemsBanner, type StaleChange } from './_components/StaleItemsBann
 
 // Libellés user-facing pour chaque raison retournée par /api/cart/validate.
 function reasonLabel(
-  reason: 'producer_unavailable' | 'product_unavailable' | 'slot_unavailable' | 'slot_full',
+  reason: 'producer_unavailable' | 'product_unavailable' | 'slot_unavailable' | 'product_slot_unavailable' | 'slot_full',
 ): string {
   switch (reason) {
     case 'producer_unavailable':
@@ -21,6 +21,8 @@ function reasonLabel(
       return "ce produit n'est plus disponible";
     case 'slot_unavailable':
       return 'ce créneau de retrait n\'est plus disponible';
+    case 'product_slot_unavailable':
+      return "ce produit n'est pas disponible sur le créneau choisi";
     case 'slot_full':
       return 'le créneau choisi est complet';
   }
