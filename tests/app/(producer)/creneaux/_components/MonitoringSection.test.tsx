@@ -43,6 +43,7 @@ function block(opts: Partial<MonitoringBlock> & { cells: MonitoringCell[] }): Mo
   return {
     key: opts.key ?? "block-1",
     kind: opts.kind ?? "recurring",
+    availabilityScope: opts.availabilityScope ?? "shared",
     ruleId: opts.ruleId ?? "rule-1",
     label: opts.label ?? "9h–12h",
     mode: opts.mode ?? "libre",

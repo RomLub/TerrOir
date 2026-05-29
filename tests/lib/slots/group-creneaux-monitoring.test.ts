@@ -47,6 +47,7 @@ function makeSlot(opts: Partial<MonitoringSlot> & { id: string }): MonitoringSlo
     capacity_per_slot: opts.capacity_per_slot ?? 4,
     rule_id: opts.rule_id ?? null,
     excluded_at: opts.excluded_at ?? null,
+    availability_scope: opts.availability_scope ?? null,
   };
 }
 
@@ -361,6 +362,40 @@ describe("groupCreneauxMonitoring", () => {
       expect(block.mode).toBe("rdv");
       expect(block.totalCapacity).toBe(4);
       expect(block.durationLabel).toBe("RDV 60 min");
+    });
+
+    it("separe les creneaux reserves des creneaux generiques", () => {
+      const slots: MonitoringSlot[] = [
+        makeSlot({
+          id: "shared",
+          starts_at: iso(28, 9),
+          ends_at: iso(28, 10),
+          capacity_per_slot: 2,
+          rule_id: null,
+          availability_scope: "shared",
+        }),
+        makeSlot({
+          id: "restricted",
+          starts_at: iso(28, 10),
+          ends_at: iso(28, 11),
+          capacity_per_slot: 2,
+          rule_id: null,
+          availability_scope: "product_restricted",
+        }),
+      ];
+      const days = groupCreneauxMonitoring({
+        dayKeys: WEEK,
+        todayKey: TODAY,
+        slots,
+        rules: [],
+        ordersBySlot: new Map(),
+      });
+
+      expect(days[0]!.blocks).toHaveLength(2);
+      expect(days[0]!.blocks.map((b) => b.availabilityScope)).toEqual([
+        "shared",
+        "product_restricted",
+      ]);
     });
   });
 

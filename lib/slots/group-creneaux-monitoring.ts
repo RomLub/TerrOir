@@ -40,6 +40,7 @@ export type MonitoringSlot = {
   capacity_per_slot: number;
   rule_id: string | null;
   excluded_at: string | null;
+  availability_scope?: "shared" | "product_restricted" | null;
 };
 
 export type MonitoringRule = {
@@ -72,6 +73,7 @@ export type MonitoringCell =
 export type MonitoringBlock = {
   key: string;
   kind: "recurring" | "oneoff";
+  availabilityScope: "shared" | "product_restricted";
   ruleId: string | null;
   label: string;
   mode: SlotMode;
@@ -160,6 +162,11 @@ export function groupCreneauxMonitoring(params: {
         makeBlock({
           key: `r-${ruleId}-${dateKey}`,
           kind: "recurring",
+          availabilityScope: group.some(
+            (s) => s.availability_scope === "product_restricted",
+          )
+            ? "product_restricted"
+            : "shared",
           ruleId,
           label: formatSlotRange(starts, ends),
           mode,
@@ -178,10 +185,17 @@ export function groupCreneauxMonitoring(params: {
     while (i < adhoc.length) {
       const group = [adhoc[i]!];
       let j = i + 1;
+      const groupScope =
+        adhoc[i]!.availability_scope === "product_restricted"
+          ? "product_restricted"
+          : "shared";
       while (
         j < adhoc.length &&
         adhoc[j]!.starts_at === group[group.length - 1]!.ends_at &&
-        adhoc[j]!.capacity_per_slot === group[0]!.capacity_per_slot
+        adhoc[j]!.capacity_per_slot === group[0]!.capacity_per_slot &&
+        (adhoc[j]!.availability_scope === "product_restricted"
+          ? "product_restricted"
+          : "shared") === groupScope
       ) {
         group.push(adhoc[j]!);
         j++;
@@ -194,6 +208,7 @@ export function groupCreneauxMonitoring(params: {
         makeBlock({
           key: `a-${group[0]!.id}`,
           kind: "oneoff",
+          availabilityScope: groupScope,
           ruleId: null,
           label: formatSlotRange(starts, ends),
           mode,
@@ -233,6 +248,7 @@ export function groupCreneauxMonitoring(params: {
 function makeBlock(params: {
   key: string;
   kind: "recurring" | "oneoff";
+  availabilityScope: "shared" | "product_restricted";
   ruleId: string | null;
   label: string;
   mode: SlotMode;
@@ -285,6 +301,7 @@ function makeBlock(params: {
   return {
     key: params.key,
     kind: params.kind,
+    availabilityScope: params.availabilityScope,
     ruleId: params.ruleId,
     label: params.label,
     mode: params.mode,

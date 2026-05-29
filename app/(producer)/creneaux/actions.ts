@@ -421,7 +421,7 @@ export async function deleteAdHocSlotAction(
   // se gèrent via toggle/delete de la rule parente.
   const { data: slot } = await admin
     .from("slots")
-    .select("id, producer_id, rule_id")
+    .select("id, producer_id, rule_id, availability_scope")
     .eq("id", slotId)
     .maybeSingle();
   if (!slot || slot.producer_id !== producerRes.id) {
@@ -436,6 +436,13 @@ export async function deleteAdHocSlotAction(
 
   // Guard orders : FK sans CASCADE → la DELETE échouerait si un order pointe
   // dessus. Pré-check avec message UX propre.
+  if (slot.availability_scope === "product_restricted") {
+    return {
+      error:
+        "Ce créneau est réservé à un produit. Modifiez le produit concerné pour changer sa disponibilité.",
+    };
+  }
+
   const { count: orderCount } = await admin
     .from("orders")
     .select("id", { count: "exact", head: true })
@@ -480,11 +487,20 @@ export async function deleteAdHocOpeningAction(
 
   const { data: slots } = await admin
     .from("slots")
-    .select("id, producer_id, rule_id")
+    .select("id, producer_id, rule_id, availability_scope")
     .in("id", slotIds);
   const owned = (slots ?? []).filter(
-    (s) => s.producer_id === producerRes.id && s.rule_id === null,
+    (s) =>
+      s.producer_id === producerRes.id &&
+      s.rule_id === null &&
+      s.availability_scope !== "product_restricted",
   );
+  if ((slots ?? []).some((s) => s.availability_scope === "product_restricted")) {
+    return {
+      error:
+        "Ce créneau est réservé à un produit. Modifiez le produit concerné pour changer sa disponibilité.",
+    };
+  }
   if (owned.length !== slotIds.length) {
     return {
       error:

@@ -144,7 +144,9 @@ async function CreneauxContent({
   const [{ data: slotsRaw }, { data: rulesRaw }] = await Promise.all([
     admin
       .from("slots")
-      .select("id, starts_at, ends_at, capacity_per_slot, rule_id, excluded_at")
+      .select(
+        "id, starts_at, ends_at, capacity_per_slot, rule_id, excluded_at, availability_scope",
+      )
       .eq("producer_id", producerId)
       .eq("active", true)
       .gte("starts_at", rangeStartIso)

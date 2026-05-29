@@ -25,6 +25,7 @@ import { createUnavailabilities } from "@/lib/unavailabilities/create";
 import { deleteUnavailability } from "@/lib/unavailabilities/delete";
 import {
   createUnavailabilitiesAction,
+  deleteAdHocOpeningAction,
   deleteUnavailabilityAction,
 } from "@/app/(producer)/creneaux/actions";
 
@@ -48,6 +49,43 @@ function mockAuthAndProducer() {
         }),
       }),
     }),
+  } as never);
+}
+
+function mockReservedAdHocSlot() {
+  vi.mocked(getSessionUser).mockResolvedValue(SESSION as never);
+  vi.mocked(createSupabaseAdminClient).mockReturnValue({
+    from: (table: string) => {
+      if (table === "producers") {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () =>
+                Promise.resolve({ data: { id: PRODUCER_ID }, error: null }),
+            }),
+          }),
+        };
+      }
+      if (table === "slots") {
+        return {
+          select: () => ({
+            in: () =>
+              Promise.resolve({
+                data: [
+                  {
+                    id: "slot-reserved",
+                    producer_id: PRODUCER_ID,
+                    rule_id: null,
+                    availability_scope: "product_restricted",
+                  },
+                ],
+                error: null,
+              }),
+          }),
+        };
+      }
+      throw new Error(`Unexpected table ${table}`);
+    },
   } as never);
 }
 
@@ -122,6 +160,17 @@ describe("createUnavailabilitiesAction — wrapper FormData", () => {
 
     const res = await createUnavailabilitiesAction(null, fd);
     expect(res).toMatchObject({ code: "BLOCKING_ORDERS" });
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
+});
+
+describe("deleteAdHocOpeningAction", () => {
+  it("refuse de supprimer un creneau reserve a un produit", async () => {
+    mockReservedAdHocSlot();
+
+    const res = await deleteAdHocOpeningAction(["slot-reserved"]);
+
+    expect(res).toMatchObject({ error: expect.stringContaining("réservé") });
     expect(revalidatePath).not.toHaveBeenCalled();
   });
 });

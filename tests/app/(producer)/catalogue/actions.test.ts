@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
     reservedSlotInsert: null as unknown,
     linkInsert: null as unknown,
     linkDeleteProductId: null as unknown,
+    productDeleteId: null as unknown,
+    slotDeleteIds: null as unknown,
   },
   insertResult: { data: null as unknown, error: null as unknown },
   existingProduct: { data: null as unknown, error: null as unknown },
@@ -84,9 +86,17 @@ vi.mock("@/lib/supabase/admin", () => ({
         if (table === "product_slot_availabilities" && b.op === "delete") {
           mocks.captured.linkDeleteProductId = value;
         }
+        if (table === "products" && b.op === "delete" && column === "id") {
+          mocks.captured.productDeleteId = value;
+        }
         return b;
       };
-      b.in = () => b;
+      b.in = (_column: string, value: unknown) => {
+        if (table === "slots" && b.op === "delete") {
+          mocks.captured.slotDeleteIds = value;
+        }
+        return b;
+      };
       b.single = () => Promise.resolve(mocks.insertResult);
       b.maybeSingle = () => Promise.resolve(mocks.existingProduct);
       b.then = (onF: (r: unknown) => unknown) =>
@@ -138,6 +148,8 @@ beforeEach(() => {
   mocks.captured.reservedSlotInsert = null;
   mocks.captured.linkInsert = null;
   mocks.captured.linkDeleteProductId = null;
+  mocks.captured.productDeleteId = null;
+  mocks.captured.slotDeleteIds = null;
   mocks.insertResult = { data: { id: "new-prod" }, error: null };
   mocks.existingProduct = {
     data: { id: "prod-1", producer_id: "p1" },
@@ -251,6 +263,26 @@ describe("createProductAction", () => {
     expect(mocks.captured.linkInsert).toEqual([
       { product_id: "new-prod", slot_id: "slot-reserved" },
     ]);
+  });
+
+  it("nettoie produit et creneau reserve si la liaison echoue", async () => {
+    mocks.insertedSlotRows = [{ id: "slot-reserved" }];
+    mocks.insertLinksResult = { error: { message: "link boom" } };
+
+    const res = await createProductAction({
+      ...validProduct(),
+      reserved_slots: [
+        {
+          start_at: "2099-06-15T09:00",
+          end_at: "2099-06-15T10:00",
+          capacity_per_slot: 2,
+        },
+      ],
+    });
+
+    expect(res.error).toBeTruthy();
+    expect(mocks.captured.slotDeleteIds).toEqual(["slot-reserved"]);
+    expect(mocks.captured.productDeleteId).toBe("new-prod");
   });
 
   it("SECURITE : refuse un creneau d'un autre producteur", async () => {

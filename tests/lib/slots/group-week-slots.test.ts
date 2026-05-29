@@ -115,6 +115,43 @@ describe("groupWeekSlots", () => {
     expect(wed.blocks[0]!.slotIds).toEqual(["a-rdv-1", "a-rdv-2"]);
   });
 
+  it("identifie un creneau reserve a un produit", () => {
+    const days = group([
+      { ...oneoffLibre, availability_scope: "product_restricted" },
+    ]);
+    const wed = days.find((d) => d.dateKey === DAY)!;
+    expect(wed.blocks[0]!.availabilityScope).toBe("product_restricted");
+  });
+
+  it("ne fusionne pas un creneau reserve avec un creneau generique", () => {
+    const days = group([
+      {
+        id: "shared",
+        starts_at: `${DAY}T12:00:00.000Z`,
+        ends_at: `${DAY}T13:00:00.000Z`,
+        capacity_per_slot: 2,
+        rule_id: null,
+        excluded_at: null,
+        availability_scope: "shared",
+      },
+      {
+        id: "restricted",
+        starts_at: `${DAY}T13:00:00.000Z`,
+        ends_at: `${DAY}T14:00:00.000Z`,
+        capacity_per_slot: 2,
+        rule_id: null,
+        excluded_at: null,
+        availability_scope: "product_restricted",
+      },
+    ]);
+    const wed = days.find((d) => d.dateKey === DAY)!;
+    expect(wed.blocks).toHaveLength(2);
+    expect(wed.blocks.map((b) => b.availabilityScope)).toEqual([
+      "shared",
+      "product_restricted",
+    ]);
+  });
+
   it("trie et sépare correctement règle / ponctuels d'un même jour", () => {
     const days = group([...recurringBuckets(), oneoffLibre, ...oneoffRdv]);
     const wed = days.find((d) => d.dateKey === DAY)!;

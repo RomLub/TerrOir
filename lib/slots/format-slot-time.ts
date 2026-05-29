@@ -42,6 +42,15 @@ export function extractHeureRetrait(startsAt: string): string {
   return `${h}:${m}:00`;
 }
 
+// ISO timestamptz -> "YYYY-MM-DD" en Europe/Paris pour orders.date_retrait.
+export function extractDateRetrait(startsAt: string): string {
+  const d = toParis(startsAt);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 // ISO timestamptz → "Samedi 26 avril à 9h30" (pour tooltip, mails, pages
 // partage). La majuscule du jour est ajoutée manuellement (date-fns FR rend
 // "samedi" minuscule).

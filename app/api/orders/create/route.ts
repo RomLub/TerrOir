@@ -3,7 +3,10 @@ import { z } from "zod";
 import { getSessionUser } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { extractHeureRetrait } from "@/lib/slots/format-slot-time";
+import {
+  extractDateRetrait,
+  extractHeureRetrait,
+} from "@/lib/slots/format-slot-time";
 import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
 import { logAuthEvent } from "@/lib/audit-logs/log-auth-event";
 import { LEGAL_VERSIONS } from "@/lib/legal/versions";
@@ -70,6 +73,8 @@ const RPC_ERROR_HINTS: Record<string, string> = {
     "Ce créneau n'est plus disponible. Choisissez un autre créneau.",
   slot_full:
     "Ce créneau de retrait est complet. Choisissez un autre créneau.",
+  slot_datetime_mismatch:
+    "Ce créneau n'est plus disponible. Choisissez un autre créneau.",
   stock_depleted:
     "Un produit de votre panier n'est plus disponible. Ajustez votre panier.",
   product_producer_mismatch: "Erreur technique. Contactez le support.",
@@ -117,8 +122,7 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  const { producer_id, slot_id, date_retrait, notes_client, items } =
-    parsed.data;
+  const { producer_id, slot_id, notes_client, items } = parsed.data;
 
   // User client : auth.uid() est posé, indispensable pour la RPC
   // SECURITY DEFINER qui vérifie p_consumer_id = auth.uid().
@@ -137,6 +141,8 @@ export async function POST(request: Request) {
       { status: 409 },
     );
   }
+  const authoritativeDateRetrait = extractDateRetrait(slot.starts_at as string);
+  const authoritativeHeureRetrait = extractHeureRetrait(slot.starts_at as string);
 
   const productSlotChecks = await Promise.all(
     items.map(async (item) => ({
@@ -177,7 +183,7 @@ export async function POST(request: Request) {
     )
     .eq("consumer_id", session.id)
     .eq("slot_id", slot_id)
-    .eq("date_retrait", date_retrait)
+    .eq("date_retrait", authoritativeDateRetrait)
     .eq("statut", "pending")
     .gt("created_at", dedupCutoff)
     .limit(1)
@@ -198,8 +204,8 @@ export async function POST(request: Request) {
       p_consumer_id: session.id,
       p_producer_id: producer_id,
       p_slot_id: slot_id,
-      p_date_retrait: date_retrait,
-      p_heure_retrait: extractHeureRetrait(slot.starts_at as string),
+      p_date_retrait: authoritativeDateRetrait,
+      p_heure_retrait: authoritativeHeureRetrait,
       p_notes_client: notes_client ?? null,
       // prix_unitaire est présent pour cohérence d'interface mais la RPC
       // l'ignore et refacture au prix DB courant.
@@ -306,7 +312,7 @@ export async function POST(request: Request) {
       order_id: orderId,
       producer_id,
       slot_id,
-      date_retrait,
+      date_retrait: authoritativeDateRetrait,
       montant_total: order?.montant_total ?? null,
       commission: order?.commission_terroir ?? null,
       montant_net: order?.montant_net_producteur ?? null,

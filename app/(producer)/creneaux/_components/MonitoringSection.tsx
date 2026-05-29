@@ -156,6 +156,14 @@ function MonitoringBlockCard({ block }: { block: MonitoringBlock }) {
           >
             {block.durationLabel}
           </span>
+          {block.availabilityScope === "product_restricted" ? (
+            <span
+              className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900"
+              data-testid="block-reserved-product"
+            >
+              Réservé à un produit
+            </span>
+          ) : null}
         </div>
       </div>
 

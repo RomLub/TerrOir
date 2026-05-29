@@ -3,6 +3,7 @@ import {
   formatSlotTime,
   formatSlotRange,
   formatSlotDateTime,
+  extractDateRetrait,
   extractHeureRetrait,
   formatLegacyTimeHHMM,
 } from "@/lib/slots/format-slot-time";
@@ -53,6 +54,18 @@ describe("extractHeureRetrait", () => {
 
   it("zéro-padding minutes pile", () => {
     expect(extractHeureRetrait(SAT_25_APR_1000_ISO)).toBe("10:00:00");
+  });
+});
+
+describe("extractDateRetrait", () => {
+  it("ISO UTC -> date SQL YYYY-MM-DD en heure Paris", () => {
+    expect(extractDateRetrait(SAT_25_APR_0930_ISO)).toBe("2026-04-25");
+  });
+
+  it("respecte le passage de jour Europe/Paris", () => {
+    expect(extractDateRetrait("2026-04-24T22:30:00.000Z")).toBe(
+      "2026-04-25",
+    );
   });
 });
 
