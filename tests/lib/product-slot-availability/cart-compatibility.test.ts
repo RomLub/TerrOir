@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   computeCartSlotCompatibility,
+  computeProductCartSlotPrevention,
   productSlotPairKey,
 } from "@/lib/product-slot-availability/cart-compatibility";
 import type {
@@ -115,5 +116,75 @@ describe("cart product-slot compatibility", () => {
 
     expect(result.hasSlotConflict).toBe(false);
     expect(result.compatibleSlots[producerId]).toEqual(["slot-1"]);
+  });
+});
+
+describe("product page cart prevention", () => {
+  it("panier vide: tous les creneaux compatibles du produit restent ajoutables", () => {
+    const result = computeProductCartSlotPrevention({
+      targetProductId: "product-1",
+      targetProducerId: producerId,
+      cartItems: [],
+      products: [product("product-1")],
+      slots: [slot("slot-1"), slot("slot-2")],
+      links: [],
+    });
+
+    expect(result.hasSameProducerCartItems).toBe(false);
+    expect(result.addableSlotIds).toEqual(["slot-1", "slot-2"]);
+  });
+
+  it("panier compatible: seul le creneau deja choisi dans le panier reste ajoutable", () => {
+    const result = computeProductCartSlotPrevention({
+      targetProductId: "product-2",
+      targetProducerId: producerId,
+      cartItems: [
+        { productId: "product-1", producerId, slotId: "slot-1" },
+      ],
+      products: [product("product-1"), product("product-2")],
+      slots: [slot("slot-1"), slot("slot-2")],
+      links: [],
+    });
+
+    expect(result.hasSameProducerCartItems).toBe(true);
+    expect(result.commonProductSlotIds).toEqual(["slot-1", "slot-2"]);
+    expect(result.addableSlotIds).toEqual(["slot-1"]);
+    expect(result.existingCartSlotIds).toEqual(["slot-1"]);
+  });
+
+  it("panier incompatible: aucun creneau ajoutable si le produit cible est limite ailleurs", () => {
+    const result = computeProductCartSlotPrevention({
+      targetProductId: "product-2",
+      targetProducerId: producerId,
+      cartItems: [
+        { productId: "product-1", producerId, slotId: "slot-1" },
+      ],
+      products: [
+        product("product-1"),
+        product("product-2", "selected_slots"),
+      ],
+      slots: [slot("slot-1"), slot("slot-2")],
+      links: [{ productId: "product-2", slotId: "slot-2" }],
+    });
+
+    expect(result.targetProductCompatibleSlotIds).toEqual(["slot-2"]);
+    expect(result.commonProductSlotIds).toEqual(["slot-2"]);
+    expect(result.addableSlotIds).toEqual([]);
+  });
+
+  it("creneau reserve: le produit non lie ne peut pas utiliser le creneau du panier", () => {
+    const result = computeProductCartSlotPrevention({
+      targetProductId: "product-2",
+      targetProducerId: producerId,
+      cartItems: [
+        { productId: "product-1", producerId, slotId: "slot-1" },
+      ],
+      products: [product("product-1"), product("product-2")],
+      slots: [slot("slot-1", "product_restricted")],
+      links: [{ productId: "product-1", slotId: "slot-1" }],
+    });
+
+    expect(result.targetProductCompatibleSlotIds).toEqual([]);
+    expect(result.addableSlotIds).toEqual([]);
   });
 });
