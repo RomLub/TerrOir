@@ -6,6 +6,12 @@ import { fetchPublicProducerBySlug } from '@/lib/producers/fetch-public';
 import { getProducerDisplayName } from '@/lib/producers/get-display-name';
 import { ACTIVE_ORDER_STATUTS } from '@/lib/orders/stateMachine';
 import { STOCK_UNLIMITED_SENTINEL } from '@/lib/products/constants';
+import { filterCompatibleSlotsForProduct } from '@/lib/product-slot-availability/policy';
+import type {
+  ProductAvailabilityPolicy,
+  ProductSlotAvailabilityLink,
+  SlotAvailabilityPolicy,
+} from '@/lib/product-slot-availability/types';
 import { ProductPageSkeleton } from './_components/ProductPageSkeleton';
 import {
   ProductPageClient,
@@ -55,7 +61,7 @@ async function ProductPageContent({ slug, id }: { slug: string; id: string }) {
 
   const { data: productRow } = await admin
     .from('products')
-    .select('id, nom, description, photos, prix, unite, poids_estime_kg, stock_disponible, stock_illimite, delai_preparation_jours, active, producer_id, conseil_active, conseil_texte')
+    .select('id, nom, description, photos, prix, unite, poids_estime_kg, stock_disponible, stock_illimite, delai_preparation_jours, active, producer_id, conseil_active, conseil_texte, pickup_availability_mode')
     .eq('id', params.id)
     .eq('active', true)
     .maybeSingle();
@@ -87,17 +93,26 @@ async function ProductPageContent({ slug, id }: { slug: string; id: string }) {
   const earliest = new Date(now.getTime() + delai * 24 * 3600 * 1000);
   const horizonEnd = new Date(now.getTime() + HORIZON_DAYS * 24 * 3600 * 1000);
 
-  const [{ data: slotsRaw }, { data: otherRaw }, { data: bookingsRaw }] =
+  const [
+    { data: slotsRaw },
+    { data: currentProductLinksRaw },
+    { data: otherRaw },
+    { data: bookingsRaw },
+  ] =
     await Promise.all([
       admin
         .from('slots')
-        .select('id, starts_at, ends_at, capacity_per_slot')
+        .select('id, starts_at, ends_at, capacity_per_slot, producer_id, active, excluded_at, availability_scope')
         .eq('producer_id', producerRow.id)
         .eq('active', true)
         .is('excluded_at', null)
         .gte('starts_at', earliest.toISOString())
         .lt('starts_at', horizonEnd.toISOString())
         .order('starts_at', { ascending: true }),
+      admin
+        .from('product_slot_availabilities')
+        .select('product_id, slot_id')
+        .eq('product_id', params.id),
       admin
         .from('products')
         .select('id, nom, photos, prix, unite, stock_disponible, stock_illimite')
@@ -130,6 +145,35 @@ async function ProductPageContent({ slug, id }: { slug: string; id: string }) {
     if (!b.slot_id) continue;
     bookingCounts.set(b.slot_id, (bookingCounts.get(b.slot_id) ?? 0) + 1);
   }
+
+  const productPolicy: ProductAvailabilityPolicy = {
+    productId: productRow.id,
+    producerId: productRow.producer_id,
+    active: productRow.active,
+    pickupAvailabilityMode:
+      productRow.pickup_availability_mode as ProductAvailabilityPolicy["pickupAvailabilityMode"],
+  };
+  const slotPolicies: SlotAvailabilityPolicy[] = (slotsRaw ?? []).map((s) => ({
+    slotId: s.id,
+    producerId: s.producer_id,
+    active: s.active,
+    excludedAt: s.excluded_at,
+    availabilityScope:
+      s.availability_scope as SlotAvailabilityPolicy["availabilityScope"],
+  }));
+  const currentProductLinks: ProductSlotAvailabilityLink[] = (
+    currentProductLinksRaw ?? []
+  ).map((link) => ({
+    productId: link.product_id,
+    slotId: link.slot_id,
+  }));
+  const productCompatibleSlotIds = new Set(
+    filterCompatibleSlotsForProduct(
+      productPolicy,
+      slotPolicies,
+      currentProductLinks,
+    ).map((slot) => slot.slotId),
+  );
 
   const commune = [producerRow.commune, producerRow.code_postal].filter(Boolean).join(' · ');
   const address = [producerRow.adresse, producerRow.code_postal, producerRow.commune]
@@ -175,6 +219,7 @@ async function ProductPageContent({ slug, id }: { slug: string; id: string }) {
     ends_at: s.ends_at,
     capacity_per_slot: s.capacity_per_slot,
     left: Math.max(0, s.capacity_per_slot - (bookingCounts.get(s.id) ?? 0)),
+    availableForProduct: productCompatibleSlotIds.has(s.id),
   }));
 
   const otherProducts: OtherProduct[] = (otherRaw ?? []).map((p) => ({

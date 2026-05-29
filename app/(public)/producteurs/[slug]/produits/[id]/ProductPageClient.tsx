@@ -5,7 +5,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Button, Badge, ProductCard } from '@/components/ui';
 import { ProductFallback } from '@/components/ui/product-fallback';
-import { useCartStore } from '@/lib/store/cart';
+import { useCartStore, type CartItem } from '@/lib/store/cart';
 import { formatSlotTime, formatSlotRange } from '@/lib/slots/format-slot-time';
 import { useUserContext } from '@/components/providers/user-provider';
 import { STOCK_UNLIMITED_SENTINEL } from '@/lib/products/constants';
@@ -47,7 +47,23 @@ export type SlotOption = {
   ends_at: string;
   capacity_per_slot: number;
   left: number | null;
+  availableForProduct: boolean;
 };
+
+type ProductSlotPreventionResponse = {
+  hasSameProducerCartItems: boolean;
+  targetProductCompatibleSlotIds: string[];
+  commonProductSlotIds: string[];
+  addableSlotIds: string[];
+  existingCartSlotIds: string[];
+};
+
+type SlotDisabledReason = 'full' | 'product' | 'cart' | null;
+
+const PRODUCT_CART_CONFLICT_MESSAGE =
+  "Ce produit n'a pas de créneau de retrait commun avec les produits déjà dans votre panier.";
+const PRODUCT_CART_CONFLICT_HINT =
+  "Choisissez un autre produit, ou validez d'abord votre panier actuel.";
 
 const PARIS_TZ = 'Europe/Paris';
 
@@ -100,6 +116,14 @@ export function ProductPageClient({
   const [quantity, setQuantity] = useState(1);
   const [slot, setSlot] = useState<string | null>(null);
   const [added, setAdded] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+  const [slotPrevention, setSlotPrevention] =
+    useState<ProductSlotPreventionResponse | null>(null);
+  const [slotPreventionLoading, setSlotPreventionLoading] = useState(false);
+  const cartItems = useCartStore((s) => s.items);
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
 
   // Groupement par jour calendaire Europe/Paris. Les slots arrivent triés
   // starts_at ASC côté server → l'ordre d'insertion dans la Map conserve
@@ -137,6 +161,100 @@ export function ProductPageClient({
   const total = weight * product.price;
   const maxQty = product.stockUnlimited ? STOCK_UNLIMITED_SENTINEL : Math.max(1, Math.floor(product.stockLeft / step));
 
+  const sameProducerCartItems = useMemo(
+    () => cartItems.filter((item) => item.producerId === producer.id),
+    [cartItems, producer.id],
+  );
+
+  useEffect(() => {
+    if (!hydrated || sameProducerCartItems.length === 0) {
+      setSlotPrevention(null);
+      setSlotPreventionLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const failClosedPrevention: ProductSlotPreventionResponse = {
+      hasSameProducerCartItems: true,
+      targetProductCompatibleSlotIds: [],
+      commonProductSlotIds: [],
+      addableSlotIds: [],
+      existingCartSlotIds: sameProducerCartItems.map((item) => item.creneauId),
+    };
+    setSlotPreventionLoading(true);
+
+    (async () => {
+      try {
+        const res = await fetch('/api/cart/product-slot-prevention', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            productId: product.id,
+            items: cartItems.map((item: CartItem) => ({
+              productId: item.productId,
+              producerId: item.producerId,
+              creneauId: item.creneauId,
+            })),
+          }),
+        });
+        if (cancelled) return;
+        if (!res.ok) {
+          setSlotPrevention(failClosedPrevention);
+          return;
+        }
+        setSlotPrevention((await res.json()) as ProductSlotPreventionResponse);
+      } catch {
+        if (!cancelled) setSlotPrevention(failClosedPrevention);
+      } finally {
+        if (!cancelled) setSlotPreventionLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [cartItems, hydrated, product.id, sameProducerCartItems]);
+
+  const addableSlotIds = useMemo(() => {
+    if (slotPrevention) return new Set(slotPrevention.addableSlotIds);
+    return new Set(
+      slots
+        .filter((option) => option.availableForProduct)
+        .map((option) => option.id),
+    );
+  }, [slotPrevention, slots]);
+
+  const hasCartSlotConstraint =
+    slotPrevention?.hasSameProducerCartItems === true;
+
+  const noCommonCartSlot =
+    slotPrevention?.hasSameProducerCartItems === true &&
+    !slotPreventionLoading &&
+    slotPrevention.addableSlotIds.length === 0;
+
+  const slotDisabledReasonById = useMemo(() => {
+    const map = new Map<string, SlotDisabledReason>();
+    for (const option of slots) {
+      if (option.left === 0) {
+        map.set(option.id, 'full');
+      } else if (!option.availableForProduct) {
+        map.set(option.id, 'product');
+      } else if (hasCartSlotConstraint && !addableSlotIds.has(option.id)) {
+        map.set(option.id, 'cart');
+      } else {
+        map.set(option.id, null);
+      }
+    }
+    return map;
+  }, [addableSlotIds, hasCartSlotConstraint, slots]);
+
+  useEffect(() => {
+    if (!slot) return;
+    if (slotDisabledReasonById.get(slot)) {
+      setSlot(null);
+    }
+  }, [slot, slotDisabledReasonById]);
+
   const stockBadge = useMemo(() => {
     if (product.stockUnlimited) return { variant: 'green' as const, text: 'Stock illimité' };
     if (product.stockLeft === 0) return { variant: 'gray' as const, text: 'Épuisé' };
@@ -144,12 +262,19 @@ export function ProductPageClient({
     return { variant: 'green' as const, text: `${product.stockLeft} ${product.unit} disponibles` };
   }, [product.stockLeft, product.stockUnlimited, product.unit]);
 
-  const canOrder = !isOwnProduct && (product.stockUnlimited || product.stockLeft > 0) && slot !== null;
+  const canOrder =
+    !isOwnProduct &&
+    (product.stockUnlimited || product.stockLeft > 0) &&
+    slot !== null &&
+    addableSlotIds.has(slot) &&
+    !slotDisabledReasonById.get(slot);
 
   const handleAdd = () => {
     if (!slot) return;
     const selected = slots.find((s) => s.id === slot);
     if (!selected) return;
+    if (!addableSlotIds.has(selected.id)) return;
+    if (slotDisabledReasonById.get(selected.id)) return;
     addItem({
       productId: product.id,
       producerId: producer.id,
@@ -295,18 +420,37 @@ export function ProductPageClient({
                   Aucun créneau disponible. Revenez bientôt.
                 </div>
               ) : (
-                <div className="space-y-2">
-                  {groupedEntries.map(([date, daySlots]) => (
-                    <DayGroup
-                      key={date}
-                      date={date}
-                      slots={daySlots}
-                      isOpen={openDate === date}
-                      selectedSlotId={slot}
-                      onToggle={() => setOpenDate(openDate === date ? null : date)}
-                      onSelectSlot={(id) => setSlot(id)}
-                    />
-                  ))}
+                <div className="space-y-3">
+                  {noCommonCartSlot && (
+                    <div className="rounded-xl border border-terra-300/40 bg-terra-100/60 px-4 py-3 text-[13px] leading-relaxed text-terra-900">
+                      <p className="font-medium">
+                        {PRODUCT_CART_CONFLICT_MESSAGE}
+                      </p>
+                      <p className="mt-1 text-terra-900/80">
+                        {PRODUCT_CART_CONFLICT_HINT}
+                      </p>
+                    </div>
+                  )}
+                  {hasCartSlotConstraint && !noCommonCartSlot && (
+                    <div className="rounded-xl border border-green-300/40 bg-green-100/60 px-4 py-3 text-[13px] text-green-900">
+                      Les créneaux grisés ne correspondent pas aux produits déjà
+                      dans votre panier.
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    {groupedEntries.map(([date, daySlots]) => (
+                      <DayGroup
+                        key={date}
+                        date={date}
+                        slots={daySlots}
+                        isOpen={openDate === date}
+                        selectedSlotId={slot}
+                        disabledReasons={slotDisabledReasonById}
+                        onToggle={() => setOpenDate(openDate === date ? null : date)}
+                        onSelectSlot={(id) => setSlot(id)}
+                      />
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -327,6 +471,8 @@ export function ProductPageClient({
                       ? 'Ton produit'
                       : added
                         ? '✓ Ajouté au panier'
+                        : noCommonCartSlot
+                          ? 'Produit incompatible avec le panier'
                         : !slot
                           ? 'Choisis un créneau'
                           : `Ajouter au panier`}
@@ -609,6 +755,7 @@ function DayGroup({
   slots,
   isOpen,
   selectedSlotId,
+  disabledReasons,
   onToggle,
   onSelectSlot,
 }: {
@@ -616,6 +763,7 @@ function DayGroup({
   slots: SlotOption[];
   isOpen: boolean;
   selectedSlotId: string | null;
+  disabledReasons: ReadonlyMap<string, SlotDisabledReason>;
   onToggle: () => void;
   onSelectSlot: (id: string) => void;
 }) {
@@ -655,25 +803,40 @@ function DayGroup({
           <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
             {slots.map((s) => {
               const active = selectedSlotId === s.id;
-              const full = s.left === 0;
+              const disabledReason = disabledReasons.get(s.id) ?? null;
+              const disabled = disabledReason !== null;
+              const reasonLabel =
+                disabledReason === 'full'
+                  ? 'Complet'
+                  : disabledReason === 'product'
+                    ? 'Non disponible'
+                    : disabledReason === 'cart'
+                      ? 'Pas avec panier'
+                      : null;
               const label = formatSlotRange(s.starts_at, s.ends_at);
               return (
                 <button
                   key={s.id}
                   type="button"
-                  disabled={full}
+                  disabled={disabled}
                   onClick={() => onSelectSlot(s.id)}
-                  aria-label={`Créneau ${label}`}
+                  aria-label={`Créneau ${label}${reasonLabel ? ` - ${reasonLabel}` : ''}`}
                   aria-pressed={active}
-                  className={`rounded-lg border px-2 py-1.5 text-[13px] tabular-nums transition-colors ${
-                    full
+                  title={reasonLabel ?? undefined}
+                  className={`min-h-[54px] rounded-lg border px-2 py-1.5 text-[13px] tabular-nums transition-colors ${
+                    disabled
                       ? 'bg-dark/5 border-dark/10 text-dark/30 cursor-not-allowed'
                       : active
                         ? 'bg-green-100 border-green-700 text-green-900 font-semibold ring-2 ring-green-700/20'
                         : 'bg-white border-dark/10 text-dark/80 hover:border-green-500'
                   }`}
                 >
-                  {label}
+                  <span className="block">{label}</span>
+                  {reasonLabel && (
+                    <span className="mt-0.5 block text-[10px] leading-tight">
+                      {reasonLabel}
+                    </span>
+                  )}
                 </button>
               );
             })}

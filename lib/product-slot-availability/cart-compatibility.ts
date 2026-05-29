@@ -22,6 +22,20 @@ export type CartSlotCompatibility = {
   itemCompatibility: Record<string, boolean>;
 };
 
+export type ProductCartSlotPreventionItem = {
+  productId: string;
+  producerId: string;
+  slotId: string;
+};
+
+export type ProductCartSlotPrevention = {
+  hasSameProducerCartItems: boolean;
+  targetProductCompatibleSlotIds: string[];
+  commonProductSlotIds: string[];
+  addableSlotIds: string[];
+  existingCartSlotIds: string[];
+};
+
 export function productSlotPairKey(productId: string, slotId: string): string {
   return `${productId}|${slotId}`;
 }
@@ -93,5 +107,84 @@ export function computeCartSlotCompatibility(params: {
     hasSlotConflict,
     compatibleSlots,
     itemCompatibility,
+  };
+}
+
+export function computeProductCartSlotPrevention(params: {
+  targetProductId: string;
+  targetProducerId: string;
+  cartItems: readonly ProductCartSlotPreventionItem[];
+  products: readonly ProductAvailabilityPolicy[];
+  slots: readonly SlotAvailabilityPolicy[];
+  links: readonly ProductSlotAvailabilityLink[];
+}): ProductCartSlotPrevention {
+  const productsById = new Map(
+    params.products.map((product) => [product.productId, product]),
+  );
+  const targetProduct = productsById.get(params.targetProductId);
+  if (!targetProduct) {
+    return {
+      hasSameProducerCartItems: false,
+      targetProductCompatibleSlotIds: [],
+      commonProductSlotIds: [],
+      addableSlotIds: [],
+      existingCartSlotIds: [],
+    };
+  }
+
+  const producerSlots = params.slots.filter(
+    (slot) => slot.producerId === params.targetProducerId,
+  );
+  const targetProductCompatibleSlotIds = filterCompatibleSlotsForProduct(
+    targetProduct,
+    producerSlots,
+    params.links,
+  ).map((slot) => slot.slotId);
+
+  const sameProducerItems = params.cartItems.filter(
+    (item) => item.producerId === params.targetProducerId,
+  );
+  const hasSameProducerCartItems = sameProducerItems.length > 0;
+  if (!hasSameProducerCartItems) {
+    return {
+      hasSameProducerCartItems,
+      targetProductCompatibleSlotIds,
+      commonProductSlotIds: targetProductCompatibleSlotIds,
+      addableSlotIds: targetProductCompatibleSlotIds,
+      existingCartSlotIds: [],
+    };
+  }
+
+  const productIds = uniqueValues([
+    params.targetProductId,
+    ...sameProducerItems.map((item) => item.productId),
+  ]);
+  const perProductSlotIds = productIds.map((productId) => {
+    const product = productsById.get(productId);
+    if (!product) return [];
+    return filterCompatibleSlotsForProduct(
+      product,
+      producerSlots,
+      params.links,
+    ).map((slot) => slot.slotId);
+  });
+  const commonProductSlotIds = intersectSlotIds(perProductSlotIds);
+  const existingCartSlotIds = uniqueValues(
+    sameProducerItems.map((item) => item.slotId),
+  );
+
+  const addableSlotIds =
+    existingCartSlotIds.length === 1
+      ? commonProductSlotIds.filter((slotId) =>
+          existingCartSlotIds.includes(slotId),
+        )
+      : [];
+
+  return {
+    hasSameProducerCartItems,
+    targetProductCompatibleSlotIds,
+    commonProductSlotIds,
+    addableSlotIds,
+    existingCartSlotIds,
   };
 }
