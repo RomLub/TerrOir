@@ -38,6 +38,7 @@ type SlotRule = {
   end_time: string;
   slot_duration_minutes: number;
   capacity_per_slot: number;
+  availability_scope?: 'shared' | 'product_restricted' | null;
   created_at: string;
 };
 
@@ -47,6 +48,7 @@ type SlotRow = {
   starts_at: string;
   ends_at: string;
   capacity_per_slot: number;
+  availability_scope: 'shared' | 'product_restricted';
 };
 
 function parseHM(t: string): [number, number] {
@@ -148,6 +150,7 @@ function buildSlotsForRuleOnDay(
         starts_at: new Date(slotStartMs).toISOString(),
         ends_at: new Date(slotStartMs + durationMs).toISOString(),
         capacity_per_slot: rule.capacity_per_slot,
+        availability_scope: rule.availability_scope ?? 'shared',
       });
     }
     slotStartMs += durationMs;
@@ -166,7 +169,7 @@ async function loadRulesAndUnavailable(
   const { data: rules, error: rulesError } = await supabase
     .from('slot_rules')
     .select(
-      'id, producer_id, days_of_week, periodicity_weeks, start_time, end_time, slot_duration_minutes, capacity_per_slot, created_at',
+      'id, producer_id, days_of_week, periodicity_weeks, start_time, end_time, slot_duration_minutes, capacity_per_slot, availability_scope, created_at',
     )
     .eq('producer_id', producerId)
     .eq('active', true);

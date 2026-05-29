@@ -91,6 +91,10 @@ export type ProducersStatut = (typeof PRODUCERS_STATUT_VALUES)[number];
 export const PRODUCERS_TYPE_PRODUCTION_VALUES = ["maraichage", "elevage", "laiterie", "boulangerie", "vin", "arboriculture", "apiculture", "autre"] as const;
 export type ProducersTypeProduction = (typeof PRODUCERS_TYPE_PRODUCTION_VALUES)[number];
 
+// products.pickup_availability_mode (source: in, last migration: 20260529110000_product_slot_availability_model.sql)
+export const PRODUCTS_PICKUP_AVAILABILITY_MODE_VALUES = ["all_shared_slots", "selected_slots"] as const;
+export type ProductsPickupAvailabilityMode = (typeof PRODUCTS_PICKUP_AVAILABILITY_MODE_VALUES)[number];
+
 // products.unite (source: in, last migration: 20260419000000_initial_schema.sql)
 export const PRODUCTS_UNITE_VALUES = ["kg", "piece", "colis"] as const;
 export type ProductsUnite = (typeof PRODUCTS_UNITE_VALUES)[number];
@@ -115,9 +119,17 @@ export type ReviewsProducerResponseStatus = (typeof REVIEWS_PRODUCER_RESPONSE_ST
 export const REVIEWS_STATUT_VALUES = ["pending", "published", "rejected"] as const;
 export type ReviewsStatut = (typeof REVIEWS_STATUT_VALUES)[number];
 
+// slot_rules.availability_scope (source: in, last migration: 20260529110000_product_slot_availability_model.sql)
+export const SLOT_RULES_AVAILABILITY_SCOPE_VALUES = ["shared", "product_restricted"] as const;
+export type SlotRulesAvailabilityScope = (typeof SLOT_RULES_AVAILABILITY_SCOPE_VALUES)[number];
+
 // slot_rules.mode (source: in, last migration: 20260524140000_slot_rules_mode_column.sql)
 export const SLOT_RULES_MODE_VALUES = ["libre", "rdv"] as const;
 export type SlotRulesMode = (typeof SLOT_RULES_MODE_VALUES)[number];
+
+// slots.availability_scope (source: in, last migration: 20260529110000_product_slot_availability_model.sql)
+export const SLOTS_AVAILABILITY_SCOPE_VALUES = ["shared", "product_restricted"] as const;
+export type SlotsAvailabilityScope = (typeof SLOTS_AVAILABILITY_SCOPE_VALUES)[number];
 
 // users.roles (source: subset_array, last migration: 20260421100000_cumulative_roles_admin_users.sql)
 export const USERS_ROLES_VALUES = ["consumer", "producer"] as const;
