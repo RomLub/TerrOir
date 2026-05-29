@@ -30,9 +30,79 @@
  */
 
 import { test, expect } from '../helpers/test-context';
-import { seedProducer } from '../helpers/db-seed';
+import { seedProducer, seedProduct } from '../helpers/db-seed';
 import { loginAs } from '../helpers/user-lifecycle';
 import { getRawAdminClient } from '../helpers/supabase-admin';
+
+test('creneau reserve a un produit identifiable et non generique sur /creneaux', async ({
+  page,
+  ctx,
+}) => {
+  test.setTimeout(90_000);
+
+  const producer = await seedProducer(ctx, {
+    suffix: 'slot-reserved',
+    statut: 'public',
+  });
+  const product = await seedProduct(ctx, {
+    producerId: producer.producerId,
+    nom: `SLOTRESERVED-${Date.now()}`,
+    pickupAvailabilityMode: 'selected_slots',
+  });
+
+  const admin = getRawAdminClient();
+  const start = new Date();
+  const currentDow = (start.getDay() + 6) % 7;
+  start.setDate(start.getDate() - currentDow + 7);
+  start.setHours(10, 0, 0, 0);
+  const end = new Date(start.getTime() + 60 * 60 * 1000);
+
+  const { data: slot, error: slotErr } = await admin
+    .from('slots')
+    .insert({
+      producer_id: producer.producerId,
+      rule_id: null,
+      starts_at: start.toISOString(),
+      ends_at: end.toISOString(),
+      capacity_per_slot: 2,
+      active: true,
+      availability_scope: 'product_restricted',
+    })
+    .select('id')
+    .single();
+  expect(slotErr, slotErr?.message).toBeNull();
+
+  const { error: linkErr } = await admin
+    .from('product_slot_availabilities')
+    .insert({ product_id: product.id, slot_id: slot!.id });
+  expect(linkErr, linkErr?.message).toBeNull();
+
+  await loginAs(page, producer.user);
+
+  for (const viewport of [
+    { width: 1280, height: 900 },
+    { width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto('/creneaux?week=1');
+
+    const reservedBlock = page.locator(
+      '[data-availability-scope="product_restricted"]',
+    );
+    await expect(reservedBlock).toBeVisible({ timeout: 15_000 });
+    await expect(reservedBlock).toContainText(/Réservé à un produit/i);
+
+    await reservedBlock.click();
+    await expect(page.getByText(/réservé à un produit/i).last()).toBeVisible();
+    await expect(
+      page.getByText(/Ce créneau est proposé uniquement/i),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: /Supprimer cette ouverture/i }),
+    ).toHaveCount(0);
+    await page.getByRole('button', { name: /Annuler/i }).click();
+  }
+});
 
 test.describe('Producer slots — management', () => {
   test('création slot ad-hoc (rule_id=null) visible côté UI /creneaux', async ({

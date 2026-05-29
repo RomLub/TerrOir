@@ -29,6 +29,9 @@ type ModalState =
   | null;
 
 function blockClasses(block: CalendarBlock): string {
+  if (block.availabilityScope === "product_restricted") {
+    return "border-amber-700/40 bg-amber-50 text-green-900 hover:border-amber-700/70";
+  }
   if (block.kind === "recurring") {
     return "border-green-700/30 bg-green-700/10 text-green-900 hover:border-green-700/60";
   }
@@ -36,6 +39,9 @@ function blockClasses(block: CalendarBlock): string {
 }
 
 function modeLabel(block: CalendarBlock): string {
+  if (block.availabilityScope === "product_restricted") {
+    return `Réservé à un produit - ${block.slotCount} créneau${block.slotCount > 1 ? "x" : ""}`;
+  }
   if (block.mode === "rdv") return `sur RDV · ${block.slotCount} créneaux`;
   return `${block.capacity} ${block.capacity > 1 ? "places" : "place"}`;
 }
@@ -259,6 +265,7 @@ function RegularDayCell({
             type="button"
             onClick={() => onBlockClick(block)}
             className={`rounded-lg border px-2 py-1.5 text-left text-[12px] transition-colors ${blockClasses(block)}`}
+            data-availability-scope={block.availabilityScope}
           >
             <div className="font-semibold leading-tight">{block.label}</div>
             <div className="text-[10px] opacity-80">{modeLabel(block)}</div>
@@ -346,7 +353,47 @@ function Lock() {
   );
 }
 
-function BlockMenu({
+function BlockMenu(props: {
+  block: CalendarBlock;
+  pending: boolean;
+  onClose: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  if (props.block.availabilityScope !== "product_restricted") {
+    return <SharedBlockMenu {...props} />;
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-green-900/40 p-4 backdrop-blur-sm"
+      onClick={props.onClose}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className="w-full max-w-xs rounded-2xl bg-white p-3 shadow-card"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-4 py-2 text-[12px] font-semibold uppercase tracking-wide text-dark/45">
+          {props.block.label} - réservé à un produit
+        </div>
+        <p className="px-4 py-2 text-[13px] leading-relaxed text-dark/65">
+          Ce créneau est proposé uniquement pour le produit qui l&apos;a créé.
+        </p>
+        <button
+          type="button"
+          onClick={props.onClose}
+          className="w-full rounded-lg px-4 py-2.5 text-left text-[14px] text-dark/60 transition-colors hover:bg-dark/5"
+        >
+          Annuler
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SharedBlockMenu({
   block,
   pending,
   onClose,

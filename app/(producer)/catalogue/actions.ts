@@ -261,6 +261,34 @@ async function syncProductSlotLinks(params: {
   return { ok: true };
 }
 
+async function cleanupFailedProductCreate(params: {
+  admin: ReturnType<typeof createSupabaseAdminClient>;
+  productId: string;
+  reservedSlotIds: readonly string[];
+}) {
+  if (params.reservedSlotIds.length > 0) {
+    const { error } = await params.admin
+      .from("slots")
+      .delete()
+      .in("id", params.reservedSlotIds);
+    if (error) {
+      console.warn(
+        `PRODUCT_CREATE_CLEANUP_SLOT_WARN product_id=${params.productId} error=${error.message}`,
+      );
+    }
+  }
+
+  const { error } = await params.admin
+    .from("products")
+    .delete()
+    .eq("id", params.productId);
+  if (error) {
+    console.warn(
+      `PRODUCT_CREATE_CLEANUP_PRODUCT_WARN product_id=${params.productId} error=${error.message}`,
+    );
+  }
+}
+
 async function invalidateForProduct(opts: {
   productId: string;
   producerId: string;
@@ -340,7 +368,14 @@ export async function createProductAction(
     producerId: owner.id,
     reservedSlots: parsed.data.reserved_slots,
   });
-  if ("error" in reservedSlotsRes) return reservedSlotsRes;
+  if ("error" in reservedSlotsRes) {
+    await cleanupFailedProductCreate({
+      admin,
+      productId,
+      reservedSlotIds: [],
+    });
+    return reservedSlotsRes;
+  }
 
   const desiredSlotIds =
     parsed.data.pickup_availability_mode === "selected_slots"
@@ -352,7 +387,14 @@ export async function createProductAction(
     productId,
     desiredSlotIds,
   });
-  if ("error" in linksRes) return linksRes;
+  if ("error" in linksRes) {
+    await cleanupFailedProductCreate({
+      admin,
+      productId,
+      reservedSlotIds: reservedSlotsRes.slotIds,
+    });
+    return linksRes;
+  }
 
   if (parsed.data.active) {
     await invalidateForProduct({
@@ -446,7 +488,20 @@ export async function updateProductAction(
     productId,
     desiredSlotIds,
   });
-  if ("error" in linksRes) return linksRes;
+  if ("error" in linksRes) {
+    if (reservedSlotsRes.slotIds.length > 0) {
+      const { error } = await admin
+        .from("slots")
+        .delete()
+        .in("id", reservedSlotsRes.slotIds);
+      if (error) {
+        console.warn(
+          `PRODUCT_UPDATE_CLEANUP_SLOT_WARN product_id=${productId} error=${error.message}`,
+        );
+      }
+    }
+    return linksRes;
+  }
 
   // Inconditionnel : un flip active true→false impacte aussi les compteurs.
   await invalidateForProduct({

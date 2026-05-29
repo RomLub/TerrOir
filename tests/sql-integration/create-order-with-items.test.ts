@@ -149,14 +149,16 @@ async function callCreateOrder(
     slotId: string;
     productId: string;
     quantity?: number;
+    dateRetrait?: string;
+    heureRetrait?: string;
   },
 ) {
   return client.rpc("create_order_with_items", {
     p_consumer_id: args.consumerId,
     p_producer_id: args.producerId,
     p_slot_id: args.slotId,
-    p_date_retrait: "2026-06-02",
-    p_heure_retrait: "09:00:00",
+    p_date_retrait: args.dateRetrait ?? "2026-06-02",
+    p_heure_retrait: args.heureRetrait ?? "09:00:00",
     p_notes_client: null,
     p_items: [{ product_id: args.productId, quantite: args.quantity ?? 1 }],
   });
@@ -251,6 +253,26 @@ describeIfLocal("create_order_with_items", () => {
       .eq("id", productId)
       .single();
     expect(Number(product?.stock_disponible)).toBe(9);
+  });
+
+  it("date de retrait incoherente avec le creneau: refuse la commande", async () => {
+    const producer = await seedProducer();
+    const consumer = await seedConsumer();
+    const slotId = await seedSlot(producer.producerId);
+    const productId = await seedProduct(producer.producerId);
+
+    const { error } = await callCreateOrder(consumer.client, {
+      consumerId: consumer.userId,
+      producerId: producer.producerId,
+      slotId,
+      productId,
+      dateRetrait: "2026-06-03",
+    });
+
+    expectRpcError(error, {
+      code: "23514",
+      hint: "slot_datetime_mismatch",
+    });
   });
 
   it("produit limite compatible: accepte avec lien produit-creneau", async () => {

@@ -156,7 +156,10 @@ vi.mock("@/lib/audit-logs/log-auth-event", () => ({
 // --- Import APRÈS les mocks ----------------------------------------------
 
 import { POST } from "@/app/api/orders/create/route";
-import { extractHeureRetrait } from "@/lib/slots/format-slot-time";
+import {
+  extractDateRetrait,
+  extractHeureRetrait,
+} from "@/lib/slots/format-slot-time";
 import { logPaymentEvent } from "@/lib/audit-logs/log-payment-event";
 
 // --- Helpers -------------------------------------------------------------
@@ -171,6 +174,7 @@ const ORDER_ID = "55555555-5555-4555-8555-555555555555";
 // On laisse extractHeureRetrait calculer le résultat exact pour que le test
 // reste robuste à toute évolution du helper (qui a ses propres tests dédiés).
 const SLOT_STARTS_AT = "2026-05-15T07:30:00Z";
+const EXPECTED_DATE_RETRAIT = extractDateRetrait(SLOT_STARTS_AT);
 const EXPECTED_HEURE_RETRAIT = extractHeureRetrait(SLOT_STARTS_AT);
 
 const VALID_BODY = {
@@ -602,7 +606,7 @@ describe("E. Happy path", () => {
       p_consumer_id: CONSUMER_ID, // session.id, PAS body.consumer_id (non envoyé)
       p_producer_id: PRODUCER_ID,
       p_slot_id: SLOT_ID,
-      p_date_retrait: "2026-05-15",
+      p_date_retrait: EXPECTED_DATE_RETRAIT,
       // heure_retrait extraite côté serveur depuis slot.starts_at, autoritatif
       p_heure_retrait: EXPECTED_HEURE_RETRAIT,
       p_notes_client: "Pickup à 18h",
@@ -640,7 +644,7 @@ describe("E. Happy path", () => {
         order_id: ORDER_ID,
         producer_id: PRODUCER_ID,
         slot_id: SLOT_ID,
-        date_retrait: "2026-05-15",
+        date_retrait: EXPECTED_DATE_RETRAIT,
         montant_total: 25.5,
         commission: 1.28,
         montant_net: 24.22,
@@ -650,6 +654,28 @@ describe("E. Happy path", () => {
   });
 });
 
+  it("E2 - ignore une date client incoherente et utilise la date du creneau", async () => {
+    const res = await POST(
+      makeRequest({ ...VALID_BODY, date_retrait: "2026-05-16" }),
+    );
+
+    expect(res.status).toBe(200);
+    const rpcCall = captured.rpcCalls.find(
+      (call) => call.name === "create_order_with_items",
+    )!;
+    expect((rpcCall.args as Record<string, unknown>).p_date_retrait).toBe(
+      EXPECTED_DATE_RETRAIT,
+    );
+    expect(
+      captured.eqCalls.find(
+        (e) => e.table === "orders" && e.col === "date_retrait",
+      ),
+    ).toEqual({
+      table: "orders",
+      col: "date_retrait",
+      val: EXPECTED_DATE_RETRAIT,
+    });
+  });
 // --- F. Edge cases -------------------------------------------------------
 
 describe("F. Edge cases", () => {
@@ -713,7 +739,7 @@ describe("F. Edge cases", () => {
         order_id: ORDER_ID,
         producer_id: PRODUCER_ID,
         slot_id: SLOT_ID,
-        date_retrait: "2026-05-15",
+        date_retrait: EXPECTED_DATE_RETRAIT,
         montant_total: null,
         commission: null,
         montant_net: null,
@@ -816,7 +842,7 @@ describe("G. Idempotence T-428 (dedup pre-RPC)", () => {
       expect.arrayContaining([
         { table: "orders", col: "consumer_id", val: CONSUMER_ID },
         { table: "orders", col: "slot_id", val: SLOT_ID },
-        { table: "orders", col: "date_retrait", val: "2026-05-15" },
+        { table: "orders", col: "date_retrait", val: EXPECTED_DATE_RETRAIT },
         { table: "orders", col: "statut", val: "pending" },
       ]),
     );
