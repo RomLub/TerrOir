@@ -71,6 +71,9 @@ function consumeFrom(table: "slots" | "orders", op: Op): Resp {
 function consumeRpc(name: string): Resp {
   const queue = responses.rpc?.[name];
   if (queue && queue.length > 0) return queue.shift()!;
+  if (name === "is_product_available_on_slot") {
+    return { data: true, error: null };
+  }
   return { data: null, error: null };
 }
 
@@ -347,6 +350,30 @@ describe("C. Pré-check slot", () => {
   });
 });
 
+// --- C2. Pre-check disponibilite produit-creneau -------------------------
+
+describe("C2. Pre-check disponibilite produit-creneau", () => {
+  it("C2.1 - produit incompatible avec le creneau choisi -> 409 avant creation", async () => {
+    responses.rpc = {
+      is_product_available_on_slot: [{ data: false, error: null }],
+    };
+
+    const res = await POST(makeRequest());
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({
+      error: expect.stringMatching(/Aucun .* commun/i),
+      code: "23514",
+      hint: "product_slot_unavailable",
+      details: `product_id=${PRODUCT_ID};slot_id=${SLOT_ID}`,
+    });
+    expect(captured.rpcCalls.map((call) => call.name)).toEqual([
+      "is_product_available_on_slot",
+    ]);
+    expect(logPaymentEvent).not.toHaveBeenCalled();
+  });
+});
+
 // --- D. SQLSTATE → HTTP mapping ------------------------------------------
 
 describe("D. SQLSTATE → HTTP mapping", () => {
@@ -563,8 +590,13 @@ describe("E. Happy path", () => {
       montant_net: 24.22,
     });
 
-    expect(captured.rpcCalls).toHaveLength(1);
-    const rpcCall = captured.rpcCalls[0]!;
+    expect(captured.rpcCalls.map((call) => call.name)).toEqual([
+      "is_product_available_on_slot",
+      "create_order_with_items",
+    ]);
+    const rpcCall = captured.rpcCalls.find(
+      (call) => call.name === "create_order_with_items",
+    )!;
     expect(rpcCall.name).toBe("create_order_with_items");
     expect(rpcCall.args).toEqual({
       p_consumer_id: CONSUMER_ID, // session.id, PAS body.consumer_id (non envoyé)
@@ -640,7 +672,9 @@ describe("F. Edge cases", () => {
     await POST(
       makeRequest({ ...VALID_BODY, notes_client: "  Notes avec espaces  " }),
     );
-    const rpcArgs = captured.rpcCalls[0]!.args as Record<string, unknown>;
+    const rpcArgs = captured.rpcCalls.find(
+      (call) => call.name === "create_order_with_items",
+    )!.args as Record<string, unknown>;
     expect(rpcArgs.p_notes_client).toBe("Notes avec espaces");
   });
 
@@ -769,8 +803,11 @@ describe("G. Idempotence T-428 (dedup pre-RPC)", () => {
       commission: 1.1,
       montant_net: 17.3,
     });
-    // RPC non appelée : la dedup court-circuite avant.
-    expect(captured.rpcCalls).toEqual([]);
+    // La compatibilite produit-creneau est verifiee avant la dedup ; la
+    // creation de commande reste court-circuitee.
+    expect(captured.rpcCalls.map((call) => call.name)).toEqual([
+      "is_product_available_on_slot",
+    ]);
     // Pas de duplication audit log (1ère création a déjà loggé via T-429).
     expect(logPaymentEvent).not.toHaveBeenCalled();
     // Vérifier que les 4 filtres dedup sont posés sur la query orders.
@@ -800,7 +837,10 @@ describe("G. Idempotence T-428 (dedup pre-RPC)", () => {
     const res = await POST(makeRequest());
 
     expect(res.status).toBe(200);
-    expect(captured.rpcCalls).toHaveLength(1);
+    expect(captured.rpcCalls.map((call) => call.name)).toEqual([
+      "is_product_available_on_slot",
+      "create_order_with_items",
+    ]);
     expect(logPaymentEvent).toHaveBeenCalledTimes(1);
     // 4 from au total : slots (pré-check) + orders (dedup miss) + orders
     // (UPDATE CGV) + orders (enrich post-RPC).
@@ -826,9 +866,11 @@ describe("G. Idempotence T-428 (dedup pre-RPC)", () => {
 
     await POST(makeRequest());
 
-    // Pas de RPC, pas de 2ème SELECT orders (enrich) → 2 from total.
+    // Pas de RPC de creation, pas de 2ème SELECT orders (enrich).
     expect(captured.fromCalls).toEqual(["slots", "orders"]);
-    expect(captured.rpcCalls).toEqual([]);
+    expect(captured.rpcCalls.map((call) => call.name)).toEqual([
+      "is_product_available_on_slot",
+    ]);
   });
 
   it("G5 — dedup query : .select() inclut les 5 colonnes nécessaires au shape de réponse", async () => {
@@ -857,7 +899,10 @@ describe("G. Idempotence T-428 (dedup pre-RPC)", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { order_id: string };
     expect(body.order_id).toBe(ORDER_ID); // nouvelle order créée par la RPC
-    expect(captured.rpcCalls).toHaveLength(1);
+    expect(captured.rpcCalls.map((call) => call.name)).toEqual([
+      "is_product_available_on_slot",
+      "create_order_with_items",
+    ]);
     // Audit log T-429 posé (path nominal, pas dedup hit).
     expect(logPaymentEvent).toHaveBeenCalledTimes(1);
   });

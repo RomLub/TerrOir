@@ -52,6 +52,7 @@ interface SeedProductOptions {
   stockDisponible?: number;
   stockIllimite?: boolean;
   active?: boolean;
+  pickupAvailabilityMode?: 'all_shared_slots' | 'selected_slots';
 }
 
 export async function seedProduct(
@@ -72,6 +73,8 @@ export async function seedProduct(
       stock_disponible: options.stockDisponible ?? 100,
       stock_illimite: options.stockIllimite ?? false,
       active: options.active ?? true,
+      pickup_availability_mode:
+        options.pickupAvailabilityMode ?? 'all_shared_slots',
     })
     .select('id, nom')
     .single();

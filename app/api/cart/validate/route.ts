@@ -29,6 +29,15 @@ import {
   type ItemStatus,
   type ValidateResponse,
 } from "@/lib/cart/validate";
+import {
+  computeCartSlotCompatibility,
+  productSlotPairKey,
+} from "@/lib/product-slot-availability/cart-compatibility";
+import type {
+  ProductAvailabilityPolicy,
+  ProductSlotAvailabilityLink,
+  SlotAvailabilityPolicy,
+} from "@/lib/product-slot-availability/types";
 
 const bodySchema = z.object({
   items: z
@@ -49,12 +58,22 @@ type ProductRow = {
   producer_id: string;
   stock_disponible: number | string | null;
   stock_illimite: boolean;
+  active: boolean | null;
+  pickup_availability_mode: ProductAvailabilityPolicy["pickupAvailabilityMode"];
 };
 
 type SlotRow = {
   id: string;
   producer_id: string;
   capacity_per_slot: number;
+  active: boolean | null;
+  excluded_at: string | null;
+  availability_scope: SlotAvailabilityPolicy["availabilityScope"];
+};
+
+type ProductSlotLinkRow = {
+  product_id: string;
+  slot_id: string;
 };
 
 export async function POST(request: Request) {
@@ -80,16 +99,35 @@ export async function POST(request: Request) {
   const supabase = await createSupabaseServerClient();
   const admin = createSupabaseAdminClient();
 
-  const [producersRes, productsRes, slotsRes, ordersRes] = await Promise.all([
+  const [
+    producersRes,
+    productsRes,
+    slotsRes,
+    compatibleSlotsRes,
+    productSlotLinksRes,
+    ordersRes,
+  ] = await Promise.all([
     supabase.from("producers").select("id").in("id", producerIds),
     supabase
       .from("products")
-      .select("id, producer_id, stock_disponible, stock_illimite")
+      .select(
+        "id, producer_id, stock_disponible, stock_illimite, active, pickup_availability_mode",
+      )
       .in("id", productIds),
     supabase
       .from("slots")
-      .select("id, producer_id, capacity_per_slot")
+      .select(
+        "id, producer_id, capacity_per_slot, active, excluded_at, availability_scope",
+      )
       .in("id", slotIds),
+    supabase
+      .from("slots")
+      .select("id, producer_id, active, excluded_at, availability_scope")
+      .in("producer_id", producerIds),
+    supabase
+      .from("product_slot_availabilities")
+      .select("product_id, slot_id")
+      .in("product_id", productIds),
     admin
       .from("orders")
       .select("slot_id")
@@ -120,6 +158,16 @@ export async function POST(request: Request) {
       `[CART_VALIDATE_SELECT_FAIL] table=slots error=${slotsRes.error.message}`,
     );
   }
+  if (compatibleSlotsRes.error) {
+    console.warn(
+      `[CART_VALIDATE_SELECT_FAIL] table=slots.compatible error=${compatibleSlotsRes.error.message}`,
+    );
+  }
+  if (productSlotLinksRes.error) {
+    console.warn(
+      `[CART_VALIDATE_SELECT_FAIL] table=product_slot_availabilities error=${productSlotLinksRes.error.message}`,
+    );
+  }
   if (ordersRes.error) {
     console.warn(
       `[CART_VALIDATE_SELECT_FAIL] table=orders error=${ordersRes.error.message}`,
@@ -137,6 +185,44 @@ export async function POST(request: Request) {
   for (const row of (slotsRes.data ?? []) as SlotRow[]) {
     slotsMap.set(row.id, row);
   }
+  const slotCompatibility =
+    !productsRes.error &&
+    !slotsRes.error &&
+    !compatibleSlotsRes.error &&
+    !productSlotLinksRes.error
+      ? computeCartSlotCompatibility({
+          items: items.map((item) => ({
+            productId: item.productId,
+            producerId: item.producerId,
+            slotId: item.creneauId,
+          })),
+          products: ((productsRes.data ?? []) as ProductRow[]).map(
+            (product) => ({
+              productId: product.id,
+              producerId: product.producer_id,
+              active: product.active,
+              pickupAvailabilityMode: product.pickup_availability_mode,
+            }),
+          ),
+          slots: ((compatibleSlotsRes.data ?? []) as SlotRow[]).map((slot) => ({
+            slotId: slot.id,
+            producerId: slot.producer_id,
+            active: slot.active,
+            excludedAt: slot.excluded_at,
+            availabilityScope: slot.availability_scope,
+          })),
+          links: ((productSlotLinksRes.data ?? []) as ProductSlotLinkRow[]).map(
+            (link): ProductSlotAvailabilityLink => ({
+              productId: link.product_id,
+              slotId: link.slot_id,
+            }),
+          ),
+        })
+      : {
+          hasSlotConflict: false,
+          compatibleSlots: {},
+          itemCompatibility: {},
+        };
   const slotCounts = new Map<string, number>();
   for (const row of (ordersRes.data ?? []) as { slot_id: string }[]) {
     slotCounts.set(row.slot_id, (slotCounts.get(row.slot_id) ?? 0) + 1);
@@ -168,6 +254,19 @@ export async function POST(request: Request) {
     const slot = slotsMap.get(item.creneauId);
     if (!slot || slot.producer_id !== item.producerId) {
       results[key] = { ok: false, fatal: true, reason: "slot_unavailable" };
+      continue;
+    }
+
+    if (
+      slotCompatibility.itemCompatibility[
+        productSlotPairKey(item.productId, item.creneauId)
+      ] === false
+    ) {
+      results[key] = {
+        ok: false,
+        fatal: true,
+        reason: "product_slot_unavailable",
+      };
       continue;
     }
 
@@ -204,5 +303,11 @@ export async function POST(request: Request) {
     results[key] = { ok: true };
   }
 
-  return NextResponse.json<ValidateResponse>({ results });
+  return NextResponse.json<ValidateResponse>({
+    results,
+    slotCompatibility: {
+      hasSlotConflict: slotCompatibility.hasSlotConflict,
+      compatibleSlots: slotCompatibility.compatibleSlots,
+    },
+  });
 }
