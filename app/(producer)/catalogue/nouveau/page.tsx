@@ -15,12 +15,21 @@ import {
 import { CATEGORIES_WITH_ANIMAL } from '@/lib/products/categories-with-animal';
 import { STOCK_UNLIMITED_SENTINEL } from '@/lib/products/constants';
 import type { Animal, Cut, ProductCategory } from '@/lib/products/types';
+import {
+  ProductPickupSection,
+  type ProductPickupAvailabilityMode,
+  type ProductPickupSlotOption,
+  type ReservedProductSlotDraft,
+} from '../_components/ProductPickupSection';
 
 type Form = {
   name: string; description: string; price: string; unit: string;
   weightStep: string; estimatedWeight: string; stock: string; stockUnlimited: boolean;
   delai: string; active: boolean;
   conseilActive: boolean; conseilTexte: string;
+  pickupAvailabilityMode: ProductPickupAvailabilityMode;
+  selectedSlotIds: string[];
+  reservedSlots: ReservedProductSlotDraft[];
   // T-220 PR-B : tagging catégorisation produit (FK nullable transitoire
   // pendant le backfill — cf. migration PR-A 20260501002856).
   categoryId: string | null; animalId: string | null; cutId: string | null;
@@ -30,6 +39,9 @@ const EMPTY: Form = {
   name: '', description: '', price: '', unit: 'kg',
   weightStep: '0.25', estimatedWeight: '', stock: '', stockUnlimited: false, delai: '2', active: true,
   conseilActive: false, conseilTexte: '',
+  pickupAvailabilityMode: 'all_shared_slots',
+  selectedSlotIds: [],
+  reservedSlots: [],
   categoryId: null, animalId: null, cutId: null,
 };
 
@@ -43,6 +55,8 @@ export default function ProductNewPage() {
   const [dragging, setDragging] = useState(false);
   const [producerId, setProducerId] = useState<string | null>(null);
   const [producerName, setProducerName] = useState('');
+  const [pickupSlots, setPickupSlots] = useState<ProductPickupSlotOption[]>([]);
+  const [pickupError, setPickupError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -70,6 +84,42 @@ export default function ProductNewPage() {
       if (!prod) { setError('Profil producteur introuvable.'); return; }
       setProducerId(prod.id);
       setProducerName(prod.nom_exploitation);
+
+      const [{ data: slots }, { data: links }] = await Promise.all([
+        supabase
+          .from('slots')
+          .select('id, starts_at, ends_at, availability_scope')
+          .eq('producer_id', prod.id)
+          .eq('active', true)
+          .is('excluded_at', null)
+          .gte('starts_at', new Date().toISOString())
+          .order('starts_at', { ascending: true }),
+        supabase
+          .from('product_slot_availabilities')
+          .select('product_id, slot_id')
+          .eq('producer_id', prod.id),
+      ]);
+      if (!active) return;
+      const linksBySlot = new Map<string, string[]>();
+      for (const link of (links ?? []) as Array<{ product_id: string; slot_id: string }>) {
+        const current = linksBySlot.get(link.slot_id) ?? [];
+        current.push(link.product_id);
+        linksBySlot.set(link.slot_id, current);
+      }
+      setPickupSlots(
+        ((slots ?? []) as Array<{
+          id: string;
+          starts_at: string;
+          ends_at: string;
+          availability_scope: 'shared' | 'product_restricted';
+        }>).map((slot) => ({
+          id: slot.id,
+          startsAt: slot.starts_at,
+          endsAt: slot.ends_at,
+          availabilityScope: slot.availability_scope,
+          linkedProductIds: linksBySlot.get(slot.id) ?? [],
+        })),
+      );
     })();
     return () => { active = false; };
   }, []);
@@ -106,6 +156,54 @@ export default function ProductNewPage() {
 
   const up = (k: keyof Form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const setPickupMode = (mode: ProductPickupAvailabilityMode) => {
+    setPickupError(null);
+    setForm((f) => ({ ...f, pickupAvailabilityMode: mode }));
+  };
+
+  const togglePickupSlot = (slotId: string) => {
+    setPickupError(null);
+    setForm((f) => ({
+      ...f,
+      selectedSlotIds: f.selectedSlotIds.includes(slotId)
+        ? f.selectedSlotIds.filter((id) => id !== slotId)
+        : [...f.selectedSlotIds, slotId],
+    }));
+  };
+
+  const addReservedSlot = () => {
+    setPickupError(null);
+    setForm((f) => ({
+      ...f,
+      reservedSlots: [
+        ...f.reservedSlots,
+        { id: crypto.randomUUID(), startAt: '', endAt: '', capacity: '1' },
+      ],
+    }));
+  };
+
+  const updateReservedSlot = (
+    id: string,
+    field: keyof Omit<ReservedProductSlotDraft, 'id'>,
+    value: string,
+  ) => {
+    setPickupError(null);
+    setForm((f) => ({
+      ...f,
+      reservedSlots: f.reservedSlots.map((slot) =>
+        slot.id === id ? { ...slot, [field]: value } : slot,
+      ),
+    }));
+  };
+
+  const removeReservedSlot = (id: string) => {
+    setPickupError(null);
+    setForm((f) => ({
+      ...f,
+      reservedSlots: f.reservedSlots.filter((slot) => slot.id !== id),
+    }));
+  };
 
   const handleFiles = (files: FileList | null) => {
     if (!files) return;
@@ -168,8 +266,17 @@ export default function ProductNewPage() {
       setError('Conseil activé : saisissez le texte ou désactivez le conseil.');
       return;
     }
+    if (
+      form.pickupAvailabilityMode === 'selected_slots' &&
+      form.selectedSlotIds.length === 0 &&
+      form.reservedSlots.length === 0
+    ) {
+      setPickupError('Sélectionnez au moins un créneau pour ce produit.');
+      return;
+    }
     setSaving(true);
     setError(null);
+    setPickupError(null);
 
     const supabase = createSupabaseBrowserClient();
 
@@ -198,6 +305,14 @@ export default function ProductNewPage() {
         category_id: form.categoryId,
         animal_id: form.animalId,
         cut_id: form.cutId,
+        pickup_availability_mode: form.pickupAvailabilityMode,
+        slot_ids: form.selectedSlotIds,
+        reserved_slots: form.reservedSlots.map((slot) => ({
+          start_at: slot.startAt,
+          end_at: slot.endAt,
+          capacity_per_slot: Number(slot.capacity),
+          mode: 'libre' as const,
+        })),
       });
       if (res.error) throw new Error(res.error);
       router.push('/catalogue');
@@ -221,7 +336,7 @@ export default function ProductNewPage() {
           <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
             <h2 className="font-serif text-[22px] text-green-900 mb-4">Informations produit</h2>
             <div className="space-y-4">
-              <Input label="Nom du produit *" value={form.name} onChange={up('name')} required placeholder="Ex : Entrecôte maturée 21 jours" />
+              <Input id="product-name" label="Nom du produit *" value={form.name} onChange={up('name')} required placeholder="Ex : Entrecôte maturée 21 jours" />
               <Textarea label="Description" rows={4} value={form.description} onChange={up('description')}
                 placeholder="Détaillez l'origine, la découpe, les conseils de cuisson…" />
               {/* T-220 PR-B : cascade catégorie → animal → morceau.
@@ -299,7 +414,7 @@ export default function ProductNewPage() {
           <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
             <h2 className="font-serif text-[22px] text-green-900 mb-4">Prix et conditionnement</h2>
             <div className="grid sm:grid-cols-2 gap-4">
-              <Input label="Prix *" type="number" step="0.01" min="0" value={form.price} onChange={up('price')} required placeholder="0,00" />
+              <Input id="product-price" label="Prix *" type="number" step="0.01" min="0" value={form.price} onChange={up('price')} required placeholder="0,00" />
               <Select label="Unité *" value={form.unit} onChange={up('unit')}>
                 <option value="kg">Au kilo (kg)</option>
                 <option value="piece">À la pièce</option>
@@ -361,13 +476,26 @@ export default function ProductNewPage() {
               <span className="text-[14px] font-medium">Stock illimité</span>
             </label>
             {!form.stockUnlimited && (
-              <Input label={`Quantité en stock (${form.unit})`} type="number" min="0" value={form.stock} onChange={up('stock')} placeholder="0" />
+              <Input id="product-stock" label={`Quantité en stock (${form.unit})`} type="number" min="0" value={form.stock} onChange={up('stock')} placeholder="0" />
             )}
             <div className="mt-4">
               <Input label="Délai de préparation (en jours)" type="number" min="0" value={form.delai} onChange={up('delai')} />
               <p className="text-[11px] text-dark/50 mt-1">Les clients verront : « Disponible sous {form.delai || 0} jour{parseInt(form.delai) > 1 ? 's' : ''} ».</p>
             </div>
           </section>
+
+          <ProductPickupSection
+            mode={form.pickupAvailabilityMode}
+            slots={pickupSlots}
+            selectedSlotIds={form.selectedSlotIds}
+            reservedSlots={form.reservedSlots}
+            error={pickupError}
+            onModeChange={setPickupMode}
+            onToggleSlot={togglePickupSlot}
+            onAddReservedSlot={addReservedSlot}
+            onUpdateReservedSlot={updateReservedSlot}
+            onRemoveReservedSlot={removeReservedSlot}
+          />
 
           <section className="bg-white rounded-2xl border border-dark/[0.06] shadow-soft p-6">
             <label className="flex items-center justify-between gap-3 cursor-pointer">

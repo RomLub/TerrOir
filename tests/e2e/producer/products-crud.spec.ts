@@ -26,6 +26,28 @@ import { seedProducer, seedProduct } from '../helpers/db-seed';
 import { loginAs } from '../helpers/user-lifecycle';
 import { getRawAdminClient } from '../helpers/supabase-admin';
 
+async function seedPickupSlot(producerId: string, startsAt: Date): Promise<string> {
+  const admin = getRawAdminClient();
+  const endsAt = new Date(startsAt.getTime() + 60 * 60 * 1000);
+  const { data, error } = await admin
+    .from('slots')
+    .insert({
+      producer_id: producerId,
+      rule_id: null,
+      starts_at: startsAt.toISOString(),
+      ends_at: endsAt.toISOString(),
+      capacity_per_slot: 4,
+      active: true,
+      availability_scope: 'shared',
+    })
+    .select('id')
+    .single();
+  if (error || !data) {
+    throw new Error(`seedPickupSlot insert failed: ${error?.message ?? 'no data'}`);
+  }
+  return data.id as string;
+}
+
 test.describe('Producer products — CRUD', () => {
   test('seedProduct insère row visible sur /catalogue côté producer', async ({
     page,
@@ -195,5 +217,111 @@ test.describe('Producer products — CRUD', () => {
       .eq('id', productA.id)
       .single();
     expect(row!.stock_disponible).toBe(10);
+  });
+
+  test('UI produit : creation limitee, edition et creneau reserve', async ({
+    page,
+    ctx,
+  }) => {
+    test.setTimeout(120_000);
+
+    const producer = await seedProducer(ctx, {
+      suffix: 'crud-slot-ui',
+      statut: 'public',
+    });
+    const slotId = await seedPickupSlot(
+      producer.producerId,
+      new Date(Date.now() + 8 * 24 * 60 * 60 * 1000),
+    );
+    const productName = `CRUDSLOTUI-${Date.now()}`;
+
+    await loginAs(page, producer.user);
+    await page.goto('/catalogue/nouveau');
+
+    await expect(
+      page.getByRole('heading', { name: /Nouveau produit/i }),
+    ).toBeVisible();
+    await expect(page.getByText('Retrait du produit')).toBeVisible();
+    await expect(
+      page.getByLabel('Disponible sur tous mes créneaux de retrait'),
+    ).toBeChecked();
+
+    await page.getByLabel('Nom du produit *').fill(productName);
+    await page.getByLabel('Prix *').fill('14');
+    await page.getByLabel('Quantité en stock (kg)').fill('10');
+    await page
+      .getByLabel('Disponible seulement sur certains créneaux')
+      .check();
+
+    await page.getByRole('button', { name: /Enregistrer le produit/i }).click();
+    await expect(
+      page.getByText(/Sélectionnez au moins un créneau pour ce produit/i),
+    ).toBeVisible();
+
+    await page
+      .locator('section')
+      .filter({ hasText: 'Retrait du produit' })
+      .locator('input[type="checkbox"]')
+      .first()
+      .check();
+    await page.getByRole('button', { name: /Enregistrer le produit/i }).click();
+    await page.waitForURL('**/catalogue', { timeout: 30_000 });
+
+    const admin = getRawAdminClient();
+    const { data: createdProduct, error: createdProductError } = await admin
+      .from('products')
+      .select('id, pickup_availability_mode')
+      .eq('producer_id', producer.producerId)
+      .eq('nom', productName)
+      .single();
+    expect(createdProductError?.message).toBeUndefined();
+    expect(createdProduct!.pickup_availability_mode).toBe('selected_slots');
+
+    const { data: createdLink } = await admin
+      .from('product_slot_availabilities')
+      .select('product_id, slot_id')
+      .eq('product_id', createdProduct!.id)
+      .eq('slot_id', slotId)
+      .single();
+    expect(createdLink?.slot_id).toBe(slotId);
+
+    await page.goto(`/catalogue/${createdProduct!.id}/modifier`);
+    await expect(
+      page.getByRole('heading', { name: /Modifier le produit/i }),
+    ).toBeVisible();
+    await expect(
+      page.getByLabel('Disponible seulement sur certains créneaux'),
+    ).toBeChecked();
+
+    await page
+      .getByRole('button', { name: /Créer un créneau réservé à ce produit/i })
+      .click();
+    const start = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
+    start.setMinutes(0, 0, 0);
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
+    const toLocalInput = (date: Date) => date.toISOString().slice(0, 16);
+    await page.getByLabel('Début').last().fill(toLocalInput(start));
+    await page.getByLabel('Fin').last().fill(toLocalInput(end));
+    await page.getByLabel('Places').last().fill('2');
+    await page
+      .getByRole('button', { name: /Enregistrer les modifications/i })
+      .click();
+    await page.waitForURL('**/catalogue', { timeout: 30_000 });
+
+    const { data: reservedSlots } = await admin
+      .from('slots')
+      .select('id, availability_scope')
+      .eq('producer_id', producer.producerId)
+      .eq('availability_scope', 'product_restricted');
+    expect(reservedSlots ?? []).toHaveLength(1);
+
+    const reservedSlotId = reservedSlots![0]!.id;
+    const { data: reservedLink } = await admin
+      .from('product_slot_availabilities')
+      .select('product_id, slot_id')
+      .eq('product_id', createdProduct!.id)
+      .eq('slot_id', reservedSlotId)
+      .single();
+    expect(reservedLink?.slot_id).toBe(reservedSlotId);
   });
 });
