@@ -9,7 +9,7 @@ export default function ProduitsLoading() {
   return (
     <div className="mx-auto max-w-7xl px-8 py-10" aria-busy="true" aria-live="polite">
       <h1 className="mb-2 font-serif text-[40px] text-green-900 leading-tight">
-        Tous les produits
+        Acheter des produits locaux
       </h1>
       <div className="mb-8 h-4 w-48 animate-pulse rounded-md bg-dark/10" />
       <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">

@@ -29,13 +29,13 @@ export function CtaBand({ className = "" }: CtaBandProps) {
           Goûte la Sarthe
         </span>
         <h2 className="mt-4 font-serif text-[36px] font-medium leading-[1.05] tracking-[-0.01em] text-white md:text-[56px]">
-          Une commande,
+          Un produit local,
           <br />
-          un{" "}
+          une{" "}
           <em className="not-italic">
-            <span className="italic text-terra-300">producteur</span>
+            <span className="italic text-terra-300">commande</span>
           </em>
-          , une rencontre.
+          , un retrait.
         </h2>
         <p className="mx-auto mt-5 max-w-[580px] text-base leading-[1.55] text-white/78 md:text-[17px]">
           Chaque semaine, des produits frais arrivent des fermes
@@ -43,9 +43,9 @@ export function CtaBand({ className = "" }: CtaBandProps) {
           reste se passe en cuisine.
         </p>
         <div className="mt-8">
-          <Link href="/producteurs">
+          <Link href="/produits">
             <Button variant="primary" size="lg">
-              Explorer les fermes&nbsp;→
+              Acheter les produits disponibles&nbsp;→
             </Button>
           </Link>
         </div>

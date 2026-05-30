@@ -60,7 +60,7 @@ test.describe('reachability — navbar anonyme', () => {
       await expect(page).toHaveURL(/\/(connexion|compte\/panier)/);
     });
 
-    test('navlinks principaux visibles (4 items defaultLinks)', async ({
+    test('navlinks principaux visibles', async ({
       page,
     }) => {
       await page.goto('/');
@@ -74,15 +74,15 @@ test.describe('reachability — navbar anonyme', () => {
       }
     });
 
-    test('navlink Rencontrer les producteurs → /producteurs', async ({
+    test('navlink Produits → /produits', async ({
       page,
     }) => {
       await page.goto('/');
       await page
         .getByRole('navigation', { name: 'Navigation principale' })
-        .getByRole('link', { name: 'Rencontrer les producteurs' })
+        .getByRole('link', { name: 'Produits' })
         .click();
-      await expect(page).toHaveURL(/\/producteurs/);
+      await expect(page).toHaveURL(/\/produits/);
     });
   });
 
@@ -135,7 +135,7 @@ test.describe('reachability — navbar anonyme', () => {
       await expect(page).toHaveURL(/\/connexion/);
     });
 
-    test('drawer mobile contient les 4 navlinks principaux', async ({
+    test('drawer mobile contient les navlinks principaux', async ({
       page,
     }) => {
       await page.goto('/');

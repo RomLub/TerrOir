@@ -81,6 +81,10 @@ async function resolveSlugToReference(
   return (data as { id: string; name: string } | null) ?? null;
 }
 
+function escapeIlikePattern(value: string): string {
+  return value.replace(/[\\_%]/g, (m) => `\\${m}`);
+}
+
 export type FetchPublicProductsOpts = {
   /** F-049 : curseur de pagination (created_at ISO du dernier item retourné). */
   cursor?: string | null;
@@ -172,6 +176,7 @@ export async function fetchPublicProducts(
     query = query.lt('created_at', opts.cursor);
   }
 
+  if (filters.q) query = query.ilike('nom', `%${escapeIlikePattern(filters.q)}%`);
   if (resolved.category) query = query.eq('category_id', resolved.category.id);
   if (resolved.animal) query = query.eq('animal_id', resolved.animal.id);
   if (resolved.cut) query = query.eq('cut_id', resolved.cut.id);

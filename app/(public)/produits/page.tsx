@@ -1,7 +1,10 @@
 import type { Metadata } from 'next';
+import { unstable_cache } from 'next/cache';
+import type { ReactNode } from 'react';
 import { Suspense } from 'react';
 import Link from 'next/link';
 import { ProductCard } from '@/components/ui';
+import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import {
   type PublicProductRow,
   type ResolvedFilters,
@@ -9,6 +12,12 @@ import {
 import { getPublicProducts } from '@/lib/products/fetch-products-public-cached';
 import { parseProductsSearchParams } from '@/lib/products/parse-search-params';
 import { STOCK_UNLIMITED_SENTINEL } from '@/lib/products/constants';
+import {
+  fetchAnimals,
+  fetchCuts,
+  fetchProductCategories,
+} from '@/lib/products/fetch-references';
+import type { Animal, Cut, ProductCategory } from '@/lib/products/types';
 
 // Page catalogue produits public (T-220 PR-C).
 //
@@ -32,15 +41,50 @@ import { STOCK_UNLIMITED_SENTINEL } from '@/lib/products/constants';
 // generateMetadata si besoin.
 
 export const metadata: Metadata = {
-  title: 'Tous les produits | TerrOir',
+  title: 'Acheter des produits locaux | TerrOir',
   description:
-    'Découvrez tous les produits disponibles chez nos éleveurs sarthois. Filtrez par catégorie, animal ou morceau.',
+    'Achetez les produits disponibles chez les producteurs sarthois. Filtrez par catégorie, animal ou morceau.',
 };
 
 export const revalidate = 60;
 
 type SearchParams = Record<string, string | string[] | undefined>;
 type ActivePill = { label: string; resetHref: string };
+type ProductFilterRefs = {
+  categories: ProductCategory[];
+  animals: Animal[];
+  cuts: Cut[];
+};
+
+const CUT_FILTER_LIMIT = 12;
+
+const EMPTY_FILTER_REFS: ProductFilterRefs = {
+  categories: [],
+  animals: [],
+  cuts: [],
+};
+
+const getProductFilterRefs = unstable_cache(
+  async (): Promise<ProductFilterRefs> => {
+    const admin = createSupabaseAdminClient();
+    try {
+      const [categories, animals, cuts] = await Promise.all([
+        fetchProductCategories(admin),
+        fetchAnimals(admin),
+        fetchCuts(admin),
+      ]);
+      return { categories, animals, cuts };
+    } catch (error) {
+      console.error('[PRODUCT_FILTER_REFS_ERR]', error);
+      return EMPTY_FILTER_REFS;
+    }
+  },
+  ['public-product-filter-refs'],
+  {
+    revalidate: 3600,
+    tags: ['public-products'],
+  },
+);
 
 // Reconstruit l'URL en retirant la clé courante du filtre. Les autres
 // filtres (et tout searchParam non-string ignoré) sont préservés.
@@ -50,6 +94,18 @@ function hrefWithout(searchParams: SearchParams, omit: string): string {
     if (k === omit || typeof v !== 'string') continue;
     params.set(k, v);
   }
+  const qs = params.toString();
+  return qs ? `/produits?${qs}` : '/produits';
+}
+
+function hrefWith(searchParams: SearchParams, key: string, value: string): string {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(searchParams)) {
+    if (typeof v !== 'string') continue;
+    params.set(k, v);
+  }
+  if (params.get(key) === value) params.delete(key);
+  else params.set(key, value);
   const qs = params.toString();
   return qs ? `/produits?${qs}` : '/produits';
 }
@@ -95,13 +151,50 @@ export default async function ProduitsPage(
   }
 ) {
   const searchParams = await props.searchParams;
+  const filters = parseProductsSearchParams(searchParams);
   const suspenseKey = JSON.stringify(searchParams);
 
   return (
-    <div className="max-w-7xl mx-auto px-8 py-10">
-      <h1 className="mb-2 font-serif text-[40px] text-green-900 leading-tight">
-        Tous les produits
-      </h1>
+    <div className="mx-auto max-w-7xl px-4 py-8 md:px-8 md:py-10">
+      <header className="mb-8 max-w-3xl">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-terra-700">
+          Acheter maintenant
+        </span>
+        <h1 className="mt-3 font-serif text-[40px] leading-tight text-green-900 md:text-[56px]">
+          Acheter des produits locaux
+        </h1>
+        <p className="mt-3 text-[16px] leading-relaxed text-dark/70 md:text-[18px]">
+          Viande, charcuterie, paniers et produits de saison : pars du produit,
+          puis choisis le retrait qui te convient sur la fiche.
+        </p>
+      </header>
+
+      <form
+        action="/produits"
+        className="mb-6 flex flex-col gap-3 rounded-2xl border border-dark/[0.06] bg-white p-4 shadow-soft md:flex-row md:items-center"
+      >
+        <label className="sr-only" htmlFor="product-search">
+          Rechercher un produit
+        </label>
+        <input
+          id="product-search"
+          name="q"
+          type="search"
+          defaultValue={filters.q ?? ''}
+          placeholder="Rechercher un produit : entrecôte, poulet, saucisson..."
+          className="min-h-12 flex-1 rounded-xl border border-dark/10 bg-bg px-4 text-[15px] text-dark outline-none transition focus:border-green-700 focus:ring-2 focus:ring-green-700/15"
+        />
+        {filters.category ? <input type="hidden" name="category" value={filters.category} /> : null}
+        {filters.animal ? <input type="hidden" name="animal" value={filters.animal} /> : null}
+        {filters.cut ? <input type="hidden" name="cut" value={filters.cut} /> : null}
+        <button
+          type="submit"
+          className="inline-flex min-h-12 items-center justify-center rounded-xl bg-terra-700 px-5 text-[15px] font-semibold text-white transition-colors hover:bg-terra-800 focus:outline-none focus:ring-2 focus:ring-terra-700 focus:ring-offset-2"
+        >
+          Trouver
+        </button>
+      </form>
+
       <Suspense key={suspenseKey} fallback={<ProduitsResultsSkeleton />}>
         <ProduitsResults searchParams={searchParams} />
       </Suspense>
@@ -111,19 +204,34 @@ export default async function ProduitsPage(
 
 async function ProduitsResults({ searchParams }: { searchParams: SearchParams }) {
   const filters = parseProductsSearchParams(searchParams);
-  const { products, resolved } = await getPublicProducts(filters);
+  const [{ products, resolved }, refs] = await Promise.all([
+    getPublicProducts(filters),
+    getProductFilterRefs(),
+  ]);
   const pills = buildPills(resolved, searchParams);
+  const hasActiveIntent = Boolean(filters.q || pills.length > 0);
 
   return (
     <>
-      <header className="mb-8">
-        <p className="text-[14px] text-dark/60">
+      <section className="mb-8 space-y-4 rounded-2xl border border-dark/[0.06] bg-white p-4 shadow-soft">
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <p className="text-[14px] text-dark/65">
+            {filters.q ? `Recherche "${filters.q}" · ` : ''}
           {products.length} produit{products.length !== 1 ? 's' : ''} disponible
           {products.length !== 1 ? 's' : ''}.
         </p>
+          {hasActiveIntent ? (
+            <Link
+              href="/produits"
+              className="text-[13px] font-medium text-green-700 underline-offset-4 hover:text-green-900 hover:underline"
+            >
+              Voir tous les produits
+            </Link>
+          ) : null}
+        </div>
 
         {pills.length > 0 && (
-          <div className="mt-4 flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2">
             {pills.map((pill) => (
               <Link
                 key={pill.label}
@@ -137,18 +245,40 @@ async function ProduitsResults({ searchParams }: { searchParams: SearchParams })
             ))}
           </div>
         )}
-      </header>
+
+        <ProductFilterLinks
+          refs={refs}
+          searchParams={searchParams}
+          resolved={resolved}
+        />
+      </section>
 
       {products.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-dark/[0.06] p-12 text-center">
-          <p className="font-serif text-[20px] text-green-900">
-            Aucun produit ne correspond à ce filtre.
+        <div className="rounded-2xl border border-dark/[0.06] bg-white p-10 text-center shadow-soft md:p-12">
+          <p className="font-serif text-[24px] text-green-900">
+            {hasActiveIntent
+              ? 'Aucun produit trouvé'
+              : 'Aucun produit disponible pour le moment'}
           </p>
-          <p className="text-[14px] text-dark/60 mt-2">
-            <Link href="/produits" className="text-green-700 underline hover:text-green-900">
+          <p className="mx-auto mt-2 max-w-md text-[14px] leading-relaxed text-dark/65">
+            {hasActiveIntent
+              ? 'Essaie un autre mot, retire un filtre ou repars de tous les produits disponibles.'
+              : 'Les producteurs n\'ont pas encore publié de produits achetables.'}
+          </p>
+          <div className="mt-5 flex flex-col justify-center gap-3 sm:flex-row">
+            <Link
+              href="/produits"
+              className="inline-flex min-h-11 items-center justify-center rounded-xl bg-terra-700 px-4 text-[14px] font-semibold text-white transition-colors hover:bg-terra-800"
+            >
               Voir tous les produits
             </Link>
-          </p>
+            <Link
+              href="/producteurs"
+              className="inline-flex min-h-11 items-center justify-center rounded-xl border border-dark/10 px-4 text-[14px] font-semibold text-green-900 transition-colors hover:border-green-700 hover:bg-green-100/50"
+            >
+              Découvrir les producteurs
+            </Link>
+          </div>
         </div>
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -157,8 +287,7 @@ async function ProduitsResults({ searchParams }: { searchParams: SearchParams })
             // low stock. Pour un produit illimité, on passe la sentinelle
             // STOCK_UNLIMITED_SENTINEL pour échapper aux deux seuils.
             // Pattern hérité de catalogue/nouveau et catalogue/[id]/modifier
-            // (form preview). Backlog : refacto ProductCard pour accepter
-            // `stockLeft: number | 'unlimited'`.
+            // (form preview).
             const stockLeft = p.stock_illimite
               ? STOCK_UNLIMITED_SENTINEL
               : p.stock_disponible ?? 0;
@@ -189,6 +318,97 @@ async function ProduitsResults({ searchParams }: { searchParams: SearchParams })
         </div>
       )}
     </>
+  );
+}
+
+function ProductFilterLinks({
+  refs,
+  searchParams,
+  resolved,
+}: {
+  refs: ProductFilterRefs;
+  searchParams: SearchParams;
+  resolved: ResolvedFilters;
+}) {
+  const cuts = refs.cuts.slice(0, CUT_FILTER_LIMIT);
+
+  return (
+    <div className="grid gap-4 md:grid-cols-3">
+      <FilterGroup title="Catégories">
+        {refs.categories.map((category) => (
+          <FilterChip
+            key={category.slug}
+            href={hrefWith(searchParams, 'category', category.slug)}
+            active={resolved.category?.slug === category.slug}
+          >
+            {category.name}
+          </FilterChip>
+        ))}
+      </FilterGroup>
+      <FilterGroup title="Animaux">
+        {refs.animals.map((animal) => (
+          <FilterChip
+            key={animal.slug}
+            href={hrefWith(searchParams, 'animal', animal.slug)}
+            active={resolved.animal?.slug === animal.slug}
+          >
+            {animal.name}
+          </FilterChip>
+        ))}
+      </FilterGroup>
+      <FilterGroup title="Morceaux">
+        {cuts.map((cut) => (
+          <FilterChip
+            key={cut.slug}
+            href={hrefWith(searchParams, 'cut', cut.slug)}
+            active={resolved.cut?.slug === cut.slug}
+          >
+            {cut.name}
+          </FilterChip>
+        ))}
+      </FilterGroup>
+    </div>
+  );
+}
+
+function FilterGroup({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <div>
+      <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-dark/55">
+        {title}
+      </div>
+      <div className="flex flex-wrap gap-1.5">{children}</div>
+    </div>
+  );
+}
+
+function FilterChip({
+  href,
+  active,
+  children,
+}: {
+  href: string;
+  active: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      aria-current={active ? 'true' : undefined}
+      className={`inline-flex min-h-8 items-center rounded-full border px-3 text-[13px] font-medium transition-colors ${
+        active
+          ? 'border-green-700 bg-green-700 text-white'
+          : 'border-dark/10 bg-white text-dark/70 hover:border-green-500 hover:text-green-900'
+      }`}
+    >
+      {children}
+    </Link>
   );
 }
 

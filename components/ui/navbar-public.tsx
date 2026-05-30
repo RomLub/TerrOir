@@ -19,7 +19,8 @@ export type NavbarPublicProps = {
 };
 
 const defaultLinks: NavLink[] = [
-  { href: "/producteurs", label: "Rencontrer les producteurs" },
+  { href: "/produits", label: "Produits" },
+  { href: "/producteurs", label: "Producteurs" },
   { href: "/carte", label: "Carte" },
   { href: "/notre-demarche", label: "Notre démarche" },
   { href: "/comment-ca-marche", label: "Comment ça marche" },
@@ -224,7 +225,7 @@ export function NavbarPublic({
 
       {/* === Drawer mobile (backdrop + aside) === */}
       <div
-        className={`fixed inset-0 z-40 bg-black/30 transition-opacity duration-300 md:hidden ${
+        className={`fixed left-0 top-0 z-40 h-dvh w-dvw bg-black/30 transition-opacity duration-300 md:hidden ${
           drawerOpen
             ? "pointer-events-auto opacity-100"
             : "pointer-events-none opacity-0"
@@ -237,7 +238,7 @@ export function NavbarPublic({
         role="dialog"
         aria-modal="true"
         aria-label="Menu de navigation"
-        className={`fixed inset-y-0 left-0 z-50 flex w-80 max-w-[85vw] flex-col bg-terroir-bg p-6 shadow-xl transition-transform duration-300 ease-in-out md:hidden ${
+        className={`fixed left-0 top-0 z-50 flex h-dvh min-h-screen w-80 max-w-[85vw] flex-col bg-terroir-bg p-6 shadow-xl transition-transform duration-300 ease-in-out md:hidden ${
           drawerOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
