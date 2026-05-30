@@ -20,8 +20,9 @@
  */
 
 import { test, expect } from '../helpers/test-context';
-import { seedConsumer } from '../helpers/db-seed';
+import { seedConsumer, seedOrder, seedProducer } from '../helpers/db-seed';
 import { loginAs } from '../helpers/user-lifecycle';
+import { cleanupOrdersForProducers } from '../helpers/order-lifecycle';
 
 const CART_KEY = 'terroir_cart';
 
@@ -134,6 +135,122 @@ test.describe('Consumer — /compte/panier', () => {
     // Récap : sous-total = 4.5*2 + 2*3 = 15. Le panier rend 2 fois "15,00 €"
     // (sous-total <dd> + total <span>), on cible le premier match suffisant.
     await expect(page.getByText(/15,00\s*€/).first()).toBeVisible();
+  });
+
+  test('multi-groupes : chaque commande a son checkout explicite', async ({
+    page,
+    ctx,
+  }) => {
+    test.setTimeout(60_000);
+
+    const user = await seedConsumer(ctx, { suffix: 'panier-multi-groups' });
+    const dateRetrait = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    const items = [
+      fakeItem({
+        productId: '11111111-1111-4111-8111-111111111111',
+        producerId: '22222222-2222-4222-8222-222222222222',
+        creneauId: '33333333-3333-4333-8333-333333333333',
+        dateRetrait,
+        nom: 'Produit groupe A',
+        producerName: 'Ferme groupe A',
+        slug: 'ferme-groupe-a',
+      }),
+      fakeItem({
+        productId: '11111111-1111-4111-8111-111111111112',
+        producerId: '22222222-2222-4222-8222-222222222223',
+        creneauId: '33333333-3333-4333-8333-333333333334',
+        dateRetrait,
+        nom: 'Produit groupe B',
+        producerName: 'Ferme groupe B',
+        slug: 'ferme-groupe-b',
+      }),
+    ];
+    await setCart(page, items);
+    await loginAs(page, user);
+    await page.goto('/compte/panier');
+
+    await expect(page.getByText(/plusieurs commandes distinctes/i)).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(page.getByText('Ferme groupe A')).toBeVisible();
+    await expect(page.getByText('Ferme groupe B')).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Commander cette commande' }),
+    ).toHaveCount(2);
+
+    await page
+      .getByRole('button', { name: 'Commander cette commande' })
+      .first()
+      .click();
+
+    const expectedGroup = encodeURIComponent(
+      `${items[0].producerId}|${items[0].creneauId}|${items[0].dateRetrait}`,
+    );
+    await expect(page).toHaveURL(
+      new RegExp(`/compte/checkout\\?group=${expectedGroup}`),
+    );
+  });
+
+  test('confirmation commande A : le panier conserve la commande B', async ({
+    page,
+    ctx,
+  }) => {
+    test.setTimeout(90_000);
+
+    const consumer = await seedConsumer(ctx, { suffix: 'panier-paid-group' });
+    const producer = await seedProducer(ctx, {
+      suffix: 'panier-paid-group-prod',
+      statut: 'public',
+    });
+    const order = await seedOrder(ctx, {
+      producerId: producer.producerId,
+      consumerId: consumer.id,
+      productNom: 'Produit commande A',
+    });
+
+    try {
+      const dateRetrait = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+      const groupA = `${producer.producerId}|${order.slotId}|${dateRetrait}`;
+      const groupB = 'producer-b|slot-b|' + dateRetrait;
+      await setCart(page, [
+        fakeItem({
+          productId: order.productId,
+          producerId: producer.producerId,
+          creneauId: order.slotId,
+          dateRetrait,
+          nom: 'Produit commande A',
+          producerName: 'Ferme commande A',
+          slug: producer.slug,
+        }),
+        fakeItem({
+          productId: 'pid-commande-b',
+          producerId: 'producer-b',
+          creneauId: 'slot-b',
+          dateRetrait,
+          nom: 'Produit commande B',
+          producerName: 'Ferme commande B',
+          slug: 'ferme-commande-b',
+        }),
+      ]);
+      await loginAs(page, consumer);
+
+      await page.goto(
+        `/compte/confirmation/${order.orderId}?paid_group=${encodeURIComponent(groupA)}`,
+      );
+      await expect(
+        page.getByRole('heading', { name: /Merci, c'est payé/i }),
+      ).toBeVisible({ timeout: 15_000 });
+
+      await page.goto('/compte/panier');
+
+      await expect(page.getByText('Produit commande A')).toHaveCount(0);
+      await expect(page.getByText('Produit commande B')).toBeVisible({
+        timeout: 10_000,
+      });
+      await expect(page.locator(`a[href="/compte/checkout?group=${encodeURIComponent(groupB)}"]`)).toHaveCount(1);
+    } finally {
+      await cleanupOrdersForProducers([producer.producerId]);
+    }
   });
 
   test('modif quantité via bouton +/- : sous-total mis à jour', async ({

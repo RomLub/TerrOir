@@ -38,16 +38,32 @@ function formatQty(qty: number, unite: string | null): string {
 // <Suspense> + skeleton, SANS aucun await en tête (ni session, ni params —
 // donnée de requête). Tout l'accès dynamique vit dans ConfirmationGate, sous
 // le <Suspense>.
-export default function ConfirmationPage(props: { params: Promise<{ id: string }> }) {
+export default function ConfirmationPage(props: {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<{ paid_group?: string | string[] }>;
+}) {
   return (
     <Suspense fallback={<SectionSkeleton rows={4} />}>
-      <ConfirmationGate paramsPromise={props.params} />
+      <ConfirmationGate
+        paramsPromise={props.params}
+        searchParamsPromise={props.searchParams}
+      />
     </Suspense>
   );
 }
 
-async function ConfirmationGate(props: { paramsPromise: Promise<{ id: string }> }) {
+async function ConfirmationGate(props: {
+  paramsPromise: Promise<{ id: string }>;
+  searchParamsPromise?: Promise<{ paid_group?: string | string[] }>;
+}) {
   const params = await props.paramsPromise;
+  const searchParams = props.searchParamsPromise
+    ? await props.searchParamsPromise
+    : {};
+  const rawPaidGroup = searchParams.paid_group;
+  const paidGroupId = Array.isArray(rawPaidGroup)
+    ? rawPaidGroup[0] ?? null
+    : rawPaidGroup ?? null;
   const session = await getSessionUser();
   if (!session) redirect('/connexion');
 
@@ -133,6 +149,7 @@ async function ConfirmationGate(props: { paramsPromise: Promise<{ id: string }> 
         endISO: order.date_retrait && endTimeHMM ? isoDateTime(order.date_retrait, endTimeHMM) : '',
       }}
       total={Number(order.montant_total ?? 0)}
+      paidGroupId={paidGroupId}
     />
   );
 }

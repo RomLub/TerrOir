@@ -446,7 +446,8 @@ test('Decline UI (4000 0000 0000 0002) → page erreur compréhensible affichée
   // Navigation checkout. Le useEffect mount va (1) cart/validate (2) orders/
   // create (3) stripe/create-payment-intent → setClientSecret. PaymentElement
   // monte ensuite via <Elements stripe options={{clientSecret}}>.
-  await page.goto('/compte/checkout');
+  const groupId = `${cartItem.producerId}|${cartItem.creneauId}|${cartItem.dateRetrait}`;
+  await page.goto(`/compte/checkout?group=${encodeURIComponent(groupId)}`);
 
   // Attendre que le bouton "Payer X €" soit visible (signal que clientSecret
   // est posé + PaymentElement monté). Timeout généreux : Stripe.js charge
