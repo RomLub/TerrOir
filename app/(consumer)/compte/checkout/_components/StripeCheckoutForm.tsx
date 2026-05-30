@@ -50,22 +50,23 @@ type PaymentMode = 'saved' | 'new';
 type StripeCheckoutFormProps = {
   clientSecret: string;
   orderId: string;
+  cartGroupId: string;
   amountLabel: string;
 };
 
-export function StripeCheckoutForm({ clientSecret, orderId, amountLabel }: StripeCheckoutFormProps) {
+export function StripeCheckoutForm({ clientSecret, orderId, cartGroupId, amountLabel }: StripeCheckoutFormProps) {
   return (
     <Elements stripe={getStripe()} options={{ clientSecret, locale: 'fr', appearance: { theme: 'stripe' } }}>
-      <CheckoutForm clientSecret={clientSecret} orderId={orderId} amountLabel={amountLabel} />
+      <CheckoutForm clientSecret={clientSecret} orderId={orderId} cartGroupId={cartGroupId} amountLabel={amountLabel} />
     </Elements>
   );
 }
 
-function CheckoutForm({ clientSecret, orderId, amountLabel }: StripeCheckoutFormProps) {
+function CheckoutForm({ clientSecret, orderId, cartGroupId, amountLabel }: StripeCheckoutFormProps) {
   const router = useRouter();
   const stripe = useStripe();
   const elements = useElements();
-  const clear = useCartStore((s) => s.clear);
+  const removeGroup = useCartStore((s) => s.removeGroup);
 
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<CheckoutError | null>(null);
@@ -127,8 +128,8 @@ function CheckoutForm({ clientSecret, orderId, amountLabel }: StripeCheckoutForm
       if (paymentIntent?.status === 'succeeded') {
         // Pas d'appel ensure-default-payment-method : la CB est déjà
         // enregistrée, donc déjà default ou intentionnellement non-default.
-        clear();
-        router.push(`/compte/confirmation/${orderId}`);
+        removeGroup(cartGroupId);
+        router.push(`/compte/confirmation/${orderId}?paid_group=${encodeURIComponent(cartGroupId)}`);
       } else {
         setProcessing(false);
       }
@@ -157,7 +158,7 @@ function CheckoutForm({ clientSecret, orderId, amountLabel }: StripeCheckoutForm
     const { error: payError, paymentIntent } = await stripe.confirmPayment({
       elements,
       confirmParams: {
-        return_url: `${window.location.origin}/compte/confirmation/${orderId}`,
+        return_url: `${window.location.origin}/compte/confirmation/${orderId}?paid_group=${encodeURIComponent(cartGroupId)}`,
       },
       redirect: 'if_required',
     });
@@ -185,8 +186,8 @@ function CheckoutForm({ clientSecret, orderId, amountLabel }: StripeCheckoutForm
           clientLog('warn', '[ENSURE_DEFAULT_PM]', (err as Error).message);
         }
       }
-      clear();
-      router.push(`/compte/confirmation/${orderId}`);
+      removeGroup(cartGroupId);
+      router.push(`/compte/confirmation/${orderId}?paid_group=${encodeURIComponent(cartGroupId)}`);
     } else {
       setProcessing(false);
     }

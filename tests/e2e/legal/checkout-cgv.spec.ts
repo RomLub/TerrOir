@@ -180,6 +180,11 @@ async function injectCart(
   }, cartPayload);
 }
 
+function checkoutUrl(setup: CheckoutSetup): string {
+  const groupId = `${setup.producerId}|${setup.slotId}|${setup.dateRetrait}`;
+  return `/compte/checkout?group=${encodeURIComponent(groupId)}`;
+}
+
 test.describe("Checkout CGV (opposabilité juridique)", () => {
   test("avant cocher CGV : pas de PaymentElement, pas d'order créée en DB", async ({
     page,
@@ -190,7 +195,7 @@ test.describe("Checkout CGV (opposabilité juridique)", () => {
 
     try {
       await injectCart(page, setup);
-      await page.goto("/compte/checkout");
+      await page.goto(checkoutUrl(setup));
 
       // Attendre l'hydratation (le composant render "Préparation du paiement…"
       // pendant ~quelques ms, puis bascule sur le contenu une fois hydrated).
@@ -247,7 +252,7 @@ test.describe("Checkout CGV (opposabilité juridique)", () => {
 
     try {
       await injectCart(page, setup);
-      await page.goto("/compte/checkout");
+      await page.goto(checkoutUrl(setup));
 
       await expect(
         page.getByRole("heading", { name: /Finaliser la commande/i }),
@@ -288,7 +293,7 @@ test.describe("Checkout CGV (opposabilité juridique)", () => {
 
     try {
       await injectCart(page, setup);
-      await page.goto("/compte/checkout");
+      await page.goto(checkoutUrl(setup));
 
       await expect(
         page.getByRole("heading", { name: /Finaliser la commande/i }),
@@ -357,7 +362,7 @@ test.describe("Checkout CGV (opposabilité juridique)", () => {
 
     try {
       await injectCart(page, setup);
-      await page.goto("/compte/checkout");
+      await page.goto(checkoutUrl(setup));
 
       await expect(
         page.getByRole("heading", { name: /Finaliser la commande/i }),

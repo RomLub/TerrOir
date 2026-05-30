@@ -8,11 +8,12 @@
 // retrait + paiement).
 
 import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui';
-import { useCartStore, type CartItem } from '@/lib/store/cart';
+import { useCartStore } from '@/lib/store/cart';
 import { itemKey, type ValidateResponse } from '@/lib/cart/validate';
+import { groupCartItems } from '@/lib/cart/groups';
 import { type CheckoutError } from '@/lib/checkout/classify-stripe-error';
 import { SUPPORT_EMAIL_PUBLIC } from '@/lib/env/support-email-public';
 import { clientLog } from '@/lib/utils/client-log';
@@ -49,34 +50,6 @@ type TechnicalError = {
 const SLOT_CONFLICT_MESSAGE =
   "Aucun créneau de retrait commun n'est disponible pour les produits de cette commande.";
 
-type CheckoutGroup = {
-  producerId: string;
-  slug: string;
-  producerName: string;
-  slotId: string;
-  dateRetrait: string;
-  items: CartItem[];
-};
-
-function groupByOrder(items: CartItem[]): CheckoutGroup[] {
-  const map: Record<string, CheckoutGroup> = {};
-  items.forEach((it) => {
-    const key = `${it.producerId}|${it.creneauId}|${it.dateRetrait}`;
-    if (!map[key]) {
-      map[key] = {
-        producerId: it.producerId,
-        slug: it.slug,
-        producerName: it.producerName ?? 'Producteur',
-        slotId: it.creneauId,
-        dateRetrait: it.dateRetrait,
-        items: [],
-      };
-    }
-    map[key].items.push(it);
-  });
-  return Object.values(map);
-}
-
 function formatDateFr(iso: string): string {
   const d = new Date(iso + 'T00:00:00');
   if (Number.isNaN(d.getTime())) return iso;
@@ -85,12 +58,17 @@ function formatDateFr(iso: string): string {
 
 export default function CheckoutPage() {
   const items = useCartStore((s) => s.items);
-  const clearCart = useCartStore((s) => s.clear);
+  const removeGroup = useCartStore((s) => s.removeGroup);
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => setHydrated(true), []);
 
-  const groups = useMemo(() => groupByOrder(items), [items]);
-  const group = groups[0] ?? null;
+  const searchParams = useSearchParams();
+  const selectedGroupId = searchParams.get('group');
+  const groups = useMemo(() => groupCartItems(items), [items]);
+  const group = useMemo(
+    () => groups.find((candidate) => candidate.id === selectedGroupId) ?? null,
+    [groups, selectedGroupId],
+  );
   const multipleGroups = groups.length > 1;
 
   const [order, setOrder] = useState<OrderCreated | null>(null);
@@ -291,11 +269,27 @@ export default function CheckoutPage() {
     );
   }
 
-  if (!group) {
+  if (items.length === 0) {
     return (
       <section className="py-24 text-center">
         <h1 className="font-serif text-[36px] text-green-900">Ton panier est vide</h1>
         <div className="mt-6"><Link href="/carte"><Button size="lg">Trouver un producteur →</Button></Link></div>
+      </section>
+    );
+  }
+
+  if (!selectedGroupId || !group) {
+    return (
+      <section className="py-24 text-center">
+        <h1 className="font-serif text-[36px] text-green-900">Choisis la commande à régler</h1>
+        <p className="mx-auto mt-3 max-w-xl text-[15px] leading-relaxed text-dark/70">
+          Chaque producteur et créneau correspond à une commande séparée. Reviens au panier pour lancer le paiement de la commande souhaitée.
+        </p>
+        <div className="mt-6">
+          <Link href="/compte/panier">
+            <Button size="lg">Retour au panier</Button>
+          </Link>
+        </div>
       </section>
     );
   }
@@ -307,7 +301,7 @@ export default function CheckoutPage() {
 
         {multipleGroups && (
           <div className="mt-4 p-4 rounded-xl bg-terra-100/60 border border-terra-300/40 text-[13px] text-terra-900">
-            Ton panier contient plusieurs producteurs ou créneaux. Seule la première commande est traitée ici — les autres restent dans ton panier.
+            Cette page finalise uniquement la commande choisie. Les autres commandes restent dans ton panier.
           </div>
         )}
 
@@ -414,11 +408,11 @@ export default function CheckoutPage() {
                       variant="ghost"
                       className="flex-1"
                       onClick={() => {
-                        clearCart();
-                        router.push('/');
+                        removeGroup(group.id);
+                        router.push('/compte/panier');
                       }}
                     >
-                      Vider le panier
+                      Retirer cette commande
                     </Button>
                   </div>
                 </div>
@@ -434,6 +428,7 @@ export default function CheckoutPage() {
                 <StripeCheckoutForm
                   clientSecret={clientSecret}
                   orderId={order.order_id}
+                  cartGroupId={group.id}
                   amountLabel={Number(order.montant_total).toFixed(2).replace('.', ',')}
                 />
               )}

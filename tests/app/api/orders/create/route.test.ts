@@ -652,7 +652,6 @@ describe("E. Happy path", () => {
       },
     });
   });
-});
 
   it("E2 - ignore une date client incoherente et utilise la date du creneau", async () => {
     const res = await POST(
@@ -676,6 +675,32 @@ describe("E. Happy path", () => {
       val: EXPECTED_DATE_RETRAIT,
     });
   });
+
+  it("E3 - une creation de commande ne transmet que le groupe choisi", async () => {
+    const groupAProduct = PRODUCT_ID;
+    const groupBProduct = "44444444-4444-4444-8444-444444444445";
+
+    const res = await POST(
+      makeRequest({
+        ...VALID_BODY,
+        items: [{ product_id: groupAProduct, quantite: 1 }],
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const rpcCall = captured.rpcCalls.find(
+      (call) => call.name === "create_order_with_items",
+    )!;
+    const rpcArgs = rpcCall.args as { p_items: Array<{ product_id: string }> };
+    expect(rpcArgs.p_items).toEqual([
+      { product_id: groupAProduct, quantite: 1, prix_unitaire: 0 },
+    ]);
+    expect(rpcArgs.p_items).not.toContainEqual(
+      expect.objectContaining({ product_id: groupBProduct }),
+    );
+  });
+});
+
 // --- F. Edge cases -------------------------------------------------------
 
 describe("F. Edge cases", () => {

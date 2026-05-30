@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
+import { removeCartGroupItems } from '@/lib/cart/groups';
 
 export type CartItem = {
   productId: string;
@@ -29,6 +30,7 @@ type CartState = {
   items: CartItem[];
   addItem: (item: CartItem) => void;
   removeItem: (key: CartKey) => void;
+  removeGroup: (groupId: string) => void;
   updateQuantity: (key: CartKey, quantite: number) => void;
   clear: () => void;
 };
@@ -47,6 +49,8 @@ export const useCartStore = create<CartState>()(
         }),
       removeItem: (key) =>
         set((state) => ({ items: state.items.filter((i) => !sameLine(i, key)) })),
+      removeGroup: (groupId) =>
+        set((state) => ({ items: removeCartGroupItems(state.items, groupId) })),
       updateQuantity: (key, quantite) =>
         set((state) => {
           if (quantite <= 0) {

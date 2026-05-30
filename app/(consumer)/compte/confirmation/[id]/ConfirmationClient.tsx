@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { Button, CodeCommande } from '@/components/ui';
 import { OrderProvenance } from '@/components/consumer/OrderProvenance';
+import { useCartStore } from '@/lib/store/cart';
 
 export type ConfirmationProps = {
   orderId: string;
@@ -15,6 +16,7 @@ export type ConfirmationProps = {
   producer: { name: string; address: string; lat: number | null; lng: number | null };
   slot: { dateLabel: string; timeLabel: string; dateISO: string; startISO: string; endISO: string };
   total: number;
+  paidGroupId?: string | null;
 };
 
 // Cas pathologique : commande arrivée jusqu'à la page confirmation mais
@@ -91,13 +93,17 @@ function RevivalBlockedView({
   );
 }
 
-export function ConfirmationClient({ orderId, codeCommande, numeroCommande, statut, closureReason, items, producer, slot, total }: ConfirmationProps) {
+export function ConfirmationClient({ orderId, codeCommande, numeroCommande, statut, closureReason, items, producer, slot, total, paidGroupId }: ConfirmationProps) {
+  const removeGroup = useCartStore((s) => s.removeGroup);
   // Hooks d'animation du path nominal — déclarés AVANT le branchement
   // conditionnel pour respecter les rules-of-hooks (mêmes hooks dans le
   // même ordre à chaque render). Inutilisés sur le path RevivalBlockedView
   // mais le coût est négligeable et la conformité ESLint est nécessaire.
   const [animate, setAnimate] = useState(false);
   useEffect(() => { const t = setTimeout(() => setAnimate(true), 80); return () => clearTimeout(t); }, []);
+  useEffect(() => {
+    if (paidGroupId) removeGroup(paidGroupId);
+  }, [paidGroupId, removeGroup]);
 
   // Cas pathologique : la commande a été refusée à la résurrection
   // (stock épuisé ou slot saturé entre temps). Affiche un message clair
