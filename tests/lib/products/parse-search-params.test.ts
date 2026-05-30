@@ -8,8 +8,14 @@ describe('parseProductsSearchParams — happy path', () => {
         cut: 'entrecote',
         animal: 'boeuf',
         category: 'viande',
+        q: 'poulet fermier',
       }),
-    ).toEqual({ cut: 'entrecote', animal: 'boeuf', category: 'viande' });
+    ).toEqual({
+      cut: 'entrecote',
+      animal: 'boeuf',
+      category: 'viande',
+      q: 'poulet fermier',
+    });
   });
 
   it('searchParams undefined → 3 nulls', () => {
@@ -17,6 +23,7 @@ describe('parseProductsSearchParams — happy path', () => {
       cut: null,
       animal: null,
       category: null,
+      q: null,
     });
   });
 
@@ -25,13 +32,14 @@ describe('parseProductsSearchParams — happy path', () => {
       cut: null,
       animal: null,
       category: null,
+      q: null,
     });
   });
 
   it('autres clés ignorées (ne pollue pas les 3 filtres connus)', () => {
     expect(
       parseProductsSearchParams({ cut: 'entrecote', random: 'value' }),
-    ).toEqual({ cut: 'entrecote', animal: null, category: null });
+    ).toEqual({ cut: 'entrecote', animal: null, category: null, q: null });
   });
 });
 
@@ -45,6 +53,7 @@ describe('parseProductsSearchParams — sanitization slug', () => {
     expect(result.cut).toBeNull();
     expect(result.animal).toBe('boeuf');
     expect(result.category).toBeNull();
+    expect(result.q).toBeNull();
   });
 
   it('slug vide string → null', () => {
@@ -74,5 +83,22 @@ describe('parseProductsSearchParams — sanitization slug', () => {
   it('tiret en début ou fin rejetés', () => {
     expect(parseProductsSearchParams({ cut: '-entrecote' }).cut).toBeNull();
     expect(parseProductsSearchParams({ cut: 'entrecote-' }).cut).toBeNull();
+  });
+});
+
+describe('parseProductsSearchParams — recherche produit simple', () => {
+  it('q est trim et espaces multiples normalisés', () => {
+    expect(parseProductsSearchParams({ q: '  poulet   fermier  ' }).q).toBe(
+      'poulet fermier',
+    );
+  });
+
+  it('q trop court ou array → null', () => {
+    expect(parseProductsSearchParams({ q: 'a' }).q).toBeNull();
+    expect(parseProductsSearchParams({ q: ['poulet', 'boeuf'] }).q).toBeNull();
+  });
+
+  it('q est borné à 80 caractères', () => {
+    expect(parseProductsSearchParams({ q: 'x'.repeat(120) }).q).toHaveLength(80);
   });
 });

@@ -31,12 +31,12 @@ export function Hero({ className = "" }: HeroProps) {
           {/* Texte (mobile : ordre 2 / desktop : ordre 1) */}
           <div className="order-2 md:order-1">
             <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-terra-700">
-              Marketplace des produits du terroir · Sarthe
+              Achat direct auprès des producteurs · Sarthe
             </span>
             <h1 className="mt-6 font-serif text-[44px] font-medium leading-[1.04] tracking-[-0.01em] text-green-900 md:text-[64px] md:leading-[1.02]">
-              Le goût du terroir,
+              Achète local,
               <br />
-              au plus près des{" "}
+              directement aux{" "}
               <em className="not-italic">
                 <span className="italic text-terra-700">producteurs.</span>
               </em>
@@ -47,18 +47,18 @@ export function Hero({ className = "" }: HeroProps) {
               récupère ta commande sur le créneau qui te convient.
             </p>
             <div className="mt-9 flex flex-col gap-3 md:flex-row md:items-center md:gap-3.5">
-              <Link href="#produits" className="md:inline-flex">
+              <Link href="/produits" className="md:inline-flex">
                 <Button variant="primary" size="lg" className="w-full md:w-auto">
-                  Explorer les produits
+                  Acheter maintenant
                 </Button>
               </Link>
-              <Link href="/carte" className="md:inline-flex">
+              <Link href="/producteurs" className="md:inline-flex">
                 <Button
                   variant="ghost"
                   size="lg"
                   className="w-full border border-terra-700 md:w-auto"
                 >
-                  Voir la carte des fermes
+                  Découvrir les producteurs
                 </Button>
               </Link>
             </div>
@@ -85,10 +85,10 @@ export function Hero({ className = "" }: HeroProps) {
               </div>
               <div className="min-w-0">
                 <div className="text-sm font-medium leading-tight text-terroir-ink">
-                  Producteurs sélectionnés · Sarthe
+                  Produits disponibles · Sarthe
                 </div>
                 <div className="mt-0.5 text-xs leading-tight text-terroir-muted">
-                  Circuit court · de la ferme à ta table
+                  Commande en ligne · retrait à la ferme
                 </div>
               </div>
             </div>

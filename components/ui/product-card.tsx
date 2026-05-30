@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { STOCK_UNLIMITED_SENTINEL } from "@/lib/products/constants";
 import { Badge } from "./badge";
 import { ProductFallback } from "./product-fallback";
 
@@ -32,6 +33,11 @@ function formatPrice(price: number) {
 export function ProductCard({ product, className = "" }: ProductCardProps) {
   const outOfStock = product.stockLeft <= 0;
   const lowStock = !outOfStock && product.stockLeft <= 5;
+  const stockText = outOfStock
+    ? "Indisponible"
+    : product.stockLeft >= STOCK_UNLIMITED_SENTINEL
+      ? "Disponible"
+      : `${product.stockLeft} ${product.unit ?? "unités"} disponibles`;
 
   // Hover state : lift + shadow renforcée pour confirmer l'affordance quand
   // la carte est enveloppée d'un <Link>. Les usages display-only (previews
@@ -80,6 +86,9 @@ export function ProductCard({ product, className = "" }: ProductCardProps) {
             {product.producer}
           </p>
         ) : null}
+        <p className="text-xs font-medium text-terroir-green-700 line-clamp-1">
+          {stockText}
+        </p>
         <p className="mt-auto pt-2 font-medium text-terra-700 tabular-nums">
           {formatPrice(product.price)}
           {product.unit ? (

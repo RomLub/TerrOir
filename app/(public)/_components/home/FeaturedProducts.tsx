@@ -12,7 +12,8 @@ import { getFeaturedProducts } from "@/lib/products/fetch-featured";
 // Si fetch fail-open → tableau vide → la section affiche le header sans
 // cards (cohérent avec getPublicStats).
 //
-// CTA "Voir tous les produits" pointe vers /producteurs (Phase 1).
+// CTA "Voir tous les produits" pointe vers /produits : l'achat doit rester
+// l'entrée principale, la découverte producteur vient ensuite.
 // Wording sans chiffre : le catalogue réel varie, pas de compte hardcodé.
 
 export type FeaturedProductsProps = { className?: string };
@@ -40,7 +41,7 @@ export async function FeaturedProducts({
             </h2>
           </div>
           <Link
-            href="/producteurs"
+            href="/produits"
             className="text-sm font-medium text-terra-700 transition-colors hover:text-terra-900"
           >
             Voir tous les produits&nbsp;→

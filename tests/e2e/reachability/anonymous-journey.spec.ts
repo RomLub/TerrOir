@@ -2,7 +2,7 @@
  * Reachability — parcours anonyme click-through complet.
  *
  * Doctrine : aucun shortcut. Démarre à `/`, clique pour naviguer vers
- * /producteurs, sélectionne un producer puis un produit, tente l'ajout
+ * /produits, sélectionne un produit, tente l'ajout
  * panier (qui peut rediriger /connexion selon impl), puis clique sur
  * S'inscrire dans la page connexion → /auth/inscription.
  *
@@ -41,24 +41,17 @@ test.describe('reachability — parcours anonyme click-through', () => {
     await page.goto('/');
     await expect(page).toHaveTitle(/.+/);
 
-    // 2. Click navlink "Rencontrer les producteurs" → /producteurs
+    // 2. Click navlink "Produits" → /produits
     await page
       .getByRole('navigation', { name: 'Navigation principale' })
-      .getByRole('link', { name: 'Rencontrer les producteurs' })
+      .getByRole('link', { name: 'Produits' })
       .first()
       .click();
-    await expect(page).toHaveURL(/\/producteurs(\?|$|\/)/);
+    await expect(page).toHaveURL(/\/produits(\?|$|\/)/);
 
-    // 3. Naviguer directement vers la fiche producer (le filtrage UI peut
-    //    être asynchrone selon géoloc / fetch). On contrôle le slug en
-    //    direct pour ne pas dépendre de l'ordre de tri ProducteursClient.
-    await page.goto(`/producteurs/${producer.slug}`);
-    await expect(
-      page.getByText('Producer Anon Journey E2E').first(),
-    ).toBeVisible({ timeout: 10_000 });
-
-    // 4. Naviguer vers la fiche produit (idem : pas de dépendance UI tri
-    //    produit, on cible directement l'URL canonique).
+    // 3. Naviguer vers la fiche produit. La grille /produits est couverte
+    //    par le lien précédent ; on cible ensuite l'URL canonique pour ne pas
+    //    dépendre de l'ordre de tri des produits de test.
     await page.goto(
       `/producteurs/${producer.slug}/produits/${product.id}`,
     );
@@ -66,7 +59,7 @@ test.describe('reachability — parcours anonyme click-through', () => {
       timeout: 10_000,
     });
 
-    // 5. Aller sur /connexion via clic sur le lien Connexion de la navbar.
+    // 4. Aller sur /connexion via clic sur le lien Connexion de la navbar.
     //    Le bouton "Ajouter au panier" peut ne pas rediriger (le panier
     //    est local Zustand, pas auth-required par défaut). On simplifie
     //    le parcours : on clique directement sur Connexion navbar.
@@ -77,14 +70,14 @@ test.describe('reachability — parcours anonyme click-through', () => {
       .click();
     await expect(page).toHaveURL(/\/connexion/);
 
-    // 6. Click "Pas encore de compte ? Créer un compte" → /auth/inscription
+    // 5. Click "Pas encore de compte ? Créer un compte" → /auth/inscription
     await page
       .getByRole('link', { name: /créer un compte/i })
       .first()
       .click();
     await expect(page).toHaveURL(/\/auth\/inscription/);
 
-    // 7. Vérifier que le form d'inscription est rendu (h1 + champs).
+    // 6. Vérifier que le form d'inscription est rendu (h1 + champs).
     await expect(
       page.getByRole('heading', { name: /créer un compte/i, level: 1 }),
     ).toBeVisible();

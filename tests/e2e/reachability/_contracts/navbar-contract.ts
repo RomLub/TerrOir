@@ -45,9 +45,10 @@ export const NAVBAR_CONTRACT = {
     /** admin — drawer affiche le link vers /tableau-de-bord + Déconnexion. */
     admin: ['Tableau de bord', 'Déconnexion'],
   },
-  /** Liens de navigation principaux toujours présents (les 4 liens defaultLinks). */
+  /** Liens de navigation principaux toujours présents (les liens defaultLinks). */
   navlinks: [
-    'Rencontrer les producteurs',
+    'Produits',
+    'Producteurs',
     'Carte',
     'Notre démarche',
     'Comment ça marche',

@@ -19,6 +19,7 @@ type Captured = {
   from: string[];
   select: string[];
   eq: Array<[string, unknown]>;
+  ilike: Array<[string, unknown]>;
   order: Array<[string, { ascending?: boolean }]>;
   lt: Array<[string, unknown]>;
   limit: number[];
@@ -29,7 +30,15 @@ function makeMultiFromSupabase(responses: Response[]): {
   captured: Captured;
 } {
   let callIdx = 0;
-  const captured: Captured = { from: [], select: [], eq: [], order: [], lt: [], limit: [] };
+  const captured: Captured = {
+    from: [],
+    select: [],
+    eq: [],
+    ilike: [],
+    order: [],
+    lt: [],
+    limit: [],
+  };
 
   const makeBuilder = (response: Response) => {
     const builder: any = {};
@@ -39,6 +48,10 @@ function makeMultiFromSupabase(responses: Response[]): {
     };
     builder.eq = (col: string, val: unknown) => {
       captured.eq.push([col, val]);
+      return builder;
+    };
+    builder.ilike = (col: string, val: unknown) => {
+      captured.ilike.push([col, val]);
       return builder;
     };
     builder.order = (col: string, opts: { ascending?: boolean }) => {
@@ -71,7 +84,7 @@ function makeMultiFromSupabase(responses: Response[]): {
   return { client, captured };
 }
 
-const NULL_FILTERS = { cut: null, animal: null, category: null };
+const NULL_FILTERS = { cut: null, animal: null, category: null, q: null };
 
 // ---------- Sans filtre ---------------------------------------------------
 
@@ -118,6 +131,7 @@ describe('fetchPublicProducts — filtres résolus', () => {
       cut: 'entrecote',
       animal: null,
       category: null,
+      q: null,
     });
 
     expect(captured.from).toEqual(['cuts', 'products']);
@@ -141,6 +155,7 @@ describe('fetchPublicProducts — filtres résolus', () => {
       cut: 'entrecote',
       animal: 'boeuf',
       category: 'viande',
+      q: null,
     });
 
     expect(captured.from).toEqual(['product_categories', 'animals', 'cuts', 'products']);
@@ -165,6 +180,7 @@ describe('fetchPublicProducts — slugs invalides', () => {
       cut: 'pas-existant',
       animal: null,
       category: null,
+      q: null,
     });
 
     expect(result.products).toEqual([]);
@@ -182,6 +198,7 @@ describe('fetchPublicProducts — slugs invalides', () => {
       cut: null,
       animal: 'pas-existant',
       category: 'viande',
+      q: null,
     });
 
     expect(result.products).toEqual([]);
@@ -328,6 +345,7 @@ describe('fetchPublicProducts — résolutions slug parallèles (F-051)', () => 
       cut: 'entrecote',
       animal: 'boeuf',
       category: 'viande',
+      q: null,
     });
 
     // Ordre exact préservé via Promise.all sequential spawn.
@@ -337,5 +355,37 @@ describe('fetchPublicProducts — résolutions slug parallèles (F-051)', () => 
       'cuts',
       'products',
     ]);
+  });
+});
+
+describe('fetchPublicProducts — recherche simple par nom', () => {
+  it('?q=poulet applique un filtre ilike sur le nom produit', async () => {
+    const { client, captured } = makeMultiFromSupabase([
+      { data: [], error: null },
+    ]);
+
+    await fetchPublicProducts(client, {
+      cut: null,
+      animal: null,
+      category: null,
+      q: 'poulet',
+    });
+
+    expect(captured.ilike).toContainEqual(['nom', '%poulet%']);
+  });
+
+  it('échappe les wildcards ILIKE dans q', async () => {
+    const { client, captured } = makeMultiFromSupabase([
+      { data: [], error: null },
+    ]);
+
+    await fetchPublicProducts(client, {
+      cut: null,
+      animal: null,
+      category: null,
+      q: '50%_promo',
+    });
+
+    expect(captured.ilike).toContainEqual(['nom', '%50\\%\\_promo%']);
   });
 });
