@@ -66,6 +66,12 @@ const PRODUCT_CART_CONFLICT_HINT =
   "Choisissez un autre produit, ou validez d'abord votre panier actuel.";
 
 const PARIS_TZ = 'Europe/Paris';
+const ORDER_STEPS = [
+  'Choisis ton créneau de retrait.',
+  'Ajoute le produit au panier.',
+  'Paie en ligne au moment de finaliser.',
+  'La commande est transmise au producteur.',
+];
 
 function formatDayLabel(isoUtc: string): string {
   const str = new Intl.DateTimeFormat('fr-FR', {
@@ -269,6 +275,11 @@ export function ProductPageClient({
     addableSlotIds.has(slot) &&
     !slotDisabledReasonById.get(slot);
 
+  const selectedSlot = useMemo(
+    () => slots.find((option) => option.id === slot) ?? null,
+    [slot, slots],
+  );
+
   const handleAdd = () => {
     if (!slot) return;
     const selected = slots.find((s) => s.id === slot);
@@ -295,7 +306,7 @@ export function ProductPageClient({
   const photos = product.photos.length > 0 ? product.photos : [null, null, null, null];
 
   return (
-    <div className="min-h-screen bg-bg">
+    <div className="min-h-screen bg-bg pb-56 lg:pb-0">
       <nav aria-label="Breadcrumb" className="max-w-7xl mx-auto px-6 pt-6">
         <ol className="flex items-center gap-1.5 text-[12px] text-dark/60 flex-wrap">
           <li><Link href="/" className="hover:text-green-900">Accueil</Link></li>
@@ -411,6 +422,20 @@ export function ProductPageClient({
               </div>
             </div>
 
+            <PurchasePanel
+              product={product}
+              producer={producer}
+              selectedSlot={selectedSlot}
+              total={total}
+              canOrder={canOrder}
+              isOwnProduct={isOwnProduct}
+              added={added}
+              noCommonCartSlot={noCommonCartSlot}
+              onAdd={handleAdd}
+            />
+
+            <OrderAssuranceBlock producerName={producer.name} />
+
             <div className="mt-6">
               <div className="text-[11px] uppercase tracking-[0.14em] text-dark/60 font-semibold mb-2">
                 Créneau de retrait à la ferme
@@ -452,35 +477,6 @@ export function ProductPageClient({
                     ))}
                   </div>
                 </div>
-              )}
-            </div>
-
-            <div className="mt-8 sticky bottom-0 bg-bg pt-4 pb-2 -mx-1 px-1 lg:static">
-              {!isOwnProduct && !product.stockUnlimited && product.stockLeft === 0 ? (
-                <StockAlertForm productId={product.id} productName={product.name} />
-              ) : (
-                <>
-                  <div className="flex items-center justify-between mb-3 px-1">
-                    <span className="text-[13px] text-dark/60">Total estimé</span>
-                    <span className="font-serif text-[28px] text-green-900 tabular-nums">
-                      {total.toFixed(2).replace('.', ',')}&nbsp;€
-                    </span>
-                  </div>
-                  <Button size="lg" className="w-full" disabled={!canOrder} onClick={handleAdd}>
-                    {isOwnProduct
-                      ? 'Ton produit'
-                      : added
-                        ? '✓ Ajouté au panier'
-                        : noCommonCartSlot
-                          ? 'Produit incompatible avec le panier'
-                        : !slot
-                          ? 'Choisis un créneau'
-                          : `Ajouter au panier`}
-                  </Button>
-                  <p className="text-[11px] text-dark/50 text-center mt-2">
-                    Tu confirmes ta commande directement avec {producer.name.split(' ').slice(-2).join(' ')}.
-                  </p>
-                </>
               )}
             </div>
 
@@ -548,6 +544,125 @@ export function ProductPageClient({
 
 function Sep() {
   return <li aria-hidden className="text-dark/30">/</li>;
+}
+
+function OrderAssuranceBlock({ producerName }: { producerName: string }) {
+  return (
+    <div className="mt-6 rounded-xl border border-green-300/40 bg-green-100/60 px-4 py-3">
+      <div className="text-[11px] uppercase tracking-[0.14em] text-green-900/70 font-semibold">
+        Comment commander
+      </div>
+      <ol className="mt-3 grid gap-2 text-[13px] leading-snug text-dark/75 sm:grid-cols-2">
+        {ORDER_STEPS.map((step, index) => (
+          <li key={step} className="flex gap-2">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white text-[11px] font-semibold tabular-nums text-green-900">
+              {index + 1}
+            </span>
+            <span>{step}</span>
+          </li>
+        ))}
+      </ol>
+      <p className="mt-3 text-[12px] leading-relaxed text-dark/60">
+        Après paiement, tu reçois la confirmation et {producerName} reçoit la
+        commande à préparer.
+      </p>
+    </div>
+  );
+}
+
+function SelectedPickupSummary({
+  selectedSlot,
+  producer,
+}: {
+  selectedSlot: SlotOption | null;
+  producer: ProducerSummary;
+}) {
+  if (!selectedSlot) {
+    return (
+      <div className="mb-2 rounded-xl border border-dark/10 bg-white px-3 py-2 text-[13px] text-dark/60 lg:bg-bg">
+        <div className="text-[11px] uppercase tracking-[0.14em] text-dark/50 font-semibold">
+          Retrait sélectionné
+        </div>
+        <p className="mt-1">Choisis un créneau pour ajouter ce produit au panier.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-2 rounded-xl border border-green-300/50 bg-white px-3 py-2 lg:bg-green-50">
+      <div className="text-[11px] uppercase tracking-[0.14em] text-green-900/70 font-semibold">
+        Retrait sélectionné
+      </div>
+      <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[13px]">
+        <span className="font-serif text-[17px] leading-tight text-green-900">
+          {formatDayLabel(selectedSlot.starts_at)}
+        </span>
+        <span className="font-semibold tabular-nums text-dark/80">
+          {formatSlotRange(selectedSlot.starts_at, selectedSlot.ends_at)}
+        </span>
+        <span className="w-full text-dark/65">
+          {producer.name} · {producer.commune}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function PurchasePanel({
+  product,
+  producer,
+  selectedSlot,
+  total,
+  canOrder,
+  isOwnProduct,
+  added,
+  noCommonCartSlot,
+  onAdd,
+}: {
+  product: ProductDetail;
+  producer: ProducerSummary;
+  selectedSlot: SlotOption | null;
+  total: number;
+  canOrder: boolean;
+  isOwnProduct: boolean;
+  added: boolean;
+  noCommonCartSlot: boolean;
+  onAdd: () => void;
+}) {
+  return (
+    <div className="fixed bottom-0 left-0 right-[calc(100vw_-_100%)] z-40 bg-bg/95 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-[0_-10px_30px_rgba(20,20,20,0.12)] backdrop-blur lg:sticky lg:inset-auto lg:top-24 lg:z-20 lg:mt-6 lg:rounded-2xl lg:border lg:border-dark/[0.06] lg:bg-white lg:p-3 lg:shadow-soft">
+      {!isOwnProduct && !product.stockUnlimited && product.stockLeft === 0 ? (
+        <StockAlertForm productId={product.id} productName={product.name} />
+      ) : (
+        <>
+          <SelectedPickupSummary selectedSlot={selectedSlot} producer={producer} />
+          <div className="mb-2 flex items-center justify-between gap-3 px-1">
+            <div className="shrink-0">
+              <div className="text-[12px] text-dark/60">Total estimé</div>
+              <div className="font-serif text-[26px] leading-none text-green-900 tabular-nums">
+                {total.toFixed(2).replace('.', ',')}&nbsp;€
+              </div>
+            </div>
+            <Button size="lg" className="w-full" disabled={!canOrder} onClick={onAdd}>
+              {isOwnProduct
+                ? 'Ton produit'
+                : added
+                  ? '✓ Ajouté au panier'
+                  : noCommonCartSlot
+                    ? 'Produit incompatible avec le panier'
+                    : !selectedSlot
+                      ? 'Choisis un créneau'
+                      : `Ajouter au panier`}
+            </Button>
+          </div>
+          <p className="mt-1 text-center text-[11px] leading-snug text-dark/50">
+            Paiement en ligne au panier. Après paiement, la commande est
+            confirmée et transmise au producteur.
+          </p>
+        </>
+      )}
+    </div>
+  );
 }
 
 // Popover "Conseil de l'éleveur" : icône à côté du h1 produit. Ouverture
