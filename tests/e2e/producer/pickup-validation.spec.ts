@@ -4,7 +4,7 @@
  *
  * Couverture (4 tests) :
  *   1. Path id-based (page detail /commandes/[id]) : producer saisit
- *      code TRR-XXXXX → POST /api/orders/:id/complete → transition
+ *      code TRR-* → POST /api/orders/:id/complete → transition
  *      confirmed → completed + email J0 review-request + audit log
  *      pickup_validated metadata.route='complete_id_based'.
  *   2. Path code-based (haut de liste /commandes via PickupValidationCard) :
@@ -47,7 +47,7 @@ test.describe("Producer — Pickup validation", () => {
 
     try {
       // Pas de codeCommande custom : on laisse le trigger Postgres
-      // generate_order_code() poser un TRR-XXXXX valide. L'input UI applique
+      // generate_order_code() poser un code TRR valide. L'input UI applique
       // un maxLength=12 + strip [^A-Z0-9] qui mangerait un PKUP-{ts}-X long,
       // d'où "Code invalide" 400 et test rouge.
       const order = await createTestOrder(ctx, {
@@ -128,7 +128,7 @@ test.describe("Producer — Pickup validation", () => {
     const consumer = await seedConsumer(ctx, { suffix: "pkup-code-cons" });
 
     try {
-      // Cf. test #1 : trigger generate_order_code() pose un TRR-XXXXX valide
+      // Cf. test #1 : trigger generate_order_code() pose un code TRR valide
       // que l'input UI accepte sans tronquer (maxLength=12).
       const order = await createTestOrder(ctx, {
         producerId: producer.producerId,

@@ -30,7 +30,7 @@ import { NEXT_PUBLIC_PRODUCER_URL } from "@/lib/env/urls";
 // Garde-fous (defense in depth) :
 //   1. Auth producer obligatoire (session + getOwnedProducerId)
 //   2. Rate-limit Upstash 10/min keying par producerId
-//   3. Format Zod strict TRR-XXXXX (côté helper)
+//   3. Format Zod strict TRR-XXXXX / TRR-XXXXXXX (côté helper)
 //   4. Scope strict producer_id post-lookup (anti-info-leakage : 404
 //      générique unifié pour code_unknown ET wrong_producer)
 //   5. UPDATE atomique avec WHERE statut='confirmed' (race-safe sur

@@ -1,7 +1,8 @@
 // Tests vitest pour lib/orders/pickup-validation.ts.
 //
 // Couverture :
-//   - pickupCodeSchema : format strict TRR-XXXXX, charset sans confusion,
+//   - pickupCodeSchema : format strict TRR-XXXXX / TRR-XXXXXXX,
+//     charset sans confusion,
 //     normalisation trim+toUpperCase
 //   - previewPickup : nominal + 7 cas d'erreurs typées (code_unknown,
 //     wrong_producer, statut pending/completed/cancelled/refunded,
@@ -77,6 +78,7 @@ const PRODUCER_ID = "prod-1";
 const OTHER_PRODUCER_ID = "prod-2";
 const ORDER_ID = "order-1";
 const CODE = "TRR-ABCDE";
+const CODE_7 = "TRR-ABCDEFG";
 const CONSUMER_ID = "cons-1";
 
 const baseRow = {
@@ -119,7 +121,7 @@ beforeEach(() => {
 
 // --- A. pickupCodeSchema (format strict) --------------------------------
 
-describe("pickupCodeSchema — format strict TRR-XXXXX (9 chars)", () => {
+describe("pickupCodeSchema — format strict TRR-XXXXX / TRR-XXXXXXX", () => {
   describe("acceptés", () => {
     it("A1 TRR-ABCDE → ok", () => {
       expect(pickupCodeSchema.safeParse("TRR-ABCDE").success).toBe(true);
@@ -142,6 +144,10 @@ describe("pickupCodeSchema — format strict TRR-XXXXX (9 chars)", () => {
       expect(pickupCodeSchema.safeParse("TRR-23456").success).toBe(true);
       expect(pickupCodeSchema.safeParse("TRR-WXYZJ").success).toBe(true);
     });
+
+    it("A5 nouveau format 7 caractères → ok", () => {
+      expect(pickupCodeSchema.safeParse(CODE_7).success).toBe(true);
+    });
   });
 
   describe("rejetés", () => {
@@ -149,7 +155,8 @@ describe("pickupCodeSchema — format strict TRR-XXXXX (9 chars)", () => {
       ["TRR-12345", "char '1' hors charset"],
       ["TRR-I0OAB", "chars I/0/O hors charset"],
       ["TRR-ABCD", "trop court (4 chars)"],
-      ["TRR-ABCDEF", "trop long (6 chars)"],
+      ["TRR-ABCDEF", "longueur intermédiaire refusée (6 chars)"],
+      ["TRR-ABCDEFGH", "trop long (8 chars)"],
       ["ABC-ABCDE", "mauvais préfixe"],
       ["TRRABCDE", "pas de tiret"],
       ["", "vide"],

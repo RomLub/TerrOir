@@ -107,7 +107,7 @@ export async function createTestOrder(
   const dateRetrait = start.toISOString().slice(0, 10);
   // Si options.codeCommande est fourni, on le pose tel quel (cas tests
   // legacy qui asseraient sur un marqueur custom). Sinon, on laisse le
-  // trigger Postgres generate_order_code() poser un TRR-XXXXX valide
+  // trigger Postgres generate_order_code() poser un code TRR valide
   // (cf. supabase/migrations/20260419000000_initial_schema.sql L284-300).
   // C'est nécessaire pour que les inputs UI (form pickup-validation
   // maxLength=12 + strip [^A-Z0-9]) acceptent le code sans tronquer.

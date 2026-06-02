@@ -95,7 +95,7 @@ Consommateurs ayant passé commande + producteurs ayant validé / livré.
 - Identifiants consumer et producer (FK Postgres)
 - Détail commande : produits, quantités, prix, montant total, commission TerrOir
 - Slot de retrait : date, heure, lieu (ferme du producteur)
-- Code de retrait : `TRR-XXXXX` (généré par trigger Postgres)
+- Code de retrait : `TRR-XXXXX` historique ou `TRR-XXXXXXX` courant (généré par trigger Postgres)
 - Statut + horodatages : created, confirmed, completed, cancelled
 - Notes client (texte libre, optionnel)
 - Référence Stripe Payment Intent (cf. T-03)

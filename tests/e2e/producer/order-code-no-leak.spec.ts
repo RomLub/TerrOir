@@ -1,7 +1,8 @@
 /**
  * E2E producer — Garde anti-régression ADR-0015.
  *
- * Vérifie que le `code_commande` (preuve de remise, format TRR-XXXXX) ne
+ * Vérifie que le `code_commande` (preuve de remise, format TRR-XXXXX ou
+ * TRR-XXXXXXX) ne
  * fuite PAS dans le HTML rendu côté producteur en pré-remise (statut
  * confirmed → completed). Le seul endroit où le producteur peut voir le
  * code après le fix est `PickupValidationCard` POST-saisie (le producteur
@@ -15,7 +16,7 @@
  *
  * Chaque page est chargée après seed d'une commande au statut `confirmed`
  * (= preuve encore non consommée, fuite-sensible). L'assert : aucun motif
- * `TRR-{5 chars}` dans le HTML rendu.
+ * `TRR-{5 ou 7 chars}` dans le HTML rendu.
  */
 
 import { expect, type Page } from '@playwright/test';
@@ -25,14 +26,15 @@ import { loginAs } from '../helpers/user-lifecycle';
 import { getRawAdminClient } from '../helpers/supabase-admin';
 import { cleanupOrdersForProducers } from '../helpers/order-lifecycle';
 
-const PICKUP_CODE_REGEX = /TRR-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{5}/g;
+const PICKUP_CODE_REGEX =
+  /TRR-(?:[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{5}|[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{7})/g;
 
 async function assertNoPickupCode(page: Page, where: string) {
   const html = await page.content();
   const matches = html.match(PICKUP_CODE_REGEX);
   expect(
     matches,
-    `${where} : code_commande (TRR-XXXXX) ne doit jamais apparaître côté producteur en pré-remise (ADR-0015). Trouvé : ${JSON.stringify(matches)}`,
+    `${where} : code_commande ne doit jamais apparaître côté producteur en pré-remise (ADR-0015). Trouvé : ${JSON.stringify(matches)}`,
   ).toBeNull();
 }
 

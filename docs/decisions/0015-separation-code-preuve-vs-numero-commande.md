@@ -6,7 +6,8 @@
 
 ## Contexte
 
-Le `code_commande` (format `TRR-XXXXX`, généré par trigger Postgres
+Le `code_commande` (format historique `TRR-XXXXX`, nouveau format
+`TRR-XXXXXXX` depuis la migration `20260511007000_p0_sweep_f033_generate_order_code_7chars.sql`, généré par trigger Postgres
 `generate_order_code()`) a vocation de **preuve de remise** : le client le
 présente au producteur au moment du retrait, le producteur le saisit dans
 `PickupValidationCard` qui appelle la RPC `complete_pickup_by_producer`
@@ -28,7 +29,7 @@ UUID non-affichable + le `code_commande` lui-même).
 
 | Identifiant | Forme | Rôle | Visibilité |
 |---|---|---|---|
-| `code_commande` | `TRR-XXXXX` | **Preuve de remise** (secret jusqu'à présentation client) | **Client** : partout (confirmation, /compte/commandes, /compte/commandes/[id], email, SMS). **Producteur** : `PickupValidationCard` **POST-saisie uniquement** (preview après que le producteur a saisi le code). **Admin** : partout (support / litiges). |
+| `code_commande` | `TRR-XXXXX` ou `TRR-XXXXXXX` | **Preuve de remise** (secret jusqu'à présentation client) | **Client** : partout (confirmation, /compte/commandes, /compte/commandes/[id], email, SMS). **Producteur** : `PickupValidationCard` **POST-saisie uniquement** (preview après que le producteur a saisi le code). **Admin** : partout (support / litiges). |
 | `numero_commande` | `PPPP-CCCCC` (4 chiffres producteur + 5 chiffres séquence par producteur) | **Identifiant affichable** pour désigner une commande sans révéler la preuve | **Client** : partout (en plus du code). **Producteur** : partout (en lieu et place du code). **Admin** : partout (en plus du code). |
 
 Exemples :
@@ -125,7 +126,7 @@ public). Additive, appliquée AVANT merge.
 
 E2E `tests/e2e/producer/order-code-no-leak.spec.ts` parcourt `/commandes`,
 `/commandes/[id]`, `/dashboard`, `/creneaux` après seed d'une commande
-au statut `confirmed`, et assert qu'**aucun motif `TRR-{5 chars}` n'apparaît
+au statut `confirmed`, et assert qu'**aucun motif `TRR-{5 ou 7 chars}` n'apparaît
 dans le HTML rendu**. Bloquant en CI : toute future régression côté
 producteur (UI, API, RPC, template email) qui réintroduirait le code en
 pré-remise cassera ce test.

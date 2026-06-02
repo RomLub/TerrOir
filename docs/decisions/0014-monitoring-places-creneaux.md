@@ -76,8 +76,8 @@ capacité du sous-slot. Conséquences :
 Tooltip (attribut HTML `title` + `aria-label`) :
 
 - **Case réservée** :
-  - mode libre : `TRR-XXXXX · Prénom` ou `TRR-XXXXX · Client` si prénom NULL ;
-  - mode RDV : `HHhMM · TRR-XXXXX · Prénom` (l'heure correspond au
+  - mode libre : `PPPP-CCCCC · Prénom` ou `PPPP-CCCCC · Client` si prénom NULL ;
+  - mode RDV : `HHhMM · PPPP-CCCCC · Prénom` (l'heure correspond au
     sous-slot porteur).
 - **Case libre** :
   - mode libre : `Place libre` ;

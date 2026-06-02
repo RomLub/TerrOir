@@ -11,7 +11,7 @@ import { AdminModal } from '@/components/ui/admin-modal';
 // /producer/commandes (LOT 4 chantier pickup-validation 2026-05-06).
 //
 // 3 états visuels :
-//   1. idle    : input code TRR-XXXXX + bouton "Vérifier"
+//   1. idle    : input code TRR-XXXXX / TRR-XXXXXXX + bouton "Vérifier"
 //                Les erreurs serveur apparaissent in-place sous l'input
 //                avec CTA contextuel selon le cas (ex : lien fiche
 //                commande pour order_not_confirmed).
@@ -128,7 +128,7 @@ function ErrorBanner({ error }: { error: ApiError }) {
     case 'invalid_format':
       return (
         <div className={cls} role="alert">
-          <span>Format invalide. Le code doit ressembler à TRR-XXXXX.</span>
+          <span>Format invalide. Le code doit ressembler à TRR-XXXXX ou TRR-XXXXXXX.</span>
         </div>
       );
     case 'order_not_confirmed':
@@ -329,7 +329,7 @@ export function PickupValidationCard({
               Saisissez le code de retrait
             </h2>
             <p className="mt-1 text-[13px] text-dark/65">
-              Demandez le code TRR-XXXXX au client présent au retrait.
+              Demandez le code de retrait au client présent au retrait.
             </p>
           </div>
         </div>
@@ -342,7 +342,7 @@ export function PickupValidationCard({
               onChange={(e) =>
                 setCode(e.target.value.toUpperCase().slice(0, 12))
               }
-              placeholder="TRR-XXXXX"
+              placeholder="TRR-XXXXXXX"
               aria-label="Code de retrait"
               autoCapitalize="characters"
               autoComplete="off"

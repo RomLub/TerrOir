@@ -10,8 +10,8 @@ import { NEXT_PUBLIC_APP_URL } from "@/lib/env/urls";
 //
 // Modèle juridique respecté : TerrOir = intermédiaire technique pur.
 // Le VENDEUR est le Producer ; TerrOir n'est PAS partie au contrat
-// de vente. Stripe Connect distribue les fonds (commission TerrOir
-// 6% prélevée à la source — invisible côté Consumer, option α).
+// de vente. Les paiements transitent par Stripe, puis TerrOir déclenche
+// le versement net producteur après retrait validé (commission 6%).
 // Aligné /mentions-legales section 5 + /cgu article 9.1.
 //
 // Frais d'envoi : forfaitaires par Producer (cohérent /livraison).
@@ -407,12 +407,17 @@ export default function CgvPage() {
           <ul className="mt-3 space-y-2 text-[15px] text-dark/75 leading-relaxed list-disc pl-5">
             <li>L&apos;Acheteur paie le montant total de la Commande</li>
             <li>
-              Stripe distribue les fonds : la commission TerrOir est
-              prélevée, le solde est versé au Producer
+              Le paiement transite par Stripe sur le compte plateforme
+              TerrOir, sans stockage des données bancaires par TerrOir
             </li>
             <li>
-              Le Producer perçoit son paiement selon le calendrier prévu
-              par Stripe Connect
+              Après validation du retrait, TerrOir déclenche le versement
+              net au Producer via Stripe Connect, déduction faite de la
+              commission TerrOir
+            </li>
+            <li>
+              Le Producer reçoit ensuite les fonds selon le calendrier de
+              virement de son compte Stripe Connect
             </li>
           </ul>
 
