@@ -31,7 +31,7 @@ import { cleanupOrdersForProducers } from '../helpers/order-lifecycle';
 import { getRawAdminClient } from '../helpers/supabase-admin';
 
 // CHECK constraint orders_code_commande_format_check :
-// ^TRR-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{5,7}$
+// TRR- + 5 ou 7 caractères dans l'alphabet sans confusion.
 const CODE_COMMANDE_CHARSET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 function randomCommandeCode(): string {
   let suffix = '';

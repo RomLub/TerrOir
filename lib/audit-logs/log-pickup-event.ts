@@ -6,7 +6,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 // event / log-review-event.
 //
 // Cluster pickup : trace forensique exhaustive du flow de validation
-// pickup côté producer (saisie du code TRR-XXXXX par le producer pour
+// pickup côté producer (saisie du code TRR-* par le producer pour
 // transitionner une commande confirmed → completed via la route
 // /api/producer/orders/validate-pickup).
 //

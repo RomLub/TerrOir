@@ -104,7 +104,7 @@ const reachable = await isLocalSupabaseReachable();
 const describeIfLocal = reachable ? describe : describe.skip;
 
 // CHECK constraint orders_code_commande_format_check :
-// ^TRR-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{5,7}$
+// TRR- + 5 ou 7 caractères dans l'alphabet sans confusion.
 // Charset Crockford-like (sans 0/O/1/I/L/U), aligné avec
 // la RPC generate_order_code en prod.
 const CODE_COMMANDE_CHARSET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";

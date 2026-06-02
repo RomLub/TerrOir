@@ -65,7 +65,7 @@ const ITEMS: Item[] = [
   {
     icon: <ShieldCheckIcon />,
     title: "Paiement en ligne sécurisé",
-    body: "Carte bancaire ou Apple Pay via Stripe. Aucune donnée stockée chez nous, le producteur reçoit son virement directement.",
+    body: "Carte bancaire ou Apple Pay via Stripe. Aucune donnée stockée chez nous, le producteur reçoit son virement après retrait validé.",
   },
   {
     icon: <PeopleIcon />,

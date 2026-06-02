@@ -44,7 +44,7 @@ test.describe('Consumer — /compte/commandes', () => {
     const orders = [];
     try {
       // codeCommande laissé vide : trigger Postgres generate_order_code()
-      // pose un TRR-XXXXX unique. Pas de collision sur slot car le helper
+      // pose un code TRR unique. Pas de collision sur slot car le helper
       // staggér starts_at via _slotSlotCounter.
       orders.push(
         await seedOrder(ctx, {
@@ -76,7 +76,7 @@ test.describe('Consumer — /compte/commandes', () => {
       ).toBeVisible();
 
       for (const o of orders) {
-        // Le code TRR-XXXXX peut apparaître dans plusieurs éléments
+        // Le code TRR peut apparaître dans plusieurs éléments
         // imbriqués (link role + span). .first() évite la strict mode
         // violation tout en validant la présence.
         await expect(

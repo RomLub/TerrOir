@@ -60,7 +60,7 @@ const STEPS: Step[] = [
     numLabel: "Payer en ligne",
     icon: <CardIcon />,
     title: "Réglez en sécurité",
-    body: "Paiement en ligne sécurisé par Stripe. Le producteur reçoit directement le fruit de son travail, TerrOir prélève une petite commission pour faire vivre la marketplace.",
+    body: "Paiement en ligne sécurisé par Stripe. Le producteur reçoit son versement après retrait validé, TerrOir prélève une petite commission pour faire vivre la marketplace.",
   },
   {
     num: "3",

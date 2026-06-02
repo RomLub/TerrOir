@@ -10,12 +10,13 @@ import { formatOrderNumber } from "@/lib/orders/order-number";
 // (/api/orders/[id]/complete) : ici, le code seul résout l'order, et le
 // scope producer est imposé après lookup.
 //
-// Format code : TRR-XXXXX (préfixe TRR- + 5 chars charset sans confusion
+// Format code : TRR-XXXXX ou TRR-XXXXXXX (préfixe TRR- + 5/7 chars charset sans confusion
 // 23456789ABCDEFGHJKLMNPQRSTUVWXYZ). Source : trigger Postgres
-// generate_order_code() (supabase/migrations/20260419000000_initial_schema).
+// generate_order_code() (supabase/migrations/20260511007000_p0_sweep_f033_generate_order_code_7chars.sql).
 // =============================================================================
 
-const PICKUP_CODE_REGEX = /^TRR-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{5}$/;
+const PICKUP_CODE_REGEX =
+  /^TRR-(?:[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{5}|[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{7})$/;
 
 export const pickupCodeSchema = z
   .string()

@@ -173,7 +173,7 @@ export function OrderDetailClient({ data }: { data: OrderDetailData }) {
                     value={code}
                     onChange={(e) => { setCode(e.target.value.toUpperCase().slice(0, 12)); setCodeError(null); }}
                     maxLength={12}
-                    placeholder="TRR-XXXXX"
+                    placeholder="TRR-XXXXXXX"
                     autoFocus
                     aria-label="Code de commande"
                     className={`w-full text-center font-mono text-[40px] tracking-[0.25em] h-24 rounded-xl border-2 uppercase outline-none transition-colors ${

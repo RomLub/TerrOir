@@ -7,7 +7,7 @@
 
 ## Contexte
 
-L'audit factuel `docs/AUDIT_STRIPE_FLOW.md` (2026-05-13) a établi l'état
+L'audit factuel `docs/AUDIT_STRIPE_FLOW.md` (2026-06-01) a établi l'état
 réel du flow d'argent TerrOir avant Live. Trois faits structurants
 ressortent :
 
@@ -22,7 +22,7 @@ ressortent :
 2. **`pickup_validated` est l'enabler implicite du transfer hebdo**
    (audit §6.4). L'event est posé SQL-side par la RPC
    `complete_pickup_by_producer` quand le producteur saisit le code
-   `TRR-XXXXX` du consumer. La même RPC pose `statut='completed'` +
+   `TRR-XXXXX` ou `TRR-XXXXXXX` du consumer. La même RPC pose `statut='completed'` +
    `completed_at`, qui sont la condition unique d'entrée dans la fenêtre
    du cron `weekly-payout`. Sans saisie du code, l'order ne progresse
    jamais vers `completed` et le producteur n'est jamais payé.
@@ -37,7 +37,7 @@ ressortent :
 Romain s'inquiétait initialement que le modèle paie le producteur avant
 livraison effective. L'audit montre que ce risque n'existe pas dans le
 flow nominal : tant que `pickup_validated` n'est pas posé, l'argent
-reste sur la balance plateforme. Le code `TRR-XXXXX` ne pouvant être
+reste sur la balance plateforme. Le code de retrait ne pouvant être
 saisi par le producteur qu'en présence du consumer (secret bilatéral),
 sa saisie constitue une preuve de remise effective. Le modèle actuel
 est de fait un mini-escrow naturel, à condition que la chaîne
@@ -74,14 +74,15 @@ flow nominal.
 Cette conservation est explicite : tout futur chantier qui modifierait
 le modèle de charge devra ouvrir un ADR superseder du présent.
 
-### 2. Validation pickup nominale — code TRR-XXXXX éternellement valide
+### 2. Validation pickup nominale — code TRR éternellement valide
 
-Le code `TRR-XXXXX` reste l'unique mécanisme nominal de validation
+Le code `TRR-XXXXX` historique ou `TRR-XXXXXXX` courant reste l'unique mécanisme nominal de validation
 pickup. Trois propriétés sont actées :
 
 - Le code est un secret partagé connu uniquement du consumer (généré par
   le trigger Postgres `generate_order_code`, format
-  `TRR-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{5,7}` —
+  `TRR-` suivi de 5 ou 7 caractères dans l'alphabet
+  `23456789ABCDEFGHJKLMNPQRSTUVWXYZ` —
   `lib/orders/pickup-validation.ts:17`).
 - Sa saisie par le producteur constitue une preuve bilatérale de
   remise : le producteur ne peut l'obtenir qu'en présence du consumer
@@ -332,7 +333,7 @@ réels :
 consumer reçoit une notification et doit confirmer la bonne réception
 dans l'app pour déclencher `pickup_validated`. Inconvénients :
 
-- Charge cognitive consumer inutile. Le code `TRR-XXXXX` constitue déjà
+- Charge cognitive consumer inutile. Le code de retrait constitue déjà
   une preuve bilatérale (le producteur ne peut le saisir qu'en présence
   du consumer qui le lui communique).
 - Introduit une race : si le consumer ne confirme jamais (oubli, perte
@@ -611,7 +612,7 @@ Critère de sortie : Phase 3 livrée quand au moins 5 producteurs Niveau
 Métriques à instrumenter (idéalement via PostHog + tableau de bord
 admin) une fois les phases implémentées :
 
-- Taux de `pickup_validated` via code `TRR-XXXXX` nominal vs via
+- Taux de `pickup_validated` via code TRR nominal vs via
   `pickup_admin_validated_post_incident`.
 - Temps moyen de résolution d'un `pickup_incident` (création →
   décision admin).
@@ -635,7 +636,7 @@ forte), ouvrir un ADR addendum ou superseder.
 
 ## Références
 
-- `docs/AUDIT_STRIPE_FLOW.md` (2026-05-13) — audit factuel ayant
+- `docs/AUDIT_STRIPE_FLOW.md` (2026-06-01) — audit factuel ayant
   déclenché la rédaction du présent ADR.
 - `docs/decisions/0005-pattern-admin-data-access.md` — pattern à
   appliquer pour les nouvelles surfaces admin (`/pickup-incidents`,

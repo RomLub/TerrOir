@@ -59,7 +59,7 @@ describe("OrderDetailClient producer — gate section 'Validation du retrait'", 
   it("status='confirmed' → section visible (modèle 3 états : pickup direct)", () => {
     const html = render(makeData("confirmed"));
     expect(html).toContain("Validation du retrait");
-    expect(html).toContain("TRR-XXXXX");
+    expect(html).toContain("TRR-XXXXXXX");
     expect(html).toContain("Valider le retrait");
   });
 
